@@ -1,0 +1,10 @@
+{
+  "switches_requested": 50,
+  "switches_reported": 50,
+  "missed": 0,
+  "p50_latency_ms": 0.5,
+  "p95_latency_ms": 0.9,
+  "caption_events_same_window": 0,
+  "activated_events_total": 53,
+  "windows_tested": 7
+}

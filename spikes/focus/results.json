@@ -1,0 +1,16 @@
+{
+  "spike": "T-1.9",
+  "frage": "Traegt das KWin-Fokussignal die Wahrnehmungs-Gatterkette?",
+  "switches_observed": 50,
+  "switches_reported": 50,
+  "missed": 0,
+  "p50_latency_ms": 0.5,
+  "p95_latency_ms": 0.9,
+  "caption_events_same_window": 4,
+  "events_total": 102,
+  "survives_replace": null,
+  "survives_replace_note": "Nicht getestet: FreeCAD hatte ungespeicherte Aenderungen ('* Wicking_v'). Compositor-Neustart haette die Sitzung riskiert. Nachzuholen.",
+  "verdict": "pass",
+  "decision": "Das Fokussignal traegt. windowActivated ist verlustfrei und um Groessenordnungen schneller als das 200-ms-Ziel. captionChanged feuert zusaetzlich bei Dokument- und Zustandswechseln innerhalb eines Fensters -- aber nur, wenn die Anwendung ihren Titel aendert. Inhaltsaenderung ohne Titelaenderung (Terminalausgabe, Scrollen, neuer Absatz) bleibt unsichtbar. Der Abtast-Timer aus T-5.4 ist damit nicht optional, sondern traegt den Grossteil der echten Inhaltsaenderung.",
+  "blocking": true
+}
