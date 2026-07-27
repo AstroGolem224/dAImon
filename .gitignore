@@ -2,6 +2,8 @@
 __pycache__/
 *.pyc
 target/
+/spikes/*/venv-*/
+/spikes/*/venv/
 /spikes/*/models/
 /spikes/*/*.wav
 /tests/evidence/*.raw

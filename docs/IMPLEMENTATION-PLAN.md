@@ -261,7 +261,9 @@ tests/verify/T-0.0.sh             # muss grün sein, bevor P−1 beginnt
 - **Verifikation:** `tests/verify/T--1.1.sh` — prüft, dass `results.json` ≥2 Namen enthält, jeder ≥50 `trials` und ≥3 `background_hours`, und **rechnet FRR/FAR selbst aus den Rohzählungen nach**; Exit 0 nur, wenn mindestens ein Name `frr < 0.10` **und** `far_per_hour < 1.0` erreicht
 - **Agent:** investigator · **Umfang:** L
 
-### T−1.2 — ONNX Runtime mit sm_120 aus cp312 ⚠️ WEICHE ∥
+### T−1.2 — ONNX Runtime mit sm_120 aus cp312 ✅ **BESTANDEN**
+> Ergebnis in `spikes/ort/results.json`. Die Annahme war falsch herum: **das pip-Wheel hat die nativen Cubins, das Arch-Paket ist auf der 5090 schlechter** (PTX-Rückfall auf `compute_121`, lädt auf sm_120 nicht). Ein Worker gegen die System-C-API ist hart blockiert — der ORT-Kern ist statisch ins pybind-Modul gelinkt, `LD_PRELOAD` hat nichts zum Umlenken.
+
 - **Ziel:** Klarheit, ob der geplante Python-Stack die nativen Blackwell-Kerne überhaupt erreicht.
 - **Dateien:** `spikes/ort/` [neu], `spikes/ort/results.json` [erzeugt]
 - **Abhängigkeiten:** **T−1.2.v**
@@ -341,7 +343,9 @@ tests/verify/T-0.0.sh             # muss grün sein, bevor P−1 beginnt
 - **Verifikation:** `tests/verify/T--1.7.sh` — prüft, dass `summary.json` für jeden der sechs Spikes einen Eintrag mit `verdict` und `decision` enthält und dass kein Verdikt `pending` ist
 - **Agent:** investigator · **Umfang:** S
 
-### T−1.9 — KWin-Fokusereignis belastbar? ⚠️ WEICHE für die Wahrnehmung ∥
+### T−1.9 — KWin-Fokusereignis belastbar? ✅ **BESTANDEN**
+> Ergebnis in `spikes/focus/results.json`. 50 von 50, keine Auslassung, p95 = 0,9 ms. **Aber:** `captionChanged` feuert nur, wenn die Anwendung ihren Titel ändert — Terminalausgabe und Scrollen erzeugen nichts. Der Abtast-Timer aus T-5.4 ist damit nicht optional. `kwin --replace` steht noch aus.
+
 - **Ziel:** Klarheit, ob die gesamte Wahrnehmungs-Gatterkette auf einem verlässlichen Signal steht.
 - **Dateien:** `spikes/focus/` [neu], `spikes/focus/results.json` [erzeugt]
 - **Abhängigkeiten:** keine
@@ -972,7 +976,11 @@ tests/verify/T-1.5.sh    # Idle-CPU weiterhin < 0,5 %
 - **Dateien:** `daimon/gpu/stt.py` [neu]
 - **Abhängigkeiten:** T-3.7, T−1.2
 - **Akzeptanz:**
-  - [ ] Umsetzung nach der in T−1.2 gewählten Variante, bevorzugt über **sherpa-onnx** (Apache-2.0), das zugleich Wake-Word, VAD und TTS liefert
+  - [ ] `onnxruntime-gpu==1.27.0` **nackt gepinnt** — `onnx-asr` zieht in der Basisinstallation kein onnxruntime mit
+  - [ ] **Keine `nvidia-*`-pip-Pakete**: alle CUDA-Bibliotheken werden vom System-CUDA 13.3.1 aufgelöst, das spart rund 2 GB
+  - [ ] **Nicht** das Arch-Paket `onnxruntime-opt-cuda` verwenden — dessen PTX-Rückfall zielt auf `compute_121` und lädt auf sm_120 nicht
+  - [ ] Arena über `sess_options` gesteuert; ein ungültiger Wert muss mit `Failed to map enum name to value` abgelehnt werden
+  - [ ] Wo möglich über **sherpa-onnx** (Apache-2.0), das zugleich Wake-Word, VAD und TTS liefert
   - [ ] Deutsch und Englisch
   - [ ] Prozessende gibt VRAM vollständig frei
   - [ ] Latenz für eine 5-s-Äußerung gemessen
@@ -1442,6 +1450,7 @@ pytest -q
 - **Abhängigkeiten:** T-5.3, T-0.12
 - **Akzeptanz:**
   - [ ] Fokus-Ereignis **und** gedeckelter Timer lösen aus
+  - [ ] **Der Timer trägt den Großteil**, nicht das Ereignis: T−1.9 belegt, dass `captionChanged` nur bei Titeländerung feuert. Terminalausgabe, Scrollen und ein neuer Absatz erzeugen nichts
   - [ ] Timerrate konfigurierbar, Vorgabe konservativ
   - [ ] Idle- und Lock-Gate schaltet beide ab
 - **Verifikation:** `tests/verify/T-5.4.sh` — hält den Fokus konstant, erzeugt im selben Fenster eine Inhaltsänderung und prüft, dass innerhalb der Timerperiode eine Erfassung ausgelöst wurde; sperrt danach den Bildschirm und prüft, dass keine mehr erfolgt

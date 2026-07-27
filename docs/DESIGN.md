@@ -1235,7 +1235,7 @@ Der Charakter ist austauschbar; die Persona-Datei ist der einzige Ort, an dem er
 | # | Risiko | W | Impact | Minderung |
 |---|---|---|---|---|
 | R1 | **Wake-Word erkennt deutschen Namen schlecht** | hoch | hoch | Phase −1 misst FRR/FAR. Plan B `livekit-wakeword`, Plan C nur PTT |
-| R2 | **ONNX Runtime mit sm_120 nicht aus cp312 importierbar** — Arch-Paket hat keine Python-Bindings **[V]** | hoch | hoch | Phase −1 Spike mit `cuobjdump`-Nachweis. Ausweg: C-API-Worker oder whisper.cpp-CUDA |
+| R2 | ~~ONNX Runtime mit sm_120 nicht erreichbar~~ | — | — | **Entfallen [V]:** Spike T−1.2 belegt native `sm_120a`-Cubins im pip-Wheel `onnxruntime-gpu==1.27.0`; alle 5131 `onnxruntime::cuda`- und 1337 `contrib::cuda`-Kernel abgedeckt |
 | R3 | Injektion über beobachteten Inhalt | mittel | sehr hoch | Fähigkeitsentzug, Markierung, Deklassifizierungs-Gate; adversarialer Test nach P5 **und** nach dem Gedächtnis |
 | R4 | **Gefälschtes Audio** (Lautsprecher, Video, eigene TTS) | hoch | hoch | Sprache autorisiert nicht; `user_audio` nie ins Gedächtnis; Rückkopplungssperre mit Nachlauf |
 | R5 | **Markierungsverlust an einer Serialisierungsgrenze** | mittel | hoch | Typisierte Werte, geschützte Senken nehmen keine rohen Strings; Mutationstest je Grenze |
@@ -1257,7 +1257,7 @@ Der Charakter ist austauschbar; die Persona-Datei ist der einzige Ort, an dem er
 | R22 | Pet hängt auf `needs_input`, weil eine Session hart beendet wurde | hoch | mittel | Lease mit PID-Prüfung statt Stunden-TTL (§7.8) |
 | R23 | **Gatter verpasst Inhaltsänderungen still** | war hoch | hoch | Gekacheltes dHash ersetzt durch Zuschnitt auf Textregionen plus quantisierte Signatur (§4.4) — screenpipe hat unseren Ansatz zweimal verworfen |
 | R24 | **Portal liefert DMA-BUF, Frames bleiben schwarz** | mittel | hoch | SHM explizit aushandeln; DMA-BUF ist Fehlerfall mit Protokolleintrag, nicht Überraschung (§4.5) |
-| R25 | **KWin-Fokusereignis unzuverlässig oder nicht vorhanden** | mittel | **sehr hoch** | Die gesamte Gatterkette hängt daran, und screenpipe hat für Linux aufgegeben. **Spike in Phase −1, vor allem anderen in der Wahrnehmung.** Rückfall wäre Polling — also genau das Nicht-Ziel |
+| R25 | ~~KWin-Fokusereignis unzuverlässig~~ | — | — | **Entfallen [V]:** Spike T−1.9 misst 50 von 50 Wechseln, keine Auslassung, p95 = 0,9 ms. Aber `captionChanged` feuert nur bei Titeländerung der Anwendung — der Abtast-Timer trägt den Großteil der Inhaltsänderung |
 | R26 | OCR-Kosten zwei Größenordnungen über der Annahme | hoch | mittel | libtesseract über FFI oder dauerhafter Arbeitsprozess; in Phase −1 messen, ob tesseract neben dem VLM überhaupt seinen Platz verdient |
 | R27 | Audit-Kette wird von niemandem geprüft | mittel | mittel | Drei benannte Prüfstellen, keine davon in einem Prozess mit Modelltext (§7.6) |
 
@@ -1306,8 +1306,9 @@ Bleibt die ScreenCast-Pipeline auf `PLAYING`, macht KWin je Frame eine composito
 
 Phase −1, vor allem anderen. Zwei können die Architektur kippen.
 
-1. **Deutsche Aussprache-Robustheit von sherpa-onnx KWS** — ≥50 eigene Aufnahmen je Kandidatenname (FRR), ≥3 h Hintergrund (FAR). Ziel FRR < 10 %, FAR < 1/h. (R1)
-2. **ONNX Runtime mit sm_120 aus einem cp312-venv** — belegt durch `cuobjdump`-Inspektion bei gesperrtem JIT-Cache, nicht durch Latenzvergleich. (R2)
+1. **Deutsche Aussprache-Robustheit von sherpa-onnx KWS** — ≥50 eigene Aufnahmen je Kandidatenname (FRR), ≥3 h Hintergrund (FAR). Ziel FRR < 10 %, FAR < 1/h. (R1) — **offen, braucht Aufnahmen**
+2. ~~ONNX Runtime mit sm_120~~ — **bestanden [V]**, siehe §4.1
+5. ~~Mood-Mapping aus echten Hook-Logs~~ und **KWin-Fokusereignis** — **bestanden [V]**, siehe §4.4
 3. **wlr-layer-shell-Smoke-Test** inklusive 20 Ein-/Ausblende-Zyklen gegen Bug 503121, Sichtbarkeit per Pixelprobe.
 4. **Portal-`restore_token` über einen Neustart** — hält die Persistenz?
 5. **Mood-Mapping aus echten Hook-Logs** — braucht keinen Client.

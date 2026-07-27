@@ -1,0 +1,66 @@
+{
+  "spike": "T-1.2",
+  "question": "ONNX Runtime mit nativen sm_120 (Blackwell) CUDA-Kerneln aus einem Python-3.12-venv erreichbar (fuer Parakeet STT)?",
+  "machine": {
+    "gpu": "NVIDIA GeForce RTX 5090 (sm_120)",
+    "driver": "610.43.02",
+    "cuda_toolkit": "/opt/cuda 13.3.1",
+    "cudnn": "9.24.0 (/usr/lib/libcudnn.so.9)",
+    "system_python": "3.14.6",
+    "cuobjdump": "/opt/cuda/bin/cuobjdump"
+  },
+  "variants": [
+    {
+      "variant": "A",
+      "description": "pip onnxruntime-gpu 1.27.0 in uv-venv mit CPython 3.12.13",
+      "importable": true,
+      "provider_active": true,
+      "native_sm120": true,
+      "cuobjdump_evidence": "cuobjdump --list-elf .../onnxruntime/capi/libonnxruntime_providers_cuda.so | grep -o 'sm_[0-9]*[a-z]*' | sort | uniq -c  ->  234 sm_100a / 203 sm_120a / 186 sm_75 / 234 sm_80 / 234 sm_86 / 234 sm_89 / 238 sm_90a   (Beispielzeile: 'ELF file 1007: libonnxruntime_providers_cuda.1007.sm_120a.cubin'). PTX-Fallback vorhanden und passend: 234 PTX-Eintraege, alle Ziel sm_120 ('PTX file 1: libonnxruntime_providers_cuda.1.sm_120.ptx'). Kernel-Ebene via 'cuobjdump -res-usage': 7740 von 9037 Kernel-Symbolen haben ein sm_120a-Cubin; die 1297 ohne sm_120a sind ausschliesslich cutlass MoeFCGemm/fused_moe/TmaWarpSpecializedGroupedGemm (1008), onnxruntime::llm (287) und 2 kDequantizeBlockwise-Contrib-Kernel -- alles LLM-/MoE-/int4-Quant-Pfade, kein Conformer/TDT-Pfad. Alle onnxruntime::cuda (5131) und onnxruntime::contrib::cuda (1337) Kernel sind mit sm_120a abgedeckt.",
+      "first_infer_cold_ms": 41.83,
+      "steady_ms": 0.0541,
+      "vram_mb": 648.0,
+      "notes": "Messung mit CUDA_CACHE_DISABLE=1 und frischem CUDA_CACHE_PATH. session_create_ms 318.9, cold/steady-Ratio 773. Die Ratio ist hier KEIN JIT-Indikator -- sie stammt aus cuBLAS/cuDNN-Handle-Init und Arena-Allokation. Gegenprobe: CUDA_FORCE_PTX_JIT=1 (erzwungenes JIT trotz vorhandener Cubins) aendert cold (40.5 ms) und steady (0.055 ms) praktisch nicht, weil CUDA lazy module loading nur die tatsaechlich benutzten Module laedt. Der Beweis liegt allein im Cubin-Inventar. Alle NEEDED-Libs (libcublas.so.13, libcudart.so.13, libnvrtc.so.13, libcudnn.so.9, libcufft.so.12, libcurand.so.10) werden vom System-CUDA 13.3.1 + cuDNN 9.24 aufgeloest, ldd meldet nichts als 'not found' -- kein LD_LIBRARY_PATH-Gefrickel noetig, keine nvidia-*-pip-Pakete noetig. Wheel ist cp312-tauglich; fuer 3.14 gibt es kein Wheel.",
+      "verdict": "viable"
+    },
+    {
+      "variant": "B",
+      "description": "System-Paket onnxruntime-opt-cuda 1.27.1-2 (ohne Python-Bindings) nutzen -- via Provider-.so-Swap oder ctypes",
+      "importable": false,
+      "provider_active": false,
+      "native_sm120": true,
+      "cuobjdump_evidence": "cuobjdump --list-elf /usr/lib/libonnxruntime_providers_cuda.so | grep -o 'sm_[0-9]*[a-z]*' | sort | uniq -c  ->  266 sm_100a / 266 sm_103 / 266 sm_110a / 234 sm_120a / 234 sm_121 / 218 sm_75 / 266 sm_80 / 266 sm_86 / 266 sm_87 / 266 sm_88 / 266 sm_89 / 270 sm_90a. Die Behauptung 'gebaut mit 120-real' ist damit bestaetigt (sm_120a-Cubins vorhanden). ACHTUNG: der PTX-Fallback der System-Lib zielt auf sm_121 (266 Eintraege, 'libonnxruntime_providers_cuda.1.sm_121.ptx') -- compute_121-PTX laedt NICHT auf einer sm_120-GPU. Kernel ohne sm_120a-Cubin haben auf der 5090 also gar keinen Pfad, waehrend das pip-Wheel dafuer sm_120-PTX mitbringt.",
+      "first_infer_cold_ms": null,
+      "steady_ms": null,
+      "vram_mb": null,
+      "notes": "ZWEI Ansaetze getestet, beide nicht tragfaehig. (1) Provider-.so-Swap: die System-libonnxruntime_providers_cuda.so in ein Klon-venv (venv-b) anstelle der Wheel-Version gelegt. 'import onnxruntime' und get_available_providers() laufen noch durch, aber InferenceSession(...) mit CUDAExecutionProvider stirbt mit SIGSEGV (rc=139, keine Fehlermeldung). Ursache: onnxruntime_pybind11_state.cpython-312-*.so hat KEIN NEEDED auf libonnxruntime.so -- der ORT-Kern ist statisch in das pybind-Modul gelinkt. Damit ist die Provider-Schnittstelle die interne, nicht-stabile Bridge-ABI von Build 1.27.0 gegen Build 1.27.1; LD_LIBRARY_PATH/LD_PRELOAD koennen daran nichts aendern, weil es nichts zum Umlenken gibt. (2) ctypes gegen die C-API: /usr/lib/libonnxruntime.so.1 exportiert OrtGetApiBase@@VERS_1.27.1; ein ctypes.CDLL + OrtGetApiBase()->GetVersionString() liefert erfolgreich '1.27.1' aus dem System-Python 3.14.6. Technisch machbar, praktisch aber ein Eigenbau der kompletten OrtApi-Funktionszeiger-Struktur (mehrere hundert Eintraege, versionsabhaengige Reihenfolge, manuelle Speicher-/Fehlerbehandlung) -- Wochen Arbeit und eine dauerhafte Bruchstelle bei jedem ORT-Update. Angesichts Variante A ohne Gegenwert.",
+      "verdict": "blocked"
+    },
+    {
+      "variant": "C",
+      "description": "AUR whisper.cpp-cuda als Fallback (NICHT installiert -- nur PKGBUILD-Analyse)",
+      "importable": null,
+      "provider_active": null,
+      "native_sm120": true,
+      "cuobjdump_evidence": "NICHT GEMESSEN -- Paket bewusst nicht installiert (braucht sudo + langer Build). Beleg ist rein statisch aus dem PKGBUILD: whisper.cpp-cuda 1.9.1-2 baut selbst KEINE CUDA-Kernel, es setzt -DWHISPER_USE_SYSTEM_GGML=ON und haengt an ggml-cuda-git. Die Arch-Liste kommt daher aus ggml-cuda-git, dessen build() im Default-Zweig (aur_ggml_build_universal != true) '-DCMAKE_CUDA_ARCHITECTURES=native' zusammen mit -DGGML_NATIVE=ON und -DGGML_BACKEND_DL=OFF setzt. 'native' fragt nvcc/CMake die tatsaechlich vorhandene GPU ab -> auf dieser Maschine sm_120. Kein Kreuz-Build, kein clean chroot vorausgesetzt.",
+      "first_infer_cold_ms": null,
+      "steady_ms": null,
+      "vram_mb": null,
+      "notes": "UNVERIFIZIERT (statische PKGBUILD-Analyse, kein Build). Zwei Vorbehalte: (a) 'native' braucht die GPU zur Buildzeit -- in einem clean-chroot-Build ohne /dev/nvidia* schlaegt die Detektion fehl oder faellt still auf einen Default zurueck; makepkg auf dieser Maschine ist okay, ein devtools-/extra-x86_64-build nicht. (b) ggml-cuda-git ist ein -git-Paket ohne feste Version (pkgver b10142.r1.88b47a755c), d.h. reproduzierbar ist der Build nicht. Ueberschreibbar per aur_ggml_cmakeopts='-DCMAKE_CUDA_ARCHITECTURES=120-real', falls man es festnageln will. Fachlicher Nachteil unabhaengig von sm_120: whisper.cpp gibt Whisper, nicht Parakeet -- das ist ein Modellwechsel, kein Runtime-Wechsel.",
+      "verdict": "partial"
+    }
+  ],
+  "recommendation": "Variante A: pip onnxruntime-gpu 1.27.0 in einem cp312-venv -- sie liefert native sm_120a-Cubins fuer alle 6468 onnxruntime::cuda/contrib-Kernel, laeuft gegen das System-CUDA-13.3.1/cuDNN-9.24 ohne Zusatzpakete, und hat als einzige Variante einen sm_120-PTX-Fallback fuer die Luecken.",
+  "arena_controllable": true,
+  "arena_evidence": "onnx_asr.load_model() reicht sess_options, providers (inkl. per-Provider-Options-Tupel) und provider_options durch bis zu rt.InferenceSession. Verifiziert gegen ORT direkt: arena_extend_strategy='kSameAsRequested' und 'kNextPowerOfTwo' werden akzeptiert, 'bogusValue' wird mit 'Failed to map enum name to value' abgelehnt -- die Option wird also wirklich ausgewertet und nicht stillschweigend verworfen. VRAM: 648 MB (kNextPowerOfTwo default) vs 646 MB (kSameAsRequested) beim Trivialmodell.",
+  "onnx_asr": {
+    "version": "0.12.0",
+    "requires_python": ">=3.10",
+    "pins_onnxruntime_in_base_install": false,
+    "gpu_extra_constraint": "onnxruntime-gpu>=1.18.1,!=1.24.1,!=1.25.*,!=1.26.0 (unter Python<3.11 zusaetzlich <1.24)",
+    "installed_ort_1_27_0_satisfies": true,
+    "exposes_session_options": true,
+    "parakeet_models": ["nemo-parakeet-tdt-0.6b-v3", "nemo-parakeet-tdt-0.6b-v2", "nemo-parakeet-rnnt-0.6b", "nemo-parakeet-ctc-0.6b"],
+    "note": "Basis-Install zieht KEIN onnxruntime -- nur die Extras [cpu]/[gpu] tun das. Wir koennen onnx-asr nackt installieren und onnxruntime-gpu selbst pinnen."
+  }
+}
