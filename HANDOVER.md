@@ -12,8 +12,8 @@ Repo: `https://github.com/AstroGolem224/dAImon` — alles gepusht.
 
 | Dokument | Inhalt |
 |---|---|
-| `docs/DESIGN.md` v5.2 | Architektur, **§1.3 Bedrohungsmodell zuerst lesen** |
-| `docs/IMPLEMENTATION-PLAN.md` v5.2 | 161 Tasks, 10 Phasen, Anhang D = 46 Verifizierer |
+| `docs/DESIGN.md` v5.3 | Architektur, **§1.3 Bedrohungsmodell zuerst lesen** |
+| `docs/IMPLEMENTATION-PLAN.md` v5.3 | 161 Tasks, 10 Phasen, Anhang D = 46 Verifizierer |
 | `docs/PRIOR-ART.md` | was übernommen / gelesen / gemieden wird |
 | `PLAN-REVIEW-LOG.md` | 5 Runden adversarialer Review gegen Codex |
 | `README.md` | Einstieg |
@@ -125,7 +125,8 @@ export DAIMON_ROLE=reviewer       # Verifizierer, NICHT daimon/ face/
 3. **Injektionsabwehr durch Fähigkeitsentzug**, nicht durch Prompt-Delimiter: Der Durchgang, der Bildschirmtext liest, hat kein Werkzeugschema.
 4. **Vorgabe der Herkunftsmarkierung ist `tainted`**, `trusted` muss behauptet werden.
 5. **Dauermitschnitt ist gewollt** (Bildschirm + Ton, 30 Tage Text, 48 h Bilder). Aber: nur auf Nachfrage durchsuchbar, proaktives Verhalten sieht die Historie nicht. **Der Pausenschalter beim Ton ist nicht optional** (§201 StGB, Dritte im Raum) — Abbruchkriterium von Phase 7.
-6. **Gatterkette:** kein gekacheltes dHash. Screenpipe hat das zweimal gebaut und verworfen. Stattdessen Zuschnitt auf Textregionen plus quantisierte Signatur.
+6. **Gatterkette:** kein gekacheltes dHash (screenpipe hat das zweimal verworfen) — **und auch kein Zuschnitt auf die Regionen-Vereinigung**, die deckt 97–99 % des Vollbilds ab. Der Gewinn liegt im **Zuschnitt aufs fokussierte Fenster** plus quantisierter Signatur. Gemessen in T−1.10.
+7. **OCR als dauerhafter Arbeitsprozess**, nicht wegen Geschwindigkeit, sondern Isolation: tesseracts OpenMP kostet ~800 ms extra, wenn numpy im selben Prozess liegt.
 
 ---
 

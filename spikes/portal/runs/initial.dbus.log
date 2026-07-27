@@ -149,3 +149,5 @@ signal time=1785182863.680975 sender=:1.49 -> destination=(null destination) ser
    variant       boolean true
 signal time=1785182863.681561 sender=:1.62 -> destination=(null destination) serial=3725 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
 signal time=1785182863.681763 sender=:1.62 -> destination=(null destination) serial=3726 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
+method call time=1785182868.681781 sender=:1.49 -> destination=:1.62 serial=3275 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=GetAppState
+method call time=1785182873.682283 sender=:1.49 -> destination=:1.62 serial=3277 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=GetAppState
