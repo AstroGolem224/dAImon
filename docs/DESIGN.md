@@ -475,7 +475,15 @@ Fokus-Ereignis / Abtast-Timer
   → OCR auf dem Zuschnitt        Hunderte von ms
 ```
 
-**Der Zuschnitt ist der Durchsatzgewinn, nicht die Kachelung.** Signatur über den *ganzen* Zuschnitt in voller Auflösung, `px >> 3` — rauschtolerant, aber empfindlich für Textänderungen. Heuristikfrei, weil jede Heuristik hier zu stillen Auslassungen führte.
+> **Korrektur aus Spike T−1.10 [V] — der Regionen-Zuschnitt bringt nichts.**
+>
+> Die Vereinigung der erkannten Textregionen deckt auf einem Vollbild **97 % (dicht) bis 99 % (spärlich)** der Fläche ab. Darauf zuzuschneiden ist ein No-Op. Screenpipes Gewinn kam nicht daher, sondern aus dem **Zuschnitt auf das fokussierte Fenster** plus der Signatur.
+>
+> Die Einzelboxen decken nur 9–10 % der Fläche ab — sie einzeln zu erkennen wäre ein echter Gewinn, aber dann dominiert der Aufrufaufwand von 60 ms je Aufruf. Ob sich das lohnt, hängt an der Zahl der Boxen und ist erst mit echten Bildschirmen zu entscheiden.
+>
+> **Der Zuschnitt aufs fokussierte Fenster bleibt der Gewinn.** Ein 600×300-Ausschnitt kostet 277–350 ms statt 3300–4200 ms für das Vollbild.
+
+**Der Zuschnitt aufs fokussierte Fenster ist der Durchsatzgewinn, nicht die Kachelung und nicht der Regionen-Zuschnitt.** Signatur über den *ganzen* Zuschnitt in voller Auflösung, `px >> 3` — rauschtolerant, aber empfindlich für Textänderungen. Heuristikfrei, weil jede Heuristik hier zu stillen Auslassungen führte.
 
 Textregionen-Erkennung als Portierung einer OpenCV-Sequenz, ohne die OpenCV-Abhängigkeit: BT.601-Graustufen → 3×3-Morphologiegradient → Otsu → 9×1-Schließung → Zusammenhangskomponenten → Formfilter (`MIN_BOX_W=8`, `MIN_BOX_H=6`, Seitenverhältnis 1–40, `MAX_AREA_FRACTION=0.5`).
 
@@ -492,7 +500,26 @@ Gemessene Kosten **[V]** (unsere Maschine) und **[U]** (screenpipe, andere Hardw
 
 > **Die eigentliche Lehre aus den Zahlen:** OCR ist zwei Größenordnungen teurer als alles davor. **Die Aufgabe des Gatters ist nicht, OCR billig zu machen, sondern selten.** Und: screenpipe nutzt auf macOS Apple Vision, auf Windows Windows.Media.Ocr und greift **nur auf Linux** zu tesseract — es ist dort niemandes erste Wahl, sondern der Rückfall.
 >
-> Zwei Konsequenzen. Erstens: **libtesseract über FFI oder ein dauerhafter OCR-Arbeitsprozess**, nicht der CLI-Wrapper — screenpipe startet je Aufruf einen Unterprozess mit Temporärdatei, was bei mehreren Regionen je Frame absurd wird. Zweitens, und unangenehmer: Wenn der VLM-Arbeitsprozess für semantische Fragen ohnehin läuft, **verdient tesseract seinen Platz womöglich gar nicht**. Das ist in Phase −1 zu messen, nicht anzunehmen.
+> **Gemessen in T−1.10 [V]**, auf dieser Maschine, 5120×1440 (7,4 MP), n=20, `OMP_NUM_THREADS=1`:
+>
+> | Variante | dicht | spärlich | Ausschnitt 600×300 |
+> |---|---|---|---|
+> | CLI-Unterprozess | 3725 ms | 4236 ms | 338 ms |
+> | libtesseract per FFI | 4063 ms | 4727 ms | 338 ms |
+> | **dauerhafter Arbeitsprozess** | **3273 ms** | **4084 ms** | 352 ms |
+> | VLM (gemma4:26b) | 23 040 ms → **0 Zeichen** | 22 993 ms → **0 Zeichen** | 15 221 ms |
+>
+> Alle tesseract-Varianten liefern byteidentische Zeichenzahlen — der Vergleich ist fair.
+>
+> **Drei Befunde, die den Plan ändern:**
+>
+> 1. **Der Aufrufweg ist fast egal.** Der Festaufwand des CLI-Aufrufs beträgt **60 ms** — 18 % eines Ausschnitts, 1,6 % eines Vollbilds. Die CLI-zu-FFI-Umstellung ist damit 60 ms wert, keine Größenordnung. Ich hatte das überschätzt.
+> 2. **Der größere Hebel ist `tessdata_fast`:** 268 statt 545 ms auf dem Ausschnitt bei gleichem Ertrag. **−277 ms** gegenüber −60 ms für den Aufrufweg.
+> 3. **tesseracts OpenMP ist hier ein Verlust.** 24 Threads sind ~25 % *langsamer* als ein Thread. Und es ist ansteckend: libtesseract im selben Prozess wie numpy und OpenBLAS kostet reproduzierbar ~800 ms extra je Vollbild. **Das ist das Argument für den Arbeitsprozess statt In-Process-FFI** — nicht die Geschwindigkeit, sondern die Isolation.
+>
+> **Das VLM kann tesseract nicht ersetzen.** Auf dem Vollbild liefert es deterministisch **nichts** (6 von 6 Aufrufen) — das 7,4-MP-Bild wird auf ~256 Bildtoken kodiert. Zur Ausgabe gezwungen **halluziniert** es und wiederholt sich. Ein stiller Fehlermodus, schlimmer als gar keine OCR. Auf dem Ausschnitt ist es 45× langsamer, dafür genauer.
+>
+> **Entscheidung: tesseract bleibt, als dauerhafter Arbeitsprozess mit `tessdata_fast` und `--psm 11`, ein Thread.**
 
 **Nebenläufigkeit:** OCR läuft in einem Pool und kann in falscher Reihenfolge fertig werden. Jeder Frame trägt eine Generationsnummer; Ergebnisse einer älteren Generation als der aktuellen werden verworfen, nicht eingetragen. Geänderte Kachelbereiche werden **kopiert**, nicht referenziert — sonst zeigt der Verweis beim Abschluss auf einen längst überschriebenen Puffer.
 
@@ -1277,7 +1304,7 @@ Der Charakter ist austauschbar; die Persona-Datei ist der einzige Ort, an dem er
 | R23 | **Gatter verpasst Inhaltsänderungen still** | war hoch | hoch | Gekacheltes dHash ersetzt durch Zuschnitt auf Textregionen plus quantisierte Signatur (§4.4) — screenpipe hat unseren Ansatz zweimal verworfen |
 | R24 | **Portal liefert DMA-BUF, Frames bleiben schwarz** | mittel | hoch | SHM explizit aushandeln; DMA-BUF ist Fehlerfall mit Protokolleintrag, nicht Überraschung (§4.5) |
 | R25 | ~~KWin-Fokusereignis unzuverlässig~~ | — | — | **Entfallen [V]:** Spike T−1.9 misst 50 von 50 Wechseln, keine Auslassung, p95 = 0,9 ms. Aber `captionChanged` feuert nur bei Titeländerung der Anwendung — der Abtast-Timer trägt den Großteil der Inhaltsänderung |
-| R26 | OCR-Kosten zwei Größenordnungen über der Annahme | hoch | mittel | libtesseract über FFI oder dauerhafter Arbeitsprozess; in Phase −1 messen, ob tesseract neben dem VLM überhaupt seinen Platz verdient |
+| R26 | ~~OCR-Kosten unterschaetzt~~ | — | — | **Gemessen [V]:** 3,3 s Vollbild, 0,35 s Ausschnitt. Arbeitsprozess + `tessdata_fast` + ein Thread. VLM kann es nicht ersetzen |
 | R27 | Audit-Kette wird von niemandem geprüft | mittel | mittel | Drei benannte Prüfstellen, keine davon in einem Prozess mit Modelltext (§7.6) |
 
 ---

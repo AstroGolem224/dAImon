@@ -1,0 +1,155 @@
+{
+ "region_detect": {
+  "dense": {
+   "p50_ms": 57.1,
+   "p95_ms": 59.0,
+   "n": 20,
+   "boxes": 261,
+   "union": [
+    0,
+    13,
+    5107,
+    1413
+   ],
+   "frame_px": [
+    5120,
+    1440
+   ],
+   "union_area_fraction": 0.97,
+   "boxes_area_fraction": 0.089
+  },
+  "sparse": {
+   "p50_ms": 77.2,
+   "p95_ms": 78.1,
+   "n": 20,
+   "boxes": 542,
+   "union": [
+    7,
+    7,
+    5105,
+    1440
+   ],
+   "frame_px": [
+    5120,
+    1440
+   ],
+   "union_area_fraction": 0.991,
+   "boxes_area_fraction": 0.104
+  },
+  "crop": {
+   "p50_ms": 2.1,
+   "p95_ms": 2.1,
+   "n": 20,
+   "boxes": 29,
+   "union": [
+    0,
+    18,
+    600,
+    300
+   ],
+   "frame_px": [
+    600,
+    300
+   ],
+   "union_area_fraction": 0.94,
+   "boxes_area_fraction": 0.365
+  }
+ },
+ "region_stages": {
+  "dense": {
+   "gray": 6.22,
+   "gradient": 2.69,
+   "otsu": 15.52,
+   "close9x1": 4.69,
+   "cc": 27.7
+  },
+  "sparse": {
+   "gray": 11.18,
+   "gradient": 4.82,
+   "otsu": 15.2,
+   "close9x1": 4.63,
+   "cc": 40.06
+  },
+  "crop": {
+   "gray": 0.15,
+   "gradient": 0.07,
+   "otsu": 0.21,
+   "close9x1": 0.12,
+   "cc": 1.54
+  }
+ },
+ "psm": [
+  {
+   "psm": "3",
+   "image": "dense",
+   "n": 10,
+   "p50_ms": 4273.5,
+   "chars": 6305
+  },
+  {
+   "psm": "3",
+   "image": "crop",
+   "n": 10,
+   "p50_ms": 367.8,
+   "chars": 616
+  },
+  {
+   "psm": "6",
+   "image": "dense",
+   "n": 10,
+   "p50_ms": 4139.7,
+   "chars": 6376
+  },
+  {
+   "psm": "6",
+   "image": "crop",
+   "n": 10,
+   "p50_ms": 335.1,
+   "chars": 611
+  },
+  {
+   "psm": "11",
+   "image": "dense",
+   "n": 10,
+   "p50_ms": 4079.2,
+   "chars": 6455
+  },
+  {
+   "psm": "11",
+   "image": "crop",
+   "n": 10,
+   "p50_ms": 335.6,
+   "chars": 620
+  }
+ ],
+ "tessdata": [
+  {
+   "tessdata": "fast",
+   "image": "dense",
+   "n": 10,
+   "p50_ms": 4050.6,
+   "chars": 6455
+  },
+  {
+   "tessdata": "fast",
+   "image": "crop",
+   "n": 10,
+   "p50_ms": 267.9,
+   "chars": 620
+  },
+  {
+   "tessdata": "standard",
+   "image": "dense",
+   "n": 10,
+   "p50_ms": 4607.6,
+   "chars": 6454
+  },
+  {
+   "tessdata": "standard",
+   "image": "crop",
+   "n": 10,
+   "p50_ms": 545.1,
+   "chars": 619
+  }
+ ]
+}

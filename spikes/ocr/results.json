@@ -1,0 +1,320 @@
+{
+ "spike": "T-1.10",
+ "langs_available": [
+  "deu",
+  "eng"
+ ],
+ "langs_system_before": [
+  "afr",
+  "osd"
+ ],
+ "langs_note": "System /usr/share/tessdata had only afr+osd. deu+eng traineddata (tessdata_fast) downloaded into spikes/ocr/tessdata/ and used via TESSDATA_PREFIX - no root needed. Every measurement uses -l deu+eng, --psm 11, tessdata_fast, and identical pixel data.",
+ "machine": {
+  "tesseract_system": "5.5.3 (leptonica 1.87.0, AVX512)",
+  "frame_px": "5120x1440 = 7.37 MP",
+  "crop_px": "600x300",
+  "env": "OMP_NUM_THREADS=1 for the headline numbers"
+ },
+ "variants": [
+  {
+   "variant": "cli",
+   "image": "dense",
+   "n": 20,
+   "p50_ms": 3725.0,
+   "p95_ms": 4475.3,
+   "chars": 6455,
+   "notes": "one subprocess + temp PNG per call (screenpipe style). Per-call fixed cost measured separately on a 32x32 blank: 60.0 ms p50 (fork/exec + traineddata load + temp file). PNG encode+write 50 ms of that."
+  },
+  {
+   "variant": "cli",
+   "image": "sparse",
+   "n": 20,
+   "p50_ms": 4235.7,
+   "p95_ms": 5082.4,
+   "chars": 7368,
+   "notes": "as above; PNG encode+write 230 ms on this frame (more entropy -> bigger PNG)."
+  },
+  {
+   "variant": "cli",
+   "image": "crop",
+   "n": 20,
+   "p50_ms": 337.9,
+   "p95_ms": 342.0,
+   "chars": 620,
+   "notes": "as above; PNG encode+write 2 ms. The 60 ms fixed cost is 18% of this call."
+  },
+  {
+   "variant": "ffi",
+   "image": "dense",
+   "n": 20,
+   "p50_ms": 4063.3,
+   "p95_ms": 4263.5,
+   "chars": 6455,
+   "notes": "ctypes -> system libtesseract 5.5.3, one API instance reused, no disk. Runs in the same process as numpy; consistently ~800 ms slower than the same library in a clean process (see 'worker'). Attributed to OpenMP/OpenBLAS runtime co-residency."
+  },
+  {
+   "variant": "ffi",
+   "image": "sparse",
+   "n": 20,
+   "p50_ms": 4726.7,
+   "p95_ms": 4754.7,
+   "chars": 7368,
+   "notes": "same co-residency penalty as ffi/dense."
+  },
+  {
+   "variant": "ffi",
+   "image": "crop",
+   "n": 20,
+   "p50_ms": 337.5,
+   "p95_ms": 341.5,
+   "chars": 620,
+   "notes": "in two earlier runs with default OMP this was 271 ms vs 331 ms for cli - exactly the 60 ms fixed cost. With OMP_NUM_THREADS=1 both land at ~338 ms."
+  },
+  {
+   "variant": "worker",
+   "image": "dense",
+   "n": 20,
+   "p50_ms": 3272.7,
+   "p95_ms": 3283.8,
+   "chars": 6455,
+   "notes": "separate process holding the libtesseract 5.5.3 API, raw RGB over a unix socketpair (21600 KiB/call). Fastest tesseract variant on a full frame."
+  },
+  {
+   "variant": "worker",
+   "image": "sparse",
+   "n": 20,
+   "p50_ms": 4084.3,
+   "p95_ms": 4744.2,
+   "chars": 7368,
+   "notes": "as above."
+  },
+  {
+   "variant": "worker",
+   "image": "crop",
+   "n": 20,
+   "p50_ms": 351.9,
+   "p95_ms": 359.5,
+   "chars": 620,
+   "notes": "as above, 527 KiB/call over the socket. IPC is not the bottleneck."
+  },
+  {
+   "variant": "tesserocr",
+   "image": "dense",
+   "n": 20,
+   "p50_ms": 3396.6,
+   "p95_ms": 3403.4,
+   "chars": 6455,
+   "notes": "tesserocr 2.10.0 wheel; bundles its OWN tesseract 5.5.1 + leptonica 1.85, NOT the system 5.5.3. Not a like-for-like library comparison - it is a version comparison."
+  },
+  {
+   "variant": "tesserocr",
+   "image": "sparse",
+   "n": 20,
+   "p50_ms": 4039.5,
+   "p95_ms": 4048.0,
+   "chars": 7369,
+   "notes": "see tesserocr/dense. Char count differs by 1 from the other variants (7369 vs 7368) - the only place any variant disagreed."
+  },
+  {
+   "variant": "tesserocr",
+   "image": "crop",
+   "n": 20,
+   "p50_ms": 277.0,
+   "p95_ms": 280.6,
+   "chars": 620,
+   "notes": "fastest crop result, but that is tesseract 5.5.1 beating 5.5.3, not FFI beating CLI."
+  },
+  {
+   "variant": "vlm",
+   "image": "crop",
+   "n": 5,
+   "p50_ms": 15220.5,
+   "p95_ms": 15272.6,
+   "chars": 606,
+   "notes": "ollama gemma4:26b (already local, 17 GB, nothing downloaded). Warm model. 45-56x slower than tesseract on the same crop, but MORE accurate: it read 'itiger013' and 'CachyOS' correctly where tesseract produced 'itiger@13' and 'Cachy0S'."
+  },
+  {
+   "variant": "vlm",
+   "image": "dense",
+   "n": 5,
+   "p50_ms": 23039.8,
+   "p95_ms": 23050.3,
+   "chars": 0,
+   "notes": "FAILS. Returns 0 usable chars, deterministically, 6/6 calls. prompt_eval_count=291 => the 5120x1440 frame is encoded as ~256 image tokens; at that density the text is unreadable. With num_predict=300 the model emits a hallucinated line ('Revision Runde 1.5' for the actual 'Review Runden 1-5') and then loops it verbatim until the token cap. Downscaling or cropping to a third of the frame did not help."
+  },
+  {
+   "variant": "vlm",
+   "image": "sparse",
+   "n": 5,
+   "p50_ms": 22992.5,
+   "p95_ms": 23030.9,
+   "chars": 0,
+   "notes": "FAILS identically to dense: 0 chars, 6/6 calls, same repetition-loop failure mode."
+  }
+ ],
+ "region_detect_ms": {
+  "dense": 57.1,
+  "sparse": 77.2,
+  "crop": 2.1
+ },
+ "region_detect_detail": {
+  "dense": {
+   "p50_ms": 57.1,
+   "p95_ms": 59.0,
+   "n": 20,
+   "boxes": 261,
+   "union": [
+    0,
+    13,
+    5107,
+    1413
+   ],
+   "frame_px": [
+    5120,
+    1440
+   ],
+   "union_area_fraction": 0.97,
+   "boxes_area_fraction": 0.089
+  },
+  "sparse": {
+   "p50_ms": 77.2,
+   "p95_ms": 78.1,
+   "n": 20,
+   "boxes": 542,
+   "union": [
+    7,
+    7,
+    5105,
+    1440
+   ],
+   "frame_px": [
+    5120,
+    1440
+   ],
+   "union_area_fraction": 0.991,
+   "boxes_area_fraction": 0.104
+  },
+  "crop": {
+   "p50_ms": 2.1,
+   "p95_ms": 2.1,
+   "n": 20,
+   "boxes": 29,
+   "union": [
+    0,
+    18,
+    600,
+    300
+   ],
+   "frame_px": [
+    600,
+    300
+   ],
+   "union_area_fraction": 0.94,
+   "boxes_area_fraction": 0.365
+  }
+ },
+ "region_detect_stage_ms": {
+  "dense": {
+   "gray": 6.22,
+   "gradient": 2.69,
+   "otsu": 15.52,
+   "close9x1": 4.69,
+   "cc": 27.7
+  },
+  "sparse": {
+   "gray": 11.18,
+   "gradient": 4.82,
+   "otsu": 15.2,
+   "close9x1": 4.63,
+   "cc": 40.06
+  },
+  "crop": {
+   "gray": 0.15,
+   "gradient": 0.07,
+   "otsu": 0.21,
+   "close9x1": 0.12,
+   "cc": 1.54
+  }
+ },
+ "psm_comparison": [
+  {
+   "psm": "3",
+   "image": "dense",
+   "n": 10,
+   "p50_ms": 4273.5,
+   "chars": 6305
+  },
+  {
+   "psm": "3",
+   "image": "crop",
+   "n": 10,
+   "p50_ms": 367.8,
+   "chars": 616
+  },
+  {
+   "psm": "6",
+   "image": "dense",
+   "n": 10,
+   "p50_ms": 4139.7,
+   "chars": 6376
+  },
+  {
+   "psm": "6",
+   "image": "crop",
+   "n": 10,
+   "p50_ms": 335.1,
+   "chars": 611
+  },
+  {
+   "psm": "11",
+   "image": "dense",
+   "n": 10,
+   "p50_ms": 4079.2,
+   "chars": 6455
+  },
+  {
+   "psm": "11",
+   "image": "crop",
+   "n": 10,
+   "p50_ms": 335.6,
+   "chars": 620
+  }
+ ],
+ "tessdata_comparison": [
+  {
+   "tessdata": "fast",
+   "image": "dense",
+   "n": 10,
+   "p50_ms": 4050.6,
+   "chars": 6455
+  },
+  {
+   "tessdata": "fast",
+   "image": "crop",
+   "n": 10,
+   "p50_ms": 267.9,
+   "chars": 620
+  },
+  {
+   "tessdata": "standard",
+   "image": "dense",
+   "n": 10,
+   "p50_ms": 4607.6,
+   "chars": 6454
+  },
+  {
+   "tessdata": "standard",
+   "image": "crop",
+   "n": 10,
+   "p50_ms": 545.1,
+   "chars": 619
+  }
+ ],
+ "cli_fixed_cost_ms": {
+  "p50": 59.9,
+  "p95": 60.5,
+  "method": "tesseract on a 32x32 blank PNG, n=20, vs ~0.0 ms for the same call through the reused FFI handle"
+ },
+ "recommendation": "persistent_worker",
+ "rationale": "OCR cost is set by tesseract itself, not by how it is called: all four calling mechanisms land within 15% of each other (crop 277-352 ms, full frame 3.3-4.7 s), and the CLI's removable per-call overhead is a measured 60 ms - 18% of a crop, 1.6% of a full frame. A persistent worker wins on two grounds the FFI-in-process option does not: it removes those 60 ms AND it keeps tesseract's OpenMP runtime out of the main process, which cost a reproducible ~800 ms (20%) per full frame when ctypes-libtesseract shared a process with numpy/OpenBLAS - and it is what the concurrency requirement in DESIGN.md 4.4 needs anyway. Dropping tesseract is not an option: the local VLM (gemma4:26b, vision) is 45x slower on a crop and returns nothing at all on a full frame, because a 7.4 MP screenshot is encoded as ~256 image tokens and the model degenerates into a hallucinated repetition loop."
+}

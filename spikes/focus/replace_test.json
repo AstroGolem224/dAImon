@@ -1,0 +1,10 @@
+{
+ "stufe": "verschachtelter kwin_wayland --virtual, eigene Konfiguration",
+ "erster_start_loaded": true,
+ "erster_start_ms": 800.6,
+ "neustart_loaded": true,
+ "neustart_ms": 600.4,
+ "survives_restart": true,
+ "hinweis": "Gemessen wurde: kommt das KWin-Script nach einem Compositor-Neustart von allein zurueck und meldet weiter an denselben DBus-Empfaenger. Nicht gemessen: 'kwin_wayland --replace' in der echten Sitzung -- das braucht Matthias' Zustimmung.",
+ "kwin_log": "/tmp/daimon-replacetest-wf9faexz/kwin.log"
+}

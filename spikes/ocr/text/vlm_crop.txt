@@ -1,0 +1,11 @@
+5.0 — Dauermitschnitt aufgenommen (Review Runden 1-5; Nacharbeit und Prior
+026-07-27
+home/itiger013/Dokumente/Github/dAImon'
+:** CachyOS (Arch), Kernel 7.1.5, KDE Plasma 6.7.3 / KWin 6.7.3 auf Wayland
+]** markierten Aussagen wurden auf genau dieser Maschine verifiziert. **[U
+rst lesen.** Ohne das Bedrohungsmodell klingt jede folgende Zusage stärker,
+ine vollständige Neufassung, keine Flickenversion. v2.1 hatte das Bedrohung
+ld
+in Desktop-Familiar: eine kleine, dauerhaft sichtbare Figur am Bildschirmra
+**, was die laufenden Claude-Code-Sessions gerade tun,
+* und antwortet, wenn sie angesprochen wird,

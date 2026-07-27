@@ -1,0 +1,165 @@
+(3 Neues Unterfenster 0 Ansicht teilen v
+
+(%) Einfugen
+
+Q suchen ©
+
+# dAImon — Design-Dokument
+
+**Version:** 5.0 — Dauermitschnitt aufgenommen (Review Runden 1-5; Nacharbeit und Prior-Art-Einarbeitung ungeprüft)
+
+*+*Datum:** 2026-07-27
+
+**Repo:** ° /home/itiger@13/Dokumente/Github/dAImon
+
+**Zielsystem:** CachyOS (Arch), Kernel 7.1.5, KDE Plasma 6.7.3 / KWin 6.7.3 auf Wayland, RTX 5090 (32 GB, Treiber 610.43.02, sm_120), 24 Threads, 30 GB RAM, '/home’ auf btrfs, PipeWire 1.6.8, fish-Shell
+
+Alle mit **[VJ]** markierten Aussagen wurden auf genau dieser Maschine verifiziert. **[U]** markiert Unverifiziertes
+
+> **81.3 zuerst lesen.** Ohne das Bedrohungsmodell klingt jede folgende Zusage stärker, als sie ist.
+
+>
+
+> v3.0 ist eine vollständige Neufassung, keine Flickenversion. v2.1 hatte das Bedrohungsmodell vorangestellt, aber die abhängigen Abschnitte nicht nachgezogen — sie beschrieben weiter die abgelöste Mechanik. Änderungsprotokoll in §16
+
+——
+
+## 1,
+
+Zielbild
+
+dAImon ist ein Desktop-Familiar: eine kleine, dauerhaft sichtbare Figur am Bildschirmrand, die
+
+**anzeigt**, was die laufenden Claude-Code-Sessions gerade tun,
+
+**zuhört** und antwortet, wenn sie angesprochen wird
+
+**mitliest**, was auf dem Bildschirm passiert, um Fragen im Kontext zu beantworten
+
+**auf ausdrückliche Anforderung den PC steuert**, beschränkt auf eine geprüfte Whitelist
+
+**mitschneidet**, was auf dem Bildschirm passiert und was gesprochen wird, damit später danach gesucht werden kann
+
+**einen Charakter hat**, der in einer Datei definiert ist.
+
+Der Nutzwert steht und fällt mit Punkt 1: am Rand des Blickfelds zu sehen, dass ein Agent auf eine Freigabe wartet, ohne ins Terminal zu schauen
+
+### 1.1 Nicht-Ziele
+
+| Nicht-Ziel | Begründung
+
+1-==1==-1
+
+Cloud-Verarbeitung des Mitschnitts ohne Nutzerauslösung | Netzsperre **und** Deklassifizierungs-Gate (§7.2). Das Archiv liegt lokal und wird nur auf Nachfrage durchsucht
+
+Automatisches Durchsuchen des Archivs durch das Modell | Ausdrücklich abgewählt. Proaktives Verhalten sieht die Historie nicht — sonst wäre die Injektionsfläche die gesamte aufgezeichnete Vergangenheit statt des aktuellen Bildschirms
+
+Freie Maus-/Tastatursteuerung im Computer-Use-Stil | Synthetische Eingabe ist unklassifizierbar (§6.7)
+
+Multi-User, Fernsteuerung | Ein Rechner, ein Nutzer
+
+Plattformportabilität | Linux/Wayland/KDE
+
+Cursor-verfolgendes Verhalten | Globale Zeigerposition auf Wayland per Design nicht abfragbar **[VJ**
+
+Persistenz des Session-Status über Neustarts | Ein Live-Status, der Totes anzeigt, ligt
+
+Erkennung, ob ein Passwortfeld fokussiert ist | Aus Wayland-Fenstermetadaten nicht ermittelbar
+
+sprachbefehle als Autorisierung | Audio ist nicht authentifizierbar (54.6)
+
+**Abwehr eines Angreifers mit Codeausfiihrung unter derselben uid** | Nicht leistbar (§1.3)
+
+### 1.2 Dauernitschnitt
+
+Ausdriicklich gewollt: dAImon schneidet Bildschirm und Ton durchgehend mit, damit spater gesucht werden kann. Das kehrt eine Entscheidung aus v1.® um und zieht Folgen nach sich, die hier stehen, damit sie nicht spater Gberraschen
+
+**Umfang und Aufbewahrung**
+
+| Was | Wie lange | Wo
+
+I-==1-=-1---[
+
+| OCR-Text, Fenstertitel, Zeitstempel | **30 Tage** | SQLite mit Volltextindex
+
+| Transkript gesprochener Abschnitte | **30 Tage** | dieselbe Datenbank
+
+| Frames als JPEG | **48 Stunden**, danach nur noch der Text | Verzeichnis unter °$XDG_DATA_HOME
+
+I
+
+| Rohaudio | **gar nicht** — nur das Transkript überlebt den Abschnitt | —
+
+Ein Aufraumer lauft stindlich. Zusatzlich eine harte Obergrenze in Gigabyte mit Verdrangung der &ltesten Eintrage, damit eine volle Platte kein
+
+Betriebszustand wird.
+
+**Der Ton ist der heikle Teil, und zwar nicht technisch.*x
+
+Ein Bildschirmmitschnitt erfasst überwiegend eigenes Tun. Ein Tonmitschnitt erfasst **Dritte** — Gesprachspartner in Videokonferenzen, Menschen
+
+im Raum, Anrufe. In Deutschland ist die Aufnahme des nichtdffentlich gesprochenen Worts ohne Einwilligung nach **§201 StGB** strafbar, und zwar unabhéngig davon, wem der Rechner gehért. Das ist keine Frage der Repository-Lizenz
+
+Daraus folgen drei Dinge, die nicht optional sind
+
+1
+
+**Ein Pausenschalter, der zuverlassig ist.** Globaler Hotkey, plus **automatische Pause**, sobald eine Konferenzanwendung den Fokus hat oder
+
+ein Mikrofonstrean einer fremden Anwendung aktiv ist. Die Liste ist konfigurierbar und standardmäßig gefüllt
+
+2
+
+**Die Pause pausiert den Ton, nicht nur die Transkription.** Wie in §4.2: Der Capture-Stream wird geschlossen, nicht stummgeschaltet — sonst
+
+ligt das Plasma-Mikrofonsymbol.
+
+3
+
+**Sichtbarkeit.** Solange der Tonmitschnitt l&uft, zeigt das Pet es an. Nicht in einem Einstellungsdialog, sondern am Sprite
+
+**Die Datenbank ist eine neue Angriffsfläche.** Bisher war der beobachtete Kontext auf die letzten Fenster begrenzt und flichtig. Jetzt liegt dreifig Tage durchsuchbarer Text auf der Platte
+
+Konsequenze!
+
+-
+
+Der gesamte Archivinhalt ist ** tainted'** (§5.2). Ein Suchtreffer ist kein vertrauenswirdiger Text, nur weil er aus der eigenen Datenbank kommt — er stammt urspringlich vom Bildschirm
+
+-
+
+-
+
+Suchtreffer gehen durch **dasselbe Deklassifizierungs-Gate** wie Live-Kontext: nur unter frischer Rundenmarke, nur mit erkennbarem Bezug, und nur der Treffer, nicht die Umgebung.
+
+Die Redaktionsliste läuft **vor dem Schreiben**, nicht als Nachbearbeitung. Screenpipe redigiert im Hintergrund und lasst Rohdaten zuerst auf die Platte — das ist die falsche Reihenfolge
+
+-
+
+Verzeichnis 0700, Datenbank 0600. Ein Angreifer mit derselben uid liest sie trotzdem (§1.3) — das ist der Preis, und er steht hier, statt beschönigt zu werden.
+
+**Anwendungs-Denylist.** Passwortmanager, Banking, und was der Nutzer ergänzt, werden **gar nicht erst erfasst** — die Prüfung sitzt vor dem Diff und vor dem Schreiben. Dazu die DRM-Prüfung aus §4.4
+
+**Ein zeitlich begrenzter Privatmodus** setzt alles auf “transient’ und schreibt nichts
+
+——
+
+## 1.3 Bedrohungsmodell
+
+### Im Umfang
+
+| Bedrohung | Warum sie real ist
+
+1===1-=-1
+
+| **Injizierte Anweisungen in beobachtetem Inhalt** | Bildschirmtext, Fenstertitel, **Hook-Nutzlasten**, Webseiten und Dateiinhalte fließen in den Modellkontext. Hauptangriffsweg
+
+I
+
+| **Gefalschtes Audio** | Lautsprecher, Videos, Spiele und die eigene TTS können Wake-Word und Befehle aussprechen. Kein Signalmerkmal trennt Nutzer von Lautsprecher
+
+I
+
+|_**Hodellfehlers* | Halluzinierte zerstorerische Aktion ohne jeden Angreifer. Wahrscheinlicher als jeder Angriff
+
+I

@@ -1,0 +1,29 @@
+[
+ {
+  "variant": "vlm",
+  "image": "crop",
+  "n": 5,
+  "p50_ms": 15220.5,
+  "p95_ms": 15272.6,
+  "chars": 606,
+  "notes": "ollama gemma4:26b (already local, 17 GB), warm; n=5 not 20 because each call is ~20 s"
+ },
+ {
+  "variant": "vlm",
+  "image": "dense",
+  "n": 5,
+  "p50_ms": 23039.8,
+  "p95_ms": 23050.3,
+  "chars": 0,
+  "notes": "ollama gemma4:26b (already local, 17 GB), warm; n=5 not 20 because each call is ~20 s"
+ },
+ {
+  "variant": "vlm",
+  "image": "sparse",
+  "n": 5,
+  "p50_ms": 22992.5,
+  "p95_ms": 23030.9,
+  "chars": 0,
+  "notes": "ollama gemma4:26b (already local, 17 GB), warm; n=5 not 20 because each call is ~20 s"
+ }
+]

@@ -4,7 +4,7 @@
       {
         "matcher": "Write|Edit|NotebookEdit|Bash",
         "hooks": [
-          { "type": "command", "command": "python3 .claude/hooks/role_guard.py" }
+          { "type": "command", "command": "python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/role_guard.py"" }
         ]
       }
     ]

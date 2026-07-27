@@ -364,7 +364,15 @@ tests/verify/T-0.0.sh             # muss grün sein, bevor P−1 beginnt
 - **Verifikation:** `tests/verify/T--1.9.sh` — automatisiert 50 Fensterwechsel und verlangt `missed == 0` und `p95_latency_ms < 200`; protokolliert die Rate der Inhaltsänderungs-Ereignisse ohne Schwelle, weil sie den Abtast-Timer aus T-5.4 dimensioniert
 - **Agent:** investigator · **Umfang:** M
 
-### T−1.10 — OCR-Kosten und ob tesseract seinen Platz verdient ∥
+### T−1.10 — OCR-Kosten ✅ **BESTANDEN**
+> `spikes/ocr/results.json`. **tesseract bleibt**, als dauerhafter Arbeitsprozess mit `tessdata_fast`, `--psm 11`, ein Thread. Vollbild 3,3 s, Ausschnitt 0,35 s.
+>
+> **Korrektur an §4.4:** Der Zuschnitt auf die Regionen-Vereinigung deckt 97–99 % des Vollbilds ab und bringt **nichts**. Der Gewinn liegt im Zuschnitt aufs fokussierte Fenster.
+>
+> Der Aufrufweg ist fast egal (60 ms Festaufwand); `tessdata_fast` bringt mit −277 ms deutlich mehr. tesseracts OpenMP ist ansteckend und kostet ~800 ms, wenn numpy im selben Prozess liegt — das ist das Argument für den Arbeitsprozess.
+>
+> Das VLM kann es nicht ersetzen: auf dem Vollbild liefert es deterministisch nichts und halluziniert, wenn man es zur Ausgabe zwingt.
+
 - **Ziel:** Die Annahme prüfen, dass tesseract neben dem VLM überhaupt gebraucht wird.
 - **Dateien:** `spikes/ocr/` [neu], `spikes/ocr/results.json` [erzeugt]
 - **Abhängigkeiten:** T−1.2
@@ -1482,9 +1490,11 @@ pytest -q
 - **Dateien:** `daimon/eyes/ocr.py` [neu]
 - **Abhängigkeiten:** T-5.5, T-5.1, **T-5.6.v**
 - **Akzeptanz:**
-  - [ ] Umsetzung nach dem Urteil aus **T−1.10** — libtesseract per FFI oder dauerhafter Arbeitsprozess, **nicht** der CLI-Wrapper mit Temporärdatei je Aufruf
+  - [ ] **Dauerhafter Arbeitsprozess** nach dem Urteil aus T−1.10 — nicht wegen der Geschwindigkeit, sondern wegen der Isolation: tesseracts OpenMP kostet ~800 ms je Vollbild, wenn numpy im selben Prozess liegt
+  - [ ] **`tessdata_fast`** statt Standard-tessdata: −277 ms bei gleichem Ertrag, der größere Hebel
+  - [ ] `OMP_NUM_THREADS=1` — 24 Threads sind ~25 % langsamer
   - [ ] `--psm 11 -l deu+eng`
-  - [ ] Läuft auf dem **Zuschnitt** aus T-5.5, nicht auf Kacheln
+  - [ ] Läuft auf dem Zuschnitt **des fokussierten Fensters**, nicht auf der Regionen-Vereinigung — die deckt 97–99 % des Vollbilds ab und spart nichts (T−1.10 **[V]**)
   - [ ] Nur auf dem Zuschnitt der geänderten Textregionen
   - [ ] Läuft im Pool, blockiert die Erfassung nicht
   - [ ] Aufträge werden zusammengefasst: Läuft schon einer für dieselbe Region, wird der alte abgebrochen
