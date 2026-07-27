@@ -494,6 +494,8 @@ tests/verify/T--1.7.sh        # prueft nur, dass zu jedem Spike eine Entscheidun
   - [ ] `GET /state` liefert Schema v2 aus Design §9
   - [ ] `rev` steigt bei jeder Änderung, bleibt bei No-Ops gleich
   - [ ] `focus.project` bei mehreren Sessions gesetzt
+  - [ ] **Sitzungs-Leases statt reiner TTL:** Der Hook meldet seine PID; ist der Prozess weg, verfällt das Lease binnen Sekunden. Eine per Strg-C beendete Session darf das Pet nicht auf `needs_input` hängen lassen
+  - [ ] Jede Session trägt eine beim Start erzeugte Nonce gegen PID-Wiederverwendung
 - **Verifikation:** `tests/verify/T-0.9.sh` — `pytest`; prüft zusätzlich per `ss -lx` und `ss -ltn`, dass der Hub-Prozess **einen** Unix-Socket und **keinen** TCP-Socket hält
 - **Agent:** builder · **Umfang:** L
 
@@ -517,6 +519,11 @@ tests/verify/T--1.7.sh        # prueft nur, dass zu jedem Spike eine Entscheidun
 - **Akzeptanz:**
   - [ ] Lauscht nur auf `127.0.0.1:8787`, leitet an den Hub-Socket weiter
   - [ ] Shared Secret in `$XDG_RUNTIME_DIR/daimon/hook-token` (0600), beim Start erzeugt, ins Hook-Kommando eingesetzt
+  - [ ] **Neun Hook-Events statt sieben** (Vorbild `oc-claw`): zusätzlich `PreCompact` (auto und manual) und `SessionEnd`
+  - [ ] Payload je Werkzeug beschnitten: `Write`/`Edit` → Pfad plus gekürzter Inhalt, `Bash` → Kommando plus Beschreibung. Freie Textfelder tragen `tainted` (Design §5.2)
+  - [ ] Die PID von Claude Code wird mitgeschickt — Grundlage für das Lease in T-0.9
+  - [ ] Subagenten-Zähler: `PreToolUse(Agent)` hoch, `SubagentStop` runter; „fertig" meldet erst bei null
+  - [ ] `~/.claude/settings.json` wird **atomar und rücknehmbar** geändert: Sicherung, temp-plus-rename, Markierung der eigenen Einträge, Symlink- und Traversal-Prüfung. Fremde Hooks des Nutzers bleiben unangetastet
   - [ ] Ohne gültiges Token: 401, Versuch landet im Audit
   - [ ] **Exakte Routen** statt Präfix-Matching
   - [ ] `Content-Length` gedeckelt, Lese-Timeout gesetzt, Nebenläufigkeit begrenzt
@@ -628,7 +635,9 @@ tests/verify/T-0.11.sh
 - **Akzeptanz:**
   - [ ] Sprite-Sheet einmal beim Start dekodiert, ARGB8888 **premultiplied**
   - [ ] `wl_subsurface` mit `set_desync()`
-  - [ ] Zwei Zustände genügen: ruhig und dringend, unterschieden über die Glut-Palette
+  - [ ] Atlas-Layout aus Design §8.2: Zelle 192×208, 8 Spalten, 9 Zeilen; Zeilentabelle aus `pet.json`, obiges Layout als Vorgabe
+  - [ ] Zwei Zustände genügen für P1: ruhig und dringend
+  - [ ] Ein unverändertes Community-Pet im hatch-pet-Format lädt und läuft
   - [ ] Bewegung über `set_position()` ohne Neuzeichnen
 - **Verifikation:** `tests/verify/T-1.4.sh` — `cargo test -p face`; zusätzlich Zustandswechsel über den Hub und Prüfung im Diagnose-Socket, dass `sprite` wechselt und `frames_rendered` steigt
 - **Agent:** builder · **Umfang:** L
@@ -937,9 +946,12 @@ tests/verify/T-1.5.sh    # Idle-CPU weiterhin < 0,5 %
   - [ ] Stimmlizenz je Stimme geprüft: `thorsten`/`kerstin` CC0, `pavoque` scheidet aus
   - [ ] Stimme aus der Persona-Datei
   - [ ] Unterbrechbar; neue Äußerung bricht die laufende ab
+  - [ ] **Ungefragte Äußerungen ziehen nur aus kuratierten Vorlagen**; variable Anteile ausschließlich `trusted`
+  - [ ] Antworten laufen durch den Validator aus Design §8.3, **im Hub**, nicht im Face
+  - [ ] Abkühlung je Anlass: 20 s ungefragt, 10 s Reaktion, 3 s Rückfrage, persistiert
   - [ ] Meldet Start und Ende an die Rückkopplungssperre
   - [ ] 0 VRAM
-- **Verifikation:** `tests/verify/T-3.9.sh` — misst TTFA über 20 Läufe (p95 < 200 ms), prüft `nvidia-smi` auf 0 zusätzliche Compute-Prozesse, und testet Unterbrechung: zweite Äußerung während der ersten beendet diese innerhalb 100 ms
+- **Verifikation:** `tests/verify/T-3.9.sh` (eingefroren) — misst TTFA über 20 Läufe (p95 < 200 ms); prüft 0 zusätzliche Compute-Prozesse; Unterbrechung binnen 100 ms; **und speist zehn Angriffstexte ein** (Pfad, URL, `api_key=…`, Codeblock, mehrzeilig, 500 Zeichen, Bidi-Override), von denen **keiner** vorgelesen werden darf — Positiv-Kanarienvogel: ein harmloser Satz wird gesprochen
 - **Agent:** builder · **Umfang:** M
 
 ### T-3.10 — Persona-Lader ∥
@@ -1113,6 +1125,7 @@ done
   - [ ] Strukturierte `when:`-Prädikate, keine String-Globs
   - [ ] Zustimmungs-Cache mit Schlüssel `(session_id, action_id, params_hash)`
   - [ ] Vier Gültigkeiten: `once`, `session`, `ttl:*`, `persistent`
+  - [ ] **Gestenfenster** für `clipboard.read`, Deklassifizierung und `input.type`: erteilt **und** nur innerhalb 2 s nach der bestätigenden Handlung nutzbar (Design §2.5)
   - [ ] **Direktbefehl-Ausnahme ist Hub-Eigentum:** greift nur bei `direct: true` im Katalog **und** Erkennung durch den deterministischen Hub-Parser. Jede aus einer Modellausgabe stammende Aktion geht durch die Vorschau, unabhängig von ihrem Katalogflag
 - **Verifikation:** `tests/verify/T-4.4.sh` — `pytest tests/test_policy.py` (alle grün); zusätzlich ein Test, der einen manipulierten `params_hash` im Request mitschickt und belegt, dass der Hub ihn ignoriert und selbst rechnet
 - **Agent:** builder · **Umfang:** L
@@ -2327,6 +2340,19 @@ Jedes Gate beginnt mit `tests/verify/verify-frozen.sh`.
 | Streaming-STT mit Barge-in | Wenn die Latenz in T-3.15 als zu hoch beurteilt wird |
 | Godot-Client | Nie — durch T−1.3 und P1 ersetzt |
 | TPM-gestützte Audit-Verankerung | Wenn die Journal-Anker aus T-4.6 nachweislich nicht reichen |
+
+## Anhang C6 — Änderungen in v3.4 (oc-claw, openpets) — **NICHT GEGENGELESEN**
+
+| Task | Änderung | Herkunft |
+|---|---|---|
+| T-3.9 | **Sprech-Validator.** Ungefragte Äußerungen nur aus kuratierten Vorlagen; Antworten durch einen Validator im Hub, der Pfade, URLs, Code, Geheimnis-Zuweisungen und Überlänge ablehnt. Schließt eine echte Lücke: v3.3 ließ `tainted` uneingeschränkt in die Sprachausgabe | `openpets`, MIT, 23 Zeilen portiert |
+| T-1.4 | **Sprite-Atlas** 8×9 / 192×208 mit `pet.json`-Manifest übernommen; Zeilentabelle bei uns **im Manifest** statt fest im Host | beide Repos, unabhängig identisch |
+| T-4.4 | **Gestenfenster** von 2 s zusätzlich zur Rundenmarke für Clipboard, Deklassifizierung und synthetische Eingabe | `openpets` `userCommandDepth` |
+| T-0.9 | **Sitzungs-Leases** mit PID-Prüfung statt Stunden-TTL, plus Nonce gegen PID-Wiederverwendung | `openpets` `lease-manager` |
+| T-1.1 (Hooks) | Neun Hook-Events statt sieben, Payload je Werkzeug beschnitten, PID mitgeschickt, Subagenten-Zähler vor „fertig" | `oc-claw` `install_claude_hooks` |
+| T-3.9, T-6.6 | Sprech-Abkühlung je Anlass: 20 s ungefragt, 10 s Reaktion, 3 s Rückfrage | `openpets` |
+
+Nicht übernommen: sämtlicher Fenster-, Click-Through- und Bewegungscode beider Projekte (AppKit, Win32, Electron); alle Sprites aus `oc-claw` (nicht-kommerzielle Assetlizenz); `@open-pets/pet-format` (ein 5-Zeilen-Stub ohne Inhalt).
 
 ## Anhang C5 — Änderungen in v3.3 (Prior-Art) — **NICHT GEGENGELESEN**
 

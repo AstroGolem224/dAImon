@@ -1,6 +1,6 @@
 # dAImon — Design-Dokument
 
-**Version:** 3.3 (Review Runden 1–5; Nacharbeit und Prior-Art-Einarbeitung ungeprüft)
+**Version:** 3.4 (Review Runden 1–5; Nacharbeit und Prior-Art-Einarbeitung ungeprüft)
 **Datum:** 2026-07-27
 **Repo:** `/home/itiger013/Dokumente/Github/dAImon`
 **Zielsystem:** CachyOS (Arch), Kernel 7.1.5, KDE Plasma 6.7.3 / KWin 6.7.3 auf Wayland, RTX 5090 (32 GB, Treiber 610.43.02, sm_120), 24 Threads, 30 GB RAM, `/home` auf btrfs, PipeWire 1.6.8, fish-Shell.
@@ -234,6 +234,20 @@ Ember will ausführen:
 Die Marke bleibt im Hub; Mind bekommt nur eine `request_id`. `params_hash` berechnet der Hub nach eigener Kanonisierung.
 
 **Push-to-Talk ist eine Umschaltung**, kein Halten — `kglobalaccel` liefert keine verlässlichen Loslass-Ereignisse. Zeitlimit als Rückfall.
+
+### 2.5 Gestenfenster für Aktionen mit großer Sprengweite
+
+Für die gefährlichsten Fähigkeiten reicht eine gültige Rundenmarke nicht. Sie gelten für die ganze Runde, und eine Runde kann lang sein.
+
+`openpets` löst das mit einem Tiefenzähler, der nur innerhalb eines nutzerausgelösten Kommandos hochgezählt ist und zwei Sekunden nach dessen Ende zurückfällt — Clipboard-Lesen ist dort *erteilt und trotzdem* nur in diesem Fenster benutzbar. Übernommen für:
+
+| Fähigkeit | Fenster |
+|---|---|
+| `clipboard.read` | 2 s nach der bestätigenden Nutzerhandlung |
+| Bildschirm-Deklassifizierung (§7.2b) | 2 s |
+| `input.type` | 2 s, zusätzlich zur ohnehin nötigen Einzelfreigabe |
+
+Zwei unabhängige Bedingungen: die Fähigkeit muss erteilt **und** das Fenster offen sein. Eine Aktion, die drei Minuten nach dem Tastendruck ausgelöst wird, ist keine Reaktion auf ihn.
 
 ---
 
@@ -514,7 +528,8 @@ Erlaubte Senken:
 | Kurzzeitgedächtnis für Durchgang 1 | ✅ | ❌ | ✅ | ❌ |
 | Langzeitgedächtnis | ✅ nur wörtliche Spanne | ❌ | ✅ | ❌ |
 | Auth-Vorschau | ✅ | ❌ | ✅ | ✅ nur escapt, begrenzt, in Anführungszeichen |
-| TTS-Ausgabe | ✅ | ✅ | ✅ | ✅ (mit Rückkopplungssperre §4.3) |
+| TTS **auf Anfrage** | ✅ | ✅ | ✅ | ✅ validiert (§8.3) |
+| TTS **ungefragt** | ✅ | ❌ | ✅ nur kuratierte Vorlagen | ❌ |
 | Proaktive Auslöser | ❌ | ❌ | ✅ | ❌ |
 | Audit-Klartext | ✅ | ✅ | ✅ | ❌ nur Hash und Länge |
 
@@ -527,6 +542,8 @@ Erlaubte Senken:
 **Keine Handlungs-Anapher.** „Mach das" verweist nicht auf Assistententext oder Kontext. Die aktuelle Äußerung muss Aktion und Ziel nennen, sonst kommt eine Rückfrage.
 
 **Langzeitgedächtnis speichert nur eine wörtliche Spanne aus einer `user_ptt`-Äußerung.**
+
+> **Lücke, die v3.3 hatte:** Die Senkentabelle ließ `tainted` uneingeschränkt in die Sprachausgabe. Damit hätte das Pet einen vom Bildschirm injizierten Text **vorlesen** können — Social Engineering, und ein per OCR erfasstes Passwort landet im Raum. Ungefragte Äußerungen ziehen jetzt ausschließlich aus kuratierten Vorlagen; Antworten auf direkte Fragen dürfen markiertes Material enthalten, aber nur durch den Validator aus §8.3.
 
 ### 5.3 Routing
 
@@ -820,6 +837,12 @@ Kein Telemetrie-Widerspruch — es verlässt nichts den Rechner. Aber dreizehn D
 
 Gedeckelte Warteschlange je Produzent (bei Überlauf werden **die ältesten** verworfen und gezählt), Ratenbegrenzung je Quelle, Zusammenfassung nebenläufiger OCR-Aufträge, serialisierte GPU-Ladevorgänge, unterbrechbare TTS, Höchstzahl offener Rückfragen, und Höchstens-einmal über das Ticketbuch.
 
+**Sprech-Abkühlung je Anlass.** Ohne sie flackert das Pet bei einer aktiven Session durch. Vorgaben aus `openpets`: ungefragte Äußerung 20 s, Reaktion 10 s, Rückfrage 3 s, persistiert je Schlüssel.
+
+**Sitzungs-Leases statt reiner TTL.** Der bestehende `SESSION_TTL` räumt tote Sessions erst nach einer Stunde ab. Stattdessen: Jede Claude-Code-Session hält ein Lease, das der Hook beim ersten Ereignis erwirbt und mit jedem weiteren erneuert. Der Hook meldet seine PID mit; ist der Prozess weg, verfällt das Lease binnen weniger Sekunden. Damit hängt kein Pet mehr auf `needs_input` fest, weil jemand die Session mit Strg-C beendet hat — der häufigste Fehlzustand einer Statusanzeige.
+
+Gegen PID-Wiederverwendung trägt jede Session zusätzlich eine beim Start erzeugte Nonce.
+
 ---
 
 ## 8. Darstellung
@@ -866,6 +889,21 @@ Bildschirmfüllend, weil **Ziehen nicht über `set_margin` geht** — jede Margi
 
 **Idle-CPU nahe null:** Frame-Callback ist one-shot; bei `!dirty` **nicht** neu armieren → `poll()` bei 0 %. Bewegung über `set_position` braucht kein Neuzeichnen. Bei verdeckter Surface liefert KWin gar kein Callback.
 
+**Sprite-Format.** Übernommen wird das Atlas-Layout aus `openai/skills` hatch-pet, das `oc-claw` und `openpets` unabhängig voneinander identisch verwenden — zwei ausgelieferte Projekte, dieselbe Konvention. Für einen `wl_shm`-Blit ist das ein Festschritt-Kopieren ohne Laufzeit.
+
+```
+Zelle 192×208, 8 Spalten, 9 Zeilen
+Zeile 0 idle (6)        Zeile 3 waving (4)     Zeile 6 waiting (6)
+Zeile 1 run-right (8)   Zeile 4 jumping (5)    Zeile 7 running (6)
+Zeile 2 run-left (8)    Zeile 5 failed (8)     Zeile 8 review (6)
+```
+
+Manifest `pet.json`: `id` (Regex `^[a-z0-9][a-z0-9_-]{0,63}$`), `displayName`, `description`, `spritesheetPath`.
+
+> **Eine Abweichung mit Absicht:** Beide Vorlagen kodieren die Zeilentabelle **fest im Host**. Bei uns steht sie als optionaler Block **im Manifest**, mit dem obigen Layout als Vorgabe. Sonst kann kein Pet je ein abweichendes Raster mitbringen, ohne den Renderer zu ändern.
+
+**Semantik und Aussehen getrennt.** Der Hub emittiert eine *Reaktion* (`idle`, `thinking`, `working`, `waiting`, `success`, `error`, …), das Face bildet sie über eine nutzerüberschreibbare Tabelle auf einen Sprite-Zustand ab. Aus `openpets` übernommen, weil es genau unsere Hub-/Face-Grenze ist: Der Hub sagt, was gemeint ist, das Face entscheidet, wie es aussieht.
+
 **Testbarkeit:** Face exponiert einen Diagnose-Socket, der den zuletzt gerenderten Zustand samt `rev` und Zeitstempel meldet. Ohne ihn wären alle Overlay-Tests „schau hin und sag ob es gut aussieht" — der Review hat das zu Recht als untauglich benannt.
 
 ### 8.2 Stimme
@@ -887,7 +925,28 @@ Vermieden: XTTS-v2 (CPML; Coqui existiert nicht mehr und könnte gar keine Lizen
 
 Jede TTS-Ausgabe setzt die Rückkopplungssperre aus §4.3.
 
-### 8.3 Zustände
+### 8.3 Was das Pet sagen darf
+
+Zwei Kanäle mit verschiedenen Regeln.
+
+**Ungefragte Äußerung** (Status, proaktive Hinweise): zieht aus **kuratierten Vorlagen** je Anlass. Variable Anteile sind ausschließlich `trusted`-Werte — Projektname aus dem Basename von `cwd`, Sitzungszahl, Dauer. Nie freier Text aus einem Modell, nie Bildschirmmaterial.
+
+**Antwort auf eine direkte Frage**: darf markiertes Material enthalten, muss aber durch den Validator:
+
+| Regel | Grund |
+|---|---|
+| eine Zeile, höchstens ~140 Zeichen | Längeres ist vorgelesen ohnehin unbrauchbar und verschleiert Eingeschmuggeltes |
+| kein Codeblock, keine Schlüsselwörter wie `function`, `const`, `import`, kein `{};` | Vorgelesener Code ist nutzlos und ein Anzeichen für Injektion |
+| keine URLs | Vorgelesene Adressen sind ein Phishing-Vektor |
+| nichts Pfadförmiges | verhindert das Ausplaudern von Dateisystemstruktur |
+| kein `api_key`, `secret`, `password`, `token` in Zuweisungsform | der Fall, der wirklich weh tut |
+| Steuerzeichen, Bidi-Overrides und Nullbreitenzeichen werden entfernt | dieselbe Behandlung wie in der Auth-Vorschau (§2.4) |
+
+Verletzt eine Antwort eine Regel, sagt das Pet, dass die Antwort auf dem Bildschirm steht, statt sie vorzulesen. **Der Validator sitzt im Hub**, nicht im Face — sonst wäre er umgehbar, sobald ein anderer Produzent Text an die Ausgabe schickt.
+
+Die Regelmenge ist von `openpets` übernommen (`packages/agent-events`, MIT, 23 Zeilen) und nach Python portiert.
+
+### 8.4 Zustände
 
 ```mermaid
 stateDiagram-v2
@@ -1034,6 +1093,11 @@ Der Charakter ist austauschbar; die Persona-Datei ist der einzige Ort, an dem er
 | Bildschirm | Portal ScreenCast | grim / ScreenShot2 | grim funktioniert auf KWin nicht **[V]** |
 | Undo | konstruktiv, als Transaktion | Klassifikation | Herabstufung erst nach geprüftem Artefakt |
 | Persistenz | keine bis Phase 6 | SQLite ab Tag 1 | Live-Status ist korrekt zustandslos |
+| Ungefragte Sprache | kuratierte Vorlagen, nur `trusted`-Variablen | freier Modelltext | Sonst liest das Pet injizierten Bildschirmtext vor |
+| Sprite-Format | hatch-pet-Atlas (8×9, 192×208) | eigenes Format | Zwei ausgelieferte Projekte nutzen es unabhängig identisch; Festschritt-Blit ohne Laufzeit |
+| Zeilentabelle | im **Manifest**, mit Vorgabe | fest im Host wie bei beiden Vorlagen | Sonst kann kein Pet ein abweichendes Raster mitbringen |
+| Sitzungs-Lebensdauer | Lease mit PID-Prüfung | TTL von einer Stunde | Ein per Strg-C beendeter Agent lässt das Pet sonst auf `needs_input` hängen |
+| Gefährliche Fähigkeiten | zusätzlich Gestenfenster (2 s) | Rundenmarke genügt | Eine Runde kann lang sein; drei Minuten später ist keine Reaktion mehr |
 
 ---
 
@@ -1060,6 +1124,8 @@ Der Charakter ist austauschbar; die Persona-Datei ist der einzige Ort, an dem er
 | R17 | Dreizehn Dienste als Wartungslast | mittel | mittel | §2.1 nennt je Dienst die entfernte Fähigkeit; wer streicht, streicht die Trennung |
 | R18 | ~~Piper sucht einen Maintainer~~ | — | — | **Entfallen:** sherpa-onnx (Apache-2.0) ersetzt Piper als Bibliothek; die Stimmgewichte bleiben portabel |
 | R19 | NVIDIA R610 Color-Pipeline schwärzt den Bildschirm | niedrig | hoch | `nvidia-drm.color_pipeline=0`; betrifft das System |
+| R21 | **Pet liest injizierten oder geheimen Text vor** | mittel | hoch | Ungefragte Äußerungen nur aus Vorlagen; Antworten durch den Validator (§8.3), der im Hub sitzt |
+| R22 | Pet hängt auf `needs_input`, weil eine Session hart beendet wurde | hoch | mittel | Lease mit PID-Prüfung statt Stunden-TTL (§7.8) |
 
 ---
 

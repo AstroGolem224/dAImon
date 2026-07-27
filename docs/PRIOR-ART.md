@@ -41,9 +41,9 @@ Zu übernehmen: Ereignisschema, Prioritätsautomat, Crate-Schnitt, SCTK-Aufsetzu
 
 Kein Nachteil beim Forken: null Nutzer, keine konkurrierende Richtung. Upstreaming wäre denkbar.
 
-**[alvinunreal/openpets](https://github.com/alvinunreal/openpets)** — TypeScript/Electron, MIT, 970★.
+> **Korrektur:** In der ersten Fassung stand hier `@open-pets/pet-format` als Manifest-Schema. Beim Blick in den Quelltext: **Das Paket ist ein 5-Zeilen-Stub**, der einen Typmarker und eine Zeichenkette exportiert; sein eigenes `codemap.md` nennt es „a static marker package". Es gibt keine veröffentlichte Formatspezifikation. Wer das zitiert, zitiert nichts.
 
-Der Runtime ist für uns unbrauchbar, aber das **Plugin-SDK v3** hat das bestdurchdachte Berechtigungsmodell im ganzen Feld: berechtigungsbasiert mit Nutzerzustimmung, Host-gerendertes UI (Plugins können kein rohes HTML in Pet-Fenster schreiben), Clipboard und Mikrofon standardmäßig aus. Dazu `@open-pets/pet-format` als Manifest-Schema. MIT erlaubt die Portierung von Schema und Modell.
+Die tiefe Durchsicht beider Projekte steht unten in einem eigenen Abschnitt.
 
 **[rhasspy/wyoming-satellite](https://github.com/rhasspy/wyoming-satellite)** — MIT, 1,2k★, **archiviert**. Die Referenzschleife Wake → Stream → Transkript, inklusive Refraktärzeit nach der Erkennung. Klein und permissiv; archiviert heißt kein Upstream zum Nachziehen.
 
@@ -78,6 +78,66 @@ Der Platzhirsch der Kategorie. Bemerkenswert für uns: Es bindet Claude Code üb
 | `leon-ai/leon`, `toverainc/willow` | Monolith bzw. ESP32-Fokus |
 | `jihe520/Agentic-Desktop-Pet`, `dhruvkumar1805/nekopet` | **Keine Lizenzdatei** = alle Rechte vorbehalten |
 | `felixgr/pytaint` | Patcht CPython. Tot. Markierung geht bei Serialisierung verloren — genau unser Problem |
+
+---
+
+## Zwei Projekte im Detail
+
+Beide auf Zuruf tief durchgesehen. Ergebnis: **beide READ, keines FORK** — keines hat eine Zeile Wayland-Surface-Code. Die Fensterebene beider überlebt den Kontakt mit Wayland nicht.
+
+### rainnoon/oc-claw — Rust/Tauri, 335★, 527 Commits
+
+Ein-Autor-Projekt, aber ein ausgeliefertes Produkt (v1.8.6, Product Hunt, eigene Website). `lib.rs` hat **17.401 Zeilen in einer Datei**.
+
+**Lizenzfalle:** GitHub meldet `NOASSERTION`, und zu Recht. Die `LICENSE` hat drei Abschnitte: Code ist MIT, **aber alle Sprites, GIFs und Hintergründe sind KI-generiert und ausdrücklich nicht-kommerziell**. Die `Cargo.toml` behauptet pauschal `license = "MIT"` — das ist ein Metadatenfehler, keine Rechteeinräumung. Code darf man nehmen, **kein einziges Bild**.
+
+**Plattform:** macOS und Windows. 75 `cfg(target_os="macos")`-Blöcke, 85 für Windows, **zwei** für Linux — beide nur `xdg-open`. Null Treffer für „wayland", „x11", „layer-shell". Das README ist ehrlich, es verspricht Linux gar nicht erst.
+
+**Was wir mitnehmen:** die **Hook-Integration**. Neun Events statt unserer sieben, mit `PreCompact` und `SessionEnd`; Payload je Werkzeug beschnitten; die PID von Claude Code mitgeschickt, damit der Daemon ein Strg-C erkennt; ein Subagenten-Zähler, der „fertig" erst meldet, wenn alle durch sind. Dazu die **blockierende Zustimmungs-Rückreise über einen Unix-Socket** — der Hook wartet, der Daemon antwortet — mit vier Entscheidungen: ablehnen, einmal erlauben, für die Sitzung je Werkzeug erlauben, Modus umschalten. Das ist unser Consent-Dialog, und es beweist, dass die Latenz im Alltag trägt.
+
+Ihr Socket liegt in `/tmp` und ist damit weltweit beschreibbar. Unserer gehört nach `$XDG_RUNTIME_DIR` — einer der wenigen Punkte, an denen wir es besser machen als die Vorlage.
+
+Außerdem brauchbar: ein **SAD-Algorithmus zur Bildregistrierung** (`spriteUtils.ts`), der KI-generierte Spritesheets entzittert. Rund 60 Zeilen, MIT, an einem Nachmittag nach Rust portiert.
+
+### alvinunreal/openpets — TypeScript/Electron, MIT, 970★
+
+Sauber MIT, eine Lizenzdatei, konsistent über alle `package.json`. 278 Commits, aktiv, 51 Testdateien, ausführbare Vertragstests, ordentliche Dokumentation. Kein Boilerplate — das ist ernsthaft gebaut, mit ungewöhnlich disziplinierter Eingabevalidierung.
+
+**Der wichtigste Fund ist ein negativer.** Sie haben Wayland versucht und aufgegeben, und es ehrlich dokumentiert:
+
+> *„Native Wayland deliberately forbids clients from positioning or restacking their own toplevels, so under a native Wayland backend every position write is silently ignored… gravity, walkabout, follow-cursor, cross-display roaming, drag, and z-order all become no-ops."*
+
+Ihre Lösung ist, Ozone auf XWayland zu zwingen. Zusätzlich: Auf Linux funktioniert die Weiterleitung von Mausereignissen gar nicht, weshalb ihre Pet-Fenster dort Klicks schlucken — genau das Problem, das unsere Input-Region auf die Bounding-Box löst.
+
+**Das ist die empirische Begründung für layer-shell.** Ein gut gebautes Electron-Projekt ist exakt gegen die Wand gelaufen, um die herum unser Entwurf konstruiert ist.
+
+**Was wir mitnehmen — vier Dinge:**
+
+1. **Der Sprech-Validator** (`packages/agent-events`, 23 Zeilen). Kuratierte Textpools für ungefragte Äußerungen, plus eine Prüfung, die mehrzeiligen Text, Überlänge, Code, URLs, Pfadförmiges und Geheimnis-Zuweisungen ablehnt. **Das schließt eine echte Lücke bei uns** — unsere Senkentabelle ließ markiertes Material uneingeschränkt in die Sprachausgabe.
+2. **Gestenfenster** (`userCommandDepth`). Eine Fähigkeit ist erteilt **und** nur innerhalb zwei Sekunden nach einer expliziten Nutzerhandlung nutzbar. Clipboard-Lesen geht dort nur innerhalb eines nutzerausgelösten Kommandos. Enger als unsere Rundenmarke und genau richtig für Clipboard, Deklassifizierung und synthetische Eingabe.
+3. **Zustimmung nur bei Zuwachs.** Ein Update, das eine Berechtigung oder einen Netz-Host hinzufügt, fragt erneut; eines, das nichts erweitert, fragt nicht. Verhindert Zustimmungsmüdigkeit.
+4. **Zwei unabhängige Tore.** Neben der Einzelerteilung gibt es globale Schalter, die unabhängig davon standardmäßig **aus** sind — Mikrofon, dynamische Sprache — plus ein Ruhezeitfenster, das jeder Ausgabekanal abfragt.
+
+Dazu das **Lease-Modell**: Erste Sitzung öffnet das Pet, letzte schließt es, PID-Prüfung räumt binnen Sekunden auf, eine Nonce schützt gegen PID-Wiederverwendung. Unser bisheriger Stunden-TTL hätte das Pet nach einem Strg-C bis zu einer Stunde auf `needs_input` hängen lassen.
+
+**Ihr Berechtigungsmodell** hat 32 Namen und eine „sensitive" Teilmenge; durchgesetzt wird an genau einer Stelle im SDK-Bau, indem die erteilten Rechte mit dem Manifest geschnitten werden und jede Fähigkeit oben einen `requirePermission`-Aufruf trägt. Nicht erteilte Methoden fehlen im übergebenen Objekt schlicht. Bekannte Lücke dort: keine Laufzeit-Nachfrage und kein Widerruf außer „Plugin abschalten".
+
+### Das gemeinsame Sprite-Format
+
+Beide Projekte verwenden **unabhängig voneinander dasselbe Atlas-Layout**, das aus `openai/skills` hatch-pet stammt:
+
+```
+Zelle 192×208, 8 Spalten, 9 Zeilen
+Zeile 0 idle (6)        Zeile 3 waving (4)     Zeile 6 waiting (6)
+Zeile 1 run-right (8)   Zeile 4 jumping (5)    Zeile 7 running (6)
+Zeile 2 run-left (8)    Zeile 5 failed (8)     Zeile 8 review (6)
+```
+
+Manifest: `id`, `displayName`, `description`, `spritesheetPath`. Zwei ausgelieferte Projekte, byteidentisches Raster — das ist ein De-facto-Standard, und für einen `wl_shm`-Blit ist es ein Festschritt-Kopieren ohne jede Laufzeit. Wir übernehmen ihn, damit vorhandene Community-Pets unverändert laufen.
+
+**Eine Abweichung mit Absicht:** Beide kodieren die Zeilentabelle fest im Host. Bei uns steht sie im Manifest, mit obigem Layout als Vorgabe. Sonst kann kein Pet je ein abweichendes Raster mitbringen.
+
+Von `openpets` außerdem die Trennung **Reaktion → Sprite-Zustand**: Der Hub sagt, was gemeint ist (`thinking`, `working`, `waiting`, `error`), das Face bildet über eine überschreibbare Tabelle ab, wie es aussieht. Das ist exakt unsere Hub-/Face-Grenze.
 
 ---
 
