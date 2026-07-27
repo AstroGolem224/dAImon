@@ -1,0 +1,12 @@
+{"variant": "cli", "image": "dense", "n": 20, "p50_ms": 3725.0, "p95_ms": 4475.3, "chars": 6455, "notes": "subprocess + temp PNG per call (screenpipe style); subprocess-only p50 3675 ms, PNG encode+write p50 50 ms"}
+{"variant": "cli", "image": "sparse", "n": 20, "p50_ms": 4235.7, "p95_ms": 5082.4, "chars": 7368, "notes": "subprocess + temp PNG per call (screenpipe style); subprocess-only p50 4006 ms, PNG encode+write p50 230 ms"}
+{"variant": "cli", "image": "crop", "n": 20, "p50_ms": 337.9, "p95_ms": 342.0, "chars": 620, "notes": "subprocess + temp PNG per call (screenpipe style); subprocess-only p50 336 ms, PNG encode+write p50 2 ms"}
+{"variant": "ffi", "image": "dense", "n": 20, "p50_ms": 4063.3, "p95_ms": 4263.5, "chars": 6455, "notes": "ctypes -> system libtesseract (5.5.3), one API instance reused, no disk, RGB buffer in RAM"}
+{"variant": "ffi", "image": "sparse", "n": 20, "p50_ms": 4726.7, "p95_ms": 4754.7, "chars": 7368, "notes": "ctypes -> system libtesseract (5.5.3), one API instance reused, no disk, RGB buffer in RAM"}
+{"variant": "ffi", "image": "crop", "n": 20, "p50_ms": 337.5, "p95_ms": 341.5, "chars": 620, "notes": "ctypes -> system libtesseract (5.5.3), one API instance reused, no disk, RGB buffer in RAM"}
+{"variant": "worker", "image": "dense", "n": 20, "p50_ms": 3272.7, "p95_ms": 3283.8, "chars": 6455, "notes": "separate process holding the API, raw RGB over a unix socketpair (21600 KiB per call)"}
+{"variant": "worker", "image": "sparse", "n": 20, "p50_ms": 4084.3, "p95_ms": 4744.2, "chars": 7368, "notes": "separate process holding the API, raw RGB over a unix socketpair (21600 KiB per call)"}
+{"variant": "worker", "image": "crop", "n": 20, "p50_ms": 351.9, "p95_ms": 359.5, "chars": 620, "notes": "separate process holding the API, raw RGB over a unix socketpair (527 KiB per call)"}
+{"variant": "tesserocr", "image": "dense", "n": 20, "p50_ms": 3396.6, "p95_ms": 3403.4, "chars": 6455, "notes": "tesserocr wheel, bundles tesseract 5.5.1"}
+{"variant": "tesserocr", "image": "sparse", "n": 20, "p50_ms": 4039.5, "p95_ms": 4048.0, "chars": 7369, "notes": "tesserocr wheel, bundles tesseract 5.5.1"}
+{"variant": "tesserocr", "image": "crop", "n": 20, "p50_ms": 277.0, "p95_ms": 280.6, "chars": 620, "notes": "tesserocr wheel, bundles tesseract 5.5.1"}
