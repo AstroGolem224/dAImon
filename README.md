@@ -47,6 +47,7 @@ Vollständig: [docs/DESIGN.md §1.2](docs/DESIGN.md).
 | [docs/DESIGN.md](docs/DESIGN.md) | Architektur, Bedrohungsmodell, Diagramme, Risikoregister |
 | [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md) | 146 Tasks in 9 Phasen, agentenlesbar |
 | [PLAN-REVIEW-LOG.md](PLAN-REVIEW-LOG.md) | 5 Runden adversarialer Review, vollständig |
+| [docs/PRIOR-ART.md](docs/PRIOR-ART.md) | was es schon gibt: übernehmen, lesen oder meiden |
 | [docs/PHASE3-original.md](docs/PHASE3-original.md) | der ursprüngliche, engere Plan |
 
 ### Der Review ist nicht konvergiert
@@ -89,6 +90,14 @@ tests/verify/T-0.0.sh           # 19 Assertions, muss grün sein
 
 ---
 
+## Steht das nicht längst irgendwo?
+
+Ungefähr fünfzehnmal — als „Pet beobachtet deinen Coding-Agenten". Aber jedes Projekt mit echtem Feinschliff ist Electron oder Tauri auf X11 oder macOS. Das einzige Wayland-native ([`agent-pet`](https://github.com/MasonRhodesDev/agent-pet), MIT, Rust, SCTK) ist drei Wochen alt, hat null Sterne — und deckt trotzdem 40–50 % von Phase 1. **Phase 1 startet deshalb als Fork davon, nicht aus `cargo new`.**
+
+Was dAImon von den fünfzehn unterscheidet, gibt es nirgends: lokale Wahrnehmung mit erzwungener Netzsperre, Herkunftsmarkierung, und ein typisierter Aktionskatalog mit Bestätigungsdialog. Das ganze Computer-Use-Feld löst Sicherheit über Eindämmung (VM, Container) oder ein pauschales Ja/Nein auf undurchsichtige Codeblöcke.
+
+Details, inklusive der Lizenzfallen: [docs/PRIOR-ART.md](docs/PRIOR-ART.md).
+
 ## Nächster Schritt
 
 Phase −1 sind Machbarkeits-Spikes. Zwei davon können die Architektur kippen und laufen deshalb vor allem anderen:
@@ -105,4 +114,4 @@ mkdir -p spikes/wakeword && cd spikes/wakeword
 
 ## Lizenz
 
-Noch nicht festgelegt. Referenzprojekte unter GPL (`wl_shimeji`, Piper) werden gelesen, nicht kopiert — siehe die Lizenzspalte in `docs/DESIGN.md §15`.
+Noch nicht festgelegt. Referenzprojekte unter Copyleft (`wl_shimeji` GPL-2.0, `clawd-on-desk` AGPL-3.0) werden gelesen, nicht kopiert. Der Audio-Stack läuft bewusst über sherpa-onnx (Apache-2.0) statt Piper (GPL-3.0), damit diese Frage gar nicht erst entsteht — siehe [docs/PRIOR-ART.md](docs/PRIOR-ART.md).

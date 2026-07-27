@@ -921,7 +921,7 @@ tests/verify/T-1.5.sh    # Idle-CPU weiterhin < 0,5 %
 - **Dateien:** `daimon/gpu/stt.py` [neu]
 - **Abhängigkeiten:** T-3.7, T−1.2
 - **Akzeptanz:**
-  - [ ] Umsetzung nach der in T−1.2 gewählten Variante
+  - [ ] Umsetzung nach der in T−1.2 gewählten Variante, bevorzugt über **sherpa-onnx** (Apache-2.0), das zugleich Wake-Word, VAD und TTS liefert
   - [ ] Deutsch und Englisch
   - [ ] Prozessende gibt VRAM vollständig frei
   - [ ] Latenz für eine 5-s-Äußerung gemessen
@@ -933,7 +933,8 @@ tests/verify/T-1.5.sh    # Idle-CPU weiterhin < 0,5 %
 - **Dateien:** `daimon/face/tts.py` [neu]
 - **Abhängigkeiten:** T-0.5
 - **Akzeptanz:**
-  - [ ] Piper `de_DE-thorsten-high`, CPU
+  - [ ] **sherpa-onnx VITS** mit `de_DE-thorsten-high`, CPU — nicht die GPL-3.0-Bibliothek `piper1-gpl` (Design §8.2)
+  - [ ] Stimmlizenz je Stimme geprüft: `thorsten`/`kerstin` CC0, `pavoque` scheidet aus
   - [ ] Stimme aus der Persona-Datei
   - [ ] Unterbrechbar; neue Äußerung bricht die laufende ab
   - [ ] Meldet Start und Ende an die Rückkopplungssperre
@@ -1373,7 +1374,7 @@ pytest -q
   - [ ] Zwischen Aufnahmen `PAUSED`, Session bleibt am Leben
   - [ ] Niedrige Framerate ausgehandelt
   - [ ] `videoconvert` bleibt drin (KDE-Bug 476602)
-- **Verifikation:** `tests/verify/T-5.3.sh` — holt 10 Frames, prüft dass jeder von null verschieden ist (gegen den Schwarzframe-Bug), misst GPU-Auslastung per `nvidia-smi dmon` über 30 s je einmal im `PAUSED`- und im `PLAYING`-Zustand gegen eine Leerlauf-Grundlinie; Exit 0 nur, wenn der `PAUSED`-Mehrverbrauch unter 1 Prozentpunkt liegt. Wird die Schwelle gerissen, ist die strengere Erfassungsart verpflichtend.
+- **Verifikation:** `tests/verify/T-5.3.sh` (eingefroren) — holt 10 Frames, prüft dass jeder von null verschieden ist (gegen den Schwarzframe-Bug); **schaltet danach per `kscreen-doctor` einen Ausgang aus und wieder ein und verlangt, dass weiterhin der beabsichtigte Bildschirm geliefert wird** (Node-ID-Wiederverwendung); misst GPU-Auslastung per `nvidia-smi dmon` über 30 s je einmal im `PAUSED`- und im `PLAYING`-Zustand gegen eine Leerlauf-Grundlinie; Exit 0 nur, wenn der `PAUSED`-Mehrverbrauch unter 1 Prozentpunkt liegt. Wird die Schwelle gerissen, ist die strengere Erfassungsart verpflichtend.
 - **Agent:** builder · **Umfang:** L
 
 ### T-5.4 — Abtast-Timer neben Fokus-Ereignis ∥
@@ -2326,6 +2327,19 @@ Jedes Gate beginnt mit `tests/verify/verify-frozen.sh`.
 | Streaming-STT mit Barge-in | Wenn die Latenz in T-3.15 als zu hoch beurteilt wird |
 | Godot-Client | Nie — durch T−1.3 und P1 ersetzt |
 | TPM-gestützte Audit-Verankerung | Wenn die Journal-Anker aus T-4.6 nachweislich nicht reichen |
+
+## Anhang C5 — Änderungen in v3.3 (Prior-Art) — **NICHT GEGENGELESEN**
+
+Aus `docs/PRIOR-ART.md`. Drei Korrekturen, eine Vereinfachung.
+
+| Task | Änderung |
+|---|---|
+| T-1.1 | Startet als **Fork von `agent-pet`** (MIT, Rust, SCTK, layer-shell) statt aus `cargo new`. Deckt 40–50 % von Phase 1; `pet-render` ist der Keim fürs CPU-Blitting, `pet-daemon` wird verworfen |
+| T-3.8, T-3.9 | Audio-Stack auf **sherpa-onnx** (Apache-2.0) vereinheitlicht — Wake-Word, VAD, STT und VITS-Synthese aus einer Bibliothek. Ersetzt `piper1-gpl` (GPL-3.0) und löst R18 auf |
+| T-5.3 | Stream-Ziel über **`pipewire-serial`** statt Node-ID, plus Hotplug-Prüfung im Verifizierer |
+| T-4.2 | Aktion heißt `kde.window.raise`, nicht `focus` — KWin 6 hat `activateWindow()` entfernt |
+
+Zusätzlich als Abhängigkeiten aufgenommen: `layershellev` (MIT) für die Ereignisschleife, `desktop-notifier` (MIT) für Consent-Benachrichtigungen, Wyoming (MIT) als Drahtformat zwischen den Audiostufen.
 
 ## Anhang C4 — Änderungen in v3.1 und v3.2 (nach Runde 5) — **NICHT GEGENGELESEN**
 

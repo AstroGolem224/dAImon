@@ -1,6 +1,6 @@
 # dAImon — Design-Dokument
 
-**Version:** 3.1 (nach adversarialem Review durch Codex, Runden 1–5)
+**Version:** 3.3 (Review Runden 1–5; Nacharbeit und Prior-Art-Einarbeitung ungeprüft)
 **Datum:** 2026-07-27
 **Repo:** `/home/itiger013/Dokumente/Github/dAImon`
 **Zielsystem:** CachyOS (Arch), Kernel 7.1.5, KDE Plasma 6.7.3 / KWin 6.7.3 auf Wayland, RTX 5090 (32 GB, Treiber 610.43.02, sm_120), 24 Threads, 30 GB RAM, `/home` auf btrfs, PipeWire 1.6.8, fish-Shell.
@@ -414,7 +414,15 @@ Die OCR-Kosten skalieren mit der **Textmenge**, nicht mit der Auflösung **[V]**
 
 `version = 4` **[V]** heißt: `restore_token`/`persist_mode` sind verfügbar, der Nutzer klickt genau einmal.
 
-**Die Falle:** Der `restore_token` ist **einmalig**. Jedes erfolgreiche `Start` liefert einen neuen. Wer den gespeicherten nicht überschreibt, bekommt beim zweiten Start wieder den Dialog. Ist der Token ungültig, ignoriert das Portal ihn **stillschweigend** und zeigt den Dialog — nie ohne interaktiven Fallback aufrufen.
+**Zwei Fallen, beide leicht zu übersehen:**
+
+1. Der `restore_token` ist **einmalig**. Jedes erfolgreiche `Start` liefert einen neuen. Wer den gespeicherten nicht überschreibt, bekommt beim zweiten Start wieder den Dialog. Ist der Token ungültig, ignoriert das Portal ihn **stillschweigend** und zeigt den Dialog — nie ohne interaktiven Fallback aufrufen.
+
+2. **Die PipeWire-Node-ID im Stream-Tupel ist seit ScreenCast v6 veraltet.** IDs werden nach Zerstörung eines Node wiederverwendet. Wer darauf verbindet, bekommt bei Monitor-Hotplug, Auflösungswechsel oder Suspend **stillschweigend den falschen Stream** — kein Fehler, nur falsche Bilder.
+
+> **Korrektur gegenüber v3.0.** Dort stand `path={node_id}` in der GStreamer-Pipeline. Richtig ist eine Bindung über die Eigenschaft **`pipewire-serial`** (monoton, 64 Bit, wird nie wiederverwendet) mittels `PW_KEY_TARGET_OBJECT`. Die Node-ID bleibt nur als Rückfall für Portale unter v6.
+
+Es gibt für diesen Ablauf **keine gepflegte Bibliothek**, weder in Python noch in Rust. Die kanonische Referenz ist ein Rohskript in [xdg-desktop-portal #1371](https://github.com/flatpak/xdg-desktop-portal/issues/1371) — in dem zugleich ein Fehler dokumentiert ist, bei dem die Wiederherstellung den falschen Monitor liefert. Dafür ist echte Zeit einzuplanen.
 
 ### 4.6 Warum Sprache nicht autorisiert
 
@@ -610,7 +618,7 @@ sequenceDiagram
 | Zweck | Schnittstelle | Verifiziert |
 |---|---|---|
 | KDE-Shortcut | `org.kde.kglobalaccel` → `invokeShortcut(name)` | **[V]** |
-| Fenster fokussieren | `org.kde.KWin /WindowsRunner` → `Match` → `Run` | **[V]** |
+| Fenster **anheben** | `org.kde.KWin /WindowsRunner` → `Match` → `Run` | **[V]** |
 | Fensterinfo | `/KWin` → `getWindowInfo(uuid)` | **[V]** |
 | Virtuelle Desktops | `/VirtualDesktopManager` | **[V]** |
 | App starten | `org.freedesktop.Application.Activate`, sonst `systemd-run --user` | **[V]** |
@@ -620,6 +628,8 @@ sequenceDiagram
 | Screenshot | `org.kde.KWin.ScreenShot2` | **[V]** |
 
 `wtype` ist auf KWin tot — `zwp_virtual_keyboard_manager_v1` wird nicht implementiert **[V]**.
+
+> **Einschränkung, die der Katalog abbilden muss:** KWin 6 hat `activateWindow()` aus dem Workspace-Wrapper entfernt. Ein Fenster lässt sich **anheben, aber nicht fokussieren**. Die Aktion heißt deshalb `kde.window.raise`, nicht `focus`, und die Sprechblase sagt „hebe an", nicht „fokussiere". Eine Aktion, die etwas anderes verspricht als sie tut, ist schlimmer als eine fehlende.
 
 ### 6.4 Der DBus-Proxy ist ein Vorfilter
 
@@ -862,12 +872,18 @@ Bildschirmfüllend, weil **Ziehen nicht über `set_margin` geht** — jede Margi
 
 | Stufe | Engine | Latenz | VRAM | Wofür |
 |---|---|---|---|---|
-| **Schnell (Vorgabe)** | Piper `de_DE-thorsten-high`, CPU | ~40 ms TTFA | **0** | Bestätigungen, Status, kurze Antworten |
+| **Schnell (Vorgabe)** | sherpa-onnx VITS mit `de_DE-thorsten-high`, CPU | ~40 ms TTFA | **0** | Bestätigungen, Status, kurze Antworten |
 | **Charakter (auf Abruf)** | Kartoffelbox-v0.1 (Chatterbox DE, MIT) | <300 ms TTFB **[U]** | 8–16 GB | längere Antworten |
 
 Die schnelle Stufe läuft auf der CPU und stört Blender oder Spiele nicht. Mittelfristig ist ein **eigener Piper-Finetune** der beste Weg — Charakter *und* null Latenz. Der Aufwand sind 1–3 Stunden saubere Aufnahmen, nicht GPU-Zeit.
 
-**Kokoro kann kein Deutsch** (v1.1 ist v1.1-*zh*). Lizenzen: Piper GPL-3.0 mit `thorsten`/`kerstin` unter CC0, Chatterbox MIT. Vermieden: XTTS-v2 (CPML; Coqui existiert nicht mehr und könnte gar keine Lizenz erteilen), F5-TTS-Gewichte (CC-BY-NC), Piper-`pavoque` (CC-BY-NC-SA).
+**Kokoro kann kein Deutsch** (v1.1 ist v1.1-*zh*).
+
+> **Vereinfachung gegenüber v3.0.** Dort war Piper als Bibliothek vorgesehen — GPL-3.0, mit der Folge, dass der ganze Daemon copyleft geworden wäre, und mit einem Projekt, das offen einen Maintainer sucht. **sherpa-onnx (Apache-2.0) deckt VITS-Synthese ab und veröffentlicht alle Piper-Stimmen vorkonvertiert.** Damit fällt die Lizenzfrage weg und eine Abhängigkeit gleich mit: dieselbe Bibliothek liefert schon Wake-Word, VAD und STT. Vier Stufen, eine Abhängigkeit, eine permissive Lizenz.
+>
+> Stimmgewichte sind separat lizenziert und **je Stimme zu prüfen**: `thorsten` und `kerstin` sind CC0, `pavoque` ist CC-BY-NC-SA und scheidet aus.
+
+Vermieden: XTTS-v2 (CPML; Coqui existiert nicht mehr und könnte gar keine Lizenz erteilen), F5-TTS-Gewichte (CC-BY-NC).
 
 Jede TTS-Ausgabe setzt die Rückkopplungssperre aus §4.3.
 
@@ -1012,7 +1028,9 @@ Der Charakter ist austauschbar; die Persona-Datei ist der einzige Ort, an dem er
 | Wake-Word | sherpa-onnx KWS | openWakeWord / Porcupine | Kein Training; Porcupine hat die freie Stufe abgeschaltet |
 | STT | Parakeet ONNX (vorbehaltlich Spike) | faster-whisper | faster-whisper auf CUDA 13 kaputt **[V]** |
 | VLM-Server | `llama-server` im Worker | Ollama | Ollama-Daemon unterläuft die Selbstbeendigung |
-| TTS schnell | Piper CPU | Kokoro / XTTS | Kokoro kann kein Deutsch; 0 VRAM ist entscheidend |
+| Audio-Stack | **sherpa-onnx** für KWS, VAD, STT und TTS | vier getrennte Bibliotheken | Eine Apache-2.0-Abhängigkeit statt vier; umgeht Pipers GPL-3.0 |
+| Overlay-Start | **`agent-pet` forken** | leeres `cargo new` | MIT, Rust, SCTK, KWin — deckt 40–50 % von Phase 1 und kam unabhängig zum selben Prioritätsautomaten |
+| ScreenCast-Ziel | `pipewire-serial` über `PW_KEY_TARGET_OBJECT` | Node-ID aus dem Stream-Tupel | Node-IDs werden wiederverwendet → stiller Fehlstream bei Hotplug |
 | Bildschirm | Portal ScreenCast | grim / ScreenShot2 | grim funktioniert auf KWin nicht **[V]** |
 | Undo | konstruktiv, als Transaktion | Klassifikation | Herabstufung erst nach geprüftem Artefakt |
 | Persistenz | keine bis Phase 6 | SQLite ab Tag 1 | Live-Status ist korrekt zustandslos |
@@ -1040,7 +1058,7 @@ Der Charakter ist austauschbar; die Persona-Datei ist der einzige Ort, an dem er
 | R15 | Absturz zwischen Ticketeinlösung und Mutation | mittel | mittel | Höchstens-einmal, `outcome=unknown`, kein Neuversuch |
 | R16 | **Hub als vertrauenswürdige Basis kompromittiert** | niedrig | sehr hoch | Klein gehalten, jede Eingabe validiert, kein Modell-/Netz-/Renderingcode; im Übrigen §1.2 |
 | R17 | Dreizehn Dienste als Wartungslast | mittel | mittel | §2.1 nennt je Dienst die entfernte Fähigkeit; wer streicht, streicht die Trennung |
-| R18 | Piper sucht einen Maintainer | mittel | mittel | Stimmen separat lizenziert und portabel |
+| R18 | ~~Piper sucht einen Maintainer~~ | — | — | **Entfallen:** sherpa-onnx (Apache-2.0) ersetzt Piper als Bibliothek; die Stimmgewichte bleiben portabel |
 | R19 | NVIDIA R610 Color-Pipeline schwärzt den Bildschirm | niedrig | hoch | `nvidia-drm.color_pipeline=0`; betrifft das System |
 
 ---
@@ -1119,6 +1137,8 @@ Sofort: `sudo pacman -S tesseract-data-eng tesseract-data-deu` — tesseract hat
 | vLLM | Blackwell/CUDA-13 brüchig |
 | Godot (nativ und XWayland) | Nativ: kein always-on-top/Click-Through. XWayland: unscharf, kein Overlay-Layer |
 | GTK4 + gtk4-layer-shell | Kein Subcompositor, GSK-Vulkan-Idle-CPU |
+| Piper **als Bibliothek** | GPL-3.0; sherpa-onnx deckt VITS unter Apache-2.0 ab und liefert die Stimmen vorkonvertiert |
+| PipeWire-Node-ID als Stream-Ziel | Seit ScreenCast v6 veraltet; IDs werden wiederverwendet |
 | `IPAddressDeny` als Netzsperre | In User-Units wirkungslos **[V]** |
 | `chattr +a` fürs Audit-Log | Als Nutzer nicht setzbar **[V]** |
 | Passwortfeld-Erkennung | Auf Wayland nicht ermittelbar |
@@ -1128,7 +1148,18 @@ Sofort: `sudo pacman -S tesseract-data-eng tesseract-data-deu` — tesseract hat
 
 ## 16. Änderungsprotokoll
 
-Vollständiges Review-Protokoll in `PLAN-REVIEW-LOG.md`.
+Vollständiges Review-Protokoll in `PLAN-REVIEW-LOG.md`. Prior-Art-Erhebung in `docs/PRIOR-ART.md`.
+
+### v3.3 — nach der Prior-Art-Erhebung — **NICHT GEGENGELESEN**
+
+| # | Was v3.0 vorsah | Was jetzt gilt |
+|---|---|---|
+| α | Piper als TTS-Bibliothek (GPL-3.0) | **sherpa-onnx (Apache-2.0)** deckt Wake-Word, VAD, STT **und** VITS-Synthese ab und veröffentlicht die Piper-Stimmen vorkonvertiert. Vier Stufen, eine Abhängigkeit, keine Copyleft-Frage. R18 entfällt |
+| β | `path={node_id}` in der GStreamer-Pipeline | **`pipewire-serial` über `PW_KEY_TARGET_OBJECT`.** Node-IDs werden nach Zerstörung wiederverwendet — bei Hotplug oder Auflösungswechsel bekäme man stillschweigend den falschen Stream |
+| γ | „Fenster fokussieren" im Aktionskatalog | **`kde.window.raise`.** KWin 6 hat `activateWindow()` aus dem Workspace-Wrapper entfernt: anheben geht, fokussieren nicht. Eine Aktion, die mehr verspricht als sie tut, ist schlimmer als eine fehlende |
+| δ | Overlay von Null | **`agent-pet` (MIT) als Keim für Phase 1** — Rust, SCTK, layer-shell, mit einem Prioritätsautomaten, der unabhängig zur selben Lösung kam |
+
+Bestätigt wurde außerdem, dass es für Herkunftsmarkierung in Python **nichts Produktionstaugliches** gibt — der enge `Tainted[str]`-Typ an der Aktuationsgrenze bleibt richtig.
 
 ### v3.0 — nach Runde 3
 
