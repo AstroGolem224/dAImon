@@ -183,3 +183,29 @@ probe laeuft, schreibt nach /home/itiger013/Dokumente/Github/dAImon/spikes/focus
  182 activated com.anthropic.Claude     Claude
  183 activated Alacritty                hej, bitte recherchiere mal im n
  184 activated org.kde.konsole          Noice : codex — Konsole
+ 185 activated Tk                       daimon-calib
+ 186 activated org.kde.konsole          Noice : codex — Konsole
+ 187 activated FreeCAD                  * wicking_v2 - FreeCAD 1.1.3
+ 188 caption   FreeCAD                  * Wicking_Analyse - FreeCAD 1.1.3
+ 189 caption   FreeCAD                  * Unnamed - FreeCAD 1.1.3
+ 190 caption   FreeCAD                  Unnamed - FreeCAD 1.1.3
+ 191 caption   FreeCAD                  * wicking_v2 - FreeCAD 1.1.3
+ 192 activated org.kde.konsole          Noice : codex — Konsole
+ 193 activated Tk                       daimon-calib2
+ 194 activated org.kde.konsole          Noice : codex — Konsole
+ 195 activated FreeCAD                  * wicking_v2 - FreeCAD 1.1.3
+ 196 activated Tk                       daimon-spike-below
+ 197 activated FreeCAD                  * wicking_v2 - FreeCAD 1.1.3
+ 198 activated org.kde.spectacle        Nicht gespeichert* — Spectacle
+ 199 activated FreeCAD                  * wicking_v2 - FreeCAD 1.1.3
+ 200 activated org.kde.spectacle        Nicht gespeichert* — Spectacle
+ 201 activated Alacritty                hej, bitte recherchiere mal im n
+ 202 activated com.anthropic.Claude     Claude
+ 203 activated FreeCAD                  * wicking_v2 - FreeCAD 1.1.3
+ 204 activated org.kde.konsole          Noice : codex — Konsole
+ 205 activated Tk                       daimon-spike-below
+ 206 activated org.kde.konsole          Noice : codex — Konsole
+ 207 activated Tk                       daimon-spike-below
+ 208 activated org.kde.konsole          Noice : codex — Konsole
+ 209 activated Tk                       daimon-spike-below
+ 210 activated org.kde.konsole          Noice : codex — Konsole

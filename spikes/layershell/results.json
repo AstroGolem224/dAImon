@@ -13,13 +13,31 @@
   "buffer_type": "shm",
   "gpu_libs": [],
   "dri_fds": [],
-  "input_region_works": null,
-  "verdict": "partial",
-  "decision": "Overlay traegt: bleibt ueber Vollbild sichtbar (per Pixelprobe belegt, mit Negativkontrolle), Idle-CPU 0,17 %, und es wird nachweislich KEIN GPU-Kontext geoeffnet -- null DRI-Deskriptoren, null GPU-Bibliotheken, nur ein memfd fuer wl_shm. Damit ist die Architekturentscheidung aus Design 8.1 empirisch bestaetigt.\n\nKDE-Bug 503121 ist reproduziert: Unmap per NULL-Buffer liefert 0 von 20 configures. Beide Umgehungen liefern 20 von 20. Empfehlung: Properties vor dem Remap neu setzen -- billiger als die Surface neu zu erzeugen.\n\nOFFEN: die Input-Region. Der erste Anlauf hat den Mauszeiger des Nutzers blockiert, weil ohne gesetzte Region eine bildschirmfuellende Surface Eingaben auf ihrer ganzen Flaeche annimmt. Behoben: die leere Region ist jetzt die Vorgabe, und ein Watchdog beendet den Prozess unabhaengig vom Aufrufer.",
+  "input_region_works": true,
+  "verdict": "pass",
+  "decision": "Overlay traegt: bleibt ueber Vollbild sichtbar (per Pixelprobe belegt, mit Negativkontrolle), Idle-CPU 0,17 %, und es wird nachweislich KEIN GPU-Kontext geoeffnet -- null DRI-Deskriptoren, null GPU-Bibliotheken, nur ein memfd fuer wl_shm. Damit ist die Architekturentscheidung aus Design 8.1 empirisch bestaetigt.\n\nKDE-Bug 503121 ist reproduziert: Unmap per NULL-Buffer liefert 0 von 20 configures. Beide Umgehungen liefern 20 von 20. Empfehlung: Properties vor dem Remap neu setzen -- billiger als die Surface neu zu erzeugen.\n\nINPUT-REGION: funktioniert. set_input_region auf einem 200x200-Rechteck einer bildschirmfuellenden Overlay-Layer-Surface trennt sauber. Innerhalb: das Overlay bekommt pointer_enter, pointer_motion und pointer_press (btn 272 = BTN_LEFT), das Fenster darunter bekommt NICHTS -- seine Bewegungsspur bricht exakt am Regionsrand ab und setzt erst ausserhalb wieder ein. Ausserhalb: das Overlay bekommt pointer_leave und danach nichts mehr, der Klick landet im Fenster darunter. Ueberschneidung: keine. Negativkontrolle: dasselbe Overlay ohne --input-region (leere Region) laesst den Klick an genau derselben Stelle durch. Damit misst der Test die Region und nicht 'Layer-Surfaces bekommen nie Eingaben'.\n\nDas input_region_works=false des ersten Anlaufs war ein Fehler des PRUEFSTANDS, keine KWin-Grenze: 'ydotool mousemove -a' setzt auf dieser Maschine den Zeiger fuer JEDES Ziel auf (0,0). Nachgemessen mit einem bildschirmfuellenden XWayland-Fenster und xdotool: fuenf verschiedene Ziele, fuenfmal (0,0). Der Zeiger ist also nie in die Region gefahren. Der Pruefstand kommt jetzt ohne absolute Positionierung aus: relative Bewegung im Regelkreis, und die Region wird um die Ist-Position des Zeigers gelegt. Merke fuer alle spaeteren Eingabetests in diesem Projekt: ydotool -a ist hier unbrauchbar, nur relative Bewegung verwenden.",
   "blocking": false,
   "incident": {
     "was": "Overlay hat den Mauszeiger blockiert",
     "ursache": "apply_regions setzte set_input_region nur bei --input-region; ohne Argument nimmt die Surface Eingaben auf der gesamten Flaeche an",
-    "behoben": "leere Region als Vorgabe + Watchdog (SPIKE_MAX_SECS, Vorgabe 90 s) im Prozess selbst"
+    "behoben": "leere Region als Vorgabe + Watchdog (SPIKE_MAX_SECS, Vorgabe 90 s) im Prozess selbst",
+    "hinweis": "Der Vorfall bleibt dokumentiert. Die leere Region als Vorgabe und der Watchdog sind gesetzt und duerfen nicht zurueckgebaut werden."
+  },
+  "input_region": {
+    "region_px": [
+      1395,
+      600,
+      200,
+      200
+    ],
+    "enter_innen": true,
+    "motion_innen": true,
+    "press_innen": true,
+    "klick_innen_geht_NICHT_durch": true,
+    "leave_beim_verlassen": true,
+    "press_aussen": false,
+    "klick_aussen_geht_durch": true,
+    "negativkontrolle_leere_region_klickdurchlaessig": true,
+    "evidence": "evidence/input_region_test.json"
   }
 }

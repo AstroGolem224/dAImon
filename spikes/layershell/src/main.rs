@@ -133,6 +133,7 @@ struct App {
     pointer: Option<wl_pointer::WlPointer>,
     pointer_enters: u32,
     pointer_presses: u32,
+    pointer_motions: u32,
 }
 
 impl App {
@@ -208,6 +209,8 @@ impl App {
             input.add(x, y, w, h);
         }
         layer.set_input_region(Some(input.wl_region()));
+        println!("INFO input_region={:?}", self.cfg.input_region);
+        let _ = std::io::stdout().flush();
         std::mem::forget(input);
         std::mem::forget(opaque);
         let _ = qh;
@@ -308,7 +311,10 @@ impl SeatHandler for App {
         cap: Capability,
     ) {
         if cap == Capability::Pointer && self.pointer.is_none() {
-            self.pointer = self.seat_state.get_pointer(qh, &seat).ok();
+            let r = self.seat_state.get_pointer(qh, &seat);
+            println!("INFO got_pointer ok={}", r.is_ok());
+            let _ = std::io::stdout().flush();
+            self.pointer = r.ok();
         }
     }
     fn remove_capability(
@@ -337,7 +343,14 @@ impl PointerHandler for App {
     ) {
         let mine = self.layer.as_ref().map(|l| l.wl_surface().clone());
         for e in events {
-            if Some(&e.surface) != mine.as_ref() {
+            // Diagnose: JEDES Ereignis roh mitschreiben, bevor gefiltert wird.
+            // Der Filter hat im ersten Anlauf womoeglich alles verschluckt.
+            let is_mine = Some(&e.surface) == mine.as_ref();
+            self.log(&format!(
+                "RAW pointer kind={:?} pos={:?} mine={}",
+                std::mem::discriminant(&e.kind), e.position, is_mine
+            ));
+            if !is_mine {
                 continue;
             }
             match e.kind {
@@ -346,7 +359,12 @@ impl PointerHandler for App {
                     self.log(&format!("EVENT pointer_enter @{:?}", e.position));
                 }
                 PointerEventKind::Leave { .. } => self.log("EVENT pointer_leave"),
-                PointerEventKind::Motion { .. } => {}
+                PointerEventKind::Motion { .. } => {
+                    self.pointer_motions += 1;
+                    if self.pointer_motions <= 40 {
+                        self.log(&format!("EVENT pointer_motion @{:?}", e.position));
+                    }
+                }
                 PointerEventKind::Press { button, .. } => {
                     self.pointer_presses += 1;
                     self.log(&format!("EVENT pointer_press btn={button} @{:?}", e.position));
@@ -464,6 +482,7 @@ fn main() {
         pointer: None,
         pointer_enters: 0,
         pointer_presses: 0,
+        pointer_motions: 0,
     };
 
     // Outputs einsammeln, damit wl_output explizit gebunden werden kann.
@@ -523,7 +542,7 @@ fn main() {
                     break;
                 }
             }
-            println!("EXIT pointer_enters={} presses={}", app.pointer_enters, app.pointer_presses);
+            println!("EXIT pointer_enters={} presses={} motions={}", app.pointer_enters, app.pointer_presses, app.pointer_motions);
         }
         "cycles" => {
             let (got, _) = wait_configure(&mut eq, &mut app, Duration::from_secs(5));

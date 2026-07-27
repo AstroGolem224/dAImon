@@ -1,0 +1,74 @@
+[
+ {
+  "variant": "cli",
+  "image": "dense",
+  "n": 20,
+  "p50_ms": 3396.7,
+  "p95_ms": 4343.9,
+  "chars": 6455,
+  "notes": "one subprocess + temp PNG per call (screenpipe style); subprocess-only p50 3347 ms [interleaved run]"
+ },
+ {
+  "variant": "cli",
+  "image": "sparse",
+  "n": 20,
+  "p50_ms": 4224.3,
+  "p95_ms": 5226.3,
+  "chars": 7368,
+  "notes": "one subprocess + temp PNG per call (screenpipe style); subprocess-only p50 3993 ms [interleaved run]"
+ },
+ {
+  "variant": "ffi",
+  "image": "dense",
+  "n": 20,
+  "p50_ms": 4220.9,
+  "p95_ms": 4444.2,
+  "chars": 6455,
+  "notes": "ctypes -> system libtesseract 5.5.3, one API reused, no disk [interleaved run]"
+ },
+ {
+  "variant": "ffi",
+  "image": "sparse",
+  "n": 20,
+  "p50_ms": 4845.0,
+  "p95_ms": 4899.7,
+  "chars": 7368,
+  "notes": "ctypes -> system libtesseract 5.5.3, one API reused, no disk [interleaved run]"
+ },
+ {
+  "variant": "tesserocr",
+  "image": "dense",
+  "n": 20,
+  "p50_ms": 3414.6,
+  "p95_ms": 3425.4,
+  "chars": 6455,
+  "notes": "tesserocr wheel, bundles tesseract 5.5.1, one API reused [interleaved run]"
+ },
+ {
+  "variant": "tesserocr",
+  "image": "sparse",
+  "n": 20,
+  "p50_ms": 4060.9,
+  "p95_ms": 4076.1,
+  "chars": 7369,
+  "notes": "tesserocr wheel, bundles tesseract 5.5.1, one API reused [interleaved run]"
+ },
+ {
+  "variant": "worker",
+  "image": "dense",
+  "n": 20,
+  "p50_ms": 4061.5,
+  "p95_ms": 4285.8,
+  "chars": 6455,
+  "notes": "separate process holding the API, raw RGB over a unix socketpair [interleaved run]"
+ },
+ {
+  "variant": "worker",
+  "image": "sparse",
+  "n": 20,
+  "p50_ms": 4681.1,
+  "p95_ms": 4900.2,
+  "chars": 7368,
+  "notes": "separate process holding the API, raw RGB over a unix socketpair [interleaved run]"
+ }
+]

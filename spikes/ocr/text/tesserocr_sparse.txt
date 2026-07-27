@@ -1,0 +1,749 @@
+4
+
+ya
+
+~
+
+2
+
+\
+
+—
+
+N
+
+N
+
+—N
+
+Er
+
+”
+
+Koi Gar ONY
+
+eS Se
+
+ale,
+
+- ©
+
+ı
+
+Ad
+
+mo ©
+
+N
+
+En
+
+x
+
+Tai
+
+IM Po.
+
+Rico
+
+Ent
+
+wc
+
+Rico
+
+Mc
+
++ Go
+
+A Ga
+
+ALN
+
+Aha
+
+Farz:
+
+Vic
+
+Mas:
+
+PA cre
+
+@ 2.
+
+ch
+
+Ban
+
+Au
+
+O Ete
+
+@ Fre
+
+ey Im
+
++
+
+=
+
+-
+
+BoR
+
+Cloudheim
+
+Comfyur
+
+Cyberpunk
+
+Crimson Desert
+
+Deep Rock
+
+Eversieg:
+
+Far Far West
+
+MMC
+
+MMC-
+
+Open Design
+
+Ravenswatch
+
+YOU ARETHE
+
+Vampire
+
+9 so
+
+Q x
+
+Transcriber
+
+2077
+
+Galactic
+
+Bestiarium
+
+MONSTER
+
+Crawlers
+
+ad
+
+Noice : codex — Konsole
+
+VAX
+
+Untold Ages
+
+Bestiarium zip
+
+r
+
+va
+
+Er =421@
+
+Kopieren
+
+©) Einfügen
+
+Q suchen ©
+
+|
+
+E23 Neues Unterfenster | EB Ansichtteilen v
+
+Se
+
+2
+
+v
+
+A
+
+a Ar
+
+hej, bitte recherchiere mal im n
+
+Ran adb shell am start -n de.noice.app/.MainActivity
+
+U Starting: Intent { cmp=de.noice.app/.Mainactivity }
+
+*wicking v2 - FreeCAD 1.1.3
+
+vax
+
+er
+
+6.0,
+
+mex"
+
+-40.0,
+
+"ey"
+
+-45.0,
+
+mez"
+
+52.5},
+
+6.0,
+
+weg"
+
+40.0,
+
+Wey"
+
+-45.0,
+
+Forge Studio
+
+4
+
+it Design
+
+Fenster
+
+Hilfe
+
+52.5},
+
+er"
+
+6.0,
+
+mex"
+
+-40.0,
+
+"ey"
+
+45.0,
+
+"ez"
+
+52.5},
+
+cr"
+
+6.0,
+
+wog"
+
+40.0,
+
+cy"
+
+45.0,
+
+You approved codex to always run commands that start with rg -m 2 'mResumedActivity|topResumedActivity"
+
+7
+
+mez"
+
+52.5},
+
+gr"
+
+20.0,
+
+Hex
+
+110.5,
+
+"cy"
+
+0.0,
+
+"ez"
+
+52.5},
+
+vr"
+
+Pye
+
+mex"
+
+110.5,
+
+"ey"
+
+Ran adb shell pidof de.noice.app; adb shell dumpsys activity activities | rg -m 2 'mResumedActivity|topResumedActivity'
+
+«aan © ©
+
+.a-?
+
+U 8223
+
+(3 more lines, ctrl+o to expand)
+
+=
+
+aim
+
+topResumedActivity=ActivityRecord{226807373 u® de.noice.app/.MainActivity 11847}
+
+re
+
+Oo Qe
+
+Ur! @6G0 £4484
+
+Noice wurde erfolgreich installiert und gestartet. Die App läuft aktuell im Vordergrund auf dem verbundenen Xiaomi-Gerat.
+
+@ Startseite
+
+Code
+
+)
+
+ZU dAImon Desktop Pet Design & Implementation dAlmon
+
+»
+
+ae
+
+Hintergrundaufgaben
+
+Worked for 5m 45s
+
+gun
+
+e
+
+ec
+
+B
+
+gung
+
+a
+
+p
+
++ Neu
+
+Läuft
+
+ungewöhnlicher Phonemfolge — „Ember"
+
+ist mit zwei Silben eher grenzwertig.
+
+& Artefakte
+
+check mal was ich aufgenonmen habe
+
+14
+
+Soll ich die restlichen vier Spikes durchziehen, oder erst das Aufnahme-Werkzeug für T-1.1 bauen?
+
+Spike T-13 layer-shell overlay
+
+Agent 02:38
+
+‘(>
+
+Dil
+
+Bes
+
+& Anpassen
+
+Audio oder Daten werden dabei nicht verändert.
+
+63.4k Tokens 20 Tool-Nutzungen Bash Transkript anzeige
+
+Ich lese die lokal gespeicherte Noice-Datenbank auf dem Gerät schreibgeschützt aus und prüfe Titel, Transkript, Sprache und Eintragstyp
+
+v
+
+Mehr
+
+Ran adb shell run-as de.noice.app find
+
+-maxdepth 3 -type f -printf '%p %s bytes\n'
+
+spike away ® Ti. kannst gerne auch bauen. Dann starte ich die Aufnahme für
+
+Spike T-1.10 OCR cost
+
+U find: bad arg '%s'
+
+"Embershard" das sind 3 Silben, sollte passen.
+
+Aufgaben
+
+Angeheftet
+
+Agent 02:18
+
+Ra
+
+in adb shell run-as de.noice.app ls -IR files databases
+
+W Start Part
+
+Godot-Plugin
+
+512k Tokens 19 Tool-Nutzungen Bash Transkript anzeige
+
+databases:
+
+total 84
+
+5
+
+Ghost
+
+& Neuer Körper
+
+„Embershard" — EM-ber-shard, drei Silben, ungewöhnliche Phonemfolge. Passt zur Persona und ist als Wake-Word
+
+Capture sparse desktop screenshot,
+
+„ +53 lines (ctrl + t to view transcript)
+
+Se
+
+1 u0_a394 u®_a394
+
+© 2026-07-27 2
+
+3 online_cmvn.conf
+
+improve_prompt_sonnet
+
+deutlich besser als „Ember".
+
+Bash 00:02
+
+Bo
+
+1 u0_a394 u0_a394
+
+35 2026-07-27 20:33 splice.conf
+
+improve_prompt_opus
+
+Zwei Spikes gehen an Agenten, das Aufnahmewerkzeug baue ich sofort.
+
+KKK,
+
+>
+
+Ran mktemp -d /tmp/noice-
+
+nspect
+
+improve_prompt_fable
+
+Fertig
+
+U /tmp/noice-inspect.HAKoIf
+
+Spike 1-13 layer-shell overlay >
+
+You approved codex to always run
+
+commands that start with adb exec-out run-as de.noice.app cat databases/noice.db > "/tmp/noice-inspect
+
+Modular entity system
+
+Jetzt das Aufnahmewerkzeug, Erst prüfen, was daist.
+
+Powerups ändern
+
+Ran adb exec-out run-as de.noice
+
+app cat databases/noice.db > '/tmp/noice-inspect .HAKoIf/noice.db'
+
+Ausgefihrt 3 Befehle >
+
+U (no output)
+
+Open Design
+
+Modell da. Jetzt „Embershard" tokenisieren.
+
+Forge Studio
+
+You approved codex to always run
+
+commands that start with adb exec-out run-as de.noice.app cat databases/noice.db-wal > '/tmp/noice-ins
+
+Ausgefihrt ein Befehl >
+
+Ran adb exec-out run-as de.noice
+
+app cat databases/noice.db-wal > '/tmp/noice-inspect.HAKoIf/noice.db-wal'
+
+Perf+Stabllity
+
+U (no output)
+
+_E M BER SH ARD — saubere Zerlegung, Jetzt das Aufnahmewerkzeug.
+
+MMC build generieren
+
+Erstellt 2 Dateien +305-0 >
+
+You approved codex to always run
+
+commands that start with adb exec-out run-as de.noice.app cat databases/noice.db-shm > '/tmp/noice-ins
+
+=
+
+Wetterdisplay
+
+Ran adb exec-out run-as de.noice
+
+app cat databases/noice.db-shm > '/tmp/noice-inspect.HAKoIf/noice.db-shm'
+
+Werkzeug testen, bevor du es benutzt — mit einer echten Aufnahme durch die ganze Kette.
+
+Mingda Magician Max settings opt
+
+U (no output)
+
+Bm
+
+Configuration update
+
+Ausgefihrt ein Befehl >
+
+Ran sqlite3 -header -column "/tmp/noice-inspect.HAKoIf/noice.db' "SELECT id, title, transcript, kind, taskState, language, durationtis, datetime(createdat/1000,
+
+"unixepoch',
+
+"localtine') AS created FROM
+
+entries ORDER BY createdAt DESC;"
+
+Zwei Probleme. Der Erkenner findet nichts auf den mitgelieferten Testdateien — das muss ich klären, sonst ist das
+
+l
+
+id
+
+title
+
+a
+
+Zuletzt verwendet
+
+transcript
+
+auch
+
+NE
+
+Ty
+
+Werkzeug wertlos.
+
+kind
+
+taskState
+
+language
+
+durationtis
+
+created
+
+„ +3 lines (ctrl + t to view transcript)
+
+puree
+
+\
+
+© dAImon Desktop Pet Design & Imp!
+
+Debugging KWS detection on bundled test files >
+
+d1c49b83-e7b5-4f9f-9940-4f8de9792270 Dies ist eine test aufnahme die soll
+
+dies ist eine test aufnahme die soll mir zeigen ob das s t
+
+t funktioniert und so wie es aussieht scheint zu funktionieren es
+
+GERMAN
+
+29158 2026-07-27 20:34:06
+
+BoRT Menü und Sprecher-Seite
+
+baut sogar sätze zusammen was es nicht kann sind wohl satzzeichen oder anführungszeichen oder so punkt INBOX OPEN
+
+3m 20s - 121.6k tokens - 3 laufende Aufgaben
+
+Cyberpunk 2077 Systemeinstellun
+
+|
+
+BoR Design und Dateinamen
+
+Du hast eine deutsche Testaufnahme von etwa 29 Sekunden gespeichert. Das erkannte Transkript lautet:
+
+IPv6-Konnektivität am PC reparier
+
+> „dies ist eine test aufnahme die soll mir zeigen ob das s t t funktioniert und so wie es aussieht scheint zu funktionieren es baut sogar
+
+sätze zusammen was es nicht kann sind wohl satzzeichen oder
+
+a
+
+daimon main
+
++1.214 -0
+
+PRerstellen
+
+> anführungszeichen oder so punkt“
+
+ee
+
+OneDrive Ordneranzeige langsam
+
+Sie liegt als offener Inbox-Eintrag vor. Die Live-Erkennung funktioniert also; sichtbar verbesserungswürdig sind Großschreibung, „STT“ als
+
+einzelne Buchstaben und Satzzeichen - ,,Punkt" wurde wörtlich
+
+MMC-Fertigstellungund nächste ©
+
+Tippe / für Befehle
+
+[a]
+
+transkribiert.
+
+emo:1* % GB Wicking Analyse:ı* X [ wicking v2:1* x
+
+Am
+
+Worked for 3m 495
+
+Bir
+
+TinkerCAD
+
+>
+
+776,26 mm x 404,32mm ~~
+
+@ druid max v
+
+Berechtigungen umgehen
+
++ av
+
+Opuss
+
+Mittel
+
+re}
+
+1 background terminal running
+
+/ps to view
+
+/stop to close
+
+= —
+
+y
+
+[4
+
+4
+
+a
+
+kannst du das verbessern? Ich mein das Ergebnis ist schon toll und macht was ich will, aber wenn du es verbessern kannst, dann gerne. wenn
+
+du willst kannst du ein kleines lokales LLM installieren dass den
+
+a
+
+output korrigiert. gemma4 vielleicht? mir gefällt die gestaffelte aufnahme |
+
+a
+
+~/Dokumente/Github/Noice
+
+Main [default]
+
+pt-5.6-sol medium
+
+|
+
+SESS
+
+cs
+
+ze
+
+Tr
+
+’
+
+r 7
+
+N
+
+N
+
+.
+
+7
+
+a
+
+2
+
+ki | v
+
+4
+
+-
+
+NT >
+
+nn
+
+o = a ey
+
+@eoasv
+
+2*8C2:%08
+
+27.07.26
+
+-ee0 DE
+
+gg ——
+
+—— 3
+
+—o
+
+en — — ee
+
+—
+
+_
+
+_

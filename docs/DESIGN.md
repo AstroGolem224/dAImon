@@ -803,6 +803,10 @@ Zwei Achsen zusätzlich zu MCPs Vokabular: **`reversible_by`** (die ID der Umkeh
 - **One-shot:** begrenzte, unveränderliche Ereignisfolge, danach **Prozessende samt Portal-Session**. `RuntimeMaxSec=` als Zwangsende.
 - **App-Allowlist statt Passwortfeld-Erkennung** — Letztere ist auf Wayland nicht ermittelbar und wird nicht behauptet. Sperrbildschirm bleibt harter Breaker (`org.freedesktop.ScreenSaver`).
 - **Immer `ask`, nie gecacht.** libei über Portal bevorzugt, `ydotool` als Rückfall.
+
+> **Befund aus Spike T−1.3 [V]:** `ydotool mousemove -a` ist auf dieser Maschine **unbrauchbar**. Jedes absolute Ziel landet bei `(0,0)` — Exit-Code 0, keine Fehlermeldung, Zeiger im Bildschirmeck. Über fünf verschiedene Ziele reproduziert.
+>
+> Nur relative Bewegung funktioniert, und die unterliegt der Zeigerbeschleunigung: ein `(30,30)`-Schritt kommt als `(53,53)` an. Eine Aktion „klicke auf Position X" ist über `ydotool` damit **nicht zuverlässig ausführbar** — was die Entscheidung gegen Pixelkoordinaten nachträglich stützt. Für den Input-Broker heißt das: libei ist nicht die bevorzugte, sondern die einzige brauchbare Option für alles, was Positionierung braucht.
 - Nur diese Unit hat `DeviceAllow=/dev/uinput rw`.
 - Audit protokolliert nur Länge und Klassenlabel, nie die Zeichen.
 
@@ -1007,8 +1011,21 @@ pro wl_output:
 
 Bildschirmfüllend, weil **Ziehen nicht über `set_margin` geht** — jede Margin-Änderung löst `scheduleRearrange()` plus configure-Roundtrip aus. Mit dem Pet als Subsurface ist Ziehen reine Client-Logik über `set_position`.
 
+> **Gemessen in Spike T−1.3 [V]**, auf genau dieser Maschine:
+>
+> | | |
+> |---|---|
+> | Sichtbar über einem Vollbildfenster | ja, per Pixelprobe mit Negativkontrolle |
+> | Idle-CPU | **0,17 %** eines Kerns |
+> | GPU-Kontext | **keiner** — null DRI-Deskriptoren, null GPU-Bibliotheken, ein memfd für `wl_shm` |
+> | Click-Through über `set_input_region` | ja, mit Negativkontrolle |
+>
+> Der GPU-Punkt ist der wichtigste: Die Entscheidung gegen einen GPU-Kontext ist damit **gemessen**, nicht nur begründet. Die NVIDIA-Blackwell-Risikoklasse ist real ausgeschlossen.
+>
+> **Wichtig für die Implementierung:** Eine Wayland-Surface **ohne** gesetzte Input-Region nimmt Eingaben auf ihrer **gesamten** Fläche entgegen. Bei einer bildschirmfüllenden Layer-Surface schluckt damit der ganze Schirm alle Klicks, und der Rechner ist mit der Maus nicht mehr bedienbar. Genau das ist im ersten Spike-Anlauf passiert — und im Journal stand nichts, weil aus Sicht des Compositors alles korrekt war. **Die leere Region ist die einzig sichere Vorgabe**, und sie muss vor dem ersten `commit` stehen.
+
 **Drei Fallen:**
-1. **KDE-Bug 503121 (offen).** Unmap über NULL-Buffer und Remap → KWin sendet **kein** `configure`. Abhilfe: Properties vor dem Remap neu setzen, oder Surface neu erzeugen.
+1. **KDE-Bug 503121 (offen), reproduziert [V].** Unmap über NULL-Buffer und Remap liefert **0 von 20** `configure`. Beide Umgehungen liefern **20 von 20**. Gewählt: **Properties vor dem Remap neu setzen** — billiger als die Surface neu zu erzeugen.
 2. **Output-Removal zerstört die Surface hart.** Hotplug, DP-MST, Monitor-Sleep → neu erzeugen.
 3. **`layer = top` reicht nicht** — Fullscreen verdeckt es (Bug 510544, NOT-A-BUG).
 
@@ -1239,7 +1256,7 @@ Der Charakter ist austauschbar; die Persona-Datei ist der einzige Ort, an dem er
 | R3 | Injektion über beobachteten Inhalt | mittel | sehr hoch | Fähigkeitsentzug, Markierung, Deklassifizierungs-Gate; adversarialer Test nach P5 **und** nach dem Gedächtnis |
 | R4 | **Gefälschtes Audio** (Lautsprecher, Video, eigene TTS) | hoch | hoch | Sprache autorisiert nicht; `user_audio` nie ins Gedächtnis; Rückkopplungssperre mit Nachlauf |
 | R5 | **Markierungsverlust an einer Serialisierungsgrenze** | mittel | hoch | Typisierte Werte, geschützte Senken nehmen keine rohen Strings; Mutationstest je Grenze |
-| R6 | KDE-Bug 503121 bricht Ein-/Ausblenden | hoch | mittel | Properties vor Remap neu setzen, sonst Surface neu erzeugen |
+| R6 | ~~KDE-Bug 503121 bricht Ein-/Ausblenden~~ | — | — | **Entschaerft [V]:** reproduziert (0/20), Umgehung Properties-neu-setzen liefert 20/20 |
 | R7 | VRAM-Konflikt mit Spiel/Blender | hoch | mittel | Fullscreen-Gate, VRAM-Prüfung, Serialisierung, Prozess-Exit |
 | R8 | Portal-`restore_token` verfällt | mittel | niedrig | Nach jedem `Start` überschreiben; nie ohne interaktiven Fallback |
 | R9 | Undo-Artefakt scheitert | mittel | hoch | Mutation abbrechen; Artefakt nach Anlegen verifizieren |
@@ -1253,6 +1270,8 @@ Der Charakter ist austauschbar; die Persona-Datei ist der einzige Ort, an dem er
 | R17 | Dreizehn Dienste als Wartungslast | mittel | mittel | §2.1 nennt je Dienst die entfernte Fähigkeit; wer streicht, streicht die Trennung |
 | R18 | ~~Piper sucht einen Maintainer~~ | — | — | **Entfallen:** sherpa-onnx (Apache-2.0) ersetzt Piper als Bibliothek; die Stimmgewichte bleiben portabel |
 | R19 | NVIDIA R610 Color-Pipeline schwärzt den Bildschirm | niedrig | hoch | `nvidia-drm.color_pipeline=0`; betrifft das System |
+| R28 | **Overlay ohne Input-Region blockiert die Maus** | war hoch | **sehr hoch** | Leere Region ist Vorgabe und steht vor dem ersten `commit`; im Spike einmal real passiert **[V]** |
+| R29 | `ydotool -a` positioniert nicht | hoch | mittel | Belegt **[V]**: jedes absolute Ziel landet bei `(0,0)`. Nur libei fuer alles mit Positionierung |
 | R21 | **Pet liest injizierten oder geheimen Text vor** | mittel | hoch | Ungefragte Äußerungen nur aus Vorlagen; Antworten durch den Validator (§8.3), der im Hub sitzt |
 | R22 | Pet hängt auf `needs_input`, weil eine Session hart beendet wurde | hoch | mittel | Lease mit PID-Prüfung statt Stunden-TTL (§7.8) |
 | R23 | **Gatter verpasst Inhaltsänderungen still** | war hoch | hoch | Gekacheltes dHash ersetzt durch Zuschnitt auf Textregionen plus quantisierte Signatur (§4.4) — screenpipe hat unseren Ansatz zweimal verworfen |

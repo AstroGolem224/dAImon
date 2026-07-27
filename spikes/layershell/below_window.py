@@ -20,13 +20,29 @@ cv = tk.Canvas(root, bg=color, highlightthickness=0)
 cv.pack(fill="both", expand=True)
 
 
-def onclick(ev):
+def write(line):
     with open(logfile, "a") as fh:
-        fh.write(f"click {ev.x_root} {ev.y_root}\n")
+        fh.write(line + "\n")
         fh.flush()
 
 
+def onclick(ev):
+    write(f"click {ev.x_root} {ev.y_root}")
+
+
+last = [None]
+
+
+def onmotion(ev):
+    # gedrosselt: nur wenn sich die Position spuerbar geaendert hat.
+    p = (ev.x_root // 20, ev.y_root // 20)
+    if p != last[0]:
+        last[0] = p
+        write(f"motion {ev.x_root} {ev.y_root}")
+
+
 cv.bind("<Button-1>", onclick)
+cv.bind("<Motion>", onmotion)
 root.after(timeout * 1000, root.destroy)
 with open(logfile, "a") as fh:
     fh.write("ready\n")
