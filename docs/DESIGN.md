@@ -1,13 +1,13 @@
 # dAImon — Design-Dokument
 
-**Version:** 4.0 (Review Runden 1–5; Nacharbeit und Prior-Art-Einarbeitung ungeprüft)
+**Version:** 5.0 — Dauermitschnitt aufgenommen (Review Runden 1–5; Nacharbeit und Prior-Art-Einarbeitung ungeprüft)
 **Datum:** 2026-07-27
 **Repo:** `/home/itiger013/Dokumente/Github/dAImon`
 **Zielsystem:** CachyOS (Arch), Kernel 7.1.5, KDE Plasma 6.7.3 / KWin 6.7.3 auf Wayland, RTX 5090 (32 GB, Treiber 610.43.02, sm_120), 24 Threads, 30 GB RAM, `/home` auf btrfs, PipeWire 1.6.8, fish-Shell.
 
 Alle mit **[V]** markierten Aussagen wurden auf genau dieser Maschine verifiziert. **[U]** markiert Unverifiziertes.
 
-> **§1.2 zuerst lesen.** Ohne das Bedrohungsmodell klingt jede folgende Zusage stärker, als sie ist.
+> **§1.3 zuerst lesen.** Ohne das Bedrohungsmodell klingt jede folgende Zusage stärker, als sie ist.
 >
 > v3.0 ist eine vollständige Neufassung, keine Flickenversion. v2.1 hatte das Bedrohungsmodell vorangestellt, aber die abhängigen Abschnitte nicht nachgezogen — sie beschrieben weiter die abgelöste Mechanik. Änderungsprotokoll in §16.
 
@@ -21,7 +21,8 @@ dAImon ist ein Desktop-Familiar: eine kleine, dauerhaft sichtbare Figur am Bilds
 2. **zuhört** und antwortet, wenn sie angesprochen wird,
 3. **mitliest**, was auf dem Bildschirm passiert, um Fragen im Kontext zu beantworten,
 4. **auf ausdrückliche Anforderung den PC steuert**, beschränkt auf eine geprüfte Whitelist,
-5. **einen Charakter hat**, der in einer Datei definiert ist.
+5. **mitschneidet**, was auf dem Bildschirm passiert und was gesprochen wird, damit später danach gesucht werden kann,
+6. **einen Charakter hat**, der in einer Datei definiert ist.
 
 Der Nutzwert steht und fällt mit Punkt 1: am Rand des Blickfelds zu sehen, dass ein Agent auf eine Freigabe wartet, ohne ins Terminal zu schauen.
 
@@ -29,8 +30,9 @@ Der Nutzwert steht und fällt mit Punkt 1: am Rand des Blickfelds zu sehen, dass
 
 | Nicht-Ziel | Begründung |
 |---|---|
-| Dauerhafte Aufzeichnung von Audio oder Bildschirm | Ringpuffer im RAM, nichts auf Platte |
-| Cloud-Verarbeitung passiver Wahrnehmung ohne Nutzerauslösung | Netzsperre **und** Deklassifizierungs-Gate (§7.2) |
+
+| Cloud-Verarbeitung des Mitschnitts ohne Nutzerauslösung | Netzsperre **und** Deklassifizierungs-Gate (§7.2). Das Archiv liegt lokal und wird nur auf Nachfrage durchsucht |
+| Automatisches Durchsuchen des Archivs durch das Modell | Ausdrücklich abgewählt. Proaktives Verhalten sieht die Historie nicht — sonst wäre die Injektionsfläche die gesamte aufgezeichnete Vergangenheit statt des aktuellen Bildschirms |
 | Freie Maus-/Tastatursteuerung im Computer-Use-Stil | Synthetische Eingabe ist unklassifizierbar (§6.7) |
 | Multi-User, Fernsteuerung | Ein Rechner, ein Nutzer |
 | Plattformportabilität | Linux/Wayland/KDE |
@@ -38,11 +40,47 @@ Der Nutzwert steht und fällt mit Punkt 1: am Rand des Blickfelds zu sehen, dass
 | Persistenz des Session-Status über Neustarts | Ein Live-Status, der Totes anzeigt, lügt |
 | Erkennung, ob ein Passwortfeld fokussiert ist | Aus Wayland-Fenstermetadaten nicht ermittelbar |
 | Sprachbefehle als Autorisierung | Audio ist nicht authentifizierbar (§4.6) |
-| **Abwehr eines Angreifers mit Codeausführung unter derselben uid** | Nicht leistbar (§1.2) |
+| **Abwehr eines Angreifers mit Codeausführung unter derselben uid** | Nicht leistbar (§1.3) |
+
+### 1.2 Dauermitschnitt
+
+Ausdrücklich gewollt: dAImon schneidet Bildschirm und Ton durchgehend mit, damit später gesucht werden kann. Das kehrt eine Entscheidung aus v1.0 um und zieht Folgen nach sich, die hier stehen, damit sie nicht später überraschen.
+
+**Umfang und Aufbewahrung**
+
+| Was | Wie lange | Wo |
+|---|---|---|
+| OCR-Text, Fenstertitel, Zeitstempel | **30 Tage** | SQLite mit Volltextindex |
+| Transkript gesprochener Abschnitte | **30 Tage** | dieselbe Datenbank |
+| Frames als JPEG | **48 Stunden**, danach nur noch der Text | Verzeichnis unter `$XDG_DATA_HOME` |
+| Rohaudio | **gar nicht** — nur das Transkript überlebt den Abschnitt | — |
+
+Ein Aufräumer läuft stündlich. Zusätzlich eine harte Obergrenze in Gigabyte mit Verdrängung der ältesten Einträge, damit eine volle Platte kein Betriebszustand wird.
+
+**Der Ton ist der heikle Teil, und zwar nicht technisch.**
+
+Ein Bildschirmmitschnitt erfasst überwiegend eigenes Tun. Ein Tonmitschnitt erfasst **Dritte** — Gesprächspartner in Videokonferenzen, Menschen im Raum, Anrufe. In Deutschland ist die Aufnahme des nichtöffentlich gesprochenen Worts ohne Einwilligung nach **§201 StGB** strafbar, und zwar unabhängig davon, wem der Rechner gehört. Das ist keine Frage der Repository-Lizenz.
+
+Daraus folgen drei Dinge, die nicht optional sind:
+
+1. **Ein Pausenschalter, der zuverlässig ist.** Globaler Hotkey, plus **automatische Pause**, sobald eine Konferenzanwendung den Fokus hat oder ein Mikrofonstream einer fremden Anwendung aktiv ist. Die Liste ist konfigurierbar und standardmäßig gefüllt.
+2. **Die Pause pausiert den Ton, nicht nur die Transkription.** Wie in §4.2: Der Capture-Stream wird geschlossen, nicht stummgeschaltet — sonst lügt das Plasma-Mikrofonsymbol.
+3. **Sichtbarkeit.** Solange der Tonmitschnitt läuft, zeigt das Pet es an. Nicht in einem Einstellungsdialog, sondern am Sprite.
+
+**Die Datenbank ist eine neue Angriffsfläche.** Bisher war der beobachtete Kontext auf die letzten Fenster begrenzt und flüchtig. Jetzt liegt dreißig Tage durchsuchbarer Text auf der Platte. Konsequenzen:
+
+- Der gesamte Archivinhalt ist **`tainted`** (§5.2). Ein Suchtreffer ist kein vertrauenswürdiger Text, nur weil er aus der eigenen Datenbank kommt — er stammt ursprünglich vom Bildschirm.
+- Suchtreffer gehen durch **dasselbe Deklassifizierungs-Gate** wie Live-Kontext: nur unter frischer Rundenmarke, nur mit erkennbarem Bezug, und nur der Treffer, nicht die Umgebung.
+- Die Redaktionsliste läuft **vor dem Schreiben**, nicht als Nachbearbeitung. Screenpipe redigiert im Hintergrund und lässt Rohdaten zuerst auf die Platte — das ist die falsche Reihenfolge.
+- Verzeichnis 0700, Datenbank 0600. Ein Angreifer mit derselben uid liest sie trotzdem (§1.3) — das ist der Preis, und er steht hier, statt beschönigt zu werden.
+
+**Anwendungs-Denylist.** Passwortmanager, Banking, und was der Nutzer ergänzt, werden **gar nicht erst erfasst** — die Prüfung sitzt vor dem Diff und vor dem Schreiben. Dazu die DRM-Prüfung aus §4.4.
+
+**Ein zeitlich begrenzter Privatmodus** setzt alles auf `transient` und schreibt nichts.
 
 ---
 
-## 1.2 Bedrohungsmodell
+## 1.3 Bedrohungsmodell
 
 ### Im Umfang
 
@@ -105,7 +143,7 @@ Er wird deshalb bewusst klein gehalten und behandelt **jede** Eingabe als unvert
 
 ### 2.1 Dienstverzeichnis
 
-Kanonisch. Jede Zählung und jedes Diagramm leitet sich hieraus ab: **dreizehn eigene Dienste** plus ein KWin-Script und einen im GPU-Worker gestarteten Hilfsprozess.
+Kanonisch. Jede Zählung und jedes Diagramm leitet sich hieraus ab: **vierzehn eigene Dienste** plus ein KWin-Script und einen im GPU-Worker gestarteten Hilfsprozess.
 
 | # | Unit | Alleinige Fähigkeit | Netz | Grenze entfernt welche Fähigkeit |
 |---|---|---|---|---|
@@ -122,8 +160,9 @@ Kanonisch. Jede Zählung und jedes Diagramm leitet sich hieraus ab: **dreizehn e
 | 11 | `daimon-exec` | App-Start | nein | Startet fremden Code |
 | 12 | `daimon-input` | `/dev/uinput` bzw. libei | nein | Gefährlichste Fähigkeit, one-shot |
 | 13 | `daimon-face` | Wayland-Surface, Audioausgabe | nein | Rendert Modelltext, erteilt daher keine Freigaben |
+| 14 | `daimon-recorder` | **Schreibzugriff aufs Archiv**, Aufräumer | nein | Einziger Prozess, der dauerhaft auf Platte schreibt; getrennt von `eyes`, damit die Live-Wahrnehmung lesend bleibt |
 
-Dreizehn Zeilen, dreizehn Dienste. Dazu: KWin-Script `daimon-watcher` (läuft im Compositor, read-only), `xdg-dbus-proxy` (in `daimon-dbus`), `llama-server` (im GPU-Worker-Prozessbaum, §5.4).
+Vierzehn Zeilen, vierzehn Dienste. Dazu: KWin-Script `daimon-watcher` (läuft im Compositor, read-only), `xdg-dbus-proxy` (in `daimon-dbus`), `llama-server` (im GPU-Worker-Prozessbaum, §5.4).
 
 Zusammengelegt wurde, wo keine Grenze entsteht: alle GPU-Modelltypen teilen eine Template-Unit und einen Worker-Code — gleiche Fähigkeit, gleiche Vertrauensstufe.
 
@@ -325,6 +364,20 @@ graph LR
     KWS -->|"kein Treffer"| DROP["Ring verwerfen"]
     STT --> HUB
 ```
+
+**Zwei Tonpfade, verschiedene Zwecke.**
+
+```
+Mikrofon (ein Stream)
+  ├─ Ansprache-Pfad  → VAD → Rückkopplungssperre → Wake-Word → STT → Anfrage
+  └─ Archiv-Pfad     → VAD → STT nur der Sprachabschnitte → SQLite (30 Tage)
+```
+
+Der Archiv-Pfad transkribiert **nur erkannte Sprachabschnitte**, nicht die Stille dazwischen — sonst liefe die GPU durchgehend, was gegen die Residenzpolitik aus §5.4 verstößt. Bei anhaltender Sprache bleibt der STT-Arbeitsprozess warm, bei Stille beendet er sich wie gehabt.
+
+**Rohaudio überlebt den Abschnitt nicht.** Nur das Transkript wird geschrieben. Der Ringpuffer bleibt, was er war: 20 Sekunden im Arbeitsspeicher, `mlock`, nie auf Platte.
+
+Beide Pfade hängen am selben Stream und werden vom Pausenschalter aus §1.2 **gemeinsam** abgeschaltet — durch Schließen des Streams, nicht durch ein Flag (§4.2).
 
 Gemessen **[V]**:
 
@@ -649,7 +702,7 @@ sequenceDiagram
 
 ### 6.2 Der Ausführungsauftrag
 
-> **Keine Signatur.** v2.0 sah einen HMAC mit einem Schlüssel vor, der „nur im Hub" liegen sollte — womit kein Broker hätte prüfen können. Verteilt man ihn, kann jeder Broker fälschen. Und nach §1.2 ist er für den ausgeschlossenen Angreifer ohnehin per `ptrace` lesbar. Zeremonie, entfernt.
+> **Keine Signatur.** v2.0 sah einen HMAC mit einem Schlüssel vor, der „nur im Hub" liegen sollte — womit kein Broker hätte prüfen können. Verteilt man ihn, kann jeder Broker fälschen. Und nach §1.3 ist er für den ausgeschlossenen Angreifer ohnehin per `ptrace` lesbar. Zeremonie, entfernt.
 
 ```json
 {"v": 1, "audience": "daimon-dbus", "schema": 3,
@@ -799,7 +852,7 @@ Das ist eine **Kernelgrenze** und gilt daher auch gegen einen kompromittierten e
 
 Zusammengefasst: *Passiv Wahrgenommenes erreicht die Cloud nur, wenn der Nutzer in derselben Runde Push-to-Talk ausgelöst und nach dem Bildschirm gefragt hat.* Die Domain-Beschränkung bleibt eine Anwendungsprüfung, keine Kernelgrenze — aber sie liegt in einem Prozess, der keinen Modellinhalt auswertet, und das Kontingent kommt von außen.
 
-### 7.2d Gestaffelte Aufbewahrung
+### 7.2d Aufbewahrung im Archiv
 
 Ein einheitliches „letzte 20 Einträge" für alles war zu grob. Fenstertitel sind wenig verräterisch und lange nützlich; OCR-Text kann eine halbe Mail enthalten; eine VLM-Beschreibung ist eine Zusammenfassung von allem Sichtbaren. Vier Stufen, nach dem Vorbild von `openblob`:
 
@@ -820,7 +873,7 @@ Ist die Bildschirmwahrnehmung abgeschaltet, fällt alles auf `transient`. Ein ze
 - **Sitzungsidentität hängt an `contextvars`, nie an Umgebungsvariablen oder Prozess-globalem Zustand.** Hermes hatte hier eine gemeldete Schwachstelle: Der `finally`-Block einer Sitzung stellte eine Umgebungsvariable wieder her und überschrieb dabei die einer nebenläufigen — die fiel damit auf den Auto-Genehmigen-Pfad. Wir haben nebenläufige Runden, Marken und Tickets; das ist unser Fehler in spe.
 - **Umschaltbare Sicherheitsflaggen werden beim Import eingefroren**, nicht bei jedem Zugriff gelesen. Sonst kann alles, was später in den Prozess geladen wird, sie umlegen.
 
-> **Was das leistet:** Es fängt Verwechslung, Fehlkonfiguration und einen kompromittierten *eigenen* Prozess, der sich als anderer ausgeben will. Es schließt **keinen** same-uid-Angreifer aus (§1.2) — der kann die Unit ersetzen, deren Socket erben oder den Hub direkt lesen. Peer-Prüfung ist ein Wegweiser, keine Authentifizierung.
+> **Was das leistet:** Es fängt Verwechslung, Fehlkonfiguration und einen kompromittierten *eigenen* Prozess, der sich als anderer ausgeben will. Es schließt **keinen** same-uid-Angreifer aus (§1.3) — der kann die Unit ersetzen, deren Socket erben oder den Hub direkt lesen. Peer-Prüfung ist ein Wegweiser, keine Authentifizierung.
 
 - **Die Hook-Bridge** ist der einzige nicht per Peer-Credential absicherbare Punkt (`curl` spricht aus dem Hook-Kommando). Sie nutzt ein Shared Secret aus `$XDG_RUNTIME_DIR/daimon/hook-token` (0600). Ohne Token: 401 plus Audit-Eintrag.
 - Die Bridge validiert das Schema, deckelt `Content-Length`, setzt Lese-Timeouts, nutzt **exakte Routen** statt Präfix-Matching und begrenzt die Nebenläufigkeit. Der `ThreadingHTTPServer` aus `pet_daemon.py` tut nichts davon.
@@ -871,6 +924,7 @@ InaccessiblePaths=%h/.ssh %h/.gnupg %h/.local/share/keyrings %h/.pki
 | `exec` | `ProtectHome=read-only`; gestartete Apps landen über `systemd-run --user` **außerhalb** dieser Sandbox |
 | `input` | `PrivateDevices=no`, `DeviceAllow=/dev/uinput rw`, `RuntimeMaxSec=` |
 | `gpu@` | `PrivateDevices=no` (braucht `/dev/nvidia*`), kein `MemoryDenyWriteExecute` |
+| `recorder` | `ProtectHome=tmpfs` + `ReadWritePaths=` nur fürs Archivverzeichnis; kein Netz; kein Modelltext |
 
 Unter voller Härtung getestet **[V]**: DBus funktioniert, Wayland-Socket sichtbar, `wl-paste` funktioniert; blockiert sind Schreiben in `$HOME` und `/dev/uinput`.
 
@@ -1313,10 +1367,10 @@ Runde 3 fand vor allem, dass v2.1 seine eigene Kehrtwende **nicht durchgezogen**
 
 | # | Was v2.1 noch tat | Was jetzt gilt |
 |---|---|---|
-| A | §2.3, §4.6, §5.1, §6.1, §7.1, §7.3, §7.5, §11 beschrieben `cap_handle`, HMAC, Face-eigenes PTT, Mind mit Token | Vollständig neu gefasst und gegen §1.2 abgeglichen; **Sprachregelung** in §1.2 verbindlich |
+| A | §2.3, §4.6, §5.1, §6.1, §7.1, §7.3, §7.5, §11 beschrieben `cap_handle`, HMAC, Face-eigenes PTT, Mind mit Token | Vollständig neu gefasst und gegen §1.2 abgeglichen; **Sprachregelung** in §1.3 verbindlich |
 | B | „elf Units", an anderer Stelle „acht" und „dreizehn" | **§2.1 ist das kanonische Verzeichnis**: dreizehn Dienste plus Script und Hilfsprozess; alle Zählungen leiten sich daraus ab |
-| C | Hub implizit angriffsflächenfrei | **Als vertrauenswürdige Basis benannt**, mit Eingabevalidierung und Fehlergrenzen (§1.2) |
-| D | `SO_PEERCRED` „verhindert Fälschung" | Peer-Prüfung ist ein **Wegweiser**, keine Authentifizierung (§1.2, §7.3) |
+| C | Hub implizit angriffsflächenfrei | **Als vertrauenswürdige Basis benannt**, mit Eingabevalidierung und Fehlergrenzen (§1.3) |
+| D | `SO_PEERCRED` „verhindert Fälschung" | Peer-Prüfung ist ein **Wegweiser**, keine Authentifizierung (§1.3, §7.3) |
 | E | Direktbefehl-Ausnahme ohne Definition | **Katalogflag `direct: true` UND Hub-Parser**; modellabgeleitete Aktionen gehen immer durch die Vorschau (§2.4) |
 | F | Auth „rendert nie Modelltext", sollte aber bestätigen | **Feste Vorlage mit escapten, begrenzten, zitierten Werten**; als Senke in §5.2 geführt |
 | G | `user` umfasste Wake-Word-Audio | **`user_ptt` und `user_audio` getrennt**; `user_audio` erreicht weder Durchgang 1 noch Gedächtnis |

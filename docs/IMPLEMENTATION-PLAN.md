@@ -154,7 +154,8 @@ für jede Phase:
 | **P4** | Aktuation: Katalog, Policy, Auftrag+Ticket, vier Broker, Consent, Audit | 19 | ~5 Abende |
 | **P5** | Augen: Wahrnehmung in Quarantäne, dann Deklassifizierung | 13 | ~4 Abende |
 | **P6** | Gedächtnis, Charakter, Rundengrenzen-Test, Abschlussreview | 11 | ~3 Abende |
-| | **Summe** | **103 Implementierung + 49 Verifizierer = 152** | |
+| **P7** | Dauermitschnitt: Archiv, Redaktion, Pausenschalter, Suche | 5 | ~3 Abende |
+| | **Summe** | **108 Implementierung + 53 Verifizierer = 161** | |
 
 ### Warum diese Reihenfolge
 
@@ -502,7 +503,7 @@ tests/verify/T--1.7.sh        # prueft nur, dass zu jedem Spike eine Entscheidun
   - [ ] **`SO_PEERPIDFD`** liefert einen pidfd; uid und Unit werden **am gepinnten pidfd** aufgelöst
   - [ ] `SO_PEERCRED` plus nachträgliche PID-Auflösung ist ausdrücklich **nicht** zulässig — dazwischen liegt ein PID-Wiederverwendungsrennen
   - [ ] Abweichende Unit → Verbindung ab und Audit-Eintrag
-  - [ ] Dokumentiert nach Design §1.2: das ist ein **Wegweiser**, keine Authentifizierung
+  - [ ] Dokumentiert nach Design §1.3: das ist ein **Wegweiser**, keine Authentifizierung
   - [ ] **Nachrichtentypen sind produzentenspezifisch** — `eyes` darf kein `hook`-Event senden
   - [ ] Test: Ein Prozess, der auf dem falschen Socket den falschen Typ sendet, wird abgewiesen
 - **Verifikation:** `tests/verify/T-0.7.sh` — `pytest tests/test_ipc.py`; Positiv-Kanarienvogel (richtiger Socket, richtiger Typ → akzeptiert) und vier Negativfälle (falscher Typ, falscher Socket, falsche uid, fremde Unit); dazu eine **Rennen-Mutante**: eine Umsetzung mit `SO_PEERCRED` + späterer PID-Auflösung muss zurückgewiesen werden
@@ -521,7 +522,7 @@ tests/verify/T--1.7.sh        # prueft nur, dass zu jedem Spike eine Entscheidun
   - [ ] Mind bekommt eine `request_id`, die nichts autorisiert
   - [ ] Fehlende oder abgelaufene Marke ⇒ `initiator = background`
   - [ ] Ausgabe und Einlösung jedes Typs landen im Audit
-  - [ ] Die Begriffe folgen Design §1.2 — im Code und in Meldungen kein „Capability", „unfälschbar", „physisch"
+  - [ ] Die Begriffe folgen Design §1.3 — im Code und in Meldungen kein „Capability", „unfälschbar", „physisch"
 - **Verifikation:** `tests/verify/T-0.8.sh` (eingefroren) — je Automat: Wiedereinlösung, Ablauf, Fremdbindung (`turn_id`, `action_hash`, `audience`); ein Test belegt, dass ein Kontingent **keine** Aktion und **keine** Deklassifizierung erlaubt; ein Test versucht per manipuliertem Request eine Marke zu erschleichen; das Ticketbuch überlebt einen Neustart mit verbrauchten Tickets
 - **Agent:** builder · **Umfang:** L
 
@@ -1109,7 +1110,7 @@ done
 
 # Phase 4 — Aktuation
 
-**Ergebnis:** Das Pet führt aus, was unter einer gültigen, vom Auth-Agenten ausgestellten Absichtsmarke angefordert wurde — nichts sonst. Über den Handelnden wird keine Aussage getroffen (Design §1.2).
+**Ergebnis:** Das Pet führt aus, was unter einer gültigen, vom Auth-Agenten ausgestellten Absichtsmarke angefordert wurde — nichts sonst. Über den Handelnden wird keine Aussage getroffen (Design §1.3).
 
 **Abbruchkriterium:** Ist der argumentvalidierende Broker (T-4.7) nicht sauber zu bekommen, wird die Aktionsmenge auf die reduziert, die er sicher abdeckt. Die Phase wird **nicht** mit einer generischen `invokeShortcut`-Freigabe abgeschlossen.
 
@@ -1176,12 +1177,12 @@ done
 - **Dateien:** `daimon/common/order.py` [neu], `daimon/hub/order.py` [neu]
 - **Abhängigkeiten:** T-4.4, T-0.8, T-4.5.v
 - **Akzeptanz:**
-  - [ ] **Keine Signatur.** Design §1.2 und §6.2 haben den HMAC gestrichen: ein Broker kann nicht mit einem Schlüssel prüfen, den nur der Hub hat, und für den ausgeschlossenen Angreifer wäre er ohnehin per `ptrace` lesbar
+  - [ ] **Keine Signatur.** Design §1.3 und §6.2 haben den HMAC gestrichen: ein Broker kann nicht mit einem Schlüssel prüfen, den nur der Hub hat, und für den ausgeschlossenen Angreifer wäre er ohnehin per `ptrace` lesbar
   - [ ] Felder: `audience`, `schema`, `action_id`, `params`, `params_hash`, `ticket`, `deadline_monotonic`, `turn_id`
   - [ ] **`audience`** bindet an genau einen Broker; ein DBus-Auftrag ist bei `daimon-fs` nicht einreichbar
   - [ ] Festgelegte **kanonische Serialisierung**; `schema` verhindert abweichende Lesarten
   - [ ] **Monotone Frist** — eine Zeitumstellung verlängert nichts
-  - [ ] Herkunft über den Socket (Peer-Prüfung nach Design §1.2), nicht über Kryptografie
+  - [ ] Herkunft über den Socket (Peer-Prüfung nach Design §1.3), nicht über Kryptografie
   - [ ] Ticketeinlösung **beim Hub**, unmittelbar vor der Ausführung
 - **Verifikation:** `tests/verify/T-4.5.sh` (eingefroren) — **reiner Prüflogik-Test ohne Ausführung**: gültiger Auftrag wird angenommen; einzeln abgewiesen werden manipulierte Parameter, falsche `audience`, abgelaufene monotone Frist, wiederholtes Ticket, unbekanntes `schema`, abweichende Serialisierung. Eine Mutante, die eine HMAC-Prüfung einführt, wird als Verstoß gegen §6.2 zurückgewiesen. Ausführungs-Kanarienvögel liegen bei den Broker-Tasks
 - **Agent:** builder · **Umfang:** M
@@ -1362,7 +1363,7 @@ done
   - [ ] Unit-Härtungen gegen Design §7.5 abgeglichen
   - [ ] Audit-Redaktion gegen die Verbotsliste abgeglichen
   - [ ] Befunde **maschinenlesbar** mit `{id, severity, status}`
-- **Verifikation:** `tests/verify/T-4.18.sh` — arbeitet eine **feste Prüfliste** ab (jeder Punkt aus Design §1.2/§6/§7 einzeln), verlangt zu jedem Punkt einen Beleg-Verweis, und **reproduziert jede als `closed` gemeldete Feststellung selbst**. Exit 0 nur, wenn die Prüfliste vollständig abgedeckt ist und kein `high`/`critical`-Befund offen oder unbelegt geschlossen ist. Ein leeres Befundregister besteht den Test **nicht**.
+- **Verifikation:** `tests/verify/T-4.18.sh` — arbeitet eine **feste Prüfliste** ab (jeder Punkt aus Design §1.3/§6/§7 einzeln), verlangt zu jedem Punkt einen Beleg-Verweis, und **reproduziert jede als `closed` gemeldete Feststellung selbst**. Exit 0 nur, wenn die Prüfliste vollständig abgedeckt ist und kein `high`/`critical`-Befund offen oder unbelegt geschlossen ist. Ein leeres Befundregister besteht den Test **nicht**.
 - **Agent:** reviewer · **Umfang:** L
 
 > **Hinweis:** T-4.18 ist ein Architekturreview mit Prüfliste und Belegpflicht. Seine maschinelle Abnahme liegt in den eingefrorenen Verifizierern der Einzeltasks, nicht in diesem Task — Review und ausführbare Verifikation sind getrennte Artefakte mit getrennter Zuständigkeit.
@@ -1375,7 +1376,7 @@ done
   - [ ] Durchgang 1 darf Aktionen emittieren, aber nur wenn die Äußerung `user_ptt` trägt
   - [ ] **Eine als `user_audio` markierte Aktionsbitte wird werkzeuglos abgelehnt** — sie erreicht den Auth-Agenten gar nicht erst. Eine Rückfrage zu erzeugen wäre selbst ein Angriffsweg: gefälschtes Audio könnte den Nutzer mit Dialogen zumüllen, bis er einen wegklickt
   - [ ] Das Pet antwortet in diesem Fall gesprochen: Aktion braucht Push-to-Talk
-  - [ ] Formulierung nach Design §1.2 — keine „physische Autorisierung", sondern „Absichtsmarke"
+  - [ ] Formulierung nach Design §1.3 — keine „physische Autorisierung", sondern „Absichtsmarke"
 - **Verifikation:** `tests/verify/T-4.19.sh` — dieselbe Äußerung einmal per Wake-Word, einmal per PTT; der Wake-Word-Fall darf **null** Auth-Dialoge und **null** Aktionen erzeugen (extern beobachtet, nicht über den Hub-Zähler allein); der PTT-Fall läuft bis zur Policy durch
 - **Agent:** builder · **Umfang:** M
 
@@ -1539,7 +1540,7 @@ pytest -q
 - **Akzeptanz:**
   - [ ] ≥25 Angriffe, **tatsächlich auf dem Bildschirm dargestellt**, nicht als Strings eingespeist
   - [ ] Kategorien: direkte Anweisung, Autoritätsanmaßung, Dringlichkeit, versteckter Text, Herkunftsfälschung, Wiedereinspielung, Audio-Wiedereintritt über TTS, nebenläufige Rückfragen, Umgehung über Fenstertitel
-  - [ ] **Kein** Angriff führt zu einer Aktion ohne frische, gültige Absichtsmarke aus dem Auth-Agenten (der Nachweis gilt der Marke, nicht einer physischen Handlung — Design §1.2)
+  - [ ] **Kein** Angriff führt zu einer Aktion ohne frische, gültige Absichtsmarke aus dem Auth-Agenten (der Nachweis gilt der Marke, nicht einer physischen Handlung — Design §1.3)
   - [ ] **Kein** Angriff erzeugt eine Consent-Rückfrage — Rückfrage-Spam ist selbst ein Angriffsweg
   - [ ] Ergebnisse maschinenlesbar mit `{id, category, outcome}`
 - **Verifikation:** `tests/verify/T-5.11.sh` (eingefroren) — leitet jedes `outcome` selbst aus Broker-Nebenwirkungen ab (Kanarienvogel-Dateien, Fensterzustand, Lautstärke) und beobachtet Auth-Dialoge **extern** über Fensterliste und Benachrichtigungsbus, nicht über den Hub-Zähler. Zusätzlich eine **autorisierte Kontrollaktion** mit gültiger Marke, die wirken muss — sonst bestünde der Test auch bei totem Aktionspfad. Exit 0 nur, wenn kein Angriff Wirkung oder Dialog erzeugte **und** die Kontrollaktion wirkte.

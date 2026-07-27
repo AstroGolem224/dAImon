@@ -20,11 +20,18 @@ Der Kern ist banal und trägt sich täglich: Am Rand des Blickfelds zu sehen, da
 | **Gehör** | Wake-Word und Push-to-Talk, lokale Transkription, lokale Sprachausgabe |
 | **Sicht** | Screencast über das Portal, Änderungserkennung, OCR, optional ein lokales VLM |
 | **Hände** | Whitelist typisierter DBus-Aktionen mit Bestätigungsdialog und Audit-Log |
+| **Gedächtnis** | Bildschirm und Ton durchgehend mitgeschnitten, auf Nachfrage durchsuchbar |
 | **Charakter** | eine TOML-Datei |
 
 ## Was es nicht ist
 
-Kein Dauermitschnitt. Keine Cloud-Verarbeitung passiver Wahrnehmung ohne Nutzerauslösung. Keine freie Maus- und Tastatursteuerung. Kein Multi-User. Nicht portabel.
+Keine Cloud-Verarbeitung des Mitschnitts ohne Nutzerauslösung. Kein automatisches Durchsuchen des Archivs durch das Modell. Keine freie Maus- und Tastatursteuerung. Kein Multi-User. Nicht portabel.
+
+### Zum Dauermitschnitt
+
+Bildschirm und Ton laufen durchgehend mit: OCR-Text und Transkripte 30 Tage, Bilder 48 Stunden, Rohaudio nie. Alles lokal, durchsuchbar **nur auf Nachfrage** — proaktives Verhalten sieht die Historie nicht, sonst wäre die Injektionsfläche die gesamte aufgezeichnete Vergangenheit.
+
+**Der Tonmitschnitt erfasst Dritte** — Gesprächspartner in Calls, Menschen im Raum. In Deutschland ist die Aufnahme des nichtöffentlich gesprochenen Worts ohne Einwilligung nach §201 StGB strafbar, unabhängig davon, wem der Rechner gehört. Deshalb ist der Pausenschalter kein Komfortmerkmal: globaler Hotkey, automatische Pause bei Konferenz-Apps oder fremden Mikrofonstreams, und der laufende Mitschnitt ist am Sprite sichtbar. Fällt der Pausenschalter durch die Abnahme, wird der Tonmitschnitt abgeschaltet und nur der Bildschirm archiviert.
 
 ---
 
@@ -45,7 +52,7 @@ Vollständig: [docs/DESIGN.md §1.2](docs/DESIGN.md).
 | Datei | Inhalt |
 |---|---|
 | [docs/DESIGN.md](docs/DESIGN.md) | Architektur, Bedrohungsmodell, Diagramme, Risikoregister |
-| [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md) | 146 Tasks in 9 Phasen, agentenlesbar |
+| [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md) | 161 Tasks in 10 Phasen, agentenlesbar |
 | [PLAN-REVIEW-LOG.md](PLAN-REVIEW-LOG.md) | 5 Runden adversarialer Review, vollständig |
 | [docs/PRIOR-ART.md](docs/PRIOR-ART.md) | was es schon gibt: übernehmen, lesen oder meiden |
 | [docs/PHASE3-original.md](docs/PHASE3-original.md) | der ursprüngliche, engere Plan |
