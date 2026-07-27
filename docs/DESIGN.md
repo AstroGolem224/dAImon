@@ -1,6 +1,6 @@
 # dAImon — Design-Dokument
 
-**Version:** 3.4 (Review Runden 1–5; Nacharbeit und Prior-Art-Einarbeitung ungeprüft)
+**Version:** 4.0 (Review Runden 1–5; Nacharbeit und Prior-Art-Einarbeitung ungeprüft)
 **Datum:** 2026-07-27
 **Repo:** `/home/itiger013/Dokumente/Github/dAImon`
 **Zielsystem:** CachyOS (Arch), Kernel 7.1.5, KDE Plasma 6.7.3 / KWin 6.7.3 auf Wayland, RTX 5090 (32 GB, Treiber 610.43.02, sm_120), 24 Threads, 30 GB RAM, `/home` auf btrfs, PipeWire 1.6.8, fish-Shell.
@@ -86,6 +86,10 @@ Wo v2.0 „unfälschbar", „physisch" oder „beweist" schrieb, steht jetzt ein
 ### Die vertrauenswürdige Basis
 
 Nicht alle Komponenten sind gleich kritisch. Der **Hub ist die zentrale vertrauenswürdige Komponente**: Er hält Policy, Absichtsmarken, Tickets, das Deklassifizierungs-Gate, die Referenztabelle und die Audit-Koordination. Fällt er, fällt alles.
+
+> **Einwand, der ernst zu nehmen ist:** Wenn derselbe Prozess Modellausgabe **auswertet** und die Policy hält, liegt die Policy im Wirkungsradius. Die Broker schützen dann die falsche Sache. Hermes' `SECURITY.md` sagt es unverblümt: Die einzige echte Grenze gegen bösartige Modellausgabe ist das Betriebssystem; kein prozessinternes Gatter, kein Filter und keine Allowlist ist Eindämmung.
+>
+> **Konsequenz: Auswertung und Policy sind getrennt.** Das Zerlegen einer Modellantwort — JSON schälen, Felder ziehen, Referenzen auflösen — passiert in `daimon-mind`. Der Hub bekommt eine bereits strukturierte, schema-validierte Nachricht und **liest nie freien Modelltext**. Er kennt Aktions-IDs aus dem Katalog, Zahlen in geprüften Bereichen und opake Referenzen aus der eigenen Tabelle. Was ihn erreicht, hat schon eine Prozessgrenze passiert.
 
 Er wird deshalb bewusst klein gehalten und behandelt **jede** Eingabe als unvertrauenswürdig — auch von eigenen Komponenten:
 
@@ -399,19 +403,43 @@ Zwei Änderungen gegenüber v1.0:
 
 **Der Kontextspeicher steht unter Quarantäne.** OCR-Text erreicht Mind nicht automatisch, sondern nur durch das Deklassifizierungs-Gate (§7.2).
 
-Gatterkette nach Kosten, gemessen auf 2560×1440 **[V]**:
+> **Korrektur gegenüber v3.4 — das gekachelte dHash-Verfahren fällt weg.** Screenpipe hat genau diesen Ansatz gebaut und wieder verworfen, und begründet es im Quelltext: *„region-scoped pixel hashing … produced wrong skips … region-scoped hashes missed anything the region detector didn't box"*, und eine vorgeschaltete Stabilitätsbestätigung *„starved continuously-changing surfaces outright"*.
+>
+> Die Rechnung stimmt: Ein 4×4-Raster über einen 160×90-Puffer ergibt Kacheln von 40×22 Pixeln. Auf 1440p deckt eine Kachel rund 640×360 echte Pixel ab. Eine geänderte Textzeile ist darin eine Störung unter einem Prozent und kippt oft **kein einziges Bit**. Wir hätten still Inhalte verpasst — der schlimmste Fehlermodus, weil er sich nicht meldet.
+
+**Die Kette, auf die screenpipe nach zwei Fehlversuchen konvergiert ist:**
+
+```
+Fokus-Ereignis / Abtast-Timer
+  → Anwendungs-Denylist  (Passwortmanager, Banking — vor allem anderen)
+  → DRM-Inhalt fokussiert?  → überspringen
+  → Idle-/Lock-Gate
+  → auf das fokussierte Fenster zuschneiden
+  → Textregionen erkennen        ~10–19 ms
+  → auf die Vereinigung der Regionen zuschneiden (gepolstert)
+  → Signatur über diesen Zuschnitt, Luma auf 32 Stufen quantisiert   1–3 ms
+  → unverändert? verwerfen
+  → OCR auf dem Zuschnitt        Hunderte von ms
+```
+
+**Der Zuschnitt ist der Durchsatzgewinn, nicht die Kachelung.** Signatur über den *ganzen* Zuschnitt in voller Auflösung, `px >> 3` — rauschtolerant, aber empfindlich für Textänderungen. Heuristikfrei, weil jede Heuristik hier zu stillen Auslassungen führte.
+
+Textregionen-Erkennung als Portierung einer OpenCV-Sequenz, ohne die OpenCV-Abhängigkeit: BT.601-Graustufen → 3×3-Morphologiegradient → Otsu → 9×1-Schließung → Zusammenhangskomponenten → Formfilter (`MIN_BOX_W=8`, `MIN_BOX_H=6`, Seitenverhältnis 1–40, `MAX_AREA_FRACTION=0.5`).
+
+Gemessene Kosten **[V]** (unsere Maschine) und **[U]** (screenpipe, andere Hardware):
 
 | Prüfung | Kosten |
 |---|---|
 | Fensterwechsel-Ereignis | ≈0 — filtert über 90 % aller Frames |
-| Idle-/Lock-Gate | ≈0, und zugleich privacy-korrekt |
-| Diff auf 160×90-Puffer | 0,007 ms |
-| Voller Frame-Diff 2560×1440 | 1,07 ms |
-| Gekachelter dHash | ~2 ms, liefert die Änderungsregion mit |
-| tesseract, spärlicher Text | 0,095 s |
-| tesseract, dichter Text | **2,86 s** |
+| Idle-/Lock-Gate, Denylist | ≈0, und zugleich privacy-korrekt |
+| Textregionen-Erkennung | ~10–19 ms **[U]** |
+| Signatur über den Zuschnitt | 1–3 ms **[U]** |
+| tesseract, spärlicher Text | 0,095 s **[V]** |
+| tesseract, dichter Text | **2,86 s [V]** — screenpipe misst 0,4–1,4 s **[U]** |
 
-Die OCR-Kosten skalieren mit der **Textmenge**, nicht mit der Auflösung **[V]**. Ein globaler 8×8-dHash wäre zu grob — ein neuer Absatz im Terminal fiele durch. Deshalb 4×4-Raster mit Hamming-Distanz je Kachel.
+> **Die eigentliche Lehre aus den Zahlen:** OCR ist zwei Größenordnungen teurer als alles davor. **Die Aufgabe des Gatters ist nicht, OCR billig zu machen, sondern selten.** Und: screenpipe nutzt auf macOS Apple Vision, auf Windows Windows.Media.Ocr und greift **nur auf Linux** zu tesseract — es ist dort niemandes erste Wahl, sondern der Rückfall.
+>
+> Zwei Konsequenzen. Erstens: **libtesseract über FFI oder ein dauerhafter OCR-Arbeitsprozess**, nicht der CLI-Wrapper — screenpipe startet je Aufruf einen Unterprozess mit Temporärdatei, was bei mehreren Regionen je Frame absurd wird. Zweitens, und unangenehmer: Wenn der VLM-Arbeitsprozess für semantische Fragen ohnehin läuft, **verdient tesseract seinen Platz womöglich gar nicht**. Das ist in Phase −1 zu messen, nicht anzunehmen.
 
 **Nebenläufigkeit:** OCR läuft in einem Pool und kann in falscher Reihenfolge fertig werden. Jeder Frame trägt eine Generationsnummer; Ergebnisse einer älteren Generation als der aktuellen werden verworfen, nicht eingetragen. Geänderte Kachelbereiche werden **kopiert**, nicht referenziert — sonst zeigt der Verweis beim Abschluss auf einen längst überschriebenen Puffer.
 
@@ -428,11 +456,19 @@ Die OCR-Kosten skalieren mit der **Textmenge**, nicht mit der Auflösung **[V]**
 
 `version = 4` **[V]** heißt: `restore_token`/`persist_mode` sind verfügbar, der Nutzer klickt genau einmal.
 
-**Zwei Fallen, beide leicht zu übersehen:**
+**Puffertyp explizit aushandeln.** Wir wollen ausdrücklich **keinen GPU-Kontext**. Liefert das Portal aber DMA-BUF-Puffer, hilft `MAP_BUFFERS` nicht — screenpipe liest nur `data.data()` und bekäme auf einer Maschine, deren Compositor DMA-BUF bevorzugt, stillschweigend nichts. Auf einer RTX 5090 ist das der wahrscheinliche Fall.
+
+Deshalb: **SHM im `EnumFormat` explizit verlangen** und `SPA_DATA_DmaBuf` als Fehlerfall behandeln, nicht als Überraschung. Kommt trotzdem DMA-BUF, wird abgebrochen und protokolliert — ein schwarzes Bild ist schlimmer als eine Fehlermeldung.
+
+**`CursorMode::METADATA` braucht einen Rückfall.** Der Modus muss in `AvailableCursorModes` angeboten werden. KWin tut das **[V]**, aber wenn ein künftiger Portal-Rückend ihn fallen lässt, brauchen wir `EMBEDDED` plus eine Maskierung des Zeigerbereichs vor dem Diff — sonst feuert jede Mausbewegung die Kette.
+
+**Zwei weitere Fallen, beide leicht zu übersehen:**
 
 1. Der `restore_token` ist **einmalig**. Jedes erfolgreiche `Start` liefert einen neuen. Wer den gespeicherten nicht überschreibt, bekommt beim zweiten Start wieder den Dialog. Ist der Token ungültig, ignoriert das Portal ihn **stillschweigend** und zeigt den Dialog — nie ohne interaktiven Fallback aufrufen.
 
-2. **Die PipeWire-Node-ID im Stream-Tupel ist seit ScreenCast v6 veraltet.** IDs werden nach Zerstörung eines Node wiederverwendet. Wer darauf verbindet, bekommt bei Monitor-Hotplug, Auflösungswechsel oder Suspend **stillschweigend den falschen Stream** — kein Fehler, nur falsche Bilder.
+2. **Der persistierte Token ist ein dauerhafter, stiller Bildschirmzugriffs-Ausweis** in unserem Konfigurationsverzeichnis. Nach §1.2 liegt ein Angreifer mit derselben uid außerhalb des Umfangs — aber es bleibt eine Vertrauensfrage gegenüber dem Nutzer („warum fragt es nicht mehr?"). Deshalb: Modus 0600, **ein sichtbarer Widerrufsweg im Kontextmenü**, der die Datei löscht und die Portal-Sitzung schließt, und ein Hinweis in der Dokumentation auf `flatpak permission-remove`. Screenpipe hat dieses Problem nicht, weil es den Token nie schreibt — und deshalb bei jedem Start erneut fragt.
+
+3. **Die PipeWire-Node-ID im Stream-Tupel ist seit ScreenCast v6 veraltet.** IDs werden nach Zerstörung eines Node wiederverwendet. Wer darauf verbindet, bekommt bei Monitor-Hotplug, Auflösungswechsel oder Suspend **stillschweigend den falschen Stream** — kein Fehler, nur falsche Bilder.
 
 > **Korrektur gegenüber v3.0.** Dort stand `path={node_id}` in der GStreamer-Pipeline. Richtig ist eine Bindung über die Eigenschaft **`pipewire-serial`** (monoton, 64 Bit, wird nie wiederverwendet) mittels `PW_KEY_TARGET_OBJECT`. Die Node-ID bleibt nur als Rückfall für Portale unter v6.
 
@@ -536,6 +572,10 @@ Erlaubte Senken:
 **`user_audio` erreicht weder den werkzeugfähigen Durchgang noch das Gedächtnis.** Sonst schreibt gefälschtes Audio dauerhafte Anweisungen, die spätere, ordnungsgemäß autorisierte Runden beeinflussen. Es kann Fragen beantworten lassen — mehr nicht.
 
 **Aus einem Modell kommt nichts Vertrauenswuerdiges in Textform.** Auch Durchgang 1 liefert `tainted`, wenn er freien Text zurueckgibt. Strukturierte Typen behaelt nur, was der Hub validiert hat: geschlossene Aufzaehlungen, Zahlen im geprueften Bereich, opake Referenzen. Es gibt damit keinen Modellausgabe-Pfad ohne Markierung.
+
+**Vorgabe ist `tainted`, nicht `trusted`.** `trusted` muss ausdrücklich behauptet werden und gilt nur für geschlossene Aufzählungen und geprüfte Zahlen. Die Aufzählung in der Tabelle oben ist damit eine **Ausnahmeliste**, keine Definition — ein neu hinzugefügtes Feld ist automatisch markiert, bis jemand begründet, warum nicht.
+
+Hermes hat den umgekehrten Weg gewählt — Markierung durch Aufzählung der unvertrauenswürdigen Quellen — mit der Folge, dass ein neu hinzugefügtes Werkzeug automatisch vertrauenswürdig ist. Und: **keine Mindestlängen-Ausnahme.** Hermes umhüllt Zeichenketten unter 32 Zeichen gar nicht. Eine Injektion mit zwölf Zeichen ist eine Injektion.
 
 **Markierung ist ansteckend und typisiert.** Sie ist keine Konvention, sondern ein Datentyp: Über IPC, Serialisierung, Verkettung, Datenbankschreibung und -lesung wird ein markierter Wert als markierter Wert transportiert. **Geschützte Senken nehmen keine rohen Zeichenketten entgegen** — der Aufruf ist ein Typfehler, kein stiller Durchlass. Jede Umwandlungs- und Persistenzgrenze wird mit einem Mutationstest auf Markierungsverlust geprüft.
 
@@ -646,6 +686,12 @@ sequenceDiagram
 
 `wtype` ist auf KWin tot — `zwp_virtual_keyboard_manager_v1` wird nicht implementiert **[V]**.
 
+> **Was diese Liste nicht kann, und das gehört klar gesagt:** Sie deckt **Systemverben** ab — Lautstärke, Fenster, Medien, Anwendungsstart. Sie deckt **nichts innerhalb einer Anwendung** ab. „Schick die Nachricht", „klick auf Akzeptieren", „speichere die Datei" sind darüber nicht erreichbar. Wer den Katalog für eine allgemeine Steuerfläche hält, täuscht sich.
+>
+> Der einzige auf Wayland gangbare Mittelweg ist **AT-SPI2 über DBus**: die `Action`-Schnittstelle aktiviert ein Bedienelement semantisch, ohne synthetische Eingabe. Qt- und KDE-Anwendungen exponieren sie. Damit ließen sich typisierte *Anwendungs*-Aktionen in den Katalog aufnehmen, ohne je eine `pointer.click(x,y)`-Primitive einzuführen.
+>
+> Zwei Vorbehalte: Es ist ungeprüft, wie vollständig KDE-Anwendungen das tatsächlich bedienen — deshalb ein Spike, keine Zusage. Und **der Bedienbaum ist angreiferbeeinflusster Inhalt**: Jede daraus abgeleitete Bezeichnung ist `tainted` und muss durch die Vorschau, wie jeder andere markierte Wert auch.
+
 > **Einschränkung, die der Katalog abbilden muss:** KWin 6 hat `activateWindow()` aus dem Workspace-Wrapper entfernt. Ein Fenster lässt sich **anheben, aber nicht fokussieren**. Die Aktion heißt deshalb `kde.window.raise`, nicht `focus`, und die Sprechblase sagt „hebe an", nicht „fokussiere". Eine Aktion, die etwas anderes verspricht als sie tut, ist schlimmer als eine fehlende.
 
 ### 6.4 Der DBus-Proxy ist ein Vorfilter
@@ -729,7 +775,9 @@ Kommandosubstitution (`echo "$(rm -rf /x)"` — argv0 ist `echo`), Variablenexpa
 | Verworfener Fehltreffer | — | **nie** | sofort verworfen |
 | Transkript | lokal (Parakeet) | nur mit Kontingent | RAM bis zur Antwort |
 | Bildschirm-Rohframes | `eyes` | **nie** | aktueller Frame + 160×90-Thumbnail |
-| OCR-Text, Fenstertitel | lokal, **Quarantäne** | nur nach Deklassifizierung | letzte 20 Einträge |
+| Fenstertitel | lokal, Quarantäne | nur nach Deklassifizierung | letzte 20, Sitzungsdauer |
+| OCR-Text | lokal, Quarantäne | nur nach Deklassifizierung | letzte 5 Fenster, 15 Minuten |
+| VLM-Beschreibung | lokal, Quarantäne | nur nach Deklassifizierung | letzte 3, 5 Minuten |
 | Hook-Nutzlasten | `hub` | **nie** | RAM |
 | Clipboard | nur auf Anforderung | **nie ungefragt** | nie im Klartext geloggt |
 | **API-Token** | **`egress`**, über `LoadCredential=` | — | nie in Umgebungsvariablen, nie in Mind |
@@ -751,11 +799,26 @@ Das ist eine **Kernelgrenze** und gilt daher auch gegen einen kompromittierten e
 
 Zusammengefasst: *Passiv Wahrgenommenes erreicht die Cloud nur, wenn der Nutzer in derselben Runde Push-to-Talk ausgelöst und nach dem Bildschirm gefragt hat.* Die Domain-Beschränkung bleibt eine Anwendungsprüfung, keine Kernelgrenze — aber sie liegt in einem Prozess, der keinen Modellinhalt auswertet, und das Kontingent kommt von außen.
 
+### 7.2d Gestaffelte Aufbewahrung
+
+Ein einheitliches „letzte 20 Einträge" für alles war zu grob. Fenstertitel sind wenig verräterisch und lange nützlich; OCR-Text kann eine halbe Mail enthalten; eine VLM-Beschreibung ist eine Zusammenfassung von allem Sichtbaren. Vier Stufen, nach dem Vorbild von `openblob`:
+
+| Stufe | Bedeutung |
+|---|---|
+| `transient` | nur im Arbeitsspeicher, überlebt die Runde nicht |
+| `metadata_only` | nur Herkunft und Zeitstempel, kein Inhalt |
+| `redacted` | Inhalt, aber durch die Redaktionsliste gefiltert — **Vorgabe** |
+| `full` | vollständig, nur auf ausdrückliche Anforderung |
+
+Ist die Bildschirmwahrnehmung abgeschaltet, fällt alles auf `transient`. Ein zeitlich begrenzter Privatmodus setzt dasselbe für eine Weile.
+
 ### 7.3 IPC
 
 - Ein Socket je Produzent unter `$XDG_RUNTIME_DIR/daimon/`, Modus 0600.
 - **`SO_PEERPIDFD`** statt `SO_PEERCRED` plus PID-Auflösung — Letzteres hat ein PID-Wiederverwendungsrennen.
 - **Nachrichtentypen sind produzentenspezifisch.** `eyes` kann kein `hook`-Event senden, `ears` kein `screen`-Event.
+- **Sitzungsidentität hängt an `contextvars`, nie an Umgebungsvariablen oder Prozess-globalem Zustand.** Hermes hatte hier eine gemeldete Schwachstelle: Der `finally`-Block einer Sitzung stellte eine Umgebungsvariable wieder her und überschrieb dabei die einer nebenläufigen — die fiel damit auf den Auto-Genehmigen-Pfad. Wir haben nebenläufige Runden, Marken und Tickets; das ist unser Fehler in spe.
+- **Umschaltbare Sicherheitsflaggen werden beim Import eingefroren**, nicht bei jedem Zugriff gelesen. Sonst kann alles, was später in den Prozess geladen wird, sie umlegen.
 
 > **Was das leistet:** Es fängt Verwechslung, Fehlkonfiguration und einen kompromittierten *eigenen* Prozess, der sich als anderer ausgeben will. Es schließt **keinen** same-uid-Angreifer aus (§1.2) — der kann die Unit ersetzen, deren Socket erben oder den Hub direkt lesen. Peer-Prüfung ist ein Wegweiser, keine Authentifizierung.
 
@@ -822,6 +885,14 @@ Unter voller Härtung getestet **[V]**: DBus funktioniert, Wayland-Socket sichtb
 **Journal** als Zweitschrift über `sd_journal_send()` mit `DAIMON_*`-Feldern; die `_`-präfigierten Felder (`_PID`, `_UID`, `_EXE`, `_BOOT_ID`) setzt das Journal selbst. `systemd-cat` reicht nicht **[V]**.
 
 **`xdg-dbus-proxy --log`** als dritter Strom.
+
+> **Wer prüft die Kette?** Ohne Antwort ist sie eine Verzierung in Hash-Form. Unter unserem Bedrohungsmodell schützt sie gegen **kompromittierte Modellausgabe**, nicht gegen einen Angreifer derselben uid — und genau das ist die richtige Bedrohung. Damit das trägt, muss die Prüfung von etwas ausgehen, das Modellausgabe nicht erreicht:
+>
+> - `daimon-hub` prüft die Kette **beim Start** gegen die Journal-Anker und meldet eine Abweichung als Bubble mit hoher Dringlichkeit.
+> - Ein `systemd`-Timer prüft täglich, unabhängig vom laufenden System.
+> - Der Nutzer kann jederzeit `daimon-audit --verify` aufrufen.
+>
+> Keine dieser Prüfungen läuft in einem Prozess, der Modelltext verarbeitet. Findet keine davon statt, ist die Kette wertlos und gehört gestrichen statt behauptet.
 
 Pflichtfelder: `prompt_shown` (der exakte Vorschautext), `params_hash` (vom Hub berechnet), `mark_id` und `initiator`, `turn_id`, `tool_use_id`, `outcome` (inklusive `unknown`).
 
@@ -1093,6 +1164,10 @@ Der Charakter ist austauschbar; die Persona-Datei ist der einzige Ort, an dem er
 | Bildschirm | Portal ScreenCast | grim / ScreenShot2 | grim funktioniert auf KWin nicht **[V]** |
 | Undo | konstruktiv, als Transaktion | Klassifikation | Herabstufung erst nach geprüftem Artefakt |
 | Persistenz | keine bis Phase 6 | SQLite ab Tag 1 | Live-Status ist korrekt zustandslos |
+| Änderungserkennung | Zuschnitt auf Textregionen + quantisierte Signatur | gekacheltes dHash | Screenpipe hat das gekachelte Verfahren zweimal gebaut und verworfen: verpasst still, was der Regionendetektor nicht umrahmt hat |
+| Markierungs-Vorgabe | **`tainted`**, `trusted` muss behauptet werden | Aufzählung der unvertrauenswürdigen Quellen | Sonst ist jedes neu hinzugefügte Feld automatisch vertrauenswürdig |
+| Modelltext-Auswertung | in `daimon-mind`, nicht im Hub | Hub wertet aus und hält Policy | Sonst liegt die Policy im Wirkungsradius und die Broker schützen das Falsche |
+| Aufbewahrung | vier Stufen je Datenart | einheitlich 20 Einträge | Fenstertitel, OCR-Text und VLM-Beschreibung sind nicht gleich verräterisch |
 | Ungefragte Sprache | kuratierte Vorlagen, nur `trusted`-Variablen | freier Modelltext | Sonst liest das Pet injizierten Bildschirmtext vor |
 | Sprite-Format | hatch-pet-Atlas (8×9, 192×208) | eigenes Format | Zwei ausgelieferte Projekte nutzen es unabhängig identisch; Festschritt-Blit ohne Laufzeit |
 | Zeilentabelle | im **Manifest**, mit Vorgabe | fest im Host wie bei beiden Vorlagen | Sonst kann kein Pet ein abweichendes Raster mitbringen |
@@ -1126,6 +1201,11 @@ Der Charakter ist austauschbar; die Persona-Datei ist der einzige Ort, an dem er
 | R19 | NVIDIA R610 Color-Pipeline schwärzt den Bildschirm | niedrig | hoch | `nvidia-drm.color_pipeline=0`; betrifft das System |
 | R21 | **Pet liest injizierten oder geheimen Text vor** | mittel | hoch | Ungefragte Äußerungen nur aus Vorlagen; Antworten durch den Validator (§8.3), der im Hub sitzt |
 | R22 | Pet hängt auf `needs_input`, weil eine Session hart beendet wurde | hoch | mittel | Lease mit PID-Prüfung statt Stunden-TTL (§7.8) |
+| R23 | **Gatter verpasst Inhaltsänderungen still** | war hoch | hoch | Gekacheltes dHash ersetzt durch Zuschnitt auf Textregionen plus quantisierte Signatur (§4.4) — screenpipe hat unseren Ansatz zweimal verworfen |
+| R24 | **Portal liefert DMA-BUF, Frames bleiben schwarz** | mittel | hoch | SHM explizit aushandeln; DMA-BUF ist Fehlerfall mit Protokolleintrag, nicht Überraschung (§4.5) |
+| R25 | **KWin-Fokusereignis unzuverlässig oder nicht vorhanden** | mittel | **sehr hoch** | Die gesamte Gatterkette hängt daran, und screenpipe hat für Linux aufgegeben. **Spike in Phase −1, vor allem anderen in der Wahrnehmung.** Rückfall wäre Polling — also genau das Nicht-Ziel |
+| R26 | OCR-Kosten zwei Größenordnungen über der Annahme | hoch | mittel | libtesseract über FFI oder dauerhafter Arbeitsprozess; in Phase −1 messen, ob tesseract neben dem VLM überhaupt seinen Platz verdient |
+| R27 | Audit-Kette wird von niemandem geprüft | mittel | mittel | Drei benannte Prüfstellen, keine davon in einem Prozess mit Modelltext (§7.6) |
 
 ---
 
@@ -1162,7 +1242,7 @@ Der Charakter ist austauschbar; die Persona-Datei ist der einzige Ort, an dem er
 | Bildschirmänderung → Kontext aktuell | < 3 s (OCR-gebunden) |
 | Aktionskommando → Ausführung (allow) | < 500 ms |
 
-Bleibt die ScreenCast-Pipeline auf `PLAYING`, macht KWin je Frame eine compositorseitige GPU-Kopie. Entweder niedrige Framerate aushandeln oder zwischen den Aufnahmen `PAUSED` — die Session bleibt am Leben, der Dialog kommt nicht wieder. Der GPU-Anteil ist **[U]** und wird mit `nvidia-smi dmon` bei laufendem Spiel gemessen.
+Bleibt die ScreenCast-Pipeline auf `PLAYING`, macht KWin je Frame eine compositorseitige GPU-Kopie. Besser als `PAUSED`: den PipeWire-Stream mit `INACTIVE` erzeugen und über `set_active()` öffnen und schließen. Dann **stellt der Compositor die Frame-Erzeugung ganz ein**, während die Portal-Sitzung am Leben bleibt — der Dialog kommt nicht wieder. Genau das braucht unser Idle-/Lock-Gate. Der GPU-Anteil ist **[U]** und wird mit `nvidia-smi dmon` bei laufendem Spiel gemessen.
 
 ---
 

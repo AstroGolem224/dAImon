@@ -141,6 +141,66 @@ Von `openpets` außerdem die Trennung **Reaktion → Sprite-Zustand**: Der Hub s
 
 ---
 
+## Vier Projekte zu Wahrnehmung und Steuerung
+
+Auf Zuruf durchgesehen. Verdikte: **screenpipe READ, agent-s AVOID, hermes-agent READ, openblob AVOID.**
+
+Die entscheidende Frage war für alle vier dieselbe: **Funktioniert Bildschirmerfassung oder Eingabesteuerung auf nativem Wayland?** Antwort: **nur bei screenpipe, und nur die Erfassung.**
+
+### screenpipe — Rust, 20,5k★, seit 2026-06-10 proprietär
+
+*„We are going to record everything you do, 24/7."* Ein Überwachungs-Gedächtnisprodukt mit Abo, kein Baukasten. Die Erfassungsschicht ist trotzdem hervorragend gebaut.
+
+**Lizenz:** Die Umstellung von MIT auf eine eigene kommerzielle Lizenz erfolgte am 2026-06-10. §5 verbietet Einbetten und Weitergeben, §6 beansprucht Eigentum an *deinen* Änderungen. Bitter: **die beiden für uns wertvollsten Dateien sind danach entstanden** — `linux_portal.rs` am 2026-07-24, `ocr_gate.rs` am 2026-07-13. Es gibt keine MIT-Fassung davon. Lesen ja, kopieren nein.
+
+**Ihr Wayland-Pfad** ist ashpd + pipewire, und KDE/Plasma nimmt ihn (wlroots-Compositoren bekommen stattdessen `grim`, weil der Portalweg dort nicht ging). Zwei Dinge machen sie schlechter als wir vorhaben: `PersistMode::Application` statt 2, und **der restore_token wird nie auf Platte geschrieben** — jeder Neustart fragt erneut.
+
+**Ihr OCR-Gatter ist der Grund, warum unsere Gatterkette jetzt anders aussieht.** Der Quelltextkommentar dokumentiert zwei verworfene Entwürfe, und einer davon ist unserer:
+
+> *„region-scoped pixel hashing … produced wrong skips … region-scoped hashes missed anything the region detector didn't box"*
+
+Ihre konvergierte Kette: auf das fokussierte Fenster zuschneiden → Textregionen erkennen → auf deren Vereinigung zuschneiden → Signatur über **den ganzen Zuschnitt** mit auf 32 Stufen quantisiertem Luma → nur bei Änderung OCR. Gemessen: Regionenerkennung 10–19 ms, Signatur 1–3 ms, **OCR 400–1400 ms**. Über 60 % OCR-Ersparnis.
+
+Auf Linux nutzen sie tesseract über einen **CLI-Unterprozess mit Temporärdatei je Aufruf** — auf macOS Apple Vision, auf Windows Windows.Media.Ocr. Tesseract ist dort niemandes Wahl, sondern Rückfall.
+
+**Was sie aufgegeben haben, sollte uns beunruhigen:** `focus_tracker/linux.rs` ist ein 60-Zeilen-Stub, der immer `Unknown` meldet. Der Kommentar wägt X11 und wlr-foreign-toplevel ab und **erwähnt KDE nicht**. Unsere gesamte Gatterkette ruht auf einem KWin-Signal, das in dieser Erhebung niemand validiert hat — daher der neue Spike T−1.9.
+
+Übernommen als Muster: **PipeWire-Stream mit `INACTIVE` erzeugen und über `set_active()` schalten** statt `PAUSED`, und die **Zweiphasen-Bestätigung** (eine Signatur gilt erst als verarbeitet, wenn der Aufrufer die dauerhafte Ablage bestätigt hat — ein fehlgeschlagener Schritt heilt sich beim nächsten Durchlauf selbst).
+
+### hermes-agent — Python, MIT, 221k★
+
+Die Sternzahl täuscht: `contributors/` hat 225 Dateien, PR-Nummern liegen bei ~72.700, und das README spricht von „salvage PRs". Das ist ein Repository, das in eingehenden Beiträgen ertrinkt. `gateway/run.py` hat 24.741 Zeilen, `tools/approval.py` 4.131. Linting ist weitgehend abgeschaltet — aber 2.381 Testdateien und 26 CI-Workflows.
+
+**Das einzige Projekt der Erhebung mit einem ernsthaften Zustimmungs-Gatter.** Übernommen:
+
+- **Ein einziger Engpass vor der Ausführung**, fail-closed bei Fehler. Ihr Kommentar: *„Centralizing this keeps the security-critical fail-closed logic in ONE place instead of copy-pasted across the … dispatch paths."*
+- **Umgehungsflaggen werden beim Import eingefroren.** Ihr Kommentar nennt den Grund: Sonst könnte alles, was später in den Prozess geladen wird, die Variable setzen und alle Prüfungen umgehen.
+- **Sitzungsidentität über `contextvars`, nie Umgebungsvariablen.** Sie hatten dafür eine gemeldete Schwachstelle — der `finally`-Block einer Sitzung überschrieb die einer nebenläufigen und kippte sie auf den Auto-Genehmigen-Pfad. Wir haben nebenläufige Runden und Marken; das wäre unser Fehler geworden.
+- **Ablehnung vor Umgehung ausgewertet**, *„Silence is not consent"* bei Zeitablauf, und ein Ablehnungstext, der dem Modell ausdrücklich sagt, es solle nicht umformulieren.
+- **`<untrusted_tool_result>`-Umhüllung** mit Neutralisierung eingebetteter Marker — und **bewusst ohne Schnellpfad** für bereits Umhülltes, weil ein solcher Test fälschbar wäre.
+
+**Was man nicht nachmachen darf:** Der Kern ist eine Regex-**Denylist**; was nicht passt, läuft. Und bei nicht-interaktivem Kontext wird historisch **automatisch genehmigt**. Auch: eine Variante, die einen Hilfs-LLM über die Genehmigung entscheiden lässt.
+
+Ihr `SECURITY.md` sagt einen Satz, der auch in unser Design gehört: Die einzige echte Grenze gegen bösartige Modellausgabe ist das Betriebssystem — kein prozessinternes Gatter ist Eindämmung.
+
+### agent-s — Python, Apache-2.0, 12k★, seit 14 Monaten tot
+
+`grep -ri wayland` über das ganze Repository: **null Treffer.** Erfassung über `pyautogui`, Aktuation über `pyautogui` — auf KWin-Wayland liefern Screenshots Schwarz und jede Eingabe ist ein stiller No-Op.
+
+Der Zustimmungsdialog `show_permission_dialog` ist in **allen vier Generationen definiert und von nirgends aufgerufen**. Die Zeile davor lautet `# Ask for permission before executing`, die danach `exec(code[0])`. Wäre er aufgerufen, würde er modellgenerierten Code in eine `zenity`-Shell-Zeile interpolieren. Dazu ein **fest eingetragenes sudo-Passwort** im ausgelieferten Aktionsraum und ein `pickle.load()` aus einem heruntergeladenen Zip.
+
+Zwei Dinge sind trotzdem wertvoll. Erstens: Ihr Systemprompt wird **aus der durchgesetzten Aktionsliste generiert** — Prompt und ausführbare Fläche können nicht auseinanderlaufen. Das übernehmen wir für den DBus-Katalog. Zweitens, in der aufgegebenen ersten Generation: **AT-SPI2 über DBus**, also semantische Aktivierung ohne synthetische Eingabe. Das ist der einzige auf Wayland gangbare Weg zu Aktionen innerhalb von Anwendungen, und sie haben ihn zugunsten von Pixelkoordinaten weggeworfen. Daher unser Spike T−1.11.
+
+### openblob — Rust/Tauri, 19★, Lizenzdatei defekt
+
+**Übersetzt auf Linux nicht.** Die `windows`-Kiste ist unbedingte Abhängigkeit. Bildschirmerfassung ist XCB, Positionierung ist client-seitig — was Wayland verbietet. `set_ignore_cursor_events` kommt im ganzen Baum **nicht vor**, es gibt also gar kein Click-Through.
+
+**Die Lizenzdatei hat fünf Zeilen und bricht mitten im Gewährungssatz ab.** Kein wirksamer Rechteeinräumung, also alle Rechte vorbehalten. Zusätzlich liegt **espeak-ng unter GPLv3** ohne jeden Hinweis im Baum, und zwei Prüfsummen-Konstanten für heruntergeladene Binärdateien sind **leere Zeichenketten**.
+
+Drei Ideen sind trotzdem gut und lassen sich in einem Absatz beschreiben: die **Aufbewahrungsstufen** (`transient`/`metadata_only`/`redacted`/`full`, Vorgabe `redacted`), **Kontextbindung von Fähigkeiten** (eine Aktion gilt nur, wenn die fokussierte Anwendungsdomäne passt), und eine **generationszählerbasierte TTS-Abbruchlogik** in drei Zeilen.
+
+---
+
 ## Wo es nichts gibt
 
 Vier Stellen mit echtem Baukostenrisiko, weil keine Vorlage existiert:

@@ -146,7 +146,7 @@ für jede Phase:
 | Phase | Ergebnis | Tasks | Aufwand |
 |---|---|---|---|
 | **P0.0** | Rollen-Pfadlisten und Verifizierer-Infrastruktur | 1 | ~1 h |
-| **P−1** | Machbarkeit geklärt — zwei Spikes können die Architektur kippen | 8 | ~2 Abende |
+| **P−1** | Machbarkeit geklärt — **drei** Spikes können die Architektur kippen | 11 | ~3 Abende |
 | **P0** | Kern: Hub, Marken/Tickets, IPC-Auth, Hook-Bridge, Fokus-Watcher, Diagnose | 14 | ~3 Abende |
 | **P1** | Natives Overlay minimal, Auth-Agent abgetrennt | 11 | ~3–4 Abende |
 | **P2** | Overlay vollständig: Animation, Blase, Ziehen, Multi-Monitor | 7 | ~2 Abende |
@@ -154,7 +154,7 @@ für jede Phase:
 | **P4** | Aktuation: Katalog, Policy, Auftrag+Ticket, vier Broker, Consent, Audit | 19 | ~5 Abende |
 | **P5** | Augen: Wahrnehmung in Quarantäne, dann Deklassifizierung | 13 | ~4 Abende |
 | **P6** | Gedächtnis, Charakter, Rundengrenzen-Test, Abschlussreview | 11 | ~3 Abende |
-| | **Summe** | **100 Implementierung + 46 Verifizierer = 146** | |
+| | **Summe** | **103 Implementierung + 49 Verifizierer = 152** | |
 
 ### Warum diese Reihenfolge
 
@@ -339,6 +339,47 @@ tests/verify/T-0.0.sh             # muss grün sein, bevor P−1 beginnt
   - [ ] `summary.json` aggregiert alle `results.json` mit Verdikt je Spike
 - **Verifikation:** `tests/verify/T--1.7.sh` — prüft, dass `summary.json` für jeden der sechs Spikes einen Eintrag mit `verdict` und `decision` enthält und dass kein Verdikt `pending` ist
 - **Agent:** investigator · **Umfang:** S
+
+### T−1.9 — KWin-Fokusereignis belastbar? ⚠️ WEICHE für die Wahrnehmung ∥
+- **Ziel:** Klarheit, ob die gesamte Wahrnehmungs-Gatterkette auf einem verlässlichen Signal steht.
+- **Dateien:** `spikes/focus/` [neu], `spikes/focus/results.json` [erzeugt]
+- **Abhängigkeiten:** keine
+- **Warum blockierend:** Screenpipe hat Fokusverfolgung unter Linux **aufgegeben** — ihr `focus_tracker/linux.rs` ist ein 60-Zeilen-Stub, dessen Kommentar X11 und wlr-foreign-toplevel abwägt und KDE gar nicht erwähnt. `wlr-foreign-toplevel` gibt es auf KWin nicht. Damit ruht unsere Kette auf einem Mechanismus, den in der gesamten erhobenen Vorlage niemand validiert hat. Fällt er aus, degradiert die Kette zu Polling — also genau zu dem Dauermitschnitt, den wir als Nicht-Ziel führen.
+- **Akzeptanz:**
+  - [ ] KWin-Script mit `windowActivated` + `captionChanged` über eine Stunde Alltagsbetrieb protokolliert
+  - [ ] Gezählt: Fensterwechsel laut Script gegen unabhängig beobachtete Wechsel — **Trefferquote und Auslassungen**
+  - [ ] **Feuert `captionChanged` bei Inhaltsänderung *innerhalb* desselben Fensters?** Terminalausgabe, Editor-Puffer, Browser-Tab. Dort passiert der Großteil der echten Änderung
+  - [ ] Verhalten nach `kwin --replace` und nach Sitzungssperre
+  - [ ] Latenz vom tatsächlichen Wechsel bis zum Ereignis
+  - [ ] `results.json` mit `{switches_observed, switches_reported, missed, caption_events_same_window, p95_latency_ms, survives_replace}`
+- **Verifikation:** `tests/verify/T--1.9.sh` — automatisiert 50 Fensterwechsel und verlangt `missed == 0` und `p95_latency_ms < 200`; protokolliert die Rate der Inhaltsänderungs-Ereignisse ohne Schwelle, weil sie den Abtast-Timer aus T-5.4 dimensioniert
+- **Agent:** investigator · **Umfang:** M
+
+### T−1.10 — OCR-Kosten und ob tesseract seinen Platz verdient ∥
+- **Ziel:** Die Annahme prüfen, dass tesseract neben dem VLM überhaupt gebraucht wird.
+- **Dateien:** `spikes/ocr/` [neu], `spikes/ocr/results.json` [erzeugt]
+- **Abhängigkeiten:** T−1.2
+- **Akzeptanz:**
+  - [ ] tesseract über **CLI-Unterprozess** gegen **libtesseract per FFI** gegen **dauerhaften Arbeitsprozess** — je 20 Läufe auf demselben textdichten Bild
+  - [ ] Dasselbe Bild durch `qwen3-vl:8b` mit der Frage nach dem Text — Latenz und Brauchbarkeit
+  - [ ] Kosten je Zuschnitt statt je Vollbild gemessen (die Gatterkette schneidet zu)
+  - [ ] `results.json` mit `{variant, p50_ms, p95_ms, chars_extracted, verdict}` je Variante
+  - [ ] **Explizite Empfehlung:** tesseract behalten, durch libtesseract ersetzen, oder ganz streichen
+- **Verifikation:** `tests/verify/T--1.10.sh` — prüft, dass alle vier Varianten mit n≥20 gemessen wurden und eine Empfehlung gesetzt ist
+- **Agent:** investigator · **Umfang:** M
+
+### T−1.11 — AT-SPI2 als Aktionsfläche ∥
+- **Ziel:** Klären, ob typisierte Aktionen *innerhalb* von Anwendungen ohne synthetische Eingabe erreichbar sind.
+- **Dateien:** `spikes/atspi/` [neu], `spikes/atspi/results.json` [erzeugt]
+- **Abhängigkeiten:** keine
+- **Akzeptanz:**
+  - [ ] Über die `Action`-Schnittstelle je einen Knopf in Dolphin, Kate, Konsole und einem GTK-Programm aktivieren
+  - [ ] Geprüft, wie vollständig KDE-Anwendungen den Baum tatsächlich bedienen
+  - [ ] Kosten einer Baumabfrage gemessen
+  - [ ] Festgehalten: **jede aus dem Baum abgeleitete Bezeichnung ist `tainted`** und muss durch die Vorschau
+  - [ ] `results.json` mit `{app, actions_found, activation_worked, tree_query_ms}` je Anwendung
+- **Verifikation:** `tests/verify/T--1.11.sh` — verlangt ≥4 geprüfte Anwendungen und für mindestens zwei eine erfolgreiche Aktivierung; das Ergebnis entscheidet, ob AT-SPI in den Katalog aufgenommen wird
+- **Agent:** investigator · **Umfang:** M
 
 ### T−1.8 — Test-Eingabevorrichtung ∥
 - **Ziel:** Automatisierte Klicks und Tasten für Tests, ohne auf den Produktions-Input-Broker zu warten.
@@ -1154,6 +1195,7 @@ done
   - [ ] `seq` und `prev_hash` je Datensatz
   - [ ] **Kettenkopf periodisch und bei jeder Rotation ins Journal verankert**
   - [ ] Verifizierer prüft **beide** Ströme und meldet eine ersetzte Datei
+  - [ ] **Drei benannte Prüfstellen**, keine davon in einem Prozess mit Modelltext: Hub beim Start (meldet Abweichung als dringende Bubble), `systemd`-Timer täglich, und `daimon-audit --verify` für den Nutzer
   - [ ] Alle Felder aus Design §7.6, inklusive `prompt_shown`, `params_hash`, **`mark_id`**, `initiator`, `turn_id`, `outcome`
   - [ ] **Redaktion nach Herkunft, nicht nach Katalogflag:** jeder `tainted`-Wert wird zu `<redacted:sha256:…>` plus Länge — unabhängig davon, ob der Katalog ihn als `sensitive` führt. Das Katalogflag ist eine zusätzliche, keine alternative Bedingung
   - [ ] Rotation trägt den letzten Hash in die neue Datei
@@ -1375,6 +1417,9 @@ pytest -q
   - [ ] **`restore_token` nach jedem `Start` überschrieben**
   - [ ] Token 0600
   - [ ] Ungültiger Token → interaktiver Rückfall, kein stilles Hängen
+  - [ ] **SHM im `EnumFormat` explizit verlangen.** Liefert das Portal `SPA_DATA_DmaBuf`, wird abgebrochen und protokolliert — `MAP_BUFFERS` rettet uns nicht, und ein schwarzes Bild ist schlimmer als eine Fehlermeldung
+  - [ ] `CursorMode::METADATA` mit Rückfall auf `EMBEDDED` plus Maskierung des Zeigerbereichs vor dem Diff
+  - [ ] **Widerrufsweg im Kontextmenü**: löscht die Token-Datei und schließt die Portal-Sitzung; `flatpak permission-remove` in der Dokumentation
 - **Verifikation:** `tests/verify/T-5.2.sh` — startet zweimal und prüft über die Portal-DBus-Signale, dass beim zweiten Mal **kein** `Request`-Dialog geöffnet wurde; prüft den Dateimodus per `stat`; verfälscht den Token und prüft den dokumentierten Rückfall
 - **Agent:** builder · **Umfang:** L
 
@@ -1384,7 +1429,7 @@ pytest -q
 - **Abhängigkeiten:** T-5.2, **T-5.3.v**
 - **Akzeptanz:**
   - [ ] `pipewiresrc ! videoconvert ! appsink`, `max-buffers=1 drop=true`
-  - [ ] Zwischen Aufnahmen `PAUSED`, Session bleibt am Leben
+  - [ ] Stream mit `INACTIVE` erzeugen, über `set_active()` öffnen und schließen — dann stellt der Compositor die Frame-Erzeugung ganz ein, während die Portal-Sitzung lebt. Besser als `PAUSED`
   - [ ] Niedrige Framerate ausgehandelt
   - [ ] `videoconvert` bleibt drin (KDE-Bug 476602)
 - **Verifikation:** `tests/verify/T-5.3.sh` (eingefroren) — holt 10 Frames, prüft dass jeder von null verschieden ist (gegen den Schwarzframe-Bug); **schaltet danach per `kscreen-doctor` einen Ausgang aus und wieder ein und verlangt, dass weiterhin der beabsichtigte Bildschirm geliefert wird** (Node-ID-Wiederverwendung); misst GPU-Auslastung per `nvidia-smi dmon` über 30 s je einmal im `PAUSED`- und im `PLAYING`-Zustand gegen eine Leerlauf-Grundlinie; Exit 0 nur, wenn der `PAUSED`-Mehrverbrauch unter 1 Prozentpunkt liegt. Wird die Schwelle gerissen, ist die strengere Erfassungsart verpflichtend.
@@ -1406,8 +1451,9 @@ pytest -q
 - **Dateien:** `daimon/eyes/change.py` [neu]
 - **Abhängigkeiten:** T-5.4
 - **Akzeptanz:**
-  - [ ] Kette: Idle/Lock → Auslöser → 160×90-Diff → gekachelter dHash 4×4
-  - [ ] Liefert die Änderungsregion mit
+  - [ ] Kette nach Design §4.4: Auslöser → **Anwendungs-Denylist** → **DRM-Prüfung** → Idle/Lock → Zuschnitt auf das fokussierte Fenster → **Textregionen-Erkennung** → Zuschnitt auf deren Vereinigung → **Signatur über den ganzen Zuschnitt, Luma auf 32 Stufen (`px >> 3`)**
+  - [ ] **Kein gekacheltes dHash** — screenpipe hat den Ansatz zweimal verworfen, weil er still verpasst, was der Regionendetektor nicht umrahmt
+  - [ ] Liefert die Region mit, die der VLM in nativer Auflösung bekommt
   - [ ] **Jeder Frame trägt eine Generationsnummer**
   - [ ] Geänderte Kachelbereiche werden **kopiert**, nicht referenziert
   - [ ] Kosten je Stufe gemessen
@@ -1419,8 +1465,10 @@ pytest -q
 - **Dateien:** `daimon/eyes/ocr.py` [neu]
 - **Abhängigkeiten:** T-5.5, T-5.1, **T-5.6.v**
 - **Akzeptanz:**
-  - [ ] `tesseract --psm 11 -l deu+eng`
-  - [ ] Nur geänderte Kacheln
+  - [ ] Umsetzung nach dem Urteil aus **T−1.10** — libtesseract per FFI oder dauerhafter Arbeitsprozess, **nicht** der CLI-Wrapper mit Temporärdatei je Aufruf
+  - [ ] `--psm 11 -l deu+eng`
+  - [ ] Läuft auf dem **Zuschnitt** aus T-5.5, nicht auf Kacheln
+  - [ ] Nur auf dem Zuschnitt der geänderten Textregionen
   - [ ] Läuft im Pool, blockiert die Erfassung nicht
   - [ ] Aufträge werden zusammengefasst: Läuft schon einer für dieselbe Region, wird der alte abgebrochen
 - **Verifikation:** `tests/verify/T-5.6.sh` — misst p95-Latenz auf einem textdichten Referenzbild und die CPU-Last über 5 Minuten Alltagssimulation; verlangt < 5 % eines Kerns im Mittel
@@ -2340,6 +2388,35 @@ Jedes Gate beginnt mit `tests/verify/verify-frozen.sh`.
 | Streaming-STT mit Barge-in | Wenn die Latenz in T-3.15 als zu hoch beurteilt wird |
 | Godot-Client | Nie — durch T−1.3 und P1 ersetzt |
 | TPM-gestützte Audit-Verankerung | Wenn die Journal-Anker aus T-4.6 nachweislich nicht reichen |
+
+## Anhang C7 — Änderungen in v4.0 (screenpipe, agent-s, hermes, openblob) — **NICHT GEGENGELESEN**
+
+Vier Projekte durchgesehen. Verdikte: screenpipe **READ** (proprietär seit 2026-06-10, die zwei für uns wertvollsten Dateien sind danach entstanden), agent-s **AVOID**, hermes-agent **READ** mit kleinen MIT-Übernahmen, openblob **AVOID** (Lizenzdatei bricht mitten im Gewährungssatz ab).
+
+**Die Korrektur, die weh tut:**
+
+| Task | Was falsch war | Was jetzt gilt |
+|---|---|---|
+| T-5.5 | **Gekacheltes 4×4-dHash** | Screenpipe hat genau das zweimal gebaut und verworfen. Ein 4×4-Raster auf 160×90 ergibt Kacheln von 640×360 echten Pixeln auf 1440p — eine geänderte Textzeile kippt oft kein Bit. Jetzt: Zuschnitt auf die Vereinigung erkannter Textregionen, Signatur über den ganzen Zuschnitt mit `px >> 3` |
+| T-5.6 | OCR-Budget um eine Größenordnung zu niedrig | 0,4–1,4 s je Vollbild; screenpipe ruft tesseract als CLI-Unterprozess mit Temporärdatei auf. libtesseract per FFI oder dauerhafter Prozess. **Neuer Spike T−1.10** klärt, ob tesseract neben dem VLM überhaupt seinen Platz verdient |
+| T-5.2 | Puffertyp nicht ausgehandelt | SHM explizit verlangen; DMA-BUF ist ein Fehlerfall. Auf einer RTX 5090 sonst schwarze Bilder ohne Fehlermeldung |
+| T-5.2 | Kein Widerrufsweg für den persistierten Token | Der Token ist ein dauerhafter, stiller Bildschirmzugriffs-Ausweis. Kontextmenü-Eintrag löscht ihn und schließt die Sitzung |
+| T-5.3 | `PAUSED` zwischen Aufnahmen | Stream mit `INACTIVE` erzeugen und `set_active()` schalten — der Compositor hört ganz auf, Frames zu erzeugen |
+| T-3.13b | Markierung durch Aufzählung der markierten Quellen | **Vorgabe ist `tainted`**; `trusted` muss behauptet werden. Keine Mindestlängen-Ausnahme — eine Injektion mit zwölf Zeichen ist eine Injektion |
+| T-0.9 | Sitzungsidentität implizit | `contextvars`, nie Umgebungsvariablen oder Prozess-globaler Zustand. Hermes hatte hier eine gemeldete Schwachstelle: der `finally`-Block einer Runde kippte eine nebenläufige auf den Auto-Genehmigen-Pfad |
+| T-4.6 | Kette ohne benannten Prüfer | Drei Prüfstellen, keine in einem Prozess mit Modelltext. Ungeprüft ist die Kette eine Verzierung |
+| T-5.7 | Einheitlich 20 Einträge | Vier Aufbewahrungsstufen; Fenstertitel, OCR-Text und VLM-Beschreibung sind nicht gleich verräterisch |
+| T-5.5 | Denylist fehlte | Anwendungs-Denylist und DRM-Prüfung **vor** dem Diff, nicht danach |
+
+**Drei neue blockierende Spikes:**
+
+- **T−1.9 KWin-Fokusereignis.** Die ganze Gatterkette ruht darauf, und screenpipe hat Fokusverfolgung unter Linux aufgegeben — ihr Stub erwähnt KDE nicht einmal. Fällt das Signal aus, degradiert die Kette zu Polling, also zum Nicht-Ziel.
+- **T−1.10 OCR-Kosten.** Klärt, ob tesseract neben dem VLM überhaupt gebraucht wird.
+- **T−1.11 AT-SPI2.** Der einzige auf Wayland gangbare Weg zu Aktionen *innerhalb* von Anwendungen, ohne synthetische Eingabe.
+
+**Architektonisch:** Auswertung von Modelltext ist von der Policy getrennt. Wertet derselbe Prozess Modellausgabe aus und hält die Policy, liegt die Policy im Wirkungsradius und die Broker schützen die falsche Sache.
+
+**Ehrlichkeit im Katalog:** Die DBus-Liste deckt Systemverben ab und **nichts innerhalb einer Anwendung**. Das steht jetzt so im Design, statt den Eindruck einer allgemeinen Steuerfläche zu lassen.
 
 ## Anhang C6 — Änderungen in v3.4 (oc-claw, openpets) — **NICHT GEGENGELESEN**
 
