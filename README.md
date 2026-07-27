@@ -54,6 +54,7 @@ Vollständig: [docs/DESIGN.md §1.2](docs/DESIGN.md).
 | [docs/DESIGN.md](docs/DESIGN.md) | Architektur, Bedrohungsmodell, Diagramme, Risikoregister |
 | [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md) | 161 Tasks in 10 Phasen, agentenlesbar |
 | [PLAN-REVIEW-LOG.md](PLAN-REVIEW-LOG.md) | 5 Runden adversarialer Review, vollständig |
+| [HANDOVER.md](HANDOVER.md) | **Stand, laufende Prozesse, Fallen — für die nächste Sitzung** |
 | [docs/PRIOR-ART.md](docs/PRIOR-ART.md) | was es schon gibt: übernehmen, lesen oder meiden |
 | [docs/PHASE3-original.md](docs/PHASE3-original.md) | der ursprüngliche, engere Plan |
 

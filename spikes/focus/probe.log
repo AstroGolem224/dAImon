@@ -209,3 +209,5 @@ probe laeuft, schreibt nach /home/itiger013/Dokumente/Github/dAImon/spikes/focus
  208 activated org.kde.konsole          Noice : codex — Konsole
  209 activated Tk                       daimon-spike-below
  210 activated org.kde.konsole          Noice : codex — Konsole
+ 211 activated com.anthropic.Claude     Claude
+ 212 activated org.kde.konsole          Noice : codex — Konsole

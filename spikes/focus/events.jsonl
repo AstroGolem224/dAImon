@@ -208,3 +208,5 @@
 {"t": 49305.421261668, "wall": 1785179447.774943, "kind": "activated", "uuid": "{5f21c01a-6307-4430-a477-94ef0a0a19ae}", "caption": "Noice : codex — Konsole", "class": "org.kde.konsole", "desktop": "org.kde.konsole", "fullscreen": false}
 {"t": 49331.250989226, "wall": 1785179473.6046712, "kind": "activated", "uuid": "{34eb322d-1195-4d30-a596-1dbb3f3d23ab}", "caption": "daimon-spike-below", "class": "Tk", "desktop": "", "fullscreen": true}
 {"t": 49347.765580908, "wall": 1785179490.119263, "kind": "activated", "uuid": "{5f21c01a-6307-4430-a477-94ef0a0a19ae}", "caption": "Noice : codex — Konsole", "class": "org.kde.konsole", "desktop": "org.kde.konsole", "fullscreen": false}
+{"t": 49759.917006041, "wall": 1785179902.270688, "kind": "activated", "uuid": "{028fdf84-e7e0-46ca-9ae9-168d7198cb7e}", "caption": "Claude", "class": "com.anthropic.Claude", "desktop": "com.anthropic.Claude", "fullscreen": false}
+{"t": 49868.02142046, "wall": 1785180010.3751025, "kind": "activated", "uuid": "{5f21c01a-6307-4430-a477-94ef0a0a19ae}", "caption": "Noice : codex — Konsole", "class": "org.kde.konsole", "desktop": "org.kde.konsole", "fullscreen": false}
