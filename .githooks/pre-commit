@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Zweite Verteidigungslinie hinter dem PreToolUse-Hook: verhindert, dass eine
+# Aenderung an eingefrorenen Verifizierern ueberhaupt in die Historie kommt.
+set -euo pipefail
+REPO="$(git rev-parse --show-toplevel)"
+FROZEN="$REPO/tests/verify/FROZEN"
+role="${DAIMON_ROLE:-unknown}"
+
+staged="$(git diff --cached --name-only)"
+
+# Eine eingefrorene Datei darf eingecheckt werden, solange ihr Inhalt zum
+# hinterlegten Hash passt. Das erlaubt das erstmalige Hinzufuegen und blockiert
+# jede spaetere Aenderung -- inklusive einer, die FROZEN gleich mit anpasst,
+# denn FROZEN ist fuer die Builder-Rolle gesperrt.
+if [[ -f "$FROZEN" ]]; then
+    while read -r want path; do
+        [[ -z "${want:-}" || "$want" == \#* ]] && continue
+        grep -qxF "$path" <<<"$staged" || continue
+        have="$(git show ":$path" 2>/dev/null | sha256sum | cut -d' ' -f1)"
+        if [[ "$have" != "$want" ]]; then
+            echo "pre-commit: $path ist eingefroren, der gestagte Inhalt weicht ab." >&2
+            echo "            erwartet $want" >&2
+            echo "            gestaged $have" >&2
+            echo "            Eine Aenderung braucht einen neuen .v-Task mit Mutationstest." >&2
+            exit 1
+        fi
+    done < "$FROZEN"
+fi
+
+if [[ "$role" == "builder" ]]; then
+    if grep -qE '^(tests/verify/|tests/mutants/|tests/fixtures/known-good/|\.claude/)' <<<"$staged"; then
+        echo "pre-commit: Rolle 'builder' darf tests/verify, tests/mutants," >&2
+        echo "            tests/fixtures/known-good und .claude/ nicht aendern." >&2
+        exit 1
+    fi
+fi
+
+if [[ -f "$REPO/tests/verify/verify-frozen.sh" && -f "$FROZEN" ]]; then
+    "$REPO/tests/verify/verify-frozen.sh" >/dev/null || {
+        echo "pre-commit: verify-frozen schlaegt fehl." >&2; exit 1; }
+fi

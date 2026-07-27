@@ -1,0 +1,108 @@
+# dAImon
+
+Ein Desktop-Familiar für Linux/Wayland. Eine kleine Figur am Bildschirmrand, die zeigt, was die laufenden Claude-Code-Sessions tun, auf Ansprache antwortet, den Bildschirm mitliest und auf ausdrückliche Bestätigung den PC steuert.
+
+**Status: Planung abgeschlossen, Implementierung nicht begonnen.**
+
+Zielsystem: CachyOS (Arch), KDE Plasma 6.7 auf Wayland, KWin 6.7, RTX 5090, PipeWire. Kein Anspruch auf Portabilität.
+
+---
+
+## Warum es das gibt
+
+Der Kern ist banal und trägt sich täglich: Am Rand des Blickfelds zu sehen, dass ein Agent auf eine Freigabe wartet, ohne ins Terminal zu schauen. Alles Weitere baut darauf auf.
+
+## Was es ist
+
+| | |
+|---|---|
+| **Anzeige** | Claude-Code-Hook-Events → Mood-Zustand → Overlay |
+| **Gehör** | Wake-Word und Push-to-Talk, lokale Transkription, lokale Sprachausgabe |
+| **Sicht** | Screencast über das Portal, Änderungserkennung, OCR, optional ein lokales VLM |
+| **Hände** | Whitelist typisierter DBus-Aktionen mit Bestätigungsdialog und Audit-Log |
+| **Charakter** | eine TOML-Datei |
+
+## Was es nicht ist
+
+Kein Dauermitschnitt. Keine Cloud-Verarbeitung passiver Wahrnehmung ohne Nutzerauslösung. Keine freie Maus- und Tastatursteuerung. Kein Multi-User. Nicht portabel.
+
+---
+
+## Sicherheitsmodell in drei Sätzen
+
+1. **Passiver Kontext kann keine Aktion auslösen und keinen Dialog öffnen.** Bildschirmtext, Hook-Nutzlasten und Hintergrundschleifen dürfen eine Sprechblase anzeigen — mehr nicht.
+2. **Sprache fragt, sie autorisiert nicht.** Audio ist nicht authentifizierbar: Lautsprecher, Videos und die eigene Sprachausgabe können den Namen sagen. Aktionen brauchen Push-to-Talk und eine Bestätigung der kanonisierten Aktion.
+3. **Ein Angreifer mit Codeausführung unter derselben uid wird nicht abgewehrt.** Das steht so im Bedrohungsmodell, weil es nicht leistbar ist und alles andere unehrlich wäre.
+
+Die Prozessgrenzen begrenzen den Schaden aus kompromittierter **Modellausgabe** — das ist der reale Angriffsweg. Sie sind keine Grenze gegen lokalen Code.
+
+Vollständig: [docs/DESIGN.md §1.2](docs/DESIGN.md).
+
+---
+
+## Dokumente
+
+| Datei | Inhalt |
+|---|---|
+| [docs/DESIGN.md](docs/DESIGN.md) | Architektur, Bedrohungsmodell, Diagramme, Risikoregister |
+| [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md) | 146 Tasks in 9 Phasen, agentenlesbar |
+| [PLAN-REVIEW-LOG.md](PLAN-REVIEW-LOG.md) | 5 Runden adversarialer Review, vollständig |
+| [docs/PHASE3-original.md](docs/PHASE3-original.md) | der ursprüngliche, engere Plan |
+
+### Der Review ist nicht konvergiert
+
+Fünf Runden gegen OpenAI Codex (`gpt-5.6-sol`), Maximum erreicht, **kein `APPROVED`**. Schlussurteil: das Design sei „broadly sound", der Plan „still not safe to start". Die beiden dort benannten offenen Punkte sind inzwischen geschlossen (Anhang C4 und D des Plans) — **diese Nacharbeit ist selbst nicht gegengelesen.**
+
+Das Protokoll steht vollständig im Repo, samt der Stellen, an denen die Kritik eigene Behauptungen widerlegt hat. Eine davon: Der Testbefehl für Push-to-Talk löste den Shortcut über `kglobalaccel.invokeShortcut` aus — und bewies damit, dass jeder Prozess derselben uid das „physische" Ereignis erzeugen kann.
+
+---
+
+## Verifikationsregime
+
+Der Plan wird von Agenten in Schleifen abgearbeitet. Damit die Abnahme nicht von dem geschrieben wird, der auch implementiert:
+
+```
+T-x.y.v  (reviewer)   Verifizierer + Mutanten + Gut-Muster
+   │                  meta.sh: jede Mutante muss scheitern
+   │                  freeze.sh: Hash nach tests/verify/FROZEN
+   ▼
+T-x.y    (builder)    implementieren — kann tests/verify/ nicht anfassen
+   ▼
+Gate                  verify-frozen.sh zuerst
+```
+
+Durchgesetzt, nicht behauptet — drei Schichten:
+
+| Schicht | Datei |
+|---|---|
+| `PreToolUse`-Hook | [.claude/hooks/role_guard.py](.claude/hooks/role_guard.py) |
+| git `pre-commit` | [.githooks/pre-commit](.githooks/pre-commit) |
+| Gate-Vorbedingung | [tests/verify/verify-frozen.sh](tests/verify/verify-frozen.sh) |
+
+Rolle über `DAIMON_ROLE`. Fehlt sie, ist Schreiben überall verboten.
+
+```bash
+git config core.hooksPath .githooks
+export DAIMON_ROLE=builder      # oder reviewer / investigator
+tests/verify/T-0.0.sh           # 19 Assertions, muss grün sein
+```
+
+---
+
+## Nächster Schritt
+
+Phase −1 sind Machbarkeits-Spikes. Zwei davon können die Architektur kippen und laufen deshalb vor allem anderen:
+
+- **T−1.1** Erkennt das Wake-Word einen deutschen Namen? Es gibt kein deutsches KWS-Modell.
+- **T−1.2** Ist ONNX Runtime mit `sm_120` aus einem cp312-venv erreichbar? Arch' Paket bringt keine Python-Bindings mit.
+
+```bash
+export DAIMON_ROLE=investigator
+mkdir -p spikes/wakeword && cd spikes/wakeword
+```
+
+---
+
+## Lizenz
+
+Noch nicht festgelegt. Referenzprojekte unter GPL (`wl_shimeji`, Piper) werden gelesen, nicht kopiert — siehe die Lizenzspalte in `docs/DESIGN.md §15`.

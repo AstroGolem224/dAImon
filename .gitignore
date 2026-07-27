@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+target/
+/spikes/*/models/
+/spikes/*/*.wav
+/tests/evidence/*.raw
+*.onnx
+*.gguf
+*.nemo
