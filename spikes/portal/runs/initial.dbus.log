@@ -133,3 +133,19 @@ signal time=1785182839.896520 sender=:1.49 -> destination=(null destination) ser
    variant       boolean false
 method call time=1785182842.047192 sender=:1.49 -> destination=:1.62 serial=3268 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=GetAppState
 method call time=1785182847.047845 sender=:1.49 -> destination=:1.62 serial=3270 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=GetAppState
+method call time=1785182852.048466 sender=:1.49 -> destination=:1.62 serial=3272 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=GetAppState
+# dbus-monitor segment=2 monotonic=52711.677966
+signal time=1785182854.032503 sender=org.freedesktop.DBus -> destination=:1.466 serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameAcquired
+   string ":1.466"
+signal time=1785182854.032515 sender=org.freedesktop.DBus -> destination=:1.466 serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameLost
+   string ":1.466"
+signal time=1785182863.680910 sender=:1.62 -> destination=(null destination) serial=3724 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Settings; member=SettingChanged
+   string "org.kde.VirtualKeyboard"
+   string "active"
+   variant       boolean true
+signal time=1785182863.680975 sender=:1.49 -> destination=(null destination) serial=3274 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.Settings; member=SettingChanged
+   string "org.kde.VirtualKeyboard"
+   string "active"
+   variant       boolean true
+signal time=1785182863.681561 sender=:1.62 -> destination=(null destination) serial=3725 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
+signal time=1785182863.681763 sender=:1.62 -> destination=(null destination) serial=3726 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged

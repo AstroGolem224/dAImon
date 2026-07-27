@@ -34,7 +34,7 @@ cp /home/itiger013/Dokumente/UMBRA-Notes/DDs/dAImon/dAImon-Implementierungsplan.
 | **T−1.2** ONNX sm_120 | ✅ **bestanden** | pip-Wheel `onnxruntime-gpu==1.27.0` hat native `sm_120a`-Cubins. Arch-Paket ist *schlechter* (PTX auf `compute_121`, lädt auf sm_120 nicht). C-API-Worker hart blockiert — ORT-Kern ist statisch ins pybind-Modul gelinkt |
 | **T−1.3** layer-shell | ✅ **bestanden** | Overlay über Vollbild sichtbar, Idle-CPU **0,17 %**, **kein GPU-Kontext** (null DRI-FDs), Click-Through funktioniert. KDE-Bug 503121 reproduziert (0/20), Umgehung „Properties neu setzen" 20/20 |
 | **T−1.9** KWin-Fokus | ✅ **bestanden** | 50/50, keine Auslassung, p95 **0,9 ms**. Aber: `captionChanged` feuert nur bei Titeländerung — der Abtast-Timer trägt den Großteil |
-| **T−1.10** OCR-Kosten | 🔄 **läuft noch** | Ein Agent misst; `spikes/ocr/` hat Zwischenstände. Siehe „Laufende Prozesse" |
+| **T−1.10** OCR-Kosten | ✅ **bestanden** | tesseract bleibt, als Arbeitsprozess mit `tessdata_fast`, ein Thread. Vollbild 3,3 s, Ausschnitt 0,35 s. **Korrektur:** Regionen-Zuschnitt bringt nichts (deckt 97–99 %), der Gewinn liegt im Fensterzuschnitt. VLM kann es nicht ersetzen — liefert auf Vollbildern nichts und halluziniert |
 | **T−1.1** Wake-Word | ⏸ **wartet auf Matthias** | Werkzeug fertig, Aufnahmen fehlen |
 | T−1.4 Portal-Persistenz | offen | ich hatte es noch nicht angefangen |
 | T−1.11 AT-SPI2 | offen | dito |
@@ -79,11 +79,7 @@ kwriteconfig6 --file kwinrc --group Plugins --key daimon-focusprobeEnabled false
 qdbus6 org.kde.KWin /KWin org.kde.KWin.reconfigure
 ```
 
-**OCR-Benchmark** lief bei Abgabe noch (`spikes/ocr/worker.py`, `bench3.py`). Prüfen:
-```bash
-ls spikes/ocr/*.json; tail spikes/ocr/run_omp1.log
-```
-Falls kein `spikes/ocr/results.json` existiert, ist der Spike unfertig — dann neu beauftragen.
+**OCR-Benchmark ist fertig.** `spikes/ocr/results.json` und `NOTES.md` liegen vor.
 
 ---
 
@@ -135,8 +131,7 @@ export DAIMON_ROLE=reviewer       # Verifizierer, NICHT daimon/ face/
 
 ## Nächste sinnvolle Schritte
 
-1. **T−1.10 abschließen** (OCR-Kosten) — prüfen ob der Agent fertig wurde
-2. **T−1.4** (Portal-`restore_token` über Neustart) und **T−1.11** (AT-SPI2) — beide allein machbar
+1. **T−1.4** (Portal-`restore_token` über Neustart) und **T−1.11** (AT-SPI2) — beide allein machbar
 3. **T−1.1** sobald Matthias aufgenommen hat
 4. Dann **T−1.7 Entscheidungsprotokoll**, danach Gate P−1
 5. Erst danach P0.0 → P0
