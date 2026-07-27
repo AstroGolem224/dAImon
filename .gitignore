@@ -10,3 +10,5 @@ target/
 *.onnx
 *.gguf
 *.nemo
+/spikes/wakeword/samples/
+/spikes/wakeword/sherpa-onnx-kws-*/

@@ -1,0 +1,14 @@
+[package]
+name = "layershell-spike"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+smithay-client-toolkit = "0.21"
+wayland-client = "0.31"
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+calloop = "0.14"
+
+[[bin]]
+name = "spike"
+path = "src/main.rs"

@@ -108,3 +108,10 @@ probe laeuft, schreibt nach /home/itiger013/Dokumente/Github/dAImon/spikes/focus
  107 caption   FreeCAD                  * Wicking_Analyse - FreeCAD 1.1.3
  108 caption   FreeCAD                  Unnamed - FreeCAD 1.1.3
  109 caption   FreeCAD                  * wicking_v2 - FreeCAD 1.1.3
+ 110 activated org.kde.konsole          Noice : codex — Konsole
+ 111 activated com.anthropic.Claude     Claude
+ 112 activated org.kde.konsole          Noice : codex — Konsole
+ 113 activated org.kde.konsole          img : less — Konsole
+ 114 activated org.kde.konsole          Noice : codex — Konsole
+ 115 activated FreeCAD                  * wicking_v2 - FreeCAD 1.1.3
+ 116 activated Alacritty                hej, bitte recherchiere mal im n
