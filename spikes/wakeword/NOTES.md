@@ -64,3 +64,35 @@ Push-to-Talk, der Rest von Phase 3 läuft unverändert.
 
 `samples/` ist **nicht** im Repository — Stimmaufnahmen gehören nicht auf GitHub.
 Die Auswertung schreibt nur Zahlen nach `results.json`.
+
+---
+
+## Erster Durchlauf ungültig (2026-07-27)
+
+50 Proben aufgenommen, **FRR 100 % bei jeder Schwelle** — auch bei 0,02. Das ist
+kein schwieriges Wort, das ist ein kaputter Aufbau.
+
+Diagnose aus dem Energieverlauf:
+
+```
+laut_002: [0.021, 0.001, 0.001, 0.001, ...]   ← Signal nur in den ersten 100 ms
+```
+
+Pegel über alle Bedingungen: Spitzen meist unter 0,1, Median-RMS 0,005. Für
+Sprache deutlich zu leise.
+
+**Zwei Fehler im Werkzeug, beide behoben:**
+
+1. Der Rekorder wurde **nach** der Aufforderung „JETZT sprechen" gestartet. Jetzt
+   läuft er vorher, und es wird auf echten Datenfluss gewartet, bevor die
+   Aufforderung erscheint. (`pw-record` liefert nach ~20 ms erste Daten — gemessen.)
+2. Es gab **keine Sofortprüfung**. Jetzt wird jede Aufnahme direkt auf Pegel und
+   ein zusammenhängendes lautes Stück geprüft; zu leise oder zu früh gesprochen
+   wird sofort gemeldet und die Datei verworfen.
+
+Die alten Proben liegen unter `samples/unbrauchbar_2026-07-27/` — nicht gelöscht,
+falls sich doch noch etwas daraus ziehen lässt.
+
+**Vor dem nächsten Versuch:** Mikrofonpegel prüfen. Die Quelle ist
+`Torch Streaming Microphone`. Wenn die erste Probe „zu leise" meldet, erst am
+Pegel drehen statt 50 Aufnahmen zu machen.

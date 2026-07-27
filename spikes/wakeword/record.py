@@ -38,14 +38,37 @@ CONDITIONS = [
 ]
 
 
-def record(path: Path, seconds: float) -> bool:
-    """Nimmt auf. Rückgabe False, wenn pw-record scheitert."""
+def start_recorder(path: Path):
+    """Startet pw-record und wartet, bis wirklich Daten fliessen.
+
+    WICHTIG: pw-record braucht Anlaufzeit (PipeWire-Stream oeffnen). Wer erst
+    "sprich jetzt" sagt und danach den Rekorder startet, nimmt Stille auf --
+    genau das ist am 2026-07-27 passiert und hat 50 Proben unbrauchbar gemacht.
+    Deshalb: erst starten, auf echten Datenfluss warten, DANN zum Sprechen
+    auffordern.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     p = subprocess.Popen(
         ["pw-record", "--rate", "16000", "--channels", "1",
          "--format", "s16", str(path)],
         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
     )
+    # Warten bis die Datei waechst -- erst dann laeuft der Stream wirklich.
+    t0 = time.time()
+    last = -1
+    while time.time() - t0 < 2.0:
+        time.sleep(0.05)
+        sz = path.stat().st_size if path.exists() else 0
+        if sz > 0 and sz != last:
+            time.sleep(0.15)   # kleiner Vorlauf
+            return p
+        last = sz
+    return p
+
+
+def record(path: Path, seconds: float) -> bool:
+    """Nur noch fuer Hintergrundaufnahmen: startet und laeuft N Sekunden."""
+    p = start_recorder(path)
     time.sleep(seconds)
     p.terminate()
     try:
@@ -57,6 +80,32 @@ def record(path: Path, seconds: float) -> bool:
         print(f"  ! Aufnahme leer oder zu kurz. {err}")
         return False
     return True
+
+
+def check(path: Path) -> tuple[bool, str]:
+    """Prueft sofort, ob wirklich Sprache drin ist. Eine stille Aufnahme
+    faellt so beim Aufnehmen auf und nicht erst bei der Auswertung."""
+    import wave
+    try:
+        with wave.open(str(path), "rb") as w:
+            n = w.getnframes()
+            raw = w.readframes(n)
+    except Exception as e:
+        return False, f"unlesbar ({e})"
+    if n < 8000:
+        return False, "zu kurz"
+    import array
+    a = array.array("h", raw)
+    peak = max(abs(v) for v in a) / 32768
+    # Energie in 100-ms-Bloecken: es muss ein zusammenhaengendes lautes Stueck geben
+    blocks = [max(abs(v) for v in a[i:i+1600]) / 32768
+              for i in range(0, len(a) - 1600, 1600)]
+    loud = sum(1 for b in blocks if b > peak * 0.3)
+    if peak < 0.02:
+        return False, f"zu leise (Spitze {peak:.3f}) — Mikrofonpegel prüfen"
+    if loud < 2:
+        return False, "kein zusammenhängendes Sprachsignal — zu früh gesprochen?"
+    return True, ""
 
 
 def countdown(msg: str, n: int = 3) -> None:
@@ -87,13 +136,29 @@ def do_positive(n: int, word: str) -> None:
             cond, desc = CONDITIONS[made % len(CONDITIONS)]
             print(f"\n── {made+1}/{n} · Bedingung: {cond}")
             print(f"   {desc}")
-            countdown("Bereit?")
             ts = datetime.now().strftime("%H%M%S")
             path = POS / f"{cond}_{done+made:03d}_{ts}.wav"
-            ok = record(path, 2.2)
-            print("✓ gespeichert" if ok else "✗ verworfen")
+
+            print("\n  Bereit? ", end="", flush=True)
+            for i in (3, 2, 1):
+                print(f"{i} … ", end="", flush=True)
+                time.sleep(0.7)
+
+            proc = start_recorder(path)          # laeuft BEVOR aufgefordert wird
+            print("\n  ► JETZT: „Embershard\"", flush=True)
+            time.sleep(2.2)
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+            ok, why = check(path)
+            print(f"  {'✓ ok' if ok else '✗ ' + why}")
             if ok:
                 made += 1
+            else:
+                path.unlink(missing_ok=True)
             time.sleep(0.4)
     except KeyboardInterrupt:
         print("\n\nAbgebrochen.")

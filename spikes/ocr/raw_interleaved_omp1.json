@@ -1,0 +1,110 @@
+[
+ {
+  "variant": "cli",
+  "image": "crop",
+  "n": 20,
+  "p50_ms": 331.0,
+  "p95_ms": 430.4,
+  "chars": 620,
+  "notes": "one subprocess + temp PNG per call (screenpipe style); subprocess-only p50 329 ms [interleaved run]"
+ },
+ {
+  "variant": "cli",
+  "image": "dense",
+  "n": 20,
+  "p50_ms": 3393.1,
+  "p95_ms": 4292.6,
+  "chars": 6455,
+  "notes": "one subprocess + temp PNG per call (screenpipe style); subprocess-only p50 3343 ms [interleaved run]"
+ },
+ {
+  "variant": "cli",
+  "image": "sparse",
+  "n": 20,
+  "p50_ms": 4225.4,
+  "p95_ms": 5584.8,
+  "chars": 7368,
+  "notes": "one subprocess + temp PNG per call (screenpipe style); subprocess-only p50 3995 ms [interleaved run]"
+ },
+ {
+  "variant": "ffi",
+  "image": "crop",
+  "n": 20,
+  "p50_ms": 349.3,
+  "p95_ms": 378.1,
+  "chars": 620,
+  "notes": "ctypes -> system libtesseract 5.5.3, one API reused, no disk [interleaved run]"
+ },
+ {
+  "variant": "ffi",
+  "image": "dense",
+  "n": 20,
+  "p50_ms": 4080.2,
+  "p95_ms": 4464.8,
+  "chars": 6455,
+  "notes": "ctypes -> system libtesseract 5.5.3, one API reused, no disk [interleaved run]"
+ },
+ {
+  "variant": "ffi",
+  "image": "sparse",
+  "n": 20,
+  "p50_ms": 4817.5,
+  "p95_ms": 5325.0,
+  "chars": 7368,
+  "notes": "ctypes -> system libtesseract 5.5.3, one API reused, no disk [interleaved run]"
+ },
+ {
+  "variant": "tesserocr",
+  "image": "crop",
+  "n": 20,
+  "p50_ms": 287.0,
+  "p95_ms": 293.4,
+  "chars": 620,
+  "notes": "tesserocr wheel, bundles tesseract 5.5.1, one API reused [interleaved run]"
+ },
+ {
+  "variant": "tesserocr",
+  "image": "dense",
+  "n": 20,
+  "p50_ms": 3419.2,
+  "p95_ms": 3430.1,
+  "chars": 6455,
+  "notes": "tesserocr wheel, bundles tesseract 5.5.1, one API reused [interleaved run]"
+ },
+ {
+  "variant": "tesserocr",
+  "image": "sparse",
+  "n": 20,
+  "p50_ms": 4060.2,
+  "p95_ms": 4344.5,
+  "chars": 7369,
+  "notes": "tesserocr wheel, bundles tesseract 5.5.1, one API reused [interleaved run]"
+ },
+ {
+  "variant": "worker",
+  "image": "crop",
+  "n": 20,
+  "p50_ms": 306.3,
+  "p95_ms": 376.9,
+  "chars": 620,
+  "notes": "separate process holding the API, raw RGB over a unix socketpair [interleaved run]"
+ },
+ {
+  "variant": "worker",
+  "image": "dense",
+  "n": 20,
+  "p50_ms": 3456.1,
+  "p95_ms": 4487.3,
+  "chars": 6455,
+  "notes": "separate process holding the API, raw RGB over a unix socketpair [interleaved run]"
+ },
+ {
+  "variant": "worker",
+  "image": "sparse",
+  "n": 20,
+  "p50_ms": 4333.9,
+  "p95_ms": 5082.5,
+  "chars": 7368,
+  "notes": "separate process holding the API, raw RGB over a unix socketpair [interleaved run]"
+ }
+]
