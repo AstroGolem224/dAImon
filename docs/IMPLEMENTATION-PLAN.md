@@ -278,7 +278,11 @@ tests/verify/T-0.0.sh             # muss grün sein, bevor P−1 beginnt
 - **Verifikation:** `tests/verify/T--1.2.sh` — Exit 0 nur, wenn mindestens eine Variante `importable && provider_active && native_sm120` hat **und** der Verifizierer `cuobjdump` **selbst** ausführt und `sm_120` in der Ausgabe findet. Ein Latenzverhältnis allein genügt nicht — ein warmer PTX-JIT-Cache erfüllt es ebenfalls.
 - **Agent:** investigator · **Umfang:** L
 
-### T−1.3 — layer-shell-Smoke-Test ∥
+### T−1.3 — layer-shell-Smoke-Test ✅ **BESTANDEN**
+> `spikes/layershell/results.json`: Overlay bleibt über Vollbild sichtbar, Idle-CPU 0,17 %, **kein GPU-Kontext** (null DRI-Deskriptoren), Click-Through funktioniert mit Negativkontrolle, KDE-Bug 503121 reproduziert (0/20) und per „Properties neu setzen" umgangen (20/20).
+>
+> **Zwischenfall:** Der erste Anlauf hat die Maus blockiert — ohne gesetzte Input-Region nimmt eine bildschirmfüllende Surface Eingaben auf der ganzen Fläche an. Behoben durch leere Region als Vorgabe plus Watchdog im Prozess.
+
 - **Ziel:** Beweis, dass eine Overlay-Surface auf diesem KWin trägt — inklusive des Bugs, der später weh tut.
 - **Dateien:** `spikes/layershell/` [neu], `spikes/layershell/results.json` [erzeugt]
 - **Abhängigkeiten:** **T−1.3.v**
@@ -667,6 +671,8 @@ tests/verify/T-0.11.sh
 - **Dateien:** `face/src/input.rs` [neu]
 - **Abhängigkeiten:** T-1.1, T−1.8
 - **Akzeptanz:**
+  - [ ] **Die Input-Region wird IMMER gesetzt, auch wenn keine gewünscht ist** — die leere Region ist die Vorgabe. Ohne Region nimmt eine bildschirmfüllende Surface Eingaben auf der ganzen Fläche an und blockiert die Maus (im Spike real passiert)
+  - [ ] Die Region steht **vor dem ersten `commit`**, nicht danach
   - [ ] `set_input_region` nur über der Pet-Bounding-Box
   - [ ] Klick daneben erreicht das Fenster darunter
   - [ ] Alpha-Test verwirft Klicks auf transparente Ränder
@@ -1298,6 +1304,7 @@ done
 - **Akzeptanz:**
   - [ ] **One-shot:** bekommt eine begrenzte, unveränderliche Ereignisfolge, führt sie aus, **beendet sich und schließt die Portal-Session**
   - [ ] `RuntimeMaxSec=` als Zwangsende
+  - [ ] **libei ist für alles mit Positionierung die einzige Option**: `ydotool mousemove -a` positioniert auf dieser Maschine nicht — jedes absolute Ziel landet bei `(0,0)`, Exit-Code 0, keine Fehlermeldung (Spike T−1.3 **[V]**). Nur relative Bewegung geht, und die unterliegt der Zeigerbeschleunigung
   - [ ] libei über das Portal `RemoteDesktop` ist der Regelweg
   - [ ] **Der `ydotool`-Rückfall verlangt einen dauerhaften privilegierten `ydotoold` und widerspricht der One-shot-Zusage.** Standardmäßig **deaktiviert**. Aktiviert startet und beendet der Broker `ydotoold` im eigenen Prozessbaum für genau diese Ereignisfolge; ein systemweit laufender `ydotoold` wird erkannt und die Aktion abgelehnt
   - [ ] **Immer `ask`, nie gecacht**
