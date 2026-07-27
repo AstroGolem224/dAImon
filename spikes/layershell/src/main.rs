@@ -52,6 +52,7 @@ struct Cfg {
     input_region: Option<(i32, i32, i32, i32)>,
     cycles: u32,
     cycle_mode: String,
+    hold: u64,
 }
 
 fn parse_rect(s: &str) -> (i32, i32, i32, i32) {
@@ -68,6 +69,7 @@ fn parse_args() -> Cfg {
         input_region: None,
         cycles: 20,
         cycle_mode: "null".into(),
+        hold: 0,
     };
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -93,6 +95,10 @@ fn parse_args() -> Cfg {
             "--cycle-mode" => {
                 i += 1;
                 cfg.cycle_mode = args[i].clone();
+            }
+            "--hold" => {
+                i += 1;
+                cfg.hold = args[i].parse().unwrap();
             }
             other => panic!("unbekanntes Argument {other}"),
         }
@@ -189,12 +195,20 @@ impl App {
         // Leere opaque region — Pflicht, sonst kein Durchscheinen.
         let opaque = Region::new(&self.compositor).expect("region");
         layer.set_opaque_region(Some(opaque.wl_region()));
+        // SICHERHEITSREGEL: die Input-Region wird IMMER gesetzt, auch wenn keine
+        // angefordert wurde. Eine Wayland-Surface ohne Input-Region nimmt Eingaben
+        // auf ihrer GANZEN Flaeche entgegen -- bei einer bildschirmfuellenden
+        // Layer-Surface heisst das: der komplette Schirm schluckt Klicks und der
+        // Rechner ist mit der Maus nicht mehr bedienbar. Genau das ist am
+        // 2026-07-27 passiert.
+        //
+        // Vorgabe ist deshalb die LEERE Region = vollstaendig klickdurchlaessig.
+        let input = Region::new(&self.compositor).expect("region");
         if let Some((x, y, w, h)) = self.cfg.input_region {
-            let input = Region::new(&self.compositor).expect("region");
             input.add(x, y, w, h);
-            layer.set_input_region(Some(input.wl_region()));
-            std::mem::forget(input);
         }
+        layer.set_input_region(Some(input.wl_region()));
+        std::mem::forget(input);
         std::mem::forget(opaque);
         let _ = qh;
     }
@@ -408,6 +422,19 @@ fn wait_configure(eq: &mut EventQueue<App>, app: &mut App, dur: Duration) -> (bo
 fn main() {
     let cfg = parse_args();
 
+    // Zwangsabschaltung. Der Aufrufer kann abstuerzen, der Agent kann haengen,
+    // die Ereignisschleife kann blockieren -- dieser Thread beendet den Prozess
+    // trotzdem. Ohne Maus ist ein haengendes Overlay nur noch per TTY loesbar.
+    let hard_limit = std::env::var("SPIKE_MAX_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(90);
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(hard_limit));
+        eprintln!("WATCHDOG: {hard_limit}s erreicht, Prozess wird beendet");
+        std::process::exit(3);
+    });
+
     let conn = Connection::connect_to_env().expect("Wayland-Verbindung");
     let (globals, mut eq) = registry_queue_init::<App>(&conn).expect("registry");
     let qh = eq.handle();
@@ -550,9 +577,11 @@ fn main() {
                     ok += 1;
                     app.draw(&qh);
                 } else {
-                    // Kein configure. Trotzdem Buffer anhaengen, um zu sehen,
-                    // ob die Surface ueberhaupt wieder sichtbar wird.
-                    app.draw(&qh);
+                    // Kein configure. Jetzt einen Buffer anzuhaengen ist ein
+                    // Protokollfehler ("buffer attached prior to the first
+                    // layer_surface.configure") und wuerde die Verbindung
+                    // toeten. Also nur zaehlen und weitermessen.
+                    println!("EVENT no_configure cycle={i}");
                 }
                 if let Err(e) = pump(&mut eq, &mut app, Duration::from_millis(120)) {
                     err = Some(format!("cycle {i}: {e}"));
@@ -569,6 +598,11 @@ fn main() {
                 cfg.cycle_mode, cfg.cycles, ok, app.closed_count, err
             );
             println!("RESULT times_ms={times:?}");
+            if cfg.hold > 0 {
+                println!("HOLD {}s pid={}", cfg.hold, std::process::id());
+                let _ = std::io::stdout().flush();
+                pump(&mut eq, &mut app, Duration::from_secs(cfg.hold)).ok();
+            }
         }
         m => panic!("unbekannter Modus {m}"),
     }

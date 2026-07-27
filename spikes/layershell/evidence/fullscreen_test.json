@@ -1,0 +1,73 @@
+{
+  "marker": [
+    2000,
+    600,
+    240,
+    240
+  ],
+  "probe": [
+    2120,
+    720
+  ],
+  "ctrl": [
+    2120,
+    400
+  ],
+  "overlay_color_hex": "0B53E5",
+  "overlay_color_rgb": [
+    11,
+    83,
+    229
+  ],
+  "fullscreen_color_hex": "D38532",
+  "fullscreen_color_rgb": [
+    211,
+    133,
+    50
+  ],
+  "A_probe": [
+    33,
+    58,
+    43
+  ],
+  "E_probe": [
+    211,
+    133,
+    50
+  ],
+  "E_ctrl": [
+    211,
+    133,
+    50
+  ],
+  "fullscreen_covers_probe": true,
+  "fullscreen_bg_recognised": true,
+  "ready": true,
+  "pid": 99803,
+  "C_probe": [
+    11,
+    83,
+    229
+  ],
+  "C_uniform": true,
+  "C_ctrl": [
+    211,
+    133,
+    50
+  ],
+  "fullscreen_pixel_match": true,
+  "B_probe": [
+    11,
+    83,
+    229
+  ],
+  "overlay_visible_alone": true,
+  "client_alive_at_end": true,
+  "baseline_false_positive": false,
+  "D_probe": [
+    33,
+    58,
+    43
+  ],
+  "cleanup_ok": true
+}

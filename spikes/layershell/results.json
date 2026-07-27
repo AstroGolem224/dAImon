@@ -1,0 +1,25 @@
+{
+  "spike": "T-1.3",
+  "frage": "Traegt wlr-layer-shell auf KWin 6.7.3, und ist KDE-Bug 503121 beherrschbar?",
+  "maps": true,
+  "fullscreen_pixel_match": true,
+  "baseline_false_positive": false,
+  "cycles": 20,
+  "configures_null_buffer": 0,
+  "configures_reset_props": 20,
+  "configures_recreate": 20,
+  "workaround_recommended": "reset_props",
+  "idle_cpu_pct": 0.1667,
+  "buffer_type": "shm",
+  "gpu_libs": [],
+  "dri_fds": [],
+  "input_region_works": null,
+  "verdict": "partial",
+  "decision": "Overlay traegt: bleibt ueber Vollbild sichtbar (per Pixelprobe belegt, mit Negativkontrolle), Idle-CPU 0,17 %, und es wird nachweislich KEIN GPU-Kontext geoeffnet -- null DRI-Deskriptoren, null GPU-Bibliotheken, nur ein memfd fuer wl_shm. Damit ist die Architekturentscheidung aus Design 8.1 empirisch bestaetigt.\n\nKDE-Bug 503121 ist reproduziert: Unmap per NULL-Buffer liefert 0 von 20 configures. Beide Umgehungen liefern 20 von 20. Empfehlung: Properties vor dem Remap neu setzen -- billiger als die Surface neu zu erzeugen.\n\nOFFEN: die Input-Region. Der erste Anlauf hat den Mauszeiger des Nutzers blockiert, weil ohne gesetzte Region eine bildschirmfuellende Surface Eingaben auf ihrer ganzen Flaeche annimmt. Behoben: die leere Region ist jetzt die Vorgabe, und ein Watchdog beendet den Prozess unabhaengig vom Aufrufer.",
+  "blocking": false,
+  "incident": {
+    "was": "Overlay hat den Mauszeiger blockiert",
+    "ursache": "apply_regions setzte set_input_region nur bei --input-region; ohne Argument nimmt die Surface Eingaben auf der gesamten Flaeche an",
+    "behoben": "leere Region als Vorgabe + Watchdog (SPIKE_MAX_SECS, Vorgabe 90 s) im Prozess selbst"
+  }
+}

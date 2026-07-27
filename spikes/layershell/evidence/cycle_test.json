@@ -1,0 +1,149 @@
+{
+  "null": {
+    "mode": "null",
+    "color": "A97B2D",
+    "color_rgb": [
+      169,
+      123,
+      45
+    ],
+    "cycles": 20,
+    "configures": 0,
+    "closed": 0,
+    "error": "None",
+    "times_ms": [
+      1509,
+      1508,
+      1509,
+      1509,
+      1509,
+      1508,
+      1509,
+      1508,
+      1508,
+      1508,
+      1510,
+      1508,
+      1508,
+      1509,
+      1509,
+      1508,
+      1509,
+      1508,
+      1508,
+      1508
+    ],
+    "probe_after_cycles": [
+      20,
+      22,
+      24
+    ],
+    "visible_after_cycles": false,
+    "log_tail": [
+      "EVENT no_configure cycle=17",
+      "EVENT no_configure cycle=18",
+      "EVENT no_configure cycle=19",
+      "RESULT cycle_mode=null cycles=20 configures=0 closed=0 error=None",
+      "RESULT times_ms=[1509, 1508, 1509, 1509, 1509, 1508, 1509, 1508, 1508, 1508, 1510, 1508, 1508, 1509, 1509, 1508, 1509, 1508, 1508, 1508]",
+      "HOLD 25s pid=100369"
+    ]
+  },
+  "reset": {
+    "mode": "reset",
+    "color": "14BF41",
+    "color_rgb": [
+      20,
+      191,
+      65
+    ],
+    "cycles": 20,
+    "configures": 20,
+    "closed": 0,
+    "error": "None",
+    "times_ms": [
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10
+    ],
+    "probe_after_cycles": [
+      20,
+      191,
+      65
+    ],
+    "visible_after_cycles": true,
+    "log_tail": [
+      "EVENT pointer_leave",
+      "EVENT configure n=21 size=5120x1440 serial=20805",
+      "EVENT pointer_enter @(2261.42578125, 390.10546875)",
+      "RESULT cycle_mode=reset cycles=20 configures=20 closed=0 error=None",
+      "RESULT times_ms=[10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10]",
+      "HOLD 25s pid=103453"
+    ]
+  },
+  "recreate": {
+    "mode": "recreate",
+    "color": "77A0FA",
+    "color_rgb": [
+      119,
+      160,
+      250
+    ],
+    "cycles": 20,
+    "configures": 20,
+    "closed": 0,
+    "error": "None",
+    "times_ms": [
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10
+    ],
+    "probe_after_cycles": [
+      119,
+      160,
+      250
+    ],
+    "visible_after_cycles": true,
+    "log_tail": [
+      "EVENT pointer_enter @(2253.83984375, 459.54296875)",
+      "EVENT configure n=21 size=5120x1440 serial=20908",
+      "EVENT pointer_enter @(2253.83984375, 459.54296875)",
+      "RESULT cycle_mode=recreate cycles=20 configures=20 closed=0 error=None",
+      "RESULT times_ms=[10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10]",
+      "HOLD 25s pid=103515"
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+[
+ {
+  "variant": "cli",
+  "image": "crop",
+  "n": 20,
+  "p50_ms": 330.6,
+  "p95_ms": 332.9,
+  "chars": 620,
+  "notes": "one subprocess + temp PNG per call (screenpipe style); subprocess-only p50 329 ms [interleaved run]"
+ },
+ {
+  "variant": "ffi",
+  "image": "crop",
+  "n": 20,
+  "p50_ms": 271.0,
+  "p95_ms": 380.9,
+  "chars": 620,
+  "notes": "ctypes -> system libtesseract 5.5.3, one API reused, no disk [interleaved run]"
+ },
+ {
+  "variant": "tesserocr",
+  "image": "crop",
+  "n": 20,
+  "p50_ms": 281.5,
+  "p95_ms": 284.5,
+  "chars": 620,
+  "notes": "tesserocr wheel, bundles tesseract 5.5.1, one API reused [interleaved run]"
+ },
+ {
+  "variant": "worker",
+  "image": "crop",
+  "n": 20,
+  "p50_ms": 266.0,
+  "p95_ms": 339.0,
+  "chars": 620,
+  "notes": "separate process holding the API, raw RGB over a unix socketpair [interleaved run]"
+ }
+]

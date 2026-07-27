@@ -1,0 +1,549 @@
+top - 20:54:25 up 13:25,  1 user,  load average: 2,29, 2,86, 2,18
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,8 us,  0,7 sy,  0,0 ni, 82,4 id,  0,9 wa,  0,2 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    834,2 free,  18492,1 used,  14047,1 buff/cache     
+MiB Swap:  16384,0 total,   9318,6 free,   7065,4 used.  12452,3 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.00 spike
+
+top - 20:54:26 up 13:25,  1 user,  load average: 2,29, 2,86, 2,18
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,2 us,  0,6 sy,  0,0 ni, 83,8 id,  0,1 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    834,2 free,  18492,1 used,  14047,1 buff/cache     
+MiB Swap:  16384,0 total,   9318,6 free,   7065,4 used.  12452,3 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.00 spike
+
+top - 20:54:27 up 13:25,  1 user,  load average: 2,35, 2,87, 2,18
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 13,3 us,  1,5 sy,  0,0 ni, 83,3 id,  1,7 wa,  0,2 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    834,2 free,  18492,1 used,  14047,1 buff/cache     
+MiB Swap:  16384,0 total,   9318,6 free,   7065,4 used.  12452,3 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.00 spike
+
+top - 20:54:28 up 13:25,  1 user,  load average: 2,35, 2,87, 2,18
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,7 us,  1,5 sy,  0,0 ni, 81,0 id,  1,6 wa,  0,2 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    640,3 free,  18471,2 used,  14255,3 buff/cache     
+MiB Swap:  16384,0 total,   9318,7 free,   7065,3 used.  12473,2 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.00 spike
+
+top - 20:54:29 up 13:25,  1 user,  load average: 2,35, 2,87, 2,18
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 17,5 us,  1,0 sy,  0,0 ni, 81,1 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    640,3 free,  18471,2 used,  14255,3 buff/cache     
+MiB Swap:  16384,0 total,   9318,7 free,   7065,3 used.  12473,2 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.00 spike
+
+top - 20:54:30 up 13:25,  1 user,  load average: 2,35, 2,87, 2,18
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,0 us,  0,6 sy,  0,0 ni, 83,9 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    640,3 free,  18471,2 used,  14255,3 buff/cache     
+MiB Swap:  16384,0 total,   9318,7 free,   7065,3 used.  12473,2 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.00 spike
+
+top - 20:54:31 up 13:25,  1 user,  load average: 2,35, 2,87, 2,18
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 13,1 us,  0,6 sy,  0,0 ni, 86,0 id,  0,2 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    997,9 free,  18482,8 used,  13885,6 buff/cache     
+MiB Swap:  16384,0 total,   9313,9 free,   7070,1 used.  12461,6 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.00 spike
+
+top - 20:54:32 up 13:25,  1 user,  load average: 2,48, 2,88, 2,19
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,4 us,  0,6 sy,  0,0 ni, 83,5 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    997,9 free,  18482,8 used,  13885,6 buff/cache     
+MiB Swap:  16384,0 total,   9313,9 free,   7070,1 used.  12461,6 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.00 spike
+
+top - 20:54:33 up 13:25,  1 user,  load average: 2,48, 2,88, 2,19
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 16,1 us,  0,6 sy,  0,0 ni, 82,9 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    997,9 free,  18482,8 used,  13885,6 buff/cache     
+MiB Swap:  16384,0 total,   9313,9 free,   7070,1 used.  12461,6 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.00 spike
+
+top - 20:54:34 up 13:25,  1 user,  load average: 2,48, 2,88, 2,19
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 17,1 us,  0,9 sy,  0,0 ni, 81,6 id,  0,2 wa,  0,2 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,   1002,7 free,  18477,0 used,  13884,2 buff/cache     
+MiB Swap:  16384,0 total,   9313,9 free,   7070,1 used.  12467,4 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   1,0   0,1   0:00.01 spike
+
+top - 20:54:35 up 13:25,  1 user,  load average: 2,48, 2,88, 2,19
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 13,7 us,  0,6 sy,  0,0 ni, 85,1 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,   1002,7 free,  18477,0 used,  13884,2 buff/cache     
+MiB Swap:  16384,0 total,   9313,9 free,   7070,1 used.  12467,4 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.01 spike
+
+top - 20:54:36 up 13:25,  1 user,  load average: 2,48, 2,88, 2,19
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 17,6 us,  1,0 sy,  0,0 ni, 80,9 id,  0,3 wa,  0,2 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,   1002,7 free,  18477,0 used,  13884,2 buff/cache     
+MiB Swap:  16384,0 total,   9313,9 free,   7070,1 used.  12467,4 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.01 spike
+
+top - 20:54:37 up 13:25,  1 user,  load average: 2,60, 2,90, 2,20
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,8 us,  0,6 sy,  0,0 ni, 83,2 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    967,3 free,  18509,2 used,  13887,5 buff/cache     
+MiB Swap:  16384,0 total,   9314,0 free,   7070,0 used.  12435,3 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.01 spike
+
+top - 20:54:38 up 13:25,  1 user,  load average: 2,60, 2,90, 2,20
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,3 us,  0,6 sy,  0,0 ni, 83,8 id,  0,2 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    967,3 free,  18509,2 used,  13887,5 buff/cache     
+MiB Swap:  16384,0 total,   9314,0 free,   7070,0 used.  12435,3 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.01 spike
+
+top - 20:54:39 up 13:25,  1 user,  load average: 2,60, 2,90, 2,20
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 14,5 us,  0,7 sy,  0,0 ni, 84,4 id,  0,3 wa,  0,2 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    967,3 free,  18509,2 used,  13887,5 buff/cache     
+MiB Swap:  16384,0 total,   9314,0 free,   7070,0 used.  12435,3 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.01 spike
+
+top - 20:54:40 up 13:25,  1 user,  load average: 2,60, 2,90, 2,20
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 14,2 us,  0,6 sy,  0,0 ni, 84,7 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,   1021,5 free,  18454,3 used,  13888,1 buff/cache     
+MiB Swap:  16384,0 total,   9314,0 free,   7070,0 used.  12490,1 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.01 spike
+
+top - 20:54:41 up 13:25,  1 user,  load average: 2,60, 2,90, 2,20
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,8 us,  0,6 sy,  0,0 ni, 83,2 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,   1021,5 free,  18454,3 used,  13888,1 buff/cache     
+MiB Swap:  16384,0 total,   9314,0 free,   7070,0 used.  12490,1 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.01 spike
+
+top - 20:54:42 up 13:25,  1 user,  load average: 2,71, 2,92, 2,21
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 17,0 us,  0,8 sy,  0,0 ni, 81,9 id,  0,2 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,   1021,5 free,  18454,3 used,  13888,1 buff/cache     
+MiB Swap:  16384,0 total,   9314,0 free,   7070,0 used.  12490,1 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   1,0   0,1   0:00.02 spike
+
+top - 20:54:43 up 13:25,  1 user,  load average: 2,71, 2,92, 2,21
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,0 us,  0,7 sy,  0,0 ni, 83,9 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    971,3 free,  18504,5 used,  13888,2 buff/cache     
+MiB Swap:  16384,0 total,   9314,0 free,   7070,0 used.  12439,9 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.02 spike
+
+top - 20:54:44 up 13:25,  1 user,  load average: 2,71, 2,92, 2,21
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 13,0 us,  0,6 sy,  0,0 ni, 86,1 id,  0,2 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    971,3 free,  18504,5 used,  13888,2 buff/cache     
+MiB Swap:  16384,0 total,   9314,0 free,   7070,0 used.  12439,9 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.02 spike
+
+top - 20:54:45 up 13:25,  1 user,  load average: 2,71, 2,92, 2,21
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,7 us,  0,6 sy,  0,0 ni, 83,3 id,  0,2 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    971,3 free,  18504,5 used,  13888,2 buff/cache     
+MiB Swap:  16384,0 total,   9314,0 free,   7070,0 used.  12439,9 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.02 spike
+
+top - 20:54:46 up 13:25,  1 user,  load average: 2,71, 2,92, 2,21
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,8 us,  0,6 sy,  0,0 ni, 83,1 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    963,7 free,  18511,6 used,  13895,8 buff/cache     
+MiB Swap:  16384,0 total,   9314,0 free,   7069,9 used.  12432,9 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   1,0   0,1   0:00.03 spike
+
+top - 20:54:47 up 13:25,  1 user,  load average: 2,82, 2,94, 2,22
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,2 us,  0,7 sy,  0,0 ni, 83,8 id,  0,2 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    963,7 free,  18511,6 used,  13895,8 buff/cache     
+MiB Swap:  16384,0 total,   9314,0 free,   7069,9 used.  12432,9 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.03 spike
+
+top - 20:54:48 up 13:25,  1 user,  load average: 2,82, 2,94, 2,22
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 13,2 us,  0,7 sy,  0,0 ni, 85,8 id,  0,2 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    963,7 free,  18511,6 used,  13895,8 buff/cache     
+MiB Swap:  16384,0 total,   9314,0 free,   7069,9 used.  12432,9 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   1,0   0,1   0:00.04 spike
+
+top - 20:54:49 up 13:25,  1 user,  load average: 2,82, 2,94, 2,22
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,6 us,  0,7 sy,  0,0 ni, 83,1 id,  0,3 wa,  0,2 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    972,8 free,  18502,1 used,  13889,1 buff/cache     
+MiB Swap:  16384,0 total,   9314,2 free,   7069,8 used.  12442,3 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.04 spike
+
+top - 20:54:50 up 13:25,  1 user,  load average: 2,82, 2,94, 2,22
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 16,0 us,  0,9 sy,  0,0 ni, 82,9 id,  0,0 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    972,8 free,  18502,1 used,  13889,1 buff/cache     
+MiB Swap:  16384,0 total,   9314,2 free,   7069,8 used.  12442,3 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.04 spike
+
+top - 20:54:51 up 13:25,  1 user,  load average: 2,82, 2,94, 2,22
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,3 us,  0,9 sy,  0,0 ni, 83,4 id,  0,2 wa,  0,2 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    972,8 free,  18502,1 used,  13889,1 buff/cache     
+MiB Swap:  16384,0 total,   9314,2 free,   7069,8 used.  12442,3 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.04 spike
+
+top - 20:54:52 up 13:25,  1 user,  load average: 2,99, 2,97, 2,24
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,3 us,  1,9 sy,  0,0 ni, 82,4 id,  0,2 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    991,0 free,  18483,9 used,  13889,2 buff/cache     
+MiB Swap:  16384,0 total,   9314,4 free,   7069,6 used.  12460,6 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.04 spike
+
+top - 20:54:53 up 13:25,  1 user,  load average: 2,99, 2,97, 2,24
+Tasks: 1 total, 1 running, 0 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 14,1 us,  1,7 sy,  0,0 ni, 83,7 id,  0,4 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    991,0 free,  18483,9 used,  13889,2 buff/cache     
+MiB Swap:  16384,0 total,   9314,4 free,   7069,6 used.  12460,6 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 R   0,0   0,1   0:00.04 spike
+
+top - 20:54:54 up 13:25,  1 user,  load average: 2,99, 2,97, 2,24
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 16,0 us,  2,0 sy,  0,0 ni, 81,5 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    991,0 free,  18483,9 used,  13889,2 buff/cache     
+MiB Swap:  16384,0 total,   9314,4 free,   7069,6 used.  12460,6 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   1,0   0,1   0:00.05 spike
+
+top - 20:54:55 up 13:25,  1 user,  load average: 2,99, 2,97, 2,24
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,7 us,  0,8 sy,  0,0 ni, 83,0 id,  0,4 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    990,0 free,  18484,0 used,  13897,0 buff/cache     
+MiB Swap:  16384,0 total,   9314,4 free,   7069,6 used.  12460,4 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.05 spike
+
+top - 20:54:56 up 13:25,  1 user,  load average: 2,99, 2,97, 2,24
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,2 us,  0,8 sy,  0,0 ni, 83,6 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    990,0 free,  18484,0 used,  13897,0 buff/cache     
+MiB Swap:  16384,0 total,   9314,4 free,   7069,6 used.  12460,4 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   1,0   0,1   0:00.06 spike
+
+top - 20:54:57 up 13:25,  1 user,  load average: 3,07, 2,99, 2,25
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 13,1 us,  0,6 sy,  0,0 ni, 85,8 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    990,0 free,  18484,0 used,  13897,0 buff/cache     
+MiB Swap:  16384,0 total,   9314,4 free,   7069,6 used.  12460,4 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.06 spike
+
+top - 20:54:58 up 13:25,  1 user,  load average: 3,07, 2,99, 2,25
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,7 us,  0,5 sy,  0,0 ni, 83,3 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,   1001,5 free,  18456,6 used,  13905,9 buff/cache     
+MiB Swap:  16384,0 total,   9314,5 free,   7069,5 used.  12487,8 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.06 spike
+
+top - 20:54:59 up 13:25,  1 user,  load average: 3,07, 2,99, 2,25
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 16,0 us,  0,5 sy,  0,0 ni, 83,3 id,  0,1 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,   1001,5 free,  18456,6 used,  13905,9 buff/cache     
+MiB Swap:  16384,0 total,   9314,5 free,   7069,5 used.  12487,8 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.06 spike
+
+top - 20:55:00 up 13:25,  1 user,  load average: 3,07, 2,99, 2,25
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,1 us,  0,6 sy,  0,0 ni, 83,9 id,  0,2 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,   1001,5 free,  18456,6 used,  13905,9 buff/cache     
+MiB Swap:  16384,0 total,   9314,5 free,   7069,5 used.  12487,8 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.06 spike
+
+top - 20:55:01 up 13:25,  1 user,  load average: 3,07, 2,99, 2,25
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 13,5 us,  0,6 sy,  0,0 ni, 85,6 id,  0,2 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    965,2 free,  18492,8 used,  13910,9 buff/cache     
+MiB Swap:  16384,0 total,   9314,5 free,   7069,5 used.  12451,7 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.06 spike
+
+top - 20:55:02 up 13:26,  1 user,  load average: 3,15, 3,01, 2,26
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 16,3 us,  0,7 sy,  0,0 ni, 82,6 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    965,2 free,  18492,8 used,  13910,9 buff/cache     
+MiB Swap:  16384,0 total,   9314,5 free,   7069,5 used.  12451,7 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   1,0   0,1   0:00.07 spike
+
+top - 20:55:03 up 13:26,  1 user,  load average: 3,15, 3,01, 2,26
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,8 us,  0,5 sy,  0,0 ni, 83,4 id,  0,2 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    965,2 free,  18492,8 used,  13910,9 buff/cache     
+MiB Swap:  16384,0 total,   9314,5 free,   7069,5 used.  12451,7 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.07 spike
+
+top - 20:55:04 up 13:26,  1 user,  load average: 3,15, 3,01, 2,26
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,3 us,  0,5 sy,  0,0 ni, 83,8 id,  0,2 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    917,6 free,  18539,8 used,  13904,1 buff/cache     
+MiB Swap:  16384,0 total,   9315,0 free,   7069,0 used.  12404,6 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.07 spike
+
+top - 20:55:05 up 13:26,  1 user,  load average: 3,15, 3,01, 2,26
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,1 us,  0,6 sy,  0,0 ni, 83,9 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    917,6 free,  18539,8 used,  13904,1 buff/cache     
+MiB Swap:  16384,0 total,   9315,0 free,   7069,0 used.  12404,6 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.07 spike
+
+top - 20:55:06 up 13:26,  1 user,  load average: 3,15, 3,01, 2,26
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 13,3 us,  0,5 sy,  0,0 ni, 85,7 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    917,6 free,  18539,8 used,  13904,1 buff/cache     
+MiB Swap:  16384,0 total,   9315,0 free,   7069,0 used.  12404,6 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.07 spike
+
+top - 20:55:07 up 13:26,  1 user,  load average: 2,97, 2,97, 2,25
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,8 us,  0,5 sy,  0,0 ni, 83,4 id,  0,2 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    970,2 free,  18486,8 used,  13904,7 buff/cache     
+MiB Swap:  16384,0 total,   9315,0 free,   7068,9 used.  12457,6 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.07 spike
+
+top - 20:55:08 up 13:26,  1 user,  load average: 2,97, 2,97, 2,25
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,7 us,  0,5 sy,  0,0 ni, 83,5 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    970,2 free,  18486,8 used,  13904,7 buff/cache     
+MiB Swap:  16384,0 total,   9315,0 free,   7068,9 used.  12457,6 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.07 spike
+
+top - 20:55:09 up 13:26,  1 user,  load average: 2,97, 2,97, 2,25
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 14,8 us,  0,5 sy,  0,0 ni, 84,2 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    970,2 free,  18486,8 used,  13904,7 buff/cache     
+MiB Swap:  16384,0 total,   9315,0 free,   7068,9 used.  12457,6 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.07 spike
+
+top - 20:55:10 up 13:26,  1 user,  load average: 2,97, 2,97, 2,25
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,2 us,  0,7 sy,  0,0 ni, 83,6 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    922,0 free,  18530,8 used,  13912,6 buff/cache     
+MiB Swap:  16384,0 total,   9315,2 free,   7068,7 used.  12413,7 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.07 spike
+
+top - 20:55:11 up 13:26,  1 user,  load average: 2,97, 2,97, 2,25
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,4 us,  0,5 sy,  0,0 ni, 83,9 id,  0,0 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    922,0 free,  18530,8 used,  13912,6 buff/cache     
+MiB Swap:  16384,0 total,   9315,2 free,   7068,7 used.  12413,7 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.07 spike
+
+top - 20:55:12 up 13:26,  1 user,  load average: 3,06, 2,99, 2,26
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 16,1 us,  0,5 sy,  0,0 ni, 83,0 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    922,0 free,  18530,8 used,  13912,6 buff/cache     
+MiB Swap:  16384,0 total,   9315,2 free,   7068,7 used.  12413,7 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.07 spike
+
+top - 20:55:13 up 13:26,  1 user,  load average: 3,06, 2,99, 2,26
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,1 us,  0,5 sy,  0,0 ni, 84,2 id,  0,1 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,   1004,1 free,  18448,3 used,  13909,4 buff/cache     
+MiB Swap:  16384,0 total,   9315,5 free,   7068,5 used.  12496,2 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   1,0   0,1   0:00.08 spike
+
+top - 20:55:14 up 13:26,  1 user,  load average: 3,06, 2,99, 2,26
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 13,2 us,  0,5 sy,  0,0 ni, 85,9 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,   1004,1 free,  18448,3 used,  13909,4 buff/cache     
+MiB Swap:  16384,0 total,   9315,5 free,   7068,5 used.  12496,2 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.08 spike
+
+top - 20:55:15 up 13:26,  1 user,  load average: 3,06, 2,99, 2,26
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,5 us,  0,5 sy,  0,0 ni, 83,6 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,   1004,1 free,  18448,3 used,  13909,4 buff/cache     
+MiB Swap:  16384,0 total,   9315,5 free,   7068,5 used.  12496,2 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.08 spike
+
+top - 20:55:16 up 13:26,  1 user,  load average: 3,06, 2,99, 2,26
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,5 us,  0,5 sy,  0,0 ni, 83,6 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    987,1 free,  18464,8 used,  13912,6 buff/cache     
+MiB Swap:  16384,0 total,   9315,7 free,   7068,3 used.  12479,6 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.08 spike
+
+top - 20:55:17 up 13:26,  1 user,  load average: 2,89, 2,96, 2,25
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,8 us,  0,5 sy,  0,0 ni, 83,5 id,  0,2 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    987,1 free,  18464,8 used,  13912,6 buff/cache     
+MiB Swap:  16384,0 total,   9315,7 free,   7068,3 used.  12479,6 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.08 spike
+
+top - 20:55:18 up 13:26,  1 user,  load average: 2,89, 2,96, 2,25
+Tasks: 1 total, 1 running, 0 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,1 us,  0,5 sy,  0,0 ni, 84,1 id,  0,2 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    987,1 free,  18464,8 used,  13912,6 buff/cache     
+MiB Swap:  16384,0 total,   9315,7 free,   7068,3 used.  12479,6 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 R   1,0   0,1   0:00.09 spike
+
+top - 20:55:19 up 13:26,  1 user,  load average: 2,89, 2,96, 2,25
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 13,1 us,  0,5 sy,  0,0 ni, 86,1 id,  0,2 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    937,0 free,  18514,9 used,  13907,5 buff/cache     
+MiB Swap:  16384,0 total,   9315,7 free,   7068,3 used.  12429,5 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.09 spike
+
+top - 20:55:20 up 13:26,  1 user,  load average: 2,89, 2,96, 2,25
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,7 us,  0,6 sy,  0,0 ni, 83,4 id,  0,2 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    937,0 free,  18514,9 used,  13907,5 buff/cache     
+MiB Swap:  16384,0 total,   9315,7 free,   7068,3 used.  12429,5 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.09 spike
+
+top - 20:55:21 up 13:26,  1 user,  load average: 2,89, 2,96, 2,25
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,6 us,  0,5 sy,  0,0 ni, 83,4 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    937,0 free,  18514,9 used,  13907,5 buff/cache     
+MiB Swap:  16384,0 total,   9315,7 free,   7068,3 used.  12429,5 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.09 spike
+
+top - 20:55:22 up 13:26,  1 user,  load average: 2,98, 2,98, 2,26
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,0 us,  0,5 sy,  0,0 ni, 84,0 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    996,2 free,  18455,7 used,  13907,8 buff/cache     
+MiB Swap:  16384,0 total,   9315,7 free,   7068,3 used.  12488,7 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.09 spike
+
+top - 20:55:23 up 13:26,  1 user,  load average: 2,98, 2,98, 2,26
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 13,0 us,  0,5 sy,  0,0 ni, 86,1 id,  0,2 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    996,2 free,  18455,7 used,  13907,8 buff/cache     
+MiB Swap:  16384,0 total,   9315,7 free,   7068,3 used.  12488,7 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   1,0   0,1   0:00.10 spike
+
+top - 20:55:24 up 13:26,  1 user,  load average: 2,98, 2,98, 2,26
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 15,4 us,  0,6 sy,  0,0 ni, 83,6 id,  0,3 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    996,2 free,  18455,7 used,  13907,8 buff/cache     
+MiB Swap:  16384,0 total,   9315,7 free,   7068,3 used.  12488,7 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.10 spike
+
+top - 20:55:25 up 13:26,  1 user,  load average: 2,98, 2,98, 2,26
+Tasks: 1 total, 0 running, 1 sleep, 0 d-sleep, 0 stopped, 0 zombie
+%CPU(s): 16,3 us,  0,6 sy,  0,0 ni, 82,6 id,  0,4 wa,  0,1 hi,  0,0 si,  0,0 st 
+MiB Spch:  30944,4 total,    946,0 free,  18505,3 used,  13917,2 buff/cache     
+MiB Swap:  16384,0 total,   9315,7 free,   7068,3 used.  12439,1 avail Spch
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     ZEIT+ BEFEHL
+ 104485 itiger0+  16  -4   33152  32000  31796 S   0,0   0,1   0:00.10 spike
+

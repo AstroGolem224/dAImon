@@ -1,0 +1,13 @@
+{"variant": "cli", "image": "dense", "n": 20, "p50_ms": 4299.2, "p95_ms": 4538.6, "chars": 6455, "notes": "subprocess + temp PNG per call (screenpipe style); subprocess-only p50 4249 ms, PNG encode+write p50 50 ms"}
+{"variant": "cli", "image": "sparse", "n": 20, "p50_ms": 4237.7, "p95_ms": 4387.0, "chars": 7368, "notes": "subprocess + temp PNG per call (screenpipe style); subprocess-only p50 4008 ms, PNG encode+write p50 230 ms"}
+{"variant": "cli", "image": "crop", "n": 20, "p50_ms": 330.3, "p95_ms": 332.9, "chars": 620, "notes": "subprocess + temp PNG per call (screenpipe style); subprocess-only p50 328 ms, PNG encode+write p50 2 ms"}
+{"variant": "ffi", "image": "dense", "n": 20, "p50_ms": 4394.2, "p95_ms": 4507.8, "chars": 6455, "notes": "ctypes -> system libtesseract (5.5.3), one API instance reused, no disk, RGB buffer in RAM"}
+{"variant": "ffi", "image": "sparse", "n": 20, "p50_ms": 4868.5, "p95_ms": 5057.2, "chars": 7368, "notes": "ctypes -> system libtesseract (5.5.3), one API instance reused, no disk, RGB buffer in RAM"}
+{"variant": "ffi", "image": "crop", "n": 20, "p50_ms": 270.8, "p95_ms": 273.1, "chars": 620, "notes": "ctypes -> system libtesseract (5.5.3), one API instance reused, no disk, RGB buffer in RAM"}
+{"variant": "tesserocr", "image": "dense", "n": 20, "p50_ms": 3398.5, "p95_ms": 3410.6, "chars": 6455, "notes": "tesserocr wheel, bundles tesseract 5.5.1"}
+{"variant": "tesserocr", "image": "sparse", "n": 20, "p50_ms": 4045.2, "p95_ms": 4058.0, "chars": 7369, "notes": "tesserocr wheel, bundles tesseract 5.5.1"}
+{"variant": "tesserocr", "image": "crop", "n": 20, "p50_ms": 277.4, "p95_ms": 278.9, "chars": 620, "notes": "tesserocr wheel, bundles tesseract 5.5.1"}
+{"variant": "worker", "image": "dense", "n": 20, "p50_ms": 4343.9, "p95_ms": 4393.5, "chars": 6455, "notes": "separate process holding the API, raw RGB over a unix socketpair (21600 KiB per call)"}
+{"variant": "worker", "image": "sparse", "n": 20, "p50_ms": 3872.6, "p95_ms": 4719.8, "chars": 7368, "notes": "separate process holding the API, raw RGB over a unix socketpair (21600 KiB per call)"}
+{"variant": "worker", "image": "crop", "n": 20, "p50_ms": 336.7, "p95_ms": 340.2, "chars": 620, "notes": "separate process holding the API, raw RGB over a unix socketpair (527 KiB per call)"}
+wrote /home/itiger013/Dokumente/Github/dAImon/spikes/ocr/raw_cli_ffi_tesserocr_worker.json

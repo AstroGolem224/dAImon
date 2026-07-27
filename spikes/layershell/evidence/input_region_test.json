@@ -1,0 +1,39 @@
+{
+  "region": [
+    2400,
+    500,
+    200,
+    200
+  ],
+  "inside": [
+    2500,
+    600
+  ],
+  "outside": [
+    3100,
+    600
+  ],
+  "ydotoold": true,
+  "below_ready": true,
+  "log_move_inside": [],
+  "enter_inside": false,
+  "log_click_inside": [],
+  "press_inside": false,
+  "below_got_click_inside": true,
+  "log_move_outside": [],
+  "leave_on_exit": false,
+  "enter_outside": false,
+  "log_click_outside": [],
+  "press_outside": false,
+  "below_got_click_outside": true,
+  "below_log": [
+    "ready",
+    "click 724 683",
+    "click 724 683",
+    "click 1 1",
+    "click 1 1",
+    "click 1098 119",
+    "click 1098 119"
+  ],
+  "input_region_works": false
+}

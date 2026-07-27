@@ -12,3 +12,5 @@ target/
 *.nemo
 /spikes/wakeword/samples/
 /spikes/wakeword/sherpa-onnx-kws-*/
+/spikes/layershell/target/
+/spikes/layershell/evidence/*.png
