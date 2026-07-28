@@ -1,0 +1,5 @@
+.kw_*.txt
+samples/mictest-letzte.wav
+samples/probe.wav
+vosk-model-*/
+*.zip
