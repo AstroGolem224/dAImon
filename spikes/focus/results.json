@@ -8,8 +8,28 @@
   "p95_latency_ms": 0.9,
   "caption_events_same_window": 4,
   "events_total": 102,
-  "survives_replace": null,
-  "survives_replace_note": "Nicht getestet: FreeCAD hatte ungespeicherte Aenderungen ('* Wicking_v'). Compositor-Neustart haette die Sitzung riskiert. Nachzuholen.",
+  "survives_replace": true,
+  "survives_replace_evidence": "echte Sitzung",
+  "survives_replace_detail": {
+    "methode": "kwin_wayland --replace in der laufenden Plasma-Sitzung. Laut 'kwin_wayland --help' beendet --replace die Instanz, damit kwin_wayland_wrapper sie neu startet -- die Sitzung stirbt also nicht. Die urspruengliche Annahme aus der Uebergabe, das sei der Sitzungstod, war falsch.",
+    "kwin_pid_vorher": 1962,
+    "kwin_pid_nachher": 166314,
+    "loaded_nach_s": 1.4,
+    "activated_danach": true,
+    "activated_nach_s": 9.8,
+    "skript": "replace_live.py",
+    "rohdaten": "replace_live.json",
+    "belegfuehrung": "Nicht aus einer Selbstauskunft: der Byte-Offset von events.jsonl wird vor dem Eingriff gemerkt, danach wird auf ein 'loaded' der NEUEN Instanz gewartet -- belegt durch den Wechsel der kwin_wayland-PID. Ein einmaliges 'loaded' belegt nur das Laden, deshalb wird zusaetzlich auf ein echtes 'activated' gewartet; erst das zeigt, dass die Kette wieder Fensterverkehr traegt.",
+    "nebenbefund": "Keine Anwendung ist abgestuerzt, journalctl --user -p err blieb im Zeitraum leer, und der DBus-Empfaenger (probe.py) hat den Neustart ohne Neuverbindung ueberlebt.",
+    "trockenuebung": {
+      "zweck": "Vorlauf vor dem Eingriff in die echte Sitzung, um die Frage ohne Risiko zu beantworten.",
+      "methode": "Verschachtelter kwin_wayland --virtual mit eigenem XDG_CONFIG_HOME/XDG_DATA_HOME, dasselbe Script-Paket, derselbe DBus-Empfaenger. Instanz gestartet, per SIGTERM beendet, neu gestartet.",
+      "erster_start_loaded_ms": 800.6,
+      "neustart_loaded_ms": 600.4,
+      "skript": "replace_test.py",
+      "rohdaten": "replace_test.json"
+    }
+  },
   "verdict": "pass",
   "decision": "Das Fokussignal traegt. windowActivated ist verlustfrei und um Groessenordnungen schneller als das 200-ms-Ziel. captionChanged feuert zusaetzlich bei Dokument- und Zustandswechseln innerhalb eines Fensters -- aber nur, wenn die Anwendung ihren Titel aendert. Inhaltsaenderung ohne Titelaenderung (Terminalausgabe, Scrollen, neuer Absatz) bleibt unsichtbar. Der Abtast-Timer aus T-5.4 ist damit nicht optional, sondern traegt den Grossteil der echten Inhaltsaenderung.",
   "blocking": true

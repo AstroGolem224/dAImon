@@ -1,0 +1,27 @@
+{
+ "stufe": "kwin_wayland --replace in der echten Sitzung",
+ "kwin_pids_vorher": [
+  "1962"
+ ],
+ "kwin_pids_nachher": [
+  "166314"
+ ],
+ "neue_instanz": true,
+ "replace_returncode": 0,
+ "loaded_nach_s": 1.4,
+ "loaded": true,
+ "activated_danach": true,
+ "activated_nach_s": 9.8,
+ "erstes_ereignis_nach_replace": {
+  "t": 85571.253659783,
+  "wall": 1785215713.6073413,
+  "kind": "loaded",
+  "uuid": "",
+  "caption": "",
+  "class": "",
+  "desktop": "",
+  "fullscreen": false
+ },
+ "survives_replace": true,
+ "hinweis": "loaded belegt, dass das Script nach dem Compositor-Neustart von allein wieder geladen wurde und den DBus-Empfaenger erreicht. activated_danach belegt zusaetzlich, dass die Kette wieder echten Fensterverkehr traegt. Ist activated_danach false, heisst das nicht zwingend Fehlschlag -- es kann auch bedeuten, dass in der Wartezeit kein Fensterwechsel stattfand."
+}

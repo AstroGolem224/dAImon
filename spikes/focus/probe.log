@@ -285,3 +285,79 @@ probe laeuft, schreibt nach /home/itiger013/Dokumente/Github/dAImon/spikes/focus
  284 activated org.kde.dolphin          wegwerf.txt — Dolphin
  285 caption   org.kde.dolphin          tmp.ZLLh87qDfA — Dolphin
  286 activated org.freedesktop.impl.portal.desktop.kde Bildschirm mit Claude teilen
+ 287 activated org.kde.konsole          Noice : codex — Konsole
+ 288 activated org.kde.kate             wegwerf.txt — Kate
+ 289 activated org.kde.konsole          Noice : codex — Konsole
+ 290 activated org.kde.kate             wegwerf.txt — Kate
+ 291 activated org.kde.konsole          Noice : codex — Konsole
+ 292 activated org.kde.dolphin          wegwerf.txt — Dolphin
+ 293 caption   org.kde.dolphin          atspi_dolphin_xc0jj67i — Dolphin
+ 294 activated org.kde.konsole          Noice : codex — Konsole
+ 295 activated org.kde.konsole          atspi : bash — Konsole
+ 296 activated org.kde.konsole          Noice : codex — Konsole
+ 297 activated org.kde.kate             wegwerf.txt — Kate
+ 298 activated org.kde.konsole          Noice : codex — Konsole
+ 299 activated org.kde.dolphin          wegwerf.txt — Dolphin
+ 300 caption   org.kde.dolphin          atspi_dolphin_orourqik — Dolphin
+ 301 activated org.kde.konsole          Noice : codex — Konsole
+ 302 activated org.kde.konsole          atspi : bash — Konsole
+ 303 activated org.kde.konsole          Noice : codex — Konsole
+ 304 activated org.kde.kate             w.txt — Kate
+ 305 activated org.kde.konsole          Noice : codex — Konsole
+ 306 activated org.kde.kate             w.txt — Kate
+ 307 activated org.kde.konsole          Noice : codex — Konsole
+ 308 activated org.kde.kate             wegwerf.txt — Kate
+ 309 activated org.kde.kate             Über KDE — Kate
+ 310 activated org.kde.konsole          Noice : codex — Konsole
+ 311 activated org.kde.dolphin          wegwerf.txt — Dolphin
+ 312 caption   org.kde.dolphin          atspi_dolphin_fxvvr1pt — Dolphin
+ 313 activated org.kde.dolphin          Über KDE — Dolphin
+ 314 activated org.kde.konsole          Noice : codex — Konsole
+ 315 activated org.kde.konsole          atspi : bash — Konsole
+ 316 activated org.kde.konsole          Über KDE — Konsole
+ 317 activated org.kde.konsole          atspi : bash — Konsole
+ 318 activated org.kde.konsole          Noice : codex — Konsole
+ 319 activated pluma                    wegwerf.txt (/tmp/atspi_pluma_ouzsiau3) - Pluma
+ 320 activated org.kde.konsole          Noice : codex — Konsole
+ 321 activated pluma                    wegwerf.txt (/tmp/atspi_pluma_zhzfwov3) - Pluma
+ 322 activated org.kde.konsole          Noice : codex — Konsole
+ 323 activated de.spike.atspi.gtk4demo  AT-SPI Spike GTK4
+ 324 activated org.kde.konsole          Noice : codex — Konsole
+ 325 activated org.pulseaudio.pavucontrol Lautstärkeregler
+ 326 activated org.kde.konsole          Noice : codex — Konsole
+ 327 activated pluma                    wegwerf.txt (/tmp/atspi_pluma_ff4iya1j) - Pluma
+ 328 activated org.kde.konsole          Noice : codex — Konsole
+ 329 activated kwin_wayland             
+ 330 activated org.kde.konsole          Noice : codex — Konsole
+ 331 activated org.kde.plasmashell      plasmashell
+ 332 activated org.kde.konsole          Noice : codex — Konsole
+ 333 activated com.anthropic.Claude     Claude
+ 334 activated org.kde.konsole          Noice : codex — Konsole
+ 335 activated org.kde.plasmashell      plasmashell
+ 336 activated org.kde.konsole          Noice : codex — Konsole
+ 337 activated com.anthropic.Claude     Claude
+ 338 activated Alacritty                ~/Dokumente/Github/dAImon/spikes/wakeword - fish
+ 339 activated com.anthropic.Claude     Claude
+ 340 activated org.freedesktop.impl.portal.desktop.kde Bildschirm mit Claude teilen
+ 341 activated com.anthropic.Claude     Claude
+ 342 activated org.freedesktop.impl.portal.desktop.kde Bildschirm mit Claude teilen
+ 343 activated com.anthropic.Claude     Claude
+ 344 activated org.freedesktop.impl.portal.desktop.kde Bildschirm mit Claude teilen
+ 345 activated com.anthropic.Claude     Claude
+ 346 activated org.kde.konsole          Noice : codex — Konsole
+ 347 activated com.anthropic.Claude     Claude
+ 348 activated org.kde.konsole          Noice : codex — Konsole
+ 349 activated com.anthropic.Claude     Claude
+ 350 activated org.kde.konsole          Noice : codex — Konsole
+ 351 activated com.anthropic.Claude     Claude
+ 352 activated org.kde.konsole          Noice : codex — Konsole
+ 353 activated plasmashell              
+ 354 activated                          
+ 355 loaded                             
+ 356 activated org.kde.konsole          Noice : codex — Konsole
+ 357 activated plasmashell              
+ 358 activated com.anthropic.Claude     Claude
+ 359 activated org.kde.konsole          Noice : codex — Konsole
+ 360 activated plasmashell              
+ 361 activated com.anthropic.Claude     Claude
+ 362 activated org.kde.konsole          Noice : codex — Konsole
