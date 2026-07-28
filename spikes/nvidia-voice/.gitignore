@@ -1,0 +1,7 @@
+samples/
+models/
+venv-a/
+venv-b/
+NeMo/
+__pycache__/
+smoke.json

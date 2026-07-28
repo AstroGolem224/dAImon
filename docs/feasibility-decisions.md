@@ -94,6 +94,23 @@ gesprochene Wiederholungen) halluziniert es vielfach „im basat". Das ist ein B
 über die Modellgröße, nicht über den Aufbau — Englisch liegt mit 4,5 % WER im
 Erwartungsbereich.
 
+> **Korrektur 2026-07-28, noch am selben Tag.** Diese Messung hat das *falsche
+> Modell* geprüft. `docs/DESIGN.md` v5.4 legt die Transkription längst fest:
+> `onnx-asr` + **`nemo-parakeet-tdt-0.6b-v3`**, int8, deutsche WER 3,64. Der
+> Auftrag an den messenden Agenten nannte „sherpa-onnx, ersatzweise onnx-asr"
+> ohne Modellvorgabe — ich hatte vor dem Beauftragen nicht ins Design gesehen.
+>
+> Was die Messung damit **trotzdem** belegt, und darum bleibt sie stehen: die
+> *Infrastruktur* trägt. CUDA-Provider aktiv, Kaltlatenz 403 ms, Dauerlatenz
+> 20 ms, und vor allem die VRAM-Rückgabe nach Prozessende — das war die
+> eigentliche offene Frage aus T-3.8, und sie ist beantwortet.
+>
+> Was sie **nicht** belegt: die Modellwahl. Dass `whisper-base` auf Deutsch
+> halluziniert, ist keine Überraschung und kein Argument gegen irgendetwas —
+> es ist das kleinste Modell der Familie. Die deutsche WER gehört gegen
+> `parakeet-tdt-0.6b-v3` gemessen, und dafür gibt es bereits einen eigenen
+> Spike: **T−1.12**, `spikes/nvidia-voice/`.
+
 **Auflage für T-3.8:** ein größeres oder deutsch-spezifisches Modell wählen und die
 deutsche WER gegen echte Satzreferenzen messen. `whisper-base` ist die untere Schranke,
 nicht die Wahl. Der Plan nennt `sherpa-onnx` als bevorzugten Weg, weil es zugleich VAD
@@ -248,3 +265,32 @@ der Plan für genau diesen Fall Plan C vorsieht und Plan C gewählt ist.
 Der Codex-Review des Gesamtplans endete nach 5 Runden ohne `APPROVED`. Die zwei dort
 benannten Punkte sind geschlossen (Anhang C4 und D), **diese Nacharbeit und alles danach ist
 nicht gegengelesen** — einschließlich dieses Dokuments.
+
+
+---
+
+## Nachtrag: T−1.12 und eine Lücke zwischen Design und Plan
+
+`spikes/nvidia-voice/` enthält den Spike **T−1.12 — NVIDIA-Sprachstack als zweiter
+Pfad**. Er steht in `docs/DESIGN.md` v5.4, aber **nicht** in
+`docs/IMPLEMENTATION-PLAN.md` v5.2. Design und Plan sind hier auseinandergelaufen.
+
+Folgen, die benannt gehören:
+
+- **Gate P−1 kennt T−1.12 nicht.** Es prüft die acht Spikes des Plans. Ein grünes
+  Gate bedeutet also nicht, dass T−1.12 entschieden ist.
+- **Der Stand ist „offen"**: Werkzeug steht (`bench_asr.py`, `bench_tts.py`,
+  `SPEC.md` mit Akzeptanz- und Abbruchkriterien), die Messung ist nicht gelaufen.
+- Der Vorbefund in `smoke.json` ist ausdrücklich **kein Ergebnis**: n = 2–3,
+  synthetisches Testaudio, kein Verifizierer. Die Zahlen sind untereinander
+  vergleichbar und absolut wertlos. Dazu kommt: `smoke.json` steht in der
+  `.gitignore` des Spikes — das Design verweist damit auf eine Datei, die im Repo
+  nicht liegt.
+- **Endgültig** ist ein Nebenbefund: `canary-180m-flash` ist in `onnx-asr` 0.12.0
+  nicht enthalten. Der Weg dorthin bräuchte NeMo und damit Torch, für ein Modell,
+  das lediglich schneller wäre. Fällt aus.
+
+**Vor P0 zu entscheiden:** wird T−1.12 in den Plan aufgenommen und ins Gate gezogen,
+oder läuft er als eigenständige Untersuchung neben der Phasenkette? Solange das offen
+ist, steht die Modellwahl für T-3.8 nicht fest — und `whisper-base` ist sicher nicht
+die Antwort.

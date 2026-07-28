@@ -1,7 +1,7 @@
 {
  "erzeugt": "2026-07-28",
  "quelle": "aggregiert aus spikes/*/results.json",
- "hinweis": "Die blockierenden Spikes sind in Gate P-1 fest verdrahtet und werden NICHT aus dieser Datei gelesen -- ein Handeintrag hier kann einen gescheiterten Blocker nicht umetikettieren.",
+ "hinweis": "Die blockierenden Spikes sind in Gate P-1 fest verdrahtet und werden NICHT aus dieser Datei gelesen -- ein Handeintrag hier kann einen gescheiterten Blocker nicht umetikettieren. T-1.12 ist aufgenommen, zaehlt aber nicht ins Gate -- es kennt nur die acht Spikes des Plans.",
  "spikes": {
   "T-1.1": {
    "spike_dir": "spikes/wakeword",
@@ -65,6 +65,14 @@
    "decision": "AT-SPI2 kommt als Aktionsfläche in den Katalog, mit Einschränkungen: (1) Sichtbarkeit der Qt-Bäume muss erzwungen werden (QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1 beim Start eigener Instanzen oder systemweiter A11y-Schalter) — nicht global erzwingbar für fremde, bereits laufende Apps. (2) Voller Baumwalk kostet bei KDE-Apps 80–250 ms (p95); Top-Level ~1–2 ms — daher Baum cachen und nur Delta/Top-Level live abfragen. (3) 13–40 % der Knoten ohne Namen; Bezeichnungen sind tainted und gehören in die Auth-Vorschau. (4) GTK-Abdeckung ungleichmäßig: GTK4 nativ, GTK3 über Bridge, MATE-Apps (pluma) nicht erreichbar. (5) Nur Aktionsziele mit eindeutig harmlosem Label automatisiert auslösen; alles andere bleibt manuell freizugeben.",
    "blockierend": false,
    "results": "spikes/atspi/results.json"
+  },
+  "T-1.12": {
+   "spike_dir": "spikes/nvidia-voice",
+   "verdict": "offen",
+   "decision": "Werkzeug steht, Messung nicht gelaufen. Der Spike stammt aus Design v5.4 und steht NICHT im Implementierungsplan v5.2 -- Design und Plan sind hier auseinandergelaufen. Er ist deshalb auch nicht Teil von Gate P-1. Vorbefund in smoke.json: onnx-asr auf CUDA, p95 28 ms fuer 3,6 s gegen 684 ms bei sherpa-Whisper-small auf CPU, WER 0,103 gegen 0,178 -- aber n=2-3 und synthetisches Testaudio, also untereinander vergleichbar und absolut wertlos. Endgueltig ist ein Nebenbefund: canary-180m-flash ist in onnx-asr 0.12.0 nicht enthalten, der Weg braeuchte NeMo und damit Torch. Faellt aus.",
+   "blockierend": false,
+   "results": "spikes/nvidia-voice/smoke.json (Vorbefund), results.json steht aus",
+   "nicht_in_gate": "Design v5.4 fuehrt T-1.12, Plan v5.2 nicht. Vor P0 zu klaeren."
   }
  }
 }
