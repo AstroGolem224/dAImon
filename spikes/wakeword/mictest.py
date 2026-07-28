@@ -1,30 +1,38 @@
 #!/usr/bin/env python3
-"""T-1.1 — Mikrofontest und Eichaufnahme, bevor irgendetwas aufgenommen wird.
+"""T-1.1 — Vorabtest: erkennt das KWS-Modell das Wort in einer frischen Aufnahme?
 
-    python3 mictest.py                 # 3 s Schnelltest
-    python3 mictest.py --seconds 30    # Eichaufnahme vor dem langen Take
+    venv/bin/python mictest.py                 # 15 s
+    venv/bin/python mictest.py --seconds 30
+    venv/bin/python mictest.py --keep          # Aufnahme behalten
 
-Warum es das gibt: am 2026-07-27 wurden 50 Proben aufgenommen und alle 50 waren
-unbrauchbar. Die Aufschluesselung nach Bedingung zeigt, dass es kein Werkzeug-
-und kein Sprechfehler war -- alle acht Bedingungen sehen gleich aus:
+WAS SICH GEAENDERT HAT UND WARUM
+--------------------------------
+Die erste Fassung urteilte gegen erfundene Akustikwerte: RMS-Untergrenze 0,02,
+Mindestabstand 18 dB, Hoechstlaenge eines Abschnitts 3 s. Alle drei stammten
+aus den 50 kaputten Aufnahmen vom 2026-07-27 -- also ausschliesslich aus
+Negativbeispielen. Was gute Sprache auszeichnet, war nirgends belegt.
 
-    laut     RMS 0,0060   normal   RMS 0,0056
-    leise    RMS 0,0031   Raum     RMS 0,00097
+Die Folge: Matthias fiel dreimal durch, obwohl dasselbe Mikrofon im Diktat der
+Desktop-App tadellos funktioniert. Zwei der drei Urteile waren nachweislich
+falsch. "Uebersteuert" wurde aus der Spitze allein behauptet, ohne je zu
+zaehlen, wie viele Samples wirklich anstehen -- bei Sprech-RMS 0,0935 und
+Spitze 1,000 ist das ein Scheitelfaktor von 20,6 dB, fuer Sprache voellig
+normal. Und "Abschnitte verschmelzen" bewertete, wie jemand spricht, nicht ob
+das Mikrofon taugt.
 
-"laut" kommt auf -19,6 dBFS Spitze. Wer in ein Streaming-Mikro bei 100 Prozent
-laut hineinspricht, muss nahe an die Aussteuerungsgrenze. Es kommt also nur ein
-Bruchteil an. Ein Aufbau, der laut und leise nur um Faktor 2 trennt, kann kein
-Wake-Word bewerten -- egal wie sauber der Rekorder startet.
+Deshalb prueft dieses Skript jetzt gegen den einzigen Massstab, der zaehlt:
+dasselbe sherpa-onnx-KWS-Modell, das spaeter auch evaluate.py benutzt. Erkennt
+es das Wort, traegt der Aufbau. Erkennt es nichts, ist das ein Ergebnis ueber
+das Wort oder das Modell -- und genau danach fragt T-1.1.
 
-Gemessen wird ueber genau dieselbe Kette wie in record.py und take.py:
-pw-record auf die Standardquelle, 16 kHz, mono, s16. Ein Test ueber einen
-anderen Weg wuerde nichts beweisen. Die Schwellen sind dieselben Konstanten
-wie in record.check(), damit ein bestandener Test und eine angenommene
-Aufnahme dasselbe bedeuten.
+Die Pegelwerte werden weiter ausgegeben, aber sie urteilen nicht mehr.
+Abgelehnt wird nur noch, was jede Messung wertlos macht: praktisch stumm, oder
+grob uebersteuert -- und uebersteuert heisst jetzt "mehr als 1 Prozent der
+Samples stehen an der Grenze", gemessen statt behauptet.
 """
 
 import argparse
-import array
+import math
 import subprocess
 import sys
 import tempfile
@@ -32,44 +40,17 @@ import time
 import wave
 from pathlib import Path
 
+import numpy as np
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from evaluate import THRESHOLDS, build_spotter, detections, read_wav  # noqa: E402
+
 BLOCK_MS = 100
-RMS_FLOOR = 0.02       # Untergrenze fuer "das ist Sprache"
-MIN_LOUD_S = 0.30      # so lange muss zusammenhaengend Signal anliegen
-GOOD_RMS = 0.05        # ab hier ist der Pegel komfortabel, nicht nur ausreichend
-
-# Obergrenzen. Ein Aufbau kann auf zwei Arten unbrauchbar sein, und die
-# ersten beiden Eichlaeufe haben je eine davon gezeigt:
-#   Lauf 1: Sprech-RMS 0,0284, Pausen 0,0071 -> 12 dB Abstand. Nur die
-#           lautesten Zipfel ragten ueber die Schwelle, 2,7 s Sprache in
-#           13 Bruchstuecken. Der Segmentierer haette Woerter zerhackt.
-#   Lauf 2: Spitze 1,000 -> uebersteuert, und 22,6 s "Sprache" mit einem
-#           6,1-s-Abschnitt. Nichts faellt mehr unter die Schwelle, es gibt
-#           keine Schnittkanten mehr.
-# Beide Male sagte die Pruefung BESTANDEN. Deshalb jetzt beidseitig.
-CLIP_LEVEL = 0.99      # ab hier steht das Signal an der Aussteuerungsgrenze
-MAX_CLIP_FRACTION = 0.001   # so viele Samples duerfen dort hoechstens stehen
-MIN_SNR_DB = 18.0      # Abstand Sprache zu Pause
-MAX_SPAN_S = 3.0       # laenger ist keine einzelne Aussprache mehr
-
-
-def blocks_rms(samples, rate):
-    n = rate * BLOCK_MS // 1000
-    return [(sum(v * v for v in samples[i:i + n]) / n) ** 0.5 / 32768
-            for i in range(0, len(samples) - n, n)]
-
-
-def runs(flags):
-    """Alle Laengen zusammenhaengender True-Laeufe."""
-    out, run = [], 0
-    for f in flags:
-        if f:
-            run += 1
-        elif run:
-            out.append(run)
-            run = 0
-    if run:
-        out.append(run)
-    return out
+RMS_FLOOR = 0.02        # nur noch fuer die Anzeige des Pegelverlaufs
+DEAD_PEAK = 0.01        # darunter ist nichts angekommen
+CLIP_LEVEL = 0.99
+MAX_CLIP_FRACTION = 0.01
 
 
 def capture(seconds, path):
@@ -91,7 +72,6 @@ def capture(seconds, path):
     for left in range(int(seconds), 0, -1):
         print(f"    noch {left:3d} s ", end="\r", flush=True)
         time.sleep(1)
-    time.sleep(seconds - int(seconds))
     proc.terminate()
     try:
         proc.wait(timeout=3)
@@ -101,23 +81,18 @@ def capture(seconds, path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--seconds", type=float, default=3.0)
+    ap.add_argument("--seconds", type=float, default=15.0)
+    ap.add_argument("--keep", action="store_true")
     args = ap.parse_args()
-    long_run = args.seconds >= 15
 
     src = subprocess.run(["pactl", "get-default-source"],
                          capture_output=True, text=True).stdout.strip()
     print(f"Standardquelle: {src or '<unbekannt>'}\n")
-    print("=" * 64)
-    if long_run:
-        print(f"  EICHAUFNAHME, {args.seconds:.0f} Sekunden.")
-        print("  Sprich normal weiter, mit Pausen dazwischen -- zum Beispiel")
-        print('  immer wieder "Ember Shard", so wie du es spaeter sagen wuerdest.')
-        print("  Die Pausen sind wichtig: daran erkenne ich spaeter die Schnitte.")
-    else:
-        print(f"  SCHNELLTEST, {args.seconds:.0f} Sekunden.")
-        print('  Bitte normal sprechen, z.B. "Ember Shard, Ember Shard".')
-    print("=" * 64)
+    print("=" * 66)
+    print(f"  {args.seconds:.0f} Sekunden. Sag mehrfach \"Ember Shard\",")
+    print("  ganz normal, mit kurzen Pausen dazwischen.")
+    print("  Sprich einfach so, wie du auch diktierst.")
+    print("=" * 66)
     for i in (3, 2, 1):
         print(f"  {i} …", end="\r", flush=True)
         time.sleep(0.7)
@@ -125,96 +100,83 @@ def main():
     tmp = Path(tempfile.mkdtemp(prefix="mictest-")) / "probe.wav"
     capture(args.seconds, tmp)
 
-    with wave.open(str(tmp), "rb") as w:
-        rate = w.getframerate()
-        samples = array.array("h", w.readframes(w.getnframes()))
-    if not samples:
+    samples = read_wav(tmp)
+    if not len(samples):
         print("\n  FEHLER: Aufnahme ist leer.")
         return 2
 
-    peak = max(abs(v) for v in samples) / 32768
-    total = (sum(v * v for v in samples) / len(samples)) ** 0.5 / 32768
-    rms = blocks_rms(samples, rate)
-    loud = [r > RMS_FLOOR for r in rms]
-    spans = runs(loud)
-    best_s = max(spans, default=0) * BLOCK_MS / 1000
-    speech_s = sum(spans) * BLOCK_MS / 1000
-    loud_rms = [r for r in rms if r > RMS_FLOOR]
-    quiet_rms = [r for r in rms if r <= RMS_FLOOR]
+    peak = float(np.max(np.abs(samples)))
+    total = float(np.sqrt(np.mean(samples ** 2)))
+    n = 16000 * BLOCK_MS // 1000
+    rms = [float(np.sqrt(np.mean(samples[i:i + n] ** 2)))
+           for i in range(0, len(samples) - n, n)]
+    clip_frac = float(np.mean(np.abs(samples) >= CLIP_LEVEL))
+    loud = [r for r in rms if r > RMS_FLOOR]
+    quiet = [r for r in rms if r <= RMS_FLOOR]
+    snr = (20 * math.log10((sum(loud) / len(loud)) / (sum(quiet) / len(quiet)))
+           if loud and quiet else float("nan"))
 
     print()
-    print(f"  Dauer               {len(samples) / rate:.2f} s")
-    print(f"  Spitze              {peak:.3f}")
-    print(f"  RMS gesamt          {total:.4f}")
-    if loud_rms:
-        print(f"  RMS beim Sprechen   {sum(loud_rms)/len(loud_rms):.4f}   "
-              f"(komfortabel ab {GOOD_RMS})")
-    if quiet_rms:
-        print(f"  RMS in den Pausen   {sum(quiet_rms)/len(quiet_rms):.4f}")
-    print(f"  Sprache gesamt      {speech_s:.1f} s in {len(spans)} Abschnitten")
-    print(f"  laengster Abschnitt {best_s:.1f} s   (gefordert >= {MIN_LOUD_S:.1f} s)")
+    print(f"  Dauer            {len(samples) / 16000:.2f} s")
+    print(f"  Spitze           {peak:.3f}")
+    print(f"  RMS gesamt       {total:.4f}")
+    print(f"  an der Grenze    {clip_frac * 100:.3f} % der Samples")
+    if not math.isnan(snr):
+        print(f"  Sprache/Pause    {snr:.1f} dB")
     print()
-    print("  Pegelverlauf, ein Zeichen je 100 ms   (# laut, - leise, . Pause):")
+    print("  Pegelverlauf, ein Zeichen je 100 ms:")
     bar = "".join("#" if r > RMS_FLOOR else ("-" if r > RMS_FLOOR / 4 else ".")
                   for r in rms)
     for i in range(0, len(bar), 64):
         print(f"    {bar[i:i + 64]}")
     print()
 
-    import math
-    speech = sum(loud_rms) / len(loud_rms) if loud_rms else 0.0
-    noise = sum(quiet_rms) / len(quiet_rms) if quiet_rms else 0.0
-    snr_db = 20 * math.log10(speech / noise) if speech and noise else float("inf")
-    clipped = sum(1 for v in samples if abs(v) / 32768 >= CLIP_LEVEL)
-    clip_frac = clipped / len(samples)
-    span_s = sorted(s * BLOCK_MS / 1000 for s in spans) if spans else [0.0]
-    median_span = span_s[len(span_s) // 2]
-
-    print(f"  Abstand Sprache/Pause  {snr_db:5.1f} dB   (gefordert >= {MIN_SNR_DB:.0f})")
-    print(f"  uebersteuerte Samples  {clipped} ({clip_frac * 100:.2f} %)")
-    print(f"  Abschnitt im Mittel    {median_span:.1f} s   (plausibel {MIN_LOUD_S}–{MAX_SPAN_S})")
-    print()
-
-    # Reihenfolge nach Schwere: was das Signal zerstoert, zuerst.
-    if peak < 0.02:
-        print("  DURCHGEFALLEN — praktisch stumm. Falsche Quelle, stummgeschaltet")
-        print("  oder das Mikrofon liegt nicht an. Erst das loesen.")
+    if peak < DEAD_PEAK:
+        print("  ABGELEHNT — praktisch stumm. Falsche Quelle oder stummgeschaltet.")
         return 1
     if clip_frac > MAX_CLIP_FRACTION:
-        print(f"  DURCHGEFALLEN — uebersteuert. {clipped} Samples stehen an der")
-        print("  Aussteuerungsgrenze; dort ist die Wellenform abgeschnitten und")
-        print("  die Verzerrung laesst sich nicht mehr herausrechnen.")
-        print("  Etwa 6–8 dB zurueck: ein Stueck weiter weg oder Gain runter.")
-        return 1
-    if best_s < MIN_LOUD_S:
-        print("  DURCHGEFALLEN — Signal da, aber zu leise oder zu kurz.")
-        print("  Genau dieses Muster hatten die 50 unbrauchbaren Proben.")
-        print("  Eingangspegel anheben oder naeher ans Mikrofon.")
-        return 1
-    if snr_db < MIN_SNR_DB:
-        print(f"  DURCHGEFALLEN — nur {snr_db:.1f} dB zwischen Sprache und Pause.")
-        print("  Lauter machen hilft NICHT: digitale Verstaerkung hebt beides")
-        print("  gleich an, der Abstand bleibt. Naeher ans Mikrofon (halber")
-        print("  Abstand = rund 6 dB) und Grundgeraeusch abstellen.")
-        return 1
-    if median_span > MAX_SPAN_S:
-        print(f"  DURCHGEFALLEN — die Abschnitte verschmelzen ({median_span:.1f} s im Mittel).")
-        print("  Nichts faellt mehr unter die Schwelle, also gibt es keine")
-        print("  Schnittkanten. Entweder ist der Grundpegel zu hoch, oder es")
-        print("  wurde ohne Pausen gesprochen. Zwischen den Aussprachen")
-        print("  bewusst eine Sekunde schweigen.")
+        print(f"  ABGELEHNT — {clip_frac * 100:.1f} % der Samples stehen an der")
+        print("  Aussteuerungsgrenze. Das ist echte Verzerrung, nicht nur eine")
+        print("  hohe Spitze. Etwas leiser, dann nochmal.")
         return 1
 
-    print("  BESTANDEN — der Aufnahmepfad traegt.")
-    if speech < GOOD_RMS:
-        print(f"  Aber knapp: Sprech-RMS {speech:.4f} liegt unter {GOOD_RMS}.")
-    if peak > 0.9:
-        print(f"  Wenig Reserve: Spitze {peak:.3f}. Ein lauteres Wort uebersteuert.")
-    if long_run:
-        print(f"  {len(spans)} Sprechabschnitte, im Mittel {median_span:.1f} s — "
-              "die Segmentierung findet Schnitte.")
-        print("  Naechster Schritt: take.py fuer den langen Take.")
-    return 0
+    # Der eigentliche Test: was sagt das Modell, um das es geht?
+    print("  Das KWS-Modell hoert sich die Aufnahme an …")
+    hits = {}
+    for th in THRESHOLDS:
+        try:
+            hits[th] = detections(build_spotter(th), samples)
+        except Exception as exc:  # noqa: BLE001
+            print(f"  ! Modell laeuft nicht: {type(exc).__name__}: {exc}")
+            return 2
+
+    print()
+    print("  Schwelle   Treffer")
+    for th, h in hits.items():
+        mark = "  <==" if h else ""
+        print(f"    {th:<6.2f}   {h}{mark}")
+    print()
+
+    best = max(hits.values())
+    if args.keep or best == 0:
+        dest = HERE / "samples" / "mictest-letzte.wav"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(tmp.read_bytes())
+        print(f"  Aufnahme behalten: {dest}")
+
+    if best > 0:
+        th = min(t for t, h in hits.items() if h > 0)
+        print(f"  BESTANDEN — das Modell erkennt das Wort, ab Schwelle {th}.")
+        print("  Der Aufbau traegt. Naechster Schritt: take.py")
+        return 0
+
+    print("  KEIN TREFFER bei keiner Schwelle.")
+    print("  Das ist noch kein Urteil ueber den Aufbau: dasselbe Ergebnis hatte")
+    print("  EMBERSHARD als ein Wort, waehrend EMBER SHARD als zwei Woerter")
+    print("  zuverlaessig feuerte -- der Unterschied liegt allein in der")
+    print("  Tokenisierung (siehe NOTES.md). Die Aufnahme wurde behalten, damit")
+    print("  sich das nachrechnen laesst, statt nochmal zu raten.")
+    return 1
 
 
 if __name__ == "__main__":
