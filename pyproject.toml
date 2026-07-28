@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "daimon"
+version = "0.0.0"
+description = "Desktop-Familiar: Wahrnehmung, Kognition und Aktionen, lokal auf einer Maschine"
+requires-python = "==3.12.*"
+license = { text = "MIT" }
+
+# Die Laufzeitabhaengigkeiten bleiben bewusst duenn. Phase 0 baut den Hub, und
+# der spricht nur ueber Unix-Sockets und DBus -- alles Schwere (ONNX, CUDA)
+# haengt an den GPU-Arbeitsprozessen und kommt erst in Phase 3.
+dependencies = []
+
+[project.optional-dependencies]
+# Die Python-Version ist nicht frei gewaehlt. T-1.2 hat native sm_120a-Cubins
+# ausschliesslich fuer das cp312-Wheel von onnxruntime-gpu 1.27.0 belegt
+# (cuobjdump-Nachweis in spikes/ort/results.json). Eine andere Nebenversion
+# zieht ein anderes Wheel und damit einen ungeprueften Zustand nach sich --
+# deshalb steht oben `==3.12.*` und nicht `>=3.12`.
+#
+# onnxruntime-gpu ist NACKT gepinnt, ohne die nvidia-*-pip-Pakete: die
+# CUDA-Bibliotheken kommen vom System-CUDA 13.3.1. Das spart rund 2 GB und
+# steht so in T-3.8. Wer hier ein `nvidia-cuda-*` hinzufuegt, hebelt die
+# Begruendung aus.
+gpu = [
+    "onnxruntime-gpu==1.27.0",
+]
+
+dev = [
+    "pytest>=8",
+    "pytest-timeout>=2.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["daimon"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Ein Test, der haengt, blockiert die ganze Kette. Phase 0 hat Sockets und
+# Unterprozesse -- eine harte Obergrenze ist billiger als ein haengendes CI.
+timeout = 60
+addopts = "-q"

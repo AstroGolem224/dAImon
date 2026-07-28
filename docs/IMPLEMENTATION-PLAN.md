@@ -1,7 +1,7 @@
 # dAImon — Implementierungsplan
 
-**Version:** 3.2 (nach adversarialem Review durch Codex, Runden 1–5; Nacharbeit ungeprüft)
-**Datum:** 2026-07-27
+**Version:** 3.3 — T−1.12 nachgetragen, drei Akzeptanzkriterien korrigiert (nach adversarialem Review durch Codex, Runden 1–5; Nacharbeit und alles ab v3.3 ungeprüft)
+**Datum:** 2026-07-28
 **Gehört zu:** [dAImon-Design.md](dAImon-Design.md) v3.1 — insbesondere §1.2 Bedrohungsmodell und §5.2 Markierung
 **Repo:** `/home/itiger013/Dokumente/Github/dAImon`
 
