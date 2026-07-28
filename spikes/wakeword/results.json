@@ -1,176 +1,185 @@
 {
-  "spike": "T-1.1",
-  "word": "Embershard (tokenisiert als EMBER SHARD -- als ein Wort schlaegt es nie an)",
-  "engine": "sherpa-onnx-kws-zipformer-gigaspeech-3.3M int8",
-  "tokenization": [
-    "▁E M BER ▁SHA R D",
-    "▁HE Y ▁E M BER ▁SHA R D",
-    "▁OKAY ▁E M BER ▁SHA R D"
-  ],
-  "rows": [
-    {
-      "threshold": 0.02,
-      "trials": 50,
-      "true_positives": 0,
-      "false_rejects": 50,
-      "frr": 1.0,
-      "background_hours": 0.0,
-      "false_accepts": 0,
-      "far_per_hour": null,
-      "frr_by_condition": {
-        "abgewandt": 1.0,
-        "fern": 1.0,
-        "hintergrund": 1.0,
-        "laut": 1.0,
-        "leise": 1.0,
-        "nebenbei": 1.0,
-        "normal": 1.0,
-        "schnell": 1.0
-      }
-    },
-    {
-      "threshold": 0.05,
-      "trials": 50,
-      "true_positives": 0,
-      "false_rejects": 50,
-      "frr": 1.0,
-      "background_hours": 0.0,
-      "false_accepts": 0,
-      "far_per_hour": null,
-      "frr_by_condition": {
-        "abgewandt": 1.0,
-        "fern": 1.0,
-        "hintergrund": 1.0,
-        "laut": 1.0,
-        "leise": 1.0,
-        "nebenbei": 1.0,
-        "normal": 1.0,
-        "schnell": 1.0
-      }
-    },
-    {
-      "threshold": 0.1,
-      "trials": 50,
-      "true_positives": 0,
-      "false_rejects": 50,
-      "frr": 1.0,
-      "background_hours": 0.0,
-      "false_accepts": 0,
-      "far_per_hour": null,
-      "frr_by_condition": {
-        "abgewandt": 1.0,
-        "fern": 1.0,
-        "hintergrund": 1.0,
-        "laut": 1.0,
-        "leise": 1.0,
-        "nebenbei": 1.0,
-        "normal": 1.0,
-        "schnell": 1.0
-      }
-    },
-    {
-      "threshold": 0.15,
-      "trials": 50,
-      "true_positives": 0,
-      "false_rejects": 50,
-      "frr": 1.0,
-      "background_hours": 0.0,
-      "false_accepts": 0,
-      "far_per_hour": null,
-      "frr_by_condition": {
-        "abgewandt": 1.0,
-        "fern": 1.0,
-        "hintergrund": 1.0,
-        "laut": 1.0,
-        "leise": 1.0,
-        "nebenbei": 1.0,
-        "normal": 1.0,
-        "schnell": 1.0
-      }
-    },
-    {
-      "threshold": 0.2,
-      "trials": 50,
-      "true_positives": 0,
-      "false_rejects": 50,
-      "frr": 1.0,
-      "background_hours": 0.0,
-      "false_accepts": 0,
-      "far_per_hour": null,
-      "frr_by_condition": {
-        "abgewandt": 1.0,
-        "fern": 1.0,
-        "hintergrund": 1.0,
-        "laut": 1.0,
-        "leise": 1.0,
-        "nebenbei": 1.0,
-        "normal": 1.0,
-        "schnell": 1.0
-      }
-    },
-    {
-      "threshold": 0.25,
-      "trials": 50,
-      "true_positives": 0,
-      "false_rejects": 50,
-      "frr": 1.0,
-      "background_hours": 0.0,
-      "false_accepts": 0,
-      "far_per_hour": null,
-      "frr_by_condition": {
-        "abgewandt": 1.0,
-        "fern": 1.0,
-        "hintergrund": 1.0,
-        "laut": 1.0,
-        "leise": 1.0,
-        "nebenbei": 1.0,
-        "normal": 1.0,
-        "schnell": 1.0
-      }
-    },
-    {
-      "threshold": 0.3,
-      "trials": 50,
-      "true_positives": 0,
-      "false_rejects": 50,
-      "frr": 1.0,
-      "background_hours": 0.0,
-      "false_accepts": 0,
-      "far_per_hour": null,
-      "frr_by_condition": {
-        "abgewandt": 1.0,
-        "fern": 1.0,
-        "hintergrund": 1.0,
-        "laut": 1.0,
-        "leise": 1.0,
-        "nebenbei": 1.0,
-        "normal": 1.0,
-        "schnell": 1.0
-      }
-    },
-    {
-      "threshold": 0.4,
-      "trials": 50,
-      "true_positives": 0,
-      "false_rejects": 50,
-      "frr": 1.0,
-      "background_hours": 0.0,
-      "false_accepts": 0,
-      "far_per_hour": null,
-      "frr_by_condition": {
-        "abgewandt": 1.0,
-        "fern": 1.0,
-        "hintergrund": 1.0,
-        "laut": 1.0,
-        "leise": 1.0,
-        "nebenbei": 1.0,
-        "normal": 1.0,
-        "schnell": 1.0
-      }
-    }
-  ],
-  "verdict": "invalid",
-  "chosen_threshold": null,
-  "decision": "Erster Durchlauf UNGUELTIG - Messfehler, kein Urteil ueber das Wort. FRR 100 % bei jeder Schwelle inklusive 0,02 ist kein schwieriges Wort, sondern ein kaputter Aufbau. Der Energieverlauf zeigt Signal nur in den ersten 100 ms, danach Stille; die Pegel liegen mit Spitzen meist unter 0,1 und Median-RMS 0,005 deutlich unter normalem Sprachpegel. Zwei Aenderungen: der Rekorder laeuft jetzt BEVOR zum Sprechen aufgefordert wird, und jede Aufnahme wird sofort auf Pegel und zusammenhaengendes Sprachsignal geprueft statt erst bei der Auswertung. Die 50 Proben liegen unter samples/unbrauchbar_2026-07-27/.",
-  "blocking": true
+ "spike": "T-1.1",
+ "word": "Embershard (tokenisiert als EMBER SHARD -- als ein Wort schlaegt es nie an)",
+ "engine": "sherpa-onnx-kws-zipformer-gigaspeech-3.3M int8",
+ "tokenization": [
+  "▁E M BER ▁SHA R D",
+  "▁HE Y ▁E M BER ▁SHA R D",
+  "▁OKAY ▁E M BER ▁SHA R D"
+ ],
+ "rows": [
+  {
+   "threshold": 0.02,
+   "trials": 50,
+   "true_positives": 0,
+   "false_rejects": 50,
+   "frr": 1.0,
+   "background_hours": 0.0,
+   "false_accepts": 0,
+   "far_per_hour": null,
+   "frr_by_condition": {
+    "abgewandt": 1.0,
+    "fern": 1.0,
+    "hintergrund": 1.0,
+    "laut": 1.0,
+    "leise": 1.0,
+    "nebenbei": 1.0,
+    "normal": 1.0,
+    "schnell": 1.0
+   }
+  },
+  {
+   "threshold": 0.05,
+   "trials": 50,
+   "true_positives": 0,
+   "false_rejects": 50,
+   "frr": 1.0,
+   "background_hours": 0.0,
+   "false_accepts": 0,
+   "far_per_hour": null,
+   "frr_by_condition": {
+    "abgewandt": 1.0,
+    "fern": 1.0,
+    "hintergrund": 1.0,
+    "laut": 1.0,
+    "leise": 1.0,
+    "nebenbei": 1.0,
+    "normal": 1.0,
+    "schnell": 1.0
+   }
+  },
+  {
+   "threshold": 0.1,
+   "trials": 50,
+   "true_positives": 0,
+   "false_rejects": 50,
+   "frr": 1.0,
+   "background_hours": 0.0,
+   "false_accepts": 0,
+   "far_per_hour": null,
+   "frr_by_condition": {
+    "abgewandt": 1.0,
+    "fern": 1.0,
+    "hintergrund": 1.0,
+    "laut": 1.0,
+    "leise": 1.0,
+    "nebenbei": 1.0,
+    "normal": 1.0,
+    "schnell": 1.0
+   }
+  },
+  {
+   "threshold": 0.15,
+   "trials": 50,
+   "true_positives": 0,
+   "false_rejects": 50,
+   "frr": 1.0,
+   "background_hours": 0.0,
+   "false_accepts": 0,
+   "far_per_hour": null,
+   "frr_by_condition": {
+    "abgewandt": 1.0,
+    "fern": 1.0,
+    "hintergrund": 1.0,
+    "laut": 1.0,
+    "leise": 1.0,
+    "nebenbei": 1.0,
+    "normal": 1.0,
+    "schnell": 1.0
+   }
+  },
+  {
+   "threshold": 0.2,
+   "trials": 50,
+   "true_positives": 0,
+   "false_rejects": 50,
+   "frr": 1.0,
+   "background_hours": 0.0,
+   "false_accepts": 0,
+   "far_per_hour": null,
+   "frr_by_condition": {
+    "abgewandt": 1.0,
+    "fern": 1.0,
+    "hintergrund": 1.0,
+    "laut": 1.0,
+    "leise": 1.0,
+    "nebenbei": 1.0,
+    "normal": 1.0,
+    "schnell": 1.0
+   }
+  },
+  {
+   "threshold": 0.25,
+   "trials": 50,
+   "true_positives": 0,
+   "false_rejects": 50,
+   "frr": 1.0,
+   "background_hours": 0.0,
+   "false_accepts": 0,
+   "far_per_hour": null,
+   "frr_by_condition": {
+    "abgewandt": 1.0,
+    "fern": 1.0,
+    "hintergrund": 1.0,
+    "laut": 1.0,
+    "leise": 1.0,
+    "nebenbei": 1.0,
+    "normal": 1.0,
+    "schnell": 1.0
+   }
+  },
+  {
+   "threshold": 0.3,
+   "trials": 50,
+   "true_positives": 0,
+   "false_rejects": 50,
+   "frr": 1.0,
+   "background_hours": 0.0,
+   "false_accepts": 0,
+   "far_per_hour": null,
+   "frr_by_condition": {
+    "abgewandt": 1.0,
+    "fern": 1.0,
+    "hintergrund": 1.0,
+    "laut": 1.0,
+    "leise": 1.0,
+    "nebenbei": 1.0,
+    "normal": 1.0,
+    "schnell": 1.0
+   }
+  },
+  {
+   "threshold": 0.4,
+   "trials": 50,
+   "true_positives": 0,
+   "false_rejects": 50,
+   "frr": 1.0,
+   "background_hours": 0.0,
+   "false_accepts": 0,
+   "far_per_hour": null,
+   "frr_by_condition": {
+    "abgewandt": 1.0,
+    "fern": 1.0,
+    "hintergrund": 1.0,
+    "laut": 1.0,
+    "leise": 1.0,
+    "nebenbei": 1.0,
+    "normal": 1.0,
+    "schnell": 1.0
+   }
+  }
+ ],
+ "verdict": "fail",
+ "chosen_threshold": null,
+ "decision": "PLAN C: Push-to-Talk als Grundlage, kein Wake-Word in Phase 3. Begruendung: das Ziel FRR < 10 % bei FAR < 1/h ist nicht belegt. Belegt ist FRR 19 % auf 16 Aussprachen aus EINER Bedingung (samples/probe.wav), und die FAR ist ueberhaupt nicht gemessen -- es gibt keine Hintergrundaufnahmen. Ein Verdikt 'pass' waere auf dieser Grundlage nicht zu halten. Die Entscheidung kostet wenig: Design 1.3 verlangt fuer Aktionen ohnehin Push-to-Talk plus Bestaetigung der kanonisierten Aktion, das Wake-Word war reine Bequemlichkeit. Entfallen damit: T-3.5 und T-3.6. NACHRUESTBAR, und der Hebel ist beziffert: die Schreibweise des Keywords dominiert alles andere. EMBER SHARD trifft 3 von 16, EMBA SHARD trifft 11, EMBA SHARD plus EMBA SHOT trifft 13. Der Boost dominiert die Schwelle (boost 1,5 gegen 3,0 verdoppelt die Trefferzahl, acht Schwellenwerte veraendern sie nicht). Wer das aufgreift, braucht 50 Aufnahmen ueber acht Bedingungen und 3 h Hintergrundton, dann entscheidet FRR und FAR zusammen.",
+ "blocking": true,
+ "gewaehlter_plan": "C",
+ "belegt_am": "2026-07-28",
+ "belege": {
+  "aufnahme": "samples/probe.wav, 24,9 s, 16 Aussprachen",
+  "unabhaengiger_zeuge": "vosk-model-de-0.21 findet 16 von 16",
+  "aufbau_geprueft": "control.py, drei Stufen bestanden",
+  "frr_beste_kombination": 0.19,
+  "far": "nicht gemessen -- keine Hintergrundaufnahmen"
+ }
 }

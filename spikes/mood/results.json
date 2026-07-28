@@ -91,7 +91,9 @@
   "idle",
   "sleeping"
  ],
- "verdict": "pending",
+ "verdict": "pass mit Auflage",
  "recommendation": "Noch nicht auswertbar: 2 von 5 geforderten Sitzungen. Der Rekorder laeuft; erneut ausfuehren, sobald mehr Sitzungen vorliegen.",
- "blocking": false
+ "blocking": false,
+ "decision": "Das Mapping wird uebernommen wie es ist, mit einer offenen Pruefung. Datenbasis sind bislang 2 Sitzungen statt der geforderten 5 -- Matthias hat entschieden, die Erhebung nicht abzuwarten. Was daraus schon belegt ist: StopFailure ist ein echtes Hook-Ereignis und feuert (Beleg: eine an abgelaufenem OAuth gescheiterte Sitzung lieferte SessionStart, UserPromptSubmit, StopFailure, SessionEnd mit reason 'other'), und die Hooks greifen ohne Neustart. Der Rekorder laeuft weiter; analyze.py ist jederzeit erneut ausfuehrbar. AUFLAGE fuer T-0.3.t: die Abweichungsklasse NICHT_ENTSCHEIDBAR muss dort als Test auftauchen. Eine Notification ohne notification_type macht needs_input und idle ununterscheidbar -- und needs_input ist der Mood, an dem die ganze Idee haengt.",
+ "auflage_fuer": "T-0.3.t"
 }

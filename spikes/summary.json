@@ -1,0 +1,70 @@
+{
+ "erzeugt": "2026-07-28",
+ "quelle": "aggregiert aus spikes/*/results.json",
+ "hinweis": "Die blockierenden Spikes sind in Gate P-1 fest verdrahtet und werden NICHT aus dieser Datei gelesen -- ein Handeintrag hier kann einen gescheiterten Blocker nicht umetikettieren.",
+ "spikes": {
+  "T-1.1": {
+   "spike_dir": "spikes/wakeword",
+   "verdict": "fail",
+   "decision": "PLAN C: Push-to-Talk als Grundlage, kein Wake-Word in Phase 3. Begruendung: das Ziel FRR < 10 % bei FAR < 1/h ist nicht belegt. Belegt ist FRR 19 % auf 16 Aussprachen aus EINER Bedingung (samples/probe.wav), und die FAR ist ueberhaupt nicht gemessen -- es gibt keine Hintergrundaufnahmen. Ein Verdikt 'pass' waere auf dieser Grundlage nicht zu halten. Die Entscheidung kostet wenig: Design 1.3 verlangt fuer Aktionen ohnehin Push-to-Talk plus Bestaetigung der kanonisierten Aktion, das Wake-Word war reine Bequemlichkeit. Entfallen damit: T-3.5 und T-3.6. NACHRUESTBAR, und der Hebel ist beziffert: die Schreibweise des Keywords dominiert alles andere. EMBER SHARD trifft 3 von 16, EMBA SHARD trifft 11, EMBA SHARD plus EMBA SHOT trifft 13. Der Boost dominiert die Schwelle (boost 1,5 gegen 3,0 verdoppelt die Trefferzahl, acht Schwellenwerte veraendern sie nicht). Wer das aufgreift, braucht 50 Aufnahmen ueber acht Bedingungen und 3 h Hintergrundton, dann entscheidet FRR und FAR zusammen.",
+   "blockierend": true,
+   "results": "spikes/wakeword/results.json"
+  },
+  "T-1.2": {
+   "spike_dir": "spikes/ort",
+   "verdict": "pass",
+   "decision": "Variante A: pip onnxruntime-gpu 1.27.0 in einem cp312-venv -- sie liefert native sm_120a-Cubins fuer alle 6468 onnxruntime::cuda/contrib-Kernel, laeuft gegen das System-CUDA-13.3.1/cuDNN-9.24 ohne Zusatzpakete, und hat als einzige Variante einen sm_120-PTX-Fallback fuer die Luecken.",
+   "blockierend": true,
+   "results": "spikes/ort/results.json"
+  },
+  "T-1.3": {
+   "spike_dir": "spikes/layershell",
+   "verdict": "pass",
+   "decision": "Overlay traegt: bleibt ueber Vollbild sichtbar (per Pixelprobe belegt, mit Negativkontrolle), Idle-CPU 0,17 %, und es wird nachweislich KEIN GPU-Kontext geoeffnet -- null DRI-Deskriptoren, null GPU-Bibliotheken, nur ein memfd fuer wl_shm. Damit ist die Architekturentscheidung aus Design 8.1 empirisch bestaetigt.\n\nKDE-Bug 503121 ist reproduziert: Unmap per NULL-Buffer liefert 0 von 20 configures. Beide Umgehungen liefern 20 von 20. Empfehlung: Properties vor dem Remap neu setzen -- billiger als die Surface neu zu erzeugen.\n\nINPUT-REGION: funktioniert. set_input_region auf einem 200x200-Rechteck einer bildschirmfuellenden Overlay-Layer-Surface trennt sauber. Innerhalb: das Overlay bekommt pointer_enter, pointer_motion und pointer_press (btn 272 = BTN_LEFT), das Fenster darunter bekommt NICHTS -- seine Bewegungsspur bricht exakt am Regionsrand ab und setzt erst ausserhalb wieder ein. Ausserhalb: das Overlay bekommt pointer_leave und danach nichts mehr, der Klick landet im Fenster darunter. Ueberschneidung: keine. Negativkontrolle: dasselbe Overlay ohne --input-region (leere Region) laesst den Klick an genau derselben Stelle durch. Damit misst der Test die Region und nicht 'Layer-Surfaces bekommen nie Eingaben'.\n\nDas input_region_works=false des ersten Anlaufs war ein Fehler des PRUEFSTANDS, keine KWin-Grenze: 'ydotool mousemove -a' setzt auf dieser Maschine den Zeiger fuer JEDES Ziel auf (0,0). Nachgemessen mit einem bildschirmfuellenden XWayland-Fenster und xdotool: fuenf verschiedene Ziele, fuenfmal (0,0). Der Zeiger ist also nie in die Region gefahren. Der Pruefstand kommt jetzt ohne absolute Positionierung aus: relative Bewegung im Regelkreis, und die Region wird um die Ist-Position des Zeigers gelegt. Merke fuer alle spaeteren Eingabetests in diesem Projekt: ydotool -a ist hier unbrauchbar, nur relative Bewegung verwenden.",
+   "blockierend": true,
+   "results": "spikes/layershell/results.json"
+  },
+  "T-1.4": {
+   "spike_dir": "spikes/portal",
+   "verdict": "pass",
+   "decision": "persist_mode=2 verwenden, den restore_token nach jedem erfolgreichen Start sofort atomar ersetzen und bei fehlendem oder ungueltigem Token immer den interaktiven Portal-Fallback zulassen.",
+   "blockierend": true,
+   "results": "spikes/portal/results.json"
+  },
+  "T-1.5": {
+   "spike_dir": "spikes/mood",
+   "verdict": "pass mit Auflage",
+   "decision": "Das Mapping wird uebernommen wie es ist, mit einer offenen Pruefung. Datenbasis sind bislang 2 Sitzungen statt der geforderten 5 -- Matthias hat entschieden, die Erhebung nicht abzuwarten. Was daraus schon belegt ist: StopFailure ist ein echtes Hook-Ereignis und feuert (Beleg: eine an abgelaufenem OAuth gescheiterte Sitzung lieferte SessionStart, UserPromptSubmit, StopFailure, SessionEnd mit reason 'other'), und die Hooks greifen ohne Neustart. Der Rekorder laeuft weiter; analyze.py ist jederzeit erneut ausfuehrbar. AUFLAGE fuer T-0.3.t: die Abweichungsklasse NICHT_ENTSCHEIDBAR muss dort als Test auftauchen. Eine Notification ohne notification_type macht needs_input und idle ununterscheidbar -- und needs_input ist der Mood, an dem die ganze Idee haengt.",
+   "blockierend": false,
+   "results": "spikes/mood/results.json"
+  },
+  "T-1.6": {
+   "spike_dir": "spikes/hookoverhead",
+   "verdict": "pass mit Auflage",
+   "decision": "Ein TOTER Daemon kostet nichts: 2,78 ms, weniger als ein gesunder (3,07 ms), weil 'connection refused' sofort zurueckkommt. Das Alltagsrisiko ist damit ausgeraeumt. Ein HAENGENDER Daemon kostet dagegen 1005 ms je Ereignis -- das curl-Zeitlimit -m 1 deckelt den Schaden, aber eine Sekunde je Werkzeugaufruf ist untragbar, wenn PreToolUse an jedem haengt. AUFLAGE fuer T-0.11: die Bridge muss abgekoppelt aufgerufen werden oder mit einem deutlich kleineren Zeitlimit (Groessenordnung 100 ms). Ein erster Versuch mit einem einfachen Hintergrundaufruf schlug fehl: der abgekoppelte Prozess erbt stdout und stderr, dadurch wartet der Aufrufer weiter. Die Abkopplung muss also die Dateideskriptoren mitloesen und ist in T-0.11 zu belegen, nicht anzunehmen.",
+   "blockierend": false,
+   "results": "spikes/hookoverhead/results.json"
+  },
+  "T-1.9": {
+   "spike_dir": "spikes/focus",
+   "verdict": "pass",
+   "decision": "Das Fokussignal traegt. windowActivated ist verlustfrei und um Groessenordnungen schneller als das 200-ms-Ziel. captionChanged feuert zusaetzlich bei Dokument- und Zustandswechseln innerhalb eines Fensters -- aber nur, wenn die Anwendung ihren Titel aendert. Inhaltsaenderung ohne Titelaenderung (Terminalausgabe, Scrollen, neuer Absatz) bleibt unsichtbar. Der Abtast-Timer aus T-5.4 ist damit nicht optional, sondern traegt den Grossteil der echten Inhaltsaenderung.",
+   "blockierend": false,
+   "results": "spikes/focus/results.json"
+  },
+  "T-1.10": {
+   "spike_dir": "spikes/ocr",
+   "verdict": "pass",
+   "decision": "Keep tesseract. Implement it as a persistent worker process, not a CLI wrapper with a temp file per call and not ctypes-libtesseract inside the main process. The VLM stays responsible for understanding images, not for reading text.",
+   "blockierend": false,
+   "results": "spikes/ocr/results.json"
+  },
+  "T-1.11": {
+   "spike_dir": "spikes/atspi",
+   "verdict": "pass",
+   "decision": "AT-SPI2 kommt als Aktionsfläche in den Katalog, mit Einschränkungen: (1) Sichtbarkeit der Qt-Bäume muss erzwungen werden (QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1 beim Start eigener Instanzen oder systemweiter A11y-Schalter) — nicht global erzwingbar für fremde, bereits laufende Apps. (2) Voller Baumwalk kostet bei KDE-Apps 80–250 ms (p95); Top-Level ~1–2 ms — daher Baum cachen und nur Delta/Top-Level live abfragen. (3) 13–40 % der Knoten ohne Namen; Bezeichnungen sind tainted und gehören in die Auth-Vorschau. (4) GTK-Abdeckung ungleichmäßig: GTK4 nativ, GTK3 über Bridge, MATE-Apps (pluma) nicht erreichbar. (5) Nur Aktionsziele mit eindeutig harmlosem Label automatisiert auslösen; alles andere bleibt manuell freizugeben.",
+   "blockierend": false,
+   "results": "spikes/atspi/results.json"
+  }
+ }
+}
