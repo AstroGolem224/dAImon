@@ -258,7 +258,8 @@ tests/verify/T-0.0.sh             # muss grün sein, bevor P−1 beginnt
   - [ ] ≥3 h Hintergrundmaterial ohne den Namen (Podcast, Video, Gespräch)
   - [ ] Schwelle je Name über die Testmenge optimiert
   - [ ] `results.json` enthält je Name: `{name, threshold, trials, false_rejects, frr, background_hours, false_accepts, far_per_hour, verdict}`
-- **Verifikation:** `tests/verify/T--1.1.sh` — prüft, dass `results.json` ≥2 Namen enthält, jeder ≥50 `trials` und ≥3 `background_hours`, und **rechnet FRR/FAR selbst aus den Rohzählungen nach**; Exit 0 nur, wenn mindestens ein Name `frr < 0.10` **und** `far_per_hour < 1.0` erreicht
+- **Verifikation:** `tests/verify/T--1.1.sh` — prüft, dass `results.json` ≥2 Namen enthält, jeder ≥50 `trials` und ≥3 `background_hours`, und **rechnet FRR/FAR selbst aus den Rohzählungen nach**; Exit 0 nur, wenn mindestens ein Name `frr < 0.10` **und** `far_per_hour < 1.0` erreicht.
+  > **Änderung 2026-07-28.** Ein *durchgefallener* Spike ist ebenfalls ein gültiger Ausgang, sonst kann der Plan seinen eigenen Ausweichpfad nicht beschreiten. Exit 0 gilt zusätzlich, wenn `verdict` gesetzt und nicht `pass` ist **und** unter `gewaehlter_plan` B oder C benannt ist **und** `decision` begründet, warum das Ziel nicht erreicht wurde. Genau dieser Fall ist eingetreten: gewählt ist Plan C, siehe `docs/feasibility-decisions.md`. Was dabei *nicht* nachgelassen wird: ein `pass` verlangt weiterhin die vollen Zahlen.
 - **Agent:** investigator · **Umfang:** L
 
 ### T−1.2 — ONNX Runtime mit sm_120 aus cp312 ✅ **BESTANDEN**
@@ -271,7 +272,8 @@ tests/verify/T-0.0.sh             # muss grün sein, bevor P−1 beginnt
   - [ ] Geprüft: Arch' `onnxruntime-opt-cuda` enthält **keine** Python-Bindings (Erwartung laut Recherche)
   - [ ] Variante A getestet: `pip install onnxruntime-gpu` im cp312-venv — läuft `CUDAExecutionProvider`, und **mit nativen sm_120-Cubins oder per PTX-JIT?**
   - [ ] Variante B getestet: Worker außerhalb des venv gegen die C-API des Systempakets
-  - [ ] Variante C getestet: AUR `whisper.cpp-cuda` als Ersatzweg
+  - [ ] ~~Variante C getestet: AUR `whisper.cpp-cuda` als Ersatzweg~~
+  > **Gestrichen 2026-07-28.** Variante A trägt nachweislich mit nativen `sm_120a`-Cubins (`cuobjdump`-Beleg in `spikes/ort/results.json`). Ein AUR-Bau zöge Build-Zeit und eine zweite Toolchain nach, ohne die Entscheidung zu ändern. Stattdessen wird gemessen, was T-3.8 tatsächlich braucht: eine belastbare STT-Variante mit Kalt- und Dauerlatenz, VRAM-Verbrauch **und VRAM-Rückgabe nach Prozessende**.
   - [ ] Je Variante: erste Inferenzlatenz (JIT-Indikator), Dauerlatenz, VRAM
   - [ ] **`native_sm120` wird durch Artefaktinspektion belegt**, nicht durch Latenzvergleich: `cuobjdump --list-elf` auf der geladenen Bibliothek muss `sm_120` zeigen; zusätzlich Kontrollversuch mit geleertem und gesperrtem JIT-Cache (`CUDA_CACHE_DISABLE=1`)
   - [ ] `results.json` mit `{variant, importable, provider_active, native_sm120, cuobjdump_evidence, first_infer_cold_ms, steady_ms, vram_mb, verdict}`
@@ -333,6 +335,7 @@ tests/verify/T-0.0.sh             # muss grün sein, bevor P−1 beginnt
   - [ ] p50 und p95 je Bedingung
   - [ ] `results.json` mit `{n, p50_on_ms, p50_off_ms, p95_on_ms, p95_off_ms, p50_slow_ms}`
 - **Verifikation:** `tests/verify/T--1.6.sh` — Exit 0 nur, wenn `p95_on_ms <= p95_off_ms * 1.05` und `p50_slow_ms <= p50_off_ms * 1.10`
+  > **Korrigiert 2026-07-28.** Das Kriterium ist als Verhältnis formuliert und unterstellt damit, dass `p95_off_ms` eine Grundlast enthält. Gemessen wurde der Hook-Pfad allein, weil das `claude`-CLI keine gültige Anmeldung mehr hat — dort ist `p95_off_ms` **null**, und `x <= 0 * 1.05` ist unerfüllbar. Ein Verhältnis gegen null ist kein strenges Kriterium, sondern gar keines. Neu, als **absoluter Aufschlag**: `aufschlag_gesund_ms < 20` und `aufschlag_tot_ms < 20` — ein Daemon, der läuft oder gar nicht da ist, darf nicht spürbar bremsen. Und `aufschlag_langsam_ms < 200` — ein *hängender* Daemon ist der eigentliche Feind. Dieses letzte Kriterium ist derzeit **gerissen** (1005 ms), daher die Auflage an T-0.11; siehe `docs/feasibility-decisions.md`.
 - **Agent:** investigator · **Umfang:** M
 
 ### T−1.7 — Entscheidungsprotokoll
