@@ -37,6 +37,20 @@ RMS_FLOOR = 0.02       # Untergrenze fuer "das ist Sprache"
 MIN_LOUD_S = 0.30      # so lange muss zusammenhaengend Signal anliegen
 GOOD_RMS = 0.05        # ab hier ist der Pegel komfortabel, nicht nur ausreichend
 
+# Obergrenzen. Ein Aufbau kann auf zwei Arten unbrauchbar sein, und die
+# ersten beiden Eichlaeufe haben je eine davon gezeigt:
+#   Lauf 1: Sprech-RMS 0,0284, Pausen 0,0071 -> 12 dB Abstand. Nur die
+#           lautesten Zipfel ragten ueber die Schwelle, 2,7 s Sprache in
+#           13 Bruchstuecken. Der Segmentierer haette Woerter zerhackt.
+#   Lauf 2: Spitze 1,000 -> uebersteuert, und 22,6 s "Sprache" mit einem
+#           6,1-s-Abschnitt. Nichts faellt mehr unter die Schwelle, es gibt
+#           keine Schnittkanten mehr.
+# Beide Male sagte die Pruefung BESTANDEN. Deshalb jetzt beidseitig.
+CLIP_LEVEL = 0.99      # ab hier steht das Signal an der Aussteuerungsgrenze
+MAX_CLIP_FRACTION = 0.001   # so viele Samples duerfen dort hoechstens stehen
+MIN_SNR_DB = 18.0      # Abstand Sprache zu Pause
+MAX_SPAN_S = 3.0       # laenger ist keine einzelne Aussprache mehr
+
 
 def blocks_rms(samples, rate):
     n = rate * BLOCK_MS // 1000
@@ -147,22 +161,58 @@ def main():
         print(f"    {bar[i:i + 64]}")
     print()
 
+    import math
+    speech = sum(loud_rms) / len(loud_rms) if loud_rms else 0.0
+    noise = sum(quiet_rms) / len(quiet_rms) if quiet_rms else 0.0
+    snr_db = 20 * math.log10(speech / noise) if speech and noise else float("inf")
+    clipped = sum(1 for v in samples if abs(v) / 32768 >= CLIP_LEVEL)
+    clip_frac = clipped / len(samples)
+    span_s = sorted(s * BLOCK_MS / 1000 for s in spans) if spans else [0.0]
+    median_span = span_s[len(span_s) // 2]
+
+    print(f"  Abstand Sprache/Pause  {snr_db:5.1f} dB   (gefordert >= {MIN_SNR_DB:.0f})")
+    print(f"  uebersteuerte Samples  {clipped} ({clip_frac * 100:.2f} %)")
+    print(f"  Abschnitt im Mittel    {median_span:.1f} s   (plausibel {MIN_LOUD_S}–{MAX_SPAN_S})")
+    print()
+
+    # Reihenfolge nach Schwere: was das Signal zerstoert, zuerst.
     if peak < 0.02:
         print("  DURCHGEFALLEN — praktisch stumm. Falsche Quelle, stummgeschaltet")
         print("  oder das Mikrofon liegt nicht an. Erst das loesen.")
+        return 1
+    if clip_frac > MAX_CLIP_FRACTION:
+        print(f"  DURCHGEFALLEN — uebersteuert. {clipped} Samples stehen an der")
+        print("  Aussteuerungsgrenze; dort ist die Wellenform abgeschnitten und")
+        print("  die Verzerrung laesst sich nicht mehr herausrechnen.")
+        print("  Etwa 6–8 dB zurueck: ein Stueck weiter weg oder Gain runter.")
         return 1
     if best_s < MIN_LOUD_S:
         print("  DURCHGEFALLEN — Signal da, aber zu leise oder zu kurz.")
         print("  Genau dieses Muster hatten die 50 unbrauchbaren Proben.")
         print("  Eingangspegel anheben oder naeher ans Mikrofon.")
         return 1
+    if snr_db < MIN_SNR_DB:
+        print(f"  DURCHGEFALLEN — nur {snr_db:.1f} dB zwischen Sprache und Pause.")
+        print("  Lauter machen hilft NICHT: digitale Verstaerkung hebt beides")
+        print("  gleich an, der Abstand bleibt. Naeher ans Mikrofon (halber")
+        print("  Abstand = rund 6 dB) und Grundgeraeusch abstellen.")
+        return 1
+    if median_span > MAX_SPAN_S:
+        print(f"  DURCHGEFALLEN — die Abschnitte verschmelzen ({median_span:.1f} s im Mittel).")
+        print("  Nichts faellt mehr unter die Schwelle, also gibt es keine")
+        print("  Schnittkanten. Entweder ist der Grundpegel zu hoch, oder es")
+        print("  wurde ohne Pausen gesprochen. Zwischen den Aussprachen")
+        print("  bewusst eine Sekunde schweigen.")
+        return 1
 
     print("  BESTANDEN — der Aufnahmepfad traegt.")
-    if loud_rms and sum(loud_rms) / len(loud_rms) < GOOD_RMS:
-        print(f"  Aber knapp: Sprech-RMS {sum(loud_rms)/len(loud_rms):.4f} liegt unter {GOOD_RMS}.")
-        print("  Es wuerde gehen, mit mehr Pegel waere es robuster.")
+    if speech < GOOD_RMS:
+        print(f"  Aber knapp: Sprech-RMS {speech:.4f} liegt unter {GOOD_RMS}.")
+    if peak > 0.9:
+        print(f"  Wenig Reserve: Spitze {peak:.3f}. Ein lauteres Wort uebersteuert.")
     if long_run:
-        print(f"  {len(spans)} Sprechabschnitte erkannt — die Segmentierung findet Schnitte.")
+        print(f"  {len(spans)} Sprechabschnitte, im Mittel {median_span:.1f} s — "
+              "die Segmentierung findet Schnitte.")
         print("  Naechster Schritt: take.py fuer den langen Take.")
     return 0
 
