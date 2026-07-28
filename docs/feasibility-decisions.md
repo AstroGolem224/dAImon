@@ -72,7 +72,34 @@ Der Nachweis kommt aus `cuobjdump`, nicht aus einem Latenzverhältnis — kalt/w
 auch mit gesperrtem Cache bei 770–900×, das ist cuBLAS-Initialisierung und beantwortet
 die Frage nicht.
 
-**Entscheidung:** pip-Wheel, nicht das Distributionspaket. Ein C-API-Arbeitsprozess ist
+**Entscheidung:** pip-Wheel, nicht das Distributionspaket.
+
+**Nachgemessen am 2026-07-28**, weil die Zahlen fehlten, an denen T-3.8 hängt.
+`onnx-asr 0.12.0` mit `whisper-base` (split ONNX, fp16) über den
+`CUDAExecutionProvider`:
+
+| | |
+|---|---|
+| Kaltlatenz (erste Inferenz) | 403 ms |
+| Dauerlatenz, 5-s-Äußerung | 20,4 ms p50 · 56,1 ms p95 (n=36) |
+| VRAM leer → Inferenz → nach Exit | 1392 → 4341 → 1362 MB |
+| **VRAM-Rückgabe** | **ja** |
+| WER Englisch | 4,5 % |
+
+Die Dauerlatenz ist unkritisch — 20 ms für 5 s Audio ist Faktor 250 schneller als
+Echtzeit. Die VRAM-Rückgabe funktioniert, das war die eigentliche Sorge aus T-3.8.
+
+**Aber: `whisper-base` ist für Deutsch unbrauchbar.** Auf `probe.wav` (16 deutsch
+gesprochene Wiederholungen) halluziniert es vielfach „im basat". Das ist ein Befund
+über die Modellgröße, nicht über den Aufbau — Englisch liegt mit 4,5 % WER im
+Erwartungsbereich.
+
+**Auflage für T-3.8:** ein größeres oder deutsch-spezifisches Modell wählen und die
+deutsche WER gegen echte Satzreferenzen messen. `whisper-base` ist die untere Schranke,
+nicht die Wahl. Der Plan nennt `sherpa-onnx` als bevorzugten Weg, weil es zugleich VAD
+und TTS liefert — das ist damit noch offen und gehört dort geprüft.
+
+**Variante C (`whisper.cpp-cuda`) ist gestrichen**, siehe Plananmerkung bei T−1.2. Ein C-API-Arbeitsprozess ist
 hart blockiert, weil der ORT-Kern statisch ins pybind-Modul gelinkt ist.
 
 ### T−1.3 layer-shell — bestanden

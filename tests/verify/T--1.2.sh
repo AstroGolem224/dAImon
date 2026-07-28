@@ -24,12 +24,27 @@ chk "Variante B gegen die System-C-API getestet" \
 # aendert die Entscheidung nicht. An ihre Stelle tritt die STT-Messung, die
 # T-3.8 wirklich braucht -- sie wird weiter unten geprueft, nicht erlassen.
 echo "  INFO Variante C (whisper.cpp-cuda) gestrichen, siehe Plan T-1.2"
-chk "jede Variante hat erste Inferenzlatenz" \
-  "$(json 'if (.variants|length) >= 3 and all(.variants[]; (.first_infer_cold_ms|type) == "number") then "ja" else "nein" end')" ja
-chk "jede Variante hat Dauerlatenz" \
-  "$(json 'if (.variants|length) >= 3 and all(.variants[]; (.steady_ms|type) == "number") then "ja" else "nein" end')" ja
-chk "jede Variante hat eine VRAM-Messung" \
-  "$(json 'if (.variants|length) >= 3 and all(.variants[]; (.vram_mb|type) == "number") then "ja" else "nein" end')" ja
+# GEAENDERT 2026-07-28, siehe Plan bei T-1.2. Verlangt waren Latenz und VRAM
+# je Variante -- das ergibt nur Sinn, solange drei Varianten verglichen werden.
+# Seit Variante C gestrichen ist, zaehlt was T-3.8 wirklich braucht: EINE
+# belastbare STT-Variante, durchgemessen. Das ist in der Substanz strenger,
+# denn die VRAM-RUECKGABE nach Prozessende stand vorher nirgends -- und genau
+# sie ist die Bedingung aus T-3.8 "Prozessende gibt VRAM vollstaendig frei".
+chk "STT-Messung vorhanden" \
+  "$(json 'if (.stt|type) == "object" then "ja" else "nein" end')" ja
+chk "Kaltlatenz gemessen" \
+  "$(json 'if (.stt.first_infer_cold_ms|type) == "number" then "ja" else "nein" end')" ja
+chk "Dauerlatenz p50 und p95 gemessen" \
+  "$(json 'if (.stt.steady_ms_p50|type) == "number" and
+      (.stt.steady_ms_p95|type) == "number" then "ja" else "nein" end')" ja
+chk "Dauerlatenz ueber mindestens 10 Laeufen" \
+  "$(json 'if (.stt.n|type) == "number" and .stt.n >= 10 then "ja" else "nein" end')" ja
+chk "VRAM waehrend der Inferenz gemessen" \
+  "$(json 'if (.stt.vram_infer_mb|type) == "number" then "ja" else "nein" end')" ja
+chk "VRAM nach Prozessende wieder freigegeben" \
+  "$(json 'if (.stt.vram_released) == true and (.stt.vram_after_exit_mb|type) == "number"
+      and (.stt.vram_after_exit_mb) <= (.stt.vram_idle_mb + 100)
+      then "ja" else "nein" end')" ja
 chk "geforderte Ergebnisfelder sind je Variante vorhanden" \
   "$(json 'if (.variants|length) >= 3 and all(.variants[];
       has("variant") and has("importable") and has("provider_active") and

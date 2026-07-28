@@ -62,5 +62,23 @@
     "exposes_session_options": true,
     "parakeet_models": ["nemo-parakeet-tdt-0.6b-v3", "nemo-parakeet-tdt-0.6b-v2", "nemo-parakeet-rnnt-0.6b", "nemo-parakeet-ctc-0.6b"],
     "note": "Basis-Install zieht KEIN onnxruntime -- nur die Extras [cpu]/[gpu] tun das. Wir koennen onnx-asr nackt installieren und onnxruntime-gpu selbst pinnen."
+  },
+  "stt": {
+    "engine": "onnx-asr 0.12.0",
+    "model": "onnx-community/whisper-base, split ONNX, fp16",
+    "provider": "CUDAExecutionProvider (onnxruntime-gpu 1.27.0)",
+    "first_infer_cold_ms": 402.867,
+    "steady_ms_p50": 20.388,
+    "steady_ms_p95": 56.087,
+    "n": 36,
+    "utterance_s": 5.0,
+    "vram_idle_mb": 1392,
+    "vram_infer_mb": 4341,
+    "vram_after_exit_mb": 1362,
+    "vram_released": true,
+    "wer_en": 0.045455,
+    "wer_de_note": "Keine belastbare WER ohne Satzreferenz. probe.wav enthaelt 16 deutsch gesprochene Wiederholungen von 'Embershard'; Whisper-Base halluziniert stattdessen vielfach 'im basat' und ist fuer Deutsch in diesem Test unbrauchbar.",
+    "sprachen": ["de", "en"],
+    "variante_c_gestrichen": "Variante A traegt nachweislich mit nativen sm_120a-Cubins. Ein AUR-Bau wuerde Build-Zeit und eine zweite Toolchain hinzufuegen, ohne die Entscheidung zu aendern."
   }
 }
