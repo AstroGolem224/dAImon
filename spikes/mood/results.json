@@ -1,0 +1,97 @@
+{
+ "spike": "T-1.5",
+ "frage": "Stimmt das Mood-Mapping aus PHASE3-original.md 4 mit echten Sitzungen ueberein?",
+ "quelle": "spikes/mood/events.jsonl (per .gitignore ausgeschlossen, enthaelt gekuerzte Prompttexte)",
+ "sessions": 2,
+ "events_total": 8,
+ "ereignisse_nach_typ": {
+  "PostToolUse": 2,
+  "PreToolUse": 2,
+  "SessionStart": 1,
+  "UserPromptSubmit": 1,
+  "StopFailure": 1,
+  "SessionEnd": 1
+ },
+ "parallele_ueberlappungen": 1,
+ "mismatches": [
+  {
+   "event": "Notification:idle_prompt",
+   "expected": "idle",
+   "actual": "nie gefeuert",
+   "art": "TOTER_EINTRAG"
+  },
+  {
+   "event": "Notification:permission_prompt",
+   "expected": "needs_input",
+   "actual": "nie gefeuert",
+   "art": "TOTER_EINTRAG"
+  },
+  {
+   "event": "PostToolUseFailure",
+   "expected": "failed",
+   "actual": "nie gefeuert",
+   "art": "TOTER_EINTRAG"
+  },
+  {
+   "event": "Stop",
+   "expected": "done",
+   "actual": "nie gefeuert",
+   "art": "TOTER_EINTRAG"
+  }
+ ],
+ "sitzungen": [
+  {
+   "session_id": "6024ffa6-f2c7-497b-940c-861d49d0f866",
+   "events": 4,
+   "dauer_s": 23.7,
+   "art": [
+    "ohne SessionEnd"
+   ],
+   "abfolge": [
+    "PostToolUse",
+    "PreToolUse",
+    "PostToolUse",
+    "PreToolUse"
+   ],
+   "moods": [
+    "working",
+    "working",
+    "working",
+    "working"
+   ]
+  },
+  {
+   "session_id": "ea0c9e6d-f575-4e8d-a0bc-a9008f7bdc4f",
+   "events": 4,
+   "dauer_s": 0.1,
+   "art": [
+    "fehlgeschlagen"
+   ],
+   "abfolge": [
+    "SessionStart",
+    "UserPromptSubmit",
+    "StopFailure",
+    "SessionEnd"
+   ],
+   "moods": [
+    "observing",
+    "thinking",
+    "failed",
+    "sleeping"
+   ]
+  }
+ ],
+ "prioritaet": [
+  "needs_input",
+  "failed",
+  "working",
+  "thinking",
+  "observing",
+  "done",
+  "idle",
+  "sleeping"
+ ],
+ "verdict": "pending",
+ "recommendation": "Noch nicht auswertbar: 2 von 5 geforderten Sitzungen. Der Rekorder laeuft; erneut ausfuehren, sobald mehr Sitzungen vorliegen.",
+ "blocking": false
+}
