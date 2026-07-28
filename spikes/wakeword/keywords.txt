@@ -1,3 +1,29 @@
+# Wake-Word "Embershard", tokenisiert fuer sherpa-onnx-kws-zipformer-gigaspeech.
+# Zeilen mit # sind Kommentar, alles andere ist eine Keyword-Variante.
+#
+# Gemessen am 2026-07-28 gegen eine echte Aufnahme mit 16 belegten Aussprachen
+# (samples/probe.wav; vosk als unabhaengiger Zeuge findet dort 16 von 16):
+#
+#   EMBER SHARD            3 Treffer      englische Schreibweise
+#   EMBA SHARD            11 Treffer      wie es deutsch gesprochen wird
+#   EMBA SHARD + SHOT     13 Treffer      beste gemessene Kombination
+#
+# Der Grund steht in der Tokenisierung. Das Modell ist auf englischem
+# Gigaspeech trainiert; "EMBER" wird zu "E M BER" mit englischem R-Laut.
+# Deutsch gesprochen klingt die zweite Silbe wie ein offenes A, und genau das
+# trifft "E M B A". Dasselbe beim zweiten Wort: der unabhaengige deutsche
+# Transkribierer hoert abwechselnd "schaut", "schad" und "short" -- deshalb
+# steht neben SHARD auch SHOT.
+#
+# Der aeltere Befund aus NOTES.md gilt weiter: EMBERSHARD als EIN Wort
+# tokenisiert zu "E M BER SH ARD" und schlaegt bei keiner Schwelle an.
+#
+# OFFEN: jede zusaetzliche Variante erhoeht auch die Falschannahmerate. Welcher
+# Satz bleibt, entscheidet erst die Messung gegen die 3 h Hintergrundton --
+# FRR und FAR zusammen, nicht FRR allein.
+
+▁E M B A ▁SHA R D
+▁E M B A ▁S HO T
 ▁E M BER ▁SHA R D
-▁HE Y ▁E M BER ▁SHA R D
-▁OKAY ▁E M BER ▁SHA R D
+▁HE Y ▁E M B A ▁SHA R D
+▁OKAY ▁E M B A ▁SHA R D

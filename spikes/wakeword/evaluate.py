@@ -26,7 +26,14 @@ BG = HERE / "samples" / "background"
 # Schwellenraster. sherpa-onnx erwartet die Schwelle je Keyword in der
 # keywords-Datei; wir erzeugen sie je Durchlauf neu.
 THRESHOLDS = [0.02, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40]
-BOOST = 1.5
+
+# BOOST war bis 2026-07-28 fest auf 1,5 und wurde nie variiert -- die Messung
+# suchte damit die falsche Achse ab. Gegen eine echte Aufnahme mit 16 belegten
+# Aussprachen: ueber alle acht Schwellen bleibt die Trefferzahl bei boost 1,5
+# konstant 3, bei boost 3,0 steigt sie auf 8. Die Schwelle bewegt fast nichts,
+# der Boost alles. Deshalb wird jetzt ueber beide Achsen gemessen.
+BOOSTS = [1.0, 1.5, 2.0, 3.0, 4.0]
+BOOST = 1.5  # nur noch Vorgabe fuer Aufrufer, die eine einzelne Zahl wollen
 
 
 def read_wav(p: Path):
@@ -37,13 +44,13 @@ def read_wav(p: Path):
     return np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
 
 
-def build_spotter(threshold: float):
-    kwfile = HERE / f".kw_{threshold}.txt"
+def build_spotter(threshold: float, boost: float = BOOST):
+    kwfile = HERE / f".kw_{threshold}_{boost}.txt"
     lines = []
     for tok in (HERE / "keywords.txt").read_text().splitlines():
         tok = tok.strip()
-        if tok:
-            lines.append(f"{tok} :{BOOST} #{threshold}")
+        if tok and not tok.startswith("#"):
+            lines.append(f"{tok} :{boost} #{threshold}")
     kwfile.write_text("\n".join(lines) + "\n")
     return sherpa_onnx.KeywordSpotter(
         tokens=str(MODEL / "tokens.txt"),
@@ -90,8 +97,9 @@ def main():
     print(f"{len(pos)} Positivproben, {bg_seconds/3600:.2f} h Hintergrund\n")
 
     rows = []
-    for th in THRESHOLDS:
-        sp = build_spotter(th)
+    for boost in BOOSTS:
+      for th in THRESHOLDS:
+        sp = build_spotter(th, boost)
         tp = sum(1 for f in pos if detections(sp, read_wav(f)) > 0)
         frr = 1 - tp / len(pos)
 
@@ -110,7 +118,8 @@ def main():
                 d[0] += 1
         cond_frr = {c: round(1 - hit / n, 3) for c, (hit, n) in by_cond.items()}
 
-        row = {"threshold": th, "trials": len(pos), "true_positives": tp,
+        row = {"threshold": th, "boost": boost,
+               "trials": len(pos), "true_positives": tp,
                "false_rejects": len(pos) - tp, "frr": round(frr, 3),
                "background_hours": round(bg_seconds / 3600, 3),
                "false_accepts": fa,
@@ -118,7 +127,7 @@ def main():
                "frr_by_condition": cond_frr}
         rows.append(row)
         far_s = f"{far:.2f}/h" if far is not None else "n/a"
-        print(f"  Schwelle {th:.2f}  FRR {frr*100:5.1f} %   FAR {far_s}")
+        print(f"  boost {boost:.1f}  Schwelle {th:.2f}  FRR {frr*100:5.1f} %   FAR {far_s}")
 
     ok = [r for r in rows
           if r["frr"] < 0.10 and r["far_per_hour"] is not None
@@ -133,8 +142,10 @@ def main():
         "rows": rows,
         "verdict": "pass" if best else "fail",
         "chosen_threshold": best["threshold"] if best else None,
+        "chosen_boost": best["boost"] if best else None,
         "decision": (
-            f"Tauglich bei Schwelle {best['threshold']}: FRR {best['frr']*100:.1f} %, "
+            f"Tauglich bei Schwelle {best['threshold']} und boost {best['boost']}: "
+            f"FRR {best['frr']*100:.1f} %, "
             f"FAR {best['far_per_hour']:.2f}/h."
             if best else
             "Kein Schwellenwert erreicht FRR < 10 % UND FAR < 1/h. "
