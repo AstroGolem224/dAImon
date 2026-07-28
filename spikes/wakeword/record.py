@@ -22,6 +22,12 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 POS = HERE / "samples" / "positive"
+
+# Untergrenzen fuer "das ist wirklich Sprache". Absolut, nicht relativ zur
+# Spitze -- siehe check(). Dieselben Werte wie in mictest.py, damit ein
+# bestandener Mikrofontest und eine angenommene Aufnahme dasselbe bedeuten.
+RMS_FLOOR = 0.02
+MIN_LOUD_S = 0.30
 BG = HERE / "samples" / "background"
 
 # Bedingungen, unter denen aufgenommen wird. Die Streuung ist der Punkt:
@@ -97,14 +103,34 @@ def check(path: Path) -> tuple[bool, str]:
     import array
     a = array.array("h", raw)
     peak = max(abs(v) for v in a) / 32768
-    # Energie in 100-ms-Bloecken: es muss ein zusammenhaengendes lautes Stueck geben
-    blocks = [max(abs(v) for v in a[i:i+1600]) / 32768
-              for i in range(0, len(a) - 1600, 1600)]
-    loud = sum(1 for b in blocks if b > peak * 0.3)
+
+    # Absolute Schwelle, nicht relativ zur Spitze. Die alte Fassung verglich
+    # gegen `peak * 0.3` -- bei einer fast stummen Aufnahme ist der Bezugspunkt
+    # selbst schon Rauschen, und die Pruefung geht durch. Nachgemessen an den
+    # 50 archivierten Proben vom 2026-07-27: die relative Fassung liess 39 von
+    # 50 durch, die absolute laesst 1 durch (fern_003 mit genau 0,3 s).
+    #
+    # RMS je 100-ms-Block, nicht Spitzenwert: ein einzelner Knacks erzeugt eine
+    # hohe Spitze ohne jede Sprache dahinter.
+    n = 1600  # 100 ms bei 16 kHz
+    rms = [(sum(v * v for v in a[i:i+n]) / n) ** 0.5 / 32768
+           for i in range(0, len(a) - n, n)]
+    run = best = 0
+    for r in rms:
+        run = run + 1 if r > RMS_FLOOR else 0
+        best = max(best, run)
+    loud_s = best * 0.1
+    total = (sum(v * v for v in a) / len(a)) ** 0.5 / 32768
+
     if peak < 0.02:
         return False, f"zu leise (Spitze {peak:.3f}) — Mikrofonpegel prüfen"
-    if loud < 2:
-        return False, "kein zusammenhängendes Sprachsignal — zu früh gesprochen?"
+    if loud_s < MIN_LOUD_S:
+        return False, (
+            f"kein zusammenhängendes Sprachsignal: nur {loud_s:.1f} s über "
+            f"RMS {RMS_FLOOR} (gefordert {MIN_LOUD_S:.1f} s), RMS gesamt {total:.4f}. "
+            f"Genau dieses Muster hatten die 50 unbrauchbaren Proben — "
+            f"erst mictest.py bestehen."
+        )
     return True, ""
 
 
