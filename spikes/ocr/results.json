@@ -125,33 +125,77 @@
    "notes": "fastest crop result, but that is tesseract 5.5.1 beating 5.5.3, not FFI beating CLI."
   },
   {
-   "variant": "vlm",
+   "variant": "vlm-qwen3vl-8b",
+   "image": "crop",
+   "n": 20,
+   "p50_ms": 15437.1,
+   "p95_ms": 15781.4,
+   "chars": 598,
+   "notes": "ollama qwen3-vl:8b - the model the plan actually names. Warm. 56x slower than tesserocr on the same crop. Accuracy is NOT strictly better than tesseract, it is differently wrong: see 'vlm_error_mode' below."
+  },
+  {
+   "variant": "vlm-qwen3vl-8b",
+   "image": "dense",
+   "n": 20,
+   "p50_ms": 21106.1,
+   "p95_ms": 21541.0,
+   "chars": 0,
+   "notes": "FAILS. 0 chars, 20/20 calls. Mechanism differs from gemma4: ollama reports done_reason=length with eval_count fully consumed and an empty response - the model spends the whole token budget in its reasoning trace and never starts the transcript. See 'vlm_error_mode'."
+  },
+  {
+   "variant": "vlm-qwen3vl-8b",
+   "image": "sparse",
+   "n": 17,
+   "p50_ms": 21177.6,
+   "p95_ms": 64561.2,
+   "chars": 0,
+   "notes": "FAILS identically to dense, 17/17 calls. n=17 not 20 because the 20 min budget for the whole VLM arm ran out; since all 17 returned 0 chars, three more change nothing."
+  },
+  {
+   "variant": "vlm-gemma4-26b",
    "image": "crop",
    "n": 5,
    "p50_ms": 15220.5,
    "p95_ms": 15272.6,
    "chars": 606,
-   "notes": "ollama gemma4:26b (already local, 17 GB, nothing downloaded). Warm model. 45-56x slower than tesseract on the same crop, but MORE accurate: it read 'itiger013' and 'CachyOS' correctly where tesseract produced 'itiger@13' and 'Cachy0S'."
+   "notes": "SUPERSEDED, kept as a side observation. gemma4:26b was measured first only because it was already local; the plan names qwen3-vl:8b. n=5 is below the acceptance threshold. On this crop it read 'itiger013' and 'CachyOS' correctly where tesseract produced 'itiger@13' and 'Cachy0S' - but that comparison was one-sided, it was not checked for invented words."
   },
   {
-   "variant": "vlm",
+   "variant": "vlm-gemma4-26b",
    "image": "dense",
    "n": 5,
    "p50_ms": 23039.8,
    "p95_ms": 23050.3,
    "chars": 0,
-   "notes": "FAILS. Returns 0 usable chars, deterministically, 6/6 calls. prompt_eval_count=291 => the 5120x1440 frame is encoded as ~256 image tokens; at that density the text is unreadable. With num_predict=300 the model emits a hallucinated line ('Revision Runde 1.5' for the actual 'Review Runden 1-5') and then loops it verbatim until the token cap. Downscaling or cropping to a third of the frame did not help."
+   "notes": "SUPERSEDED. FAILS, 6/6 calls. prompt_eval_count=291 => the 5120x1440 frame is encoded as ~256 image tokens. With num_predict=300 the model emits a hallucinated line ('Revision Runde 1.5' for the actual 'Review Runden 1-5') and loops it verbatim until the token cap. Downscaling or cropping to a third of the frame did not help."
   },
   {
-   "variant": "vlm",
+   "variant": "vlm-gemma4-26b",
    "image": "sparse",
    "n": 5,
    "p50_ms": 22992.5,
    "p95_ms": 23030.9,
    "chars": 0,
-   "notes": "FAILS identically to dense: 0 chars, 6/6 calls, same repetition-loop failure mode."
+   "notes": "SUPERSEDED. FAILS identically to dense: 0 chars, 6/6 calls, same repetition-loop failure mode."
   }
  ],
+ "vlm_error_mode": {
+  "why_the_full_frame_returns_nothing": "Not a malformed call. ollama returns done_reason='length' with eval_count fully consumed and an empty 'response' field, while 'thinking' holds tens of thousands of characters. Raising the budget only moves the wall.",
+  "measured": [
+   {"image": "dense", "num_predict": 4096, "think": true, "done_reason": "length", "eval_count": 4096, "prompt_eval_count": 2080, "response_chars": 0, "thinking_chars": 14900, "ms": 21511},
+   {"image": "dense", "num_predict": 8192, "think": false, "done_reason": "length", "eval_count": 8192, "prompt_eval_count": 2078, "response_chars": 0, "thinking_chars": 25595, "ms": 43379},
+   {"image": "dense", "num_predict": 8192, "think": true, "done_reason": "length", "eval_count": 8192, "prompt_eval_count": 2080, "response_chars": 0, "thinking_chars": 25595, "ms": 43548},
+   {"image": "crop", "num_predict": 4096, "think": true, "done_reason": "stop", "eval_count": 3006, "prompt_eval_count": 211, "response_chars": 598, "thinking_chars": 8755, "ms": 14494}
+  ],
+  "note": "'think': false is NOT honoured by ollama for this model - the reasoning trace is produced either way, byte-identical in length to think=true. So on a 7.4 MP screenshot qwen3-vl:8b is not slow, it is unusable: 8192 tokens already cost 43 s and still yield nothing. Even on the crop, where it does succeed, roughly two thirds of the generated tokens go into the reasoning trace (8755 thinking chars for 598 chars of output) - that is where the 15 s per crop actually goes.",
+  "raw": "raw_vlm_diag.json",
+  "script": "vlm_diag.py"
+ },
+ "vlm_vs_tesseract_on_the_same_crop": {
+  "tesserocr_errors": ["itiger@13 for itiger013", "Cachy0s for CachyOS", "Desktop-Familia truncated", "period for comma"],
+  "qwen3vl_errors": ["dAimon for dAImon", "'markiert Ausgang' for 'markierten Aussagen'", "'Bedrohungsmeldung' for 'Bedrohungsmodell'", "'Zusagung' for 'Zusage'", "'laufend' for 'laufenden'"],
+  "conclusion": "The two error classes are not equivalent and the earlier gemma4 note ('MORE accurate') was one-sided. tesseract produces visible character garbage that a downstream filter can catch. The VLM produces plausible wrong words - 'Bedrohungsmeldung' reads like a real German word and is not one. For a layer that feeds screen text into cognition, silent corruption is the worse failure: it is indistinguishable from correct input."
+ },
  "region_detect_ms": {
   "dense": 57.1,
   "sparse": 77.2,
@@ -316,5 +360,19 @@
   "method": "tesseract on a 32x32 blank PNG, n=20, vs ~0.0 ms for the same call through the reused FFI handle"
  },
  "recommendation": "persistent_worker",
- "rationale": "OCR cost is set by tesseract itself, not by how it is called: all four calling mechanisms land within 15% of each other (crop 277-352 ms, full frame 3.3-4.7 s), and the CLI's removable per-call overhead is a measured 60 ms - 18% of a crop, 1.6% of a full frame. A persistent worker wins on two grounds the FFI-in-process option does not: it removes those 60 ms AND it keeps tesseract's OpenMP runtime out of the main process, which cost a reproducible ~800 ms (20%) per full frame when ctypes-libtesseract shared a process with numpy/OpenBLAS - and it is what the concurrency requirement in DESIGN.md 4.4 needs anyway. Dropping tesseract is not an option: the local VLM (gemma4:26b, vision) is 45x slower on a crop and returns nothing at all on a full frame, because a 7.4 MP screenshot is encoded as ~256 image tokens and the model degenerates into a hallucinated repetition loop."
+ "rationale": "OCR cost is set by tesseract itself, not by how it is called: all four calling mechanisms land within 15% of each other (crop 277-352 ms, full frame 3.3-4.7 s), and the CLI's removable per-call overhead is a measured 60 ms - 18% of a crop, 1.6% of a full frame. A persistent worker wins on two grounds the FFI-in-process option does not: it removes those 60 ms AND it keeps tesseract's OpenMP runtime out of the main process, which cost a reproducible ~800 ms (20%) per full frame when ctypes-libtesseract shared a process with numpy/OpenBLAS - and it is what the concurrency requirement in DESIGN.md 4.4 needs anyway. Dropping tesseract is not an option: qwen3-vl:8b, the VLM the plan names, is 56x slower on a crop and returns nothing at all on a full frame, in 37 of 37 calls.",
+ "verdict": "pass",
+ "decision": "Keep tesseract. Implement it as a persistent worker process, not a CLI wrapper with a temp file per call and not ctypes-libtesseract inside the main process. The VLM stays responsible for understanding images, not for reading text.",
+ "plan_impact": [
+  "T-4.x: the plan's wording ('libtesseract via FFI or a persistent worker process, NOT the CLI wrapper with a temp file per call') stands. Of the two allowed options, the worker is the one to build - the in-process FFI variant carries a measured ~800 ms OpenMP co-residency penalty per full frame.",
+  "The gate chain must crop to the FOCUSED WINDOW, not to text regions at all. Cropping to the union of detected text boxes is a no-op: the union covers 97% (dense) to 99% (sparse) of the frame. Cropping to the individual boxes would cut the OCR area to 8.9% - but at 261 boxes on a dense frame and a measured 60 ms fixed cost per call, that is 15.7 s of overhead against 3.3 s for one full-frame pass. Region-level cropping only pays off if the box count stays low, which on real screens it does not.",
+  "psm 11 and tessdata_fast stay as set: on this material psm 11 is both the fastest and the most productive, and tessdata_standard is twice as expensive on a crop for one character less.",
+  "No VLM in the text path. Screen text is read by tesseract; the VLM is not a fallback for it, because its failure mode is silent word substitution rather than visible garbage."
+ ],
+ "deviations_from_plan": [
+  "The plan names qwen3-vl:8b. The first VLM run of this session used gemma4:26b because that model was already local. Those rows are kept as 'vlm-gemma4-26b' and marked SUPERSEDED; the reported VLM arm is qwen3-vl:8b at n=20/20/17.",
+  "vlm-qwen3vl-8b/sparse has n=17 instead of 20 - the 20 min budget for the VLM arm was exhausted. All 17 returned 0 chars, so the verdict does not depend on the missing three.",
+  "tesserocr was measured in addition to the three calling mechanisms the plan names. Its crop win (277 ms) is tesseract 5.5.1 beating the system's 5.5.3, not FFI beating CLI - it is a version comparison and does not by itself justify the dependency."
+ ],
+ "blocking": false
 }

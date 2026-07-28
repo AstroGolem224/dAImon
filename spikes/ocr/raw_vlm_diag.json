@@ -1,0 +1,62 @@
+[
+ {
+  "image": "dense",
+  "size": [
+   5120,
+   1440
+  ],
+  "num_predict": 4096,
+  "think": true,
+  "ms": 21511,
+  "done_reason": "length",
+  "eval_count": 4096,
+  "prompt_eval_count": 2080,
+  "response_chars": 0,
+  "thinking_chars": 14900
+ },
+ {
+  "image": "dense",
+  "size": [
+   5120,
+   1440
+  ],
+  "num_predict": 8192,
+  "think": false,
+  "ms": 43379,
+  "done_reason": "length",
+  "eval_count": 8192,
+  "prompt_eval_count": 2078,
+  "response_chars": 0,
+  "thinking_chars": 25595
+ },
+ {
+  "image": "dense",
+  "size": [
+   5120,
+   1440
+  ],
+  "num_predict": 8192,
+  "think": true,
+  "ms": 43548,
+  "done_reason": "length",
+  "eval_count": 8192,
+  "prompt_eval_count": 2080,
+  "response_chars": 0,
+  "thinking_chars": 25595
+ },
+ {
+  "image": "crop",
+  "size": [
+   600,
+   300
+  ],
+  "num_predict": 4096,
+  "think": true,
+  "ms": 14494,
+  "done_reason": "stop",
+  "eval_count": 3006,
+  "prompt_eval_count": 211,
+  "response_chars": 598,
+  "thinking_chars": 8755
+ }
+]
