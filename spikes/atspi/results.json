@@ -1,0 +1,118 @@
+{
+  "n_apps": 6,
+  "activations_ok": 4,
+  "apps": [
+    {
+      "app": "dolphin",
+      "actions_found": 404,
+      "activation_worked": true,
+      "tree_query_ms": {
+        "top_level": {
+          "n": 25,
+          "p50": 1.186,
+          "p95": 1.867
+        },
+        "full_tree": {
+          "n": 25,
+          "p50": 115.19,
+          "p95": 136.422
+        }
+      }
+    },
+    {
+      "app": "gtk4demo",
+      "actions_found": 4,
+      "activation_worked": true,
+      "tree_query_ms": {
+        "top_level": {
+          "n": 25,
+          "p50": 3.42,
+          "p95": 4.005
+        },
+        "full_tree": {
+          "n": 25,
+          "p50": 6.235,
+          "p95": 6.725
+        }
+      }
+    },
+    {
+      "app": "kate",
+      "actions_found": 667,
+      "activation_worked": true,
+      "tree_query_ms": {
+        "top_level": {
+          "n": 25,
+          "p50": 1.141,
+          "p95": 1.291
+        },
+        "full_tree": {
+          "n": 25,
+          "p50": 206.671,
+          "p95": 245.475
+        }
+      }
+    },
+    {
+      "app": "konsole",
+      "actions_found": 259,
+      "activation_worked": true,
+      "tree_query_ms": {
+        "top_level": {
+          "n": 25,
+          "p50": 1.166,
+          "p95": 1.401
+        },
+        "full_tree": {
+          "n": 25,
+          "p50": 91.08,
+          "p95": 94.731
+        }
+      }
+    },
+    {
+      "app": "pavucontrol",
+      "actions_found": 23,
+      "activation_worked": false,
+      "tree_query_ms": {
+        "top_level": {
+          "n": 25,
+          "p50": 3.497,
+          "p95": 4.284
+        },
+        "full_tree": {
+          "n": 25,
+          "p50": 22.093,
+          "p95": 26.143
+        }
+      }
+    },
+    {
+      "app": "pluma",
+      "actions_found": 0,
+      "activation_worked": false,
+      "tree_query_ms": {
+        "top_level": {
+          "n": null,
+          "p50": null,
+          "p95": null
+        },
+        "full_tree": {
+          "n": null,
+          "p50": null,
+          "p95": null
+        }
+      }
+    }
+  ],
+  "notes": [
+    "Qt-Apps (kate, dolphin, konsole) exportieren im Auslieferungszustand (toolkit-accessibility=false) KEINEN Baum; gemessen wurde mit QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1 beim Start.",
+    "Nach gsettings toolkit-accessibility=true exportieren auch bereits laufende Qt-Apps dynamisch; Zurücksetzen auf false entfernt die Bäume laufender Prozesse NICHT mehr (bis Neustart der App).",
+    "GTK4 spricht AT-SPI nativ (gtk4demo via PyGObject); GTK3 (pavucontrol) funktioniert, da at-spi2-atk in at-spi2-core 2.60 aufgegangen ist (libatk-bridge vorhanden).",
+    "pluma (MATE/GTK3) tauchte trotz toolkit-accessibility=true und org.mate.interface accessibility=true nicht im Baum auf; pavucontrol lieferte einen Baum, aber kein eindeutig harmloses Aktionsziel (49/78 Knoten ohne Namen).",
+    "Aktivierungsnachweise: bei kate/dolphin/konsole wurde 'Über KDE — <App>' per Action 'Press' geöffnet und der neue Dialog-Knoten im Baum verifiziert; bei gtk4demo 'Ansicht'-Menübutton per 'click', Popover-Knoten wurden neu SHOWING.",
+    "DESIGN-ZUSAGE: Jede aus dem AT-SPI-Baum abgeleitete Bezeichnung ist tainted und muss durch die Vorschau des Auth-Agenten."
+  ],
+  "verdict": "pass",
+  "recommendation": "AT-SPI2 kommt als Aktionsfläche in den Katalog, mit Einschränkungen: (1) Sichtbarkeit der Qt-Bäume muss erzwungen werden (QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1 beim Start eigener Instanzen oder systemweiter A11y-Schalter) — nicht global erzwingbar für fremde, bereits laufende Apps. (2) Voller Baumwalk kostet bei KDE-Apps 80–250 ms (p95); Top-Level ~1–2 ms — daher Baum cachen und nur Delta/Top-Level live abfragen. (3) 13–40 % der Knoten ohne Namen; Bezeichnungen sind tainted und gehören in die Auth-Vorschau. (4) GTK-Abdeckung ungleichmäßig: GTK4 nativ, GTK3 über Bridge, MATE-Apps (pluma) nicht erreichbar. (5) Nur Aktionsziele mit eindeutig harmlosem Label automatisiert auslösen; alles andere bleibt manuell freizugeben."
+}

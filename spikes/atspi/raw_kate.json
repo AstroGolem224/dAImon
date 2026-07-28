@@ -1,0 +1,280 @@
+{
+  "app": "kate",
+  "cmd": [
+    "kate",
+    "/tmp/atspi_kate_w3i_wias/wegwerf.txt"
+  ],
+  "pid": 128596,
+  "qt_flag": true,
+  "tmpdir": "/tmp/atspi_kate_w3i_wias",
+  "matched_by": "name",
+  "matched_pid": 128597,
+  "stats": {
+    "nodes": 1032,
+    "with_action": 667,
+    "missing_name": 415,
+    "roles": {
+      "application": 1,
+      "frame": 1,
+      "panel": 36,
+      "filler": 66,
+      "button": 59,
+      "label": 15,
+      "text": 8,
+      "scroll bar": 8,
+      "layered pane": 16,
+      "tree": 6,
+      "table column header": 9,
+      "tool bar": 12,
+      "check box": 23,
+      "push button menu": 18,
+      "popup menu": 89,
+      "menu bar": 1,
+      "menu item": 524,
+      "separator": 70,
+      "split pane": 11,
+      "unknown": 15,
+      "table cell": 7,
+      "combo box": 8,
+      "list": 10,
+      "list item": 13,
+      "page tab list": 3,
+      "page tab": 2,
+      "spin button": 1
+    },
+    "action_names": {
+      "Press": 504,
+      "SetFocus": 67,
+      "Increase": 9,
+      "Decrease": 9,
+      "Toggle": 37,
+      "ShowMenu": 115
+    },
+    "errors": 0
+  },
+  "top_level_timing": {
+    "n": 25,
+    "p50_ms": 1.141,
+    "p95_ms": 1.291,
+    "min_ms": 1.04,
+    "max_ms": 1.305,
+    "samples_ms": [
+      1.04,
+      1.059,
+      1.07,
+      1.071,
+      1.074,
+      1.075,
+      1.077,
+      1.083,
+      1.11,
+      1.118,
+      1.122,
+      1.137,
+      1.141,
+      1.147,
+      1.15,
+      1.173,
+      1.181,
+      1.19,
+      1.232,
+      1.232,
+      1.235,
+      1.262,
+      1.276,
+      1.291,
+      1.305
+    ]
+  },
+  "full_tree_timing": {
+    "n": 25,
+    "p50_ms": 206.671,
+    "p95_ms": 245.475,
+    "min_ms": 173.742,
+    "max_ms": 246.376,
+    "samples_ms": [
+      173.742,
+      176.902,
+      185.085,
+      186.804,
+      186.835,
+      187.706,
+      198.012,
+      199.763,
+      199.944,
+      201.29,
+      202.191,
+      206.533,
+      206.671,
+      207.18,
+      210.181,
+      226.426,
+      227.926,
+      228.659,
+      230.946,
+      233.632,
+      235.956,
+      236.068,
+      242.674,
+      245.475,
+      246.376
+    ]
+  },
+  "action": {
+    "attempted": true,
+    "target": {
+      "name": "Über KDE",
+      "role": "menu item",
+      "available_actions": [
+        "Press"
+      ],
+      "chosen_action": "Press"
+    },
+    "worked": true,
+    "verification": "do_action('Press') -> True; Dialog-Knoten vorher=1 nachher=2; neue Top-Level-Fenster=[('Über KDE — Kate', 'dialog')]",
+    "candidates": [
+      {
+        "name": "Ansicht",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Bearbeiten",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Datei",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Datei-Aktionen",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Farbschema des Editors",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Fenster",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Fenster-Farbschema",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Geteilte Ansicht",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Hilfe",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Lesezeichen",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Werkzeugansicht aktivieren",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Werkzeugansichten",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "2026-07-09_09-01_BoR_2026-07-09 1x1 Sabine.review.json [~/Dokumente/BoR_Transkripte/2026-07-10/2026-07-09_09-01_BoR_2026-07-09 1x1 Sabine.review.json]",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "2026-07-09_09-01_BoR_2026-07-09 1x1 Sabine.review.json [~/Dokumente/BoR_Transkripte/2026-07-12/2026-07-09_09-01_BoR_2026-07-09 1x1 Sabine.review.json]",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Aktuelle Datei mit Prettier formatieren",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Alle Werkzeugansichten ausblenden",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Ganze Datei mit Clang formatieren",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Ganze Datei mit Go formatieren",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Ganze Datei mit JSON formatieren",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Ganze Datei mit Rust formatieren",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      }
+    ],
+    "strategy": "about_dialog"
+  },
+  "error": null
+}

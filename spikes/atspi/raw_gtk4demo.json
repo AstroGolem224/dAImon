@@ -1,0 +1,125 @@
+{
+  "app": "gtk4demo",
+  "cmd": [
+    "/usr/bin/python3",
+    "/home/itiger013/Dokumente/Github/dAImon/spikes/atspi/gtk4_demo_app.py"
+  ],
+  "pid": 131252,
+  "qt_flag": false,
+  "tmpdir": "/tmp/atspi_gtk4demo_cnmk9pwe",
+  "matched_by": "pid",
+  "matched_pid": 131252,
+  "stats": {
+    "nodes": 9,
+    "with_action": 4,
+    "missing_name": 3,
+    "roles": {
+      "application": 1,
+      "frame": 1,
+      "panel": 3,
+      "label": 2,
+      "button": 1,
+      "toggle button": 1
+    },
+    "action_names": {
+      "window.close": 1,
+      "window.minimize": 1,
+      "window.toggle-maximized": 1,
+      "default.activate": 1,
+      "clipboard.copy": 2,
+      "selection.delete": 2,
+      "clipboard.paste": 2,
+      "link.open": 2,
+      "clipboard.cut": 2,
+      "link.copy": 2,
+      "menu.popup": 2,
+      "selection.select-all": 2,
+      "click": 1
+    },
+    "errors": 0
+  },
+  "top_level_timing": {
+    "n": 25,
+    "p50_ms": 3.42,
+    "p95_ms": 4.005,
+    "min_ms": 3.004,
+    "max_ms": 4.462,
+    "samples_ms": [
+      3.004,
+      3.102,
+      3.235,
+      3.239,
+      3.289,
+      3.294,
+      3.3,
+      3.335,
+      3.344,
+      3.385,
+      3.401,
+      3.408,
+      3.42,
+      3.464,
+      3.47,
+      3.513,
+      3.571,
+      3.613,
+      3.808,
+      3.871,
+      3.879,
+      3.917,
+      3.918,
+      4.005,
+      4.462
+    ]
+  },
+  "full_tree_timing": {
+    "n": 25,
+    "p50_ms": 6.235,
+    "p95_ms": 6.725,
+    "min_ms": 5.517,
+    "max_ms": 6.978,
+    "samples_ms": [
+      5.517,
+      5.952,
+      5.967,
+      6.043,
+      6.09,
+      6.096,
+      6.117,
+      6.12,
+      6.166,
+      6.193,
+      6.195,
+      6.23,
+      6.235,
+      6.266,
+      6.281,
+      6.297,
+      6.324,
+      6.388,
+      6.494,
+      6.516,
+      6.526,
+      6.57,
+      6.575,
+      6.725,
+      6.978
+    ]
+  },
+  "action": {
+    "attempted": true,
+    "target": {
+      "name": "Ansicht",
+      "role": "toggle button",
+      "available_actions": [
+        "click"
+      ],
+      "chosen_action": "click"
+    },
+    "worked": true,
+    "verification": "do_action('click') -> True; neu sichtbare Knoten (name/role): [('Ansicht Untermenü-Platzhalter', 'button'), ('Ansicht Untermenü-Platzhalter', 'toggle button'), ('Untermenü-Platzhalter', 'label')]",
+    "candidates": [],
+    "strategy": "press_button"
+  },
+  "error": null
+}

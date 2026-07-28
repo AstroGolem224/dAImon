@@ -1,0 +1,22 @@
+{
+  "app": "pluma",
+  "cmd": [
+    "pluma",
+    "/tmp/atspi_pluma_ff4iya1j/wegwerf.txt"
+  ],
+  "pid": 131645,
+  "qt_flag": false,
+  "tmpdir": "/tmp/atspi_pluma_ff4iya1j",
+  "matched_by": null,
+  "matched_pid": null,
+  "stats": null,
+  "top_level_timing": null,
+  "full_tree_timing": null,
+  "action": {
+    "attempted": null,
+    "target": null,
+    "worked": false,
+    "verification": null
+  },
+  "error": "App nicht im AT-SPI-Baum aufgetaucht (innerhalb 20s)"
+}

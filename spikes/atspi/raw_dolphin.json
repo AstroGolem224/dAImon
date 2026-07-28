@@ -1,0 +1,279 @@
+{
+  "app": "dolphin",
+  "cmd": [
+    "dolphin",
+    "--new-window",
+    "/tmp/atspi_dolphin_fxvvr1pt/wegwerf.txt"
+  ],
+  "pid": 128642,
+  "qt_flag": true,
+  "tmpdir": "/tmp/atspi_dolphin_fxvvr1pt",
+  "matched_by": "pid",
+  "matched_pid": 128642,
+  "stats": {
+    "nodes": 578,
+    "with_action": 404,
+    "missing_name": 126,
+    "roles": {
+      "application": 1,
+      "frame": 1,
+      "filler": 29,
+      "tool bar": 1,
+      "button": 19,
+      "check box": 4,
+      "split pane": 2,
+      "unknown": 2,
+      "image": 1,
+      "combo box": 1,
+      "text": 2,
+      "list": 4,
+      "push button menu": 4,
+      "popup menu": 41,
+      "menu item": 337,
+      "separator": 34,
+      "menu bar": 1,
+      "panel": 5,
+      "list item": 79,
+      "page tab list": 1,
+      "page tab": 1,
+      "layered pane": 1,
+      "progress bar": 1,
+      "label": 5,
+      "slider": 1
+    },
+    "action_names": {
+      "Toggle": 33,
+      "Press": 315,
+      "SetFocus": 31,
+      "ShowMenu": 46,
+      "Increase": 2,
+      "Decrease": 2
+    },
+    "errors": 0
+  },
+  "top_level_timing": {
+    "n": 25,
+    "p50_ms": 1.186,
+    "p95_ms": 1.867,
+    "min_ms": 0.948,
+    "max_ms": 2.979,
+    "samples_ms": [
+      0.948,
+      0.989,
+      0.992,
+      1.051,
+      1.08,
+      1.098,
+      1.113,
+      1.115,
+      1.121,
+      1.133,
+      1.142,
+      1.152,
+      1.186,
+      1.19,
+      1.255,
+      1.263,
+      1.27,
+      1.284,
+      1.286,
+      1.339,
+      1.347,
+      1.6,
+      1.765,
+      1.867,
+      2.979
+    ]
+  },
+  "full_tree_timing": {
+    "n": 25,
+    "p50_ms": 115.19,
+    "p95_ms": 136.422,
+    "min_ms": 101.359,
+    "max_ms": 136.64,
+    "samples_ms": [
+      101.359,
+      101.716,
+      102.181,
+      103.249,
+      103.851,
+      103.918,
+      105.667,
+      105.83,
+      107.277,
+      109.979,
+      110.83,
+      115.013,
+      115.19,
+      116.599,
+      116.988,
+      118.815,
+      122.309,
+      123.479,
+      124.393,
+      126.589,
+      126.651,
+      126.745,
+      128.395,
+      136.422,
+      136.64
+    ]
+  },
+  "action": {
+    "attempted": true,
+    "target": {
+      "name": "Über KDE",
+      "role": "menu item",
+      "available_actions": [
+        "Press"
+      ],
+      "chosen_action": "Press"
+    },
+    "worked": true,
+    "verification": "do_action('Press') -> True; Dialog-Knoten vorher=1 nachher=2; neue Top-Level-Fenster=[('Über KDE — Dolphin', 'dialog')]",
+    "candidates": [
+      {
+        "name": "Ansicht",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Ansichtsmodus ändern",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Bearbeiten",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Datei",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Fenster-Farbschema",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Hilfe",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Kürzlich geschlossene Unterfenster",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Lesezeichen",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Dateien und Ordner auswählen",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Dateien vergleichen",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Dateierweiterung",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Dateierweiterung",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Dateierweiterung",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Dateierweiterung",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Editierbare Adressleiste",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Lesezeichen hinzufügen",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Liste kürzlich geschlossener Unterfenster leeren",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Unterfenster als Lesezeichenordner …",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Unterfenster wiederherstellen",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Versteckte Dateien anzeigen",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      }
+    ],
+    "strategy": "about_dialog"
+  },
+  "error": null
+}

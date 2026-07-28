@@ -1,0 +1,279 @@
+{
+  "app": "konsole",
+  "cmd": [
+    "konsole"
+  ],
+  "pid": 128692,
+  "qt_flag": true,
+  "tmpdir": "/tmp/atspi_konsole_t3dzoduj",
+  "matched_by": "pid",
+  "matched_pid": 128692,
+  "stats": {
+    "nodes": 376,
+    "with_action": 259,
+    "missing_name": 136,
+    "roles": {
+      "application": 1,
+      "frame": 1,
+      "tool bar": 2,
+      "button": 36,
+      "filler": 27,
+      "check box": 8,
+      "panel": 3,
+      "combo box": 3,
+      "list": 3,
+      "list item": 4,
+      "label": 18,
+      "text": 16,
+      "tree": 2,
+      "table column header": 1,
+      "page tab list": 2,
+      "page tab": 3,
+      "layered pane": 2,
+      "scroll bar": 5,
+      "push button menu": 2,
+      "split pane": 1,
+      "unknown": 2,
+      "terminal": 1,
+      "image": 5,
+      "menu bar": 1,
+      "menu item": 175,
+      "popup menu": 31,
+      "separator": 21
+    },
+    "action_names": {
+      "Press": 189,
+      "SetFocus": 60,
+      "Toggle": 12,
+      "ShowMenu": 36,
+      "Increase": 5,
+      "Decrease": 5
+    },
+    "errors": 0
+  },
+  "top_level_timing": {
+    "n": 25,
+    "p50_ms": 1.166,
+    "p95_ms": 1.401,
+    "min_ms": 1.046,
+    "max_ms": 1.456,
+    "samples_ms": [
+      1.046,
+      1.055,
+      1.057,
+      1.074,
+      1.088,
+      1.111,
+      1.122,
+      1.131,
+      1.137,
+      1.145,
+      1.148,
+      1.154,
+      1.166,
+      1.191,
+      1.214,
+      1.215,
+      1.238,
+      1.252,
+      1.254,
+      1.278,
+      1.321,
+      1.332,
+      1.343,
+      1.401,
+      1.456
+    ]
+  },
+  "full_tree_timing": {
+    "n": 25,
+    "p50_ms": 91.08,
+    "p95_ms": 94.731,
+    "min_ms": 64.464,
+    "max_ms": 95.218,
+    "samples_ms": [
+      64.464,
+      65.649,
+      65.893,
+      66.346,
+      66.513,
+      67.516,
+      72.876,
+      73.455,
+      81.21,
+      82.329,
+      86.241,
+      88.668,
+      91.08,
+      91.221,
+      91.25,
+      91.702,
+      91.994,
+      92.327,
+      92.346,
+      92.557,
+      92.888,
+      93.023,
+      93.339,
+      94.731,
+      95.218
+    ]
+  },
+  "action": {
+    "attempted": true,
+    "target": {
+      "name": "Über KDE",
+      "role": "menu item",
+      "available_actions": [
+        "Press"
+      ],
+      "chosen_action": "Press"
+    },
+    "worked": true,
+    "verification": "do_action('Press') -> True; Dialog-Knoten vorher=1 nachher=2; neue Top-Level-Fenster=[('Über KDE — Konsole', 'dialog')]",
+    "candidates": [
+      {
+        "name": "Ansicht",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Ansicht teilen",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Bearbeiten",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Datei",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Fenster-Farbschema",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Hilfe",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Lesezeichen",
+        "role": "menu item",
+        "actions": [
+          "ShowMenu"
+        ]
+      },
+      {
+        "name": "Aktuelle Ansicht verselbständigen",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Aktuelles Unterfenster verselbständigen",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Alle Unterfenster im aktuellen Fenster",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Ansicht Links/Rechts teilen",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Ansicht Links/Rechts teilen von nächstem Unterfenster",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Ansicht Oben/Unten teilen",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Ansicht Oben/Unten teilen von nächsten Unterfenster",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Ansicht vergrößern",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Ansicht verkleinern",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Gleiche Größe bei allen Ansichten einstellen",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Lesezeichen hinzufügen",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Maximieren der aktuellen Ansicht umschalten",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      },
+      {
+        "name": "Profile verwalten …",
+        "role": "menu item",
+        "actions": [
+          "Press"
+        ]
+      }
+    ],
+    "strategy": "about_dialog"
+  },
+  "error": null
+}
