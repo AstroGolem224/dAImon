@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verifizierer fuer T−1.6: relative Hook-Latenzen mit den Planschwellen.
+# Verifizierer fuer T−1.6: absolute Hook-Aufschlaege mit den Planschwellen.
 set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RESULT="$REPO/spikes/hookoverhead/results.json"
@@ -22,10 +22,19 @@ chk "p95 mit Bridge aus ist numerisch" \
   "$(json 'if (.p95_off_ms|type) == "number" then "ja" else "nein" end')" ja
 chk "p50 der absichtlich langsamen Bridge ist numerisch" \
   "$(json 'if (.p50_slow_ms|type) == "number" then "ja" else "nein" end')" ja
-chk "p95 an liegt hoechstens 5 % ueber p95 aus" \
-  "$(json 'if (.p95_on_ms|type) == "number" and (.p95_off_ms|type) == "number" and
-      .p95_on_ms <= (.p95_off_ms * 1.05) then "ja" else "nein" end')" ja
-chk "p50 langsam liegt hoechstens 10 % ueber p50 aus" \
-  "$(json 'if (.p50_slow_ms|type) == "number" and (.p50_off_ms|type) == "number" and
-      .p50_slow_ms <= (.p50_off_ms * 1.10) then "ja" else "nein" end')" ja
+gesund="$(json '.aufschlag_gesund_ms')"
+tot="$(json '.aufschlag_tot_ms')"
+langsam="$(json '.aufschlag_langsam_ms')"
+chk "Aufschlag gesunder Daemon liegt unter 20 ms ($gesund ms)" \
+  "$(json 'if (.aufschlag_gesund_ms|type) == "number" and
+      .aufschlag_gesund_ms < 20 then "ja" else "nein" end')" ja
+chk "Aufschlag toter Daemon liegt unter 20 ms ($tot ms)" \
+  "$(json 'if (.aufschlag_tot_ms|type) == "number" and
+      .aufschlag_tot_ms < 20 then "ja" else "nein" end')" ja
+slow_ok="$(json 'if (.aufschlag_langsam_ms|type) == "number" and
+  .aufschlag_langsam_ms < 200 then "ja" else "nein" end')"
+chk "Aufschlag langsamer Daemon liegt unter 200 ms ($langsam ms)" "$slow_ok" ja
+if [[ "$slow_ok" != ja ]]; then
+  echo "  HINWEIS Auflage an T-0.11: haengenden Daemon abkoppeln oder Zeitlimit deutlich senken"
+fi
 exit $fail

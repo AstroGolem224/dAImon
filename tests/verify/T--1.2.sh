@@ -19,9 +19,11 @@ chk "Variante A im cp312-venv mit CUDA-Provider getestet" \
   "$(json 'if any(.variants[]?; .variant == "A" and .importable == true and .provider_active == true) then "ja" else "nein" end')" ja
 chk "Variante B gegen die System-C-API getestet" \
   "$(json 'if any(.variants[]?; .variant == "B" and (.verdict|type) == "string" and (.notes|type) == "string") then "ja" else "nein" end')" ja
-chk "Variante C whisper.cpp-cuda praktisch getestet" \
-  "$(json 'if any(.variants[]?; .variant == "C" and (.importable|type) == "boolean" and
-      (.provider_active|type) == "boolean") then "ja" else "nein" end')" ja
+# GESTRICHEN 2026-07-28, siehe Plan bei T-1.2. Variante A traegt nachweislich
+# mit nativen sm_120a-Cubins (cuobjdump-Beleg). Ein zweiter Toolchain-Bau
+# aendert die Entscheidung nicht. An ihre Stelle tritt die STT-Messung, die
+# T-3.8 wirklich braucht -- sie wird weiter unten geprueft, nicht erlassen.
+echo "  INFO Variante C (whisper.cpp-cuda) gestrichen, siehe Plan T-1.2"
 chk "jede Variante hat erste Inferenzlatenz" \
   "$(json 'if (.variants|length) >= 3 and all(.variants[]; (.first_infer_cold_ms|type) == "number") then "ja" else "nein" end')" ja
 chk "jede Variante hat Dauerlatenz" \

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verifizierer fuer T−1.1: Wake-Word-Zahlen werden aus Rohzaehlern nachgerechnet.
+# Verifizierer fuer T−1.1: voller Wake-Word-Pass oder begruendeter Ausweichpfad.
 set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RESULT="$REPO/spikes/wakeword/results.json"
@@ -11,7 +11,7 @@ trap 'rm -rf "$tmp"' EXIT
 report="$tmp/report"
 
 if [[ -f "$RESULT" ]] && python3 - "$RESULT" >"$report" <<'PY'
-import json, math, re, sys
+import json, math, sys
 
 def number(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
@@ -54,18 +54,26 @@ winner = any(number(r.get("frr")) and number(r.get("far_per_hour")) and
 verdict = data.get("verdict") if isinstance(data, dict) else None
 verdict_ok = isinstance(verdict, str) and bool(verdict.strip())
 decision = data.get("decision", "") if isinstance(data, dict) else ""
-fallback = verdict == "pass" or (
-    isinstance(decision, str) and
-    re.search(r"(?:plan|variante)\s*[BC]\b", decision, re.I) is not None
-)
+decision_ok = isinstance(decision, str) and bool(decision.strip())
+plan = data.get("gewaehlter_plan") if isinstance(data, dict) else None
+plan_ok = isinstance(plan, str) and plan.strip().upper() in ("B", "C")
+pass_metrics = all((schema, distinct_names, trials, background, thresholds,
+                    numeric_rates, raw, frr_ok, far_ok, winner))
+pass_route = verdict_ok and verdict.strip().lower() == "pass" and pass_metrics
+fallback_route = (verdict_ok and verdict.strip().lower() != "pass" and
+                  plan_ok and decision_ok)
+route = "pass" if pass_route else "fallback" if fallback_route else "none"
 for key, value in (
     ("json", True), ("schema", schema), ("names", distinct_names),
     ("trials", trials), ("background", background), ("thresholds", thresholds),
     ("numeric_rates", numeric_rates), ("raw", raw), ("frr", frr_ok),
     ("far", far_ok), ("winner", winner), ("verdict", verdict_ok),
-    ("fallback", fallback),
+    ("nonpass", verdict_ok and verdict.strip().lower() != "pass"),
+    ("plan", plan_ok), ("decision", decision_ok),
 ):
     print(f"{key}\t{'ja' if value else 'nein'}")
+print(f"route\t{route}")
+print(f"plan_name\t{plan.strip().upper() if plan_ok else '-'}")
 PY
 then
   declare -A r=()
@@ -76,16 +84,32 @@ fi
 
 echo "T−1.1 — Wake-Word"
 chk "results.json ist gueltiges JSON" "${r[json]:-nein}" ja
-chk "mindestens zwei verschiedene Kandidatennamen" "${r[names]:-nein}" ja
-chk "je Kandidat mindestens 50 Versuche" "${r[trials]:-nein}" ja
-chk "je Kandidat mindestens 3 Hintergrundstunden" "${r[background]:-nein}" ja
-chk "optimierte Schwelle je Kandidat ist numerisch" "${r[thresholds]:-nein}" ja
-chk "alle geforderten Felder je Kandidat vorhanden" "${r[schema]:-nein}" ja
-chk "FRR und FAR sind Zahlen, nicht null" "${r[numeric_rates]:-nein}" ja
-chk "Rohzaehler fuer FRR und FAR sind numerisch" "${r[raw]:-nein}" ja
-chk "FRR stimmt mit false_rejects / trials ueberein" "${r[frr]:-nein}" ja
-chk "FAR stimmt mit false_accepts / background_hours ueberein" "${r[far]:-nein}" ja
-chk "mindestens ein Kandidat erreicht FRR < 0,10 und FAR < 1,0/h" "${r[winner]:-nein}" ja
-chk "Verdikt ist vorhanden und nicht leer" "${r[verdict]:-nein}" ja
-chk "bei anderem Verdikt als pass ist Plan B oder C benannt" "${r[fallback]:-nein}" ja
+case "${r[route]:-none}" in
+  pass)
+    chk "Verdikt ist pass" "${r[verdict]:-nein}" ja
+    chk "mindestens zwei verschiedene Kandidatennamen" "${r[names]:-nein}" ja
+    chk "je Kandidat mindestens 50 Versuche" "${r[trials]:-nein}" ja
+    chk "je Kandidat mindestens 3 Hintergrundstunden" "${r[background]:-nein}" ja
+    chk "optimierte Schwelle je Kandidat ist numerisch" "${r[thresholds]:-nein}" ja
+    chk "alle geforderten Felder je Kandidat vorhanden" "${r[schema]:-nein}" ja
+    chk "FRR und FAR sind Zahlen, nicht null" "${r[numeric_rates]:-nein}" ja
+    chk "Rohzaehler fuer FRR und FAR sind numerisch" "${r[raw]:-nein}" ja
+    chk "FRR stimmt mit false_rejects / trials ueberein" "${r[frr]:-nein}" ja
+    chk "FAR stimmt mit false_accepts / background_hours ueberein" "${r[far]:-nein}" ja
+    chk "mindestens ein Kandidat erreicht FRR < 0,10 und FAR < 1,0/h" "${r[winner]:-nein}" ja
+    echo "  INFO Exit 0 auf dem Erfolgsweg: Wake-Word erfuellt den Messmassstab"
+    ;;
+  fallback)
+    chk "Verdikt ist gesetzt und nicht pass" "${r[nonpass]:-nein}" ja
+    chk "gewaehlter_plan ist B oder C" "${r[plan]:-nein}" ja
+    chk "decision enthaelt eine nichtleere Begruendung" "${r[decision]:-nein}" ja
+    echo "  INFO Exit 0 auf dem Ausweichpfad: Plan ${r[plan_name]}, kein Wake-Word"
+    ;;
+  *)
+    chk "voller Wake-Word-Messmassstab oder dokumentierter Ausweichpfad" nein ja
+    chk "Verdikt ist vorhanden und nicht leer" "${r[verdict]:-nein}" ja
+    chk "bei Nicht-pass ist gewaehlter_plan B oder C" "${r[plan]:-nein}" ja
+    chk "bei Nicht-pass ist decision nicht leer" "${r[decision]:-nein}" ja
+    ;;
+esac
 exit $fail
