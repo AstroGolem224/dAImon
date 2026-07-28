@@ -1,7 +1,7 @@
 # dAImon — Design-Dokument
 
-**Version:** 5.0 — Dauermitschnitt aufgenommen (Review Runden 1–5; Nacharbeit und Prior-Art-Einarbeitung ungeprüft)
-**Datum:** 2026-07-27
+**Version:** 5.4 — NVIDIA-Sprachstack als zweiter Pfad (Review Runden 1–5; Nacharbeit, Prior-Art-Einarbeitung und alles ab v5.x ungeprüft)
+**Datum:** 2026-07-28
 **Repo:** `/home/itiger013/Dokumente/Github/dAImon`
 **Zielsystem:** CachyOS (Arch), Kernel 7.1.5, KDE Plasma 6.7.3 / KWin 6.7.3 auf Wayland, RTX 5090 (32 GB, Treiber 610.43.02, sm_120), 24 Threads, 30 GB RAM, `/home` auf btrfs, PipeWire 1.6.8, fish-Shell.
 
@@ -400,6 +400,26 @@ Verifiziert **[V]**: 0,047 s CPU für 6,6 s Audio, Erkennung funktioniert auf de
 > **Größtes offenes Risiko:** Es gibt **kein deutsches KWS-Modell**. Der englische BPE-Tokenizer nähert einen deutsch klingenden Namen an, aber die Robustheit bei deutscher Aussprache ist **[U]**. Wird in Phase −1 gemessen, bevor irgendetwas anderes gebaut wird. Plan B: `livekit-wakeword` (Apache-2.0) trainiert deutsch und exportiert kompatibel. Plan C: nur Push-to-Talk.
 
 **Transkription:** `onnx-asr` + `nemo-parakeet-tdt-0.6b-v3`, int8, 640 MB VRAM, deutsche WER 3,64.
+
+> **Erste eigene Zahlen [V], 2026-07-28.** Beim Anlegen von T−1.12 lief der Pfad
+> auf dieser Maschine durch: `onnx-asr` 0.12.0 auf `onnxruntime-gpu` 1.27.0,
+> `CUDAExecutionProvider`, fp32. p95 **28 ms** für eine 3,6-s-Äußerung gegen
+> **684 ms** bei sherpa-Whisper-small auf CPU, WER 0,103 gegen 0,178.
+>
+> **Das ist ein Smoke-Test, kein Ergebnis:** n = 2–3, Testaudio synthetisch
+> (mit sherpa-VITS erzeugt, also sauberer als jedes Mikrofon), und der
+> Verifizierer T−1.12.v existiert noch nicht. Die WER-Zahlen sind untereinander
+> vergleichbar, absolut sind sie wertlos. Belastbares kommt aus
+> `spikes/nvidia-voice/results.json`; der Vorbefund liegt in `smoke.json`.
+>
+> Ein Nebenbefund ist trotzdem endgültig: **`canary-180m-flash` ist in `onnx-asr`
+> 0.12.0 nicht enthalten**, obwohl es auf HF liegt. Verfügbar sind nur
+> `nemo-parakeet-tdt-0.6b-v3` und `nemo-canary-1b-v2`. Der 180m-Weg bräuchte
+> NeMo — also Torch, für ein Modell, das lediglich schneller wäre. Fällt aus.
+>
+> Der VRAM-Wert von 640 MB stammt aus der Recherche und ist damit **nicht**
+> bestätigt: gemessen wurden ~5,9 GB, allerdings fp32 und als Gesamtbelegung der
+> GPU inklusive Desktop. Die int8-Zahl steht weiter aus.
 
 > **Offener Blocker, den der Review aufgedeckt hat:** Arch' `onnxruntime-opt-cuda 1.27.1` ist zwar mit `120-real` gegen CUDA 13.3 gebaut **[V]** — aber das Paket enthält **keine Python-Bindings** (46 Dateien, nur `.so`) **[V]**. Ein `uv`-venv mit Python 3.12 kommt an diese Cubins also nicht ohne Weiteres heran, und `pip install onnxruntime-gpu` bringt möglicherweise keine sm_120-Kernel mit. Das muss in Phase −1 geklärt werden, sonst bricht die gesamte STT-Begründung zusammen. Ausweg, falls der Import scheitert: ein Worker außerhalb des venv gegen die C-API, oder whisper.cpp-CUDA aus dem AUR (`-DCMAKE_CUDA_ARCHITECTURES=native` erkennt sm_120 korrekt).
 
@@ -1081,6 +1101,42 @@ Manifest `pet.json`: `id` (Regex `^[a-z0-9][a-z0-9_-]{0,63}$`), `displayName`, `
 |---|---|---|---|---|
 | **Schnell (Vorgabe)** | sherpa-onnx VITS mit `de_DE-thorsten-high`, CPU | ~40 ms TTFA | **0** | Bestätigungen, Status, kurze Antworten |
 | **Charakter (auf Abruf)** | Kartoffelbox-v0.1 (Chatterbox DE, MIT) | <300 ms TTFB **[U]** | 8–16 GB | längere Antworten |
+| **Charakter, Kandidat** | NVIDIA Magpie-TTS Multilingual 357M, NeMo | **[U]** | ~3 GB **[U]** | dito — wird in **T−1.12** gegen die Vorgabe gemessen |
+
+#### Der NVIDIA-Kandidat für die Charakterstufe
+
+Magpie tritt **nur gegen die Charakterstufe** an, nie gegen die Vorgabe. Die
+schnelle Stufe bleibt sherpa-VITS auf der CPU: 0 VRAM, kein Ladegatter aus §5.4,
+und sie funktioniert, während ein Spiel die GPU hält. Ein zweiter Pfad, der das
+ersetzt, würde die Sprachausgabe von der VRAM-Verfügbarkeit abhängig machen —
+genau das, was die Zweistufigkeit vermeiden soll. Bei belegtem VRAM fällt die
+Charakterstufe still auf die Vorgabe zurück.
+
+Der Reiz gegenüber Kartoffelbox liegt im Preis: 357M Parameter und rund 3 GB
+gegen 8–16 GB. Das ist der Unterschied zwischen „passt neben das VLM" und „passt
+nicht".
+
+**Lizenzlage, geprüft am 2026-07-28 [V]:** NVIDIA Open Model License,
+`gated: false` über die HF-API, anonymer Download liefert 200. Der Fließtext der
+Model Card sagt ausdrücklich *„This model is ready for commercial use."* Die
+`extra_gated_*`-Felder im Frontmatter — samt einer Checkbox *„I agree to use this
+model for non-commercial use ONLY"* — stehen noch da, sind aber wirkungslos:
+Recherche und Sekundärquellen beschreiben durchweg den früheren, gated Zustand.
+**Wer sich auf diese Zeilen verlässt, fragt den Status vorher neu ab**;
+`spikes/nvidia-voice/setup.sh arm-b` tut das bei jedem Lauf.
+
+**Was das Modell nicht kann, Stand v2607 (2026-07-22) [V]:** Zero-Shot-Voice-
+Cloning wurde entfernt, laut Karte aus Sicherheitsgründen. Es bleiben fünf feste
+Sprecher — Aria, Jason, Leo, Sofia, John Van Stan — über zwölf Sprachen inklusive
+Deutsch. Für die Persona heißt das: **eine Charakterstimme ist wählbar, nicht
+baubar.** Der Weg zu einer eigenen Stimme bleibt der Finetune aus dem nächsten
+Absatz, und Magpie ersetzt ihn nicht.
+
+**Riva-Vorbehalt:** Die Release Notes der Riva-NIM führen Magpie Multilingual als
+auf Blackwell **nicht unterstützt**. Das betrifft den NIM-Container; ob es für
+NeMo direkt gilt, ist **[U]** und die erste Frage, die T−1.12 beantwortet — vor
+jeder Latenzzahl. Der Weg über NIM scheidet ohnehin aus: Self-Hosting verlangt
+dort eine NVAIE-Lizenz.
 
 Die schnelle Stufe läuft auf der CPU und stört Blender oder Spiele nicht. Mittelfristig ist ein **eigener Piper-Finetune** der beste Weg — Charakter *und* null Latenz. Der Aufwand sind 1–3 Stunden saubere Aufnahmen, nicht GPU-Zeit.
 
@@ -1257,6 +1313,7 @@ Der Charakter ist austauschbar; die Persona-Datei ist der einzige Ort, an dem er
 | STT | Parakeet ONNX (vorbehaltlich Spike) | faster-whisper | faster-whisper auf CUDA 13 kaputt **[V]** |
 | VLM-Server | `llama-server` im Worker | Ollama | Ollama-Daemon unterläuft die Selbstbeendigung |
 | Audio-Stack | **sherpa-onnx** für KWS, VAD, STT und TTS | vier getrennte Bibliotheken | Eine Apache-2.0-Abhängigkeit statt vier; umgeht Pipers GPL-3.0 |
+| Zweiter Sprachpfad | NVIDIA **ergänzt**, ersetzt nie (§8.2) | NVIDIA-Stack als Vorgabe | Die Vorgabe muss ohne GPU auskommen — sonst hängt die Sprachausgabe am freien VRAM und schweigt, während ein Spiel läuft |
 | Overlay-Start | **`agent-pet` forken** | leeres `cargo new` | MIT, Rust, SCTK, KWin — deckt 40–50 % von Phase 1 und kam unabhängig zum selben Prioritätsautomaten |
 | ScreenCast-Ziel | `pipewire-serial` über `PW_KEY_TARGET_OBJECT` | Node-ID aus dem Stream-Tupel | Node-IDs werden wiederverwendet → stiller Fehlstream bei Hotplug |
 | Bildschirm | Portal ScreenCast | grim / ScreenShot2 | grim funktioniert auf KWin nicht **[V]** |
@@ -1396,6 +1453,27 @@ Sofort: `sudo pacman -S tesseract-data-eng tesseract-data-deu` — tesseract hat
 ## 16. Änderungsprotokoll
 
 Vollständiges Review-Protokoll in `PLAN-REVIEW-LOG.md`. Prior-Art-Erhebung in `docs/PRIOR-ART.md`.
+
+> **Lücke:** Zwischen v3.3 und der Kopfzeile (v5.x) fehlen Einträge. Das Protokoll
+> ist unvollständig, nicht das Dokument. Wer die Historie braucht, findet sie im
+> Git-Log, nicht hier.
+
+### v5.4 — NVIDIA-Sprachstack als zweiter Pfad — **NICHT GEGENGELESEN**
+
+Anlass: die Frage, ob NVIDIAs Sprachmodelle lokal tragen. Ergebnis ist kein
+Umbau, sondern eine Ergänzung — mit einer Regel, die vorher nur implizit war.
+
+| # | Was gilt | Wo |
+|---|---|---|
+| α | **Der zweite Sprachpfad ergänzt, er ersetzt nie.** Die Vorgabestufe muss ohne GPU auskommen, sonst schweigt das Pet, sobald ein Spiel den VRAM hält. Magpie tritt allein gegen die *Charakter*stufe an, nicht gegen sherpa-VITS | §8.2, §11 |
+| β | Magpie ist **nicht mehr gated** und laut Model Card kommerziell nutzbar **[V]**. Die `extra_gated_*`-Felder samt non-commercial-Checkbox stehen noch im Frontmatter und sind wirkungslos — sämtliche Sekundärquellen beschreiben den früheren Zustand | §8.2 |
+| γ | **Zero-Shot-Voice-Cloning ist in v2607 entfernt** (laut Karte aus Sicherheitsgründen). Fünf feste Sprecher, zwölf Sprachen. Eine Charakterstimme ist damit wählbar, nicht baubar — der eigene Finetune bleibt der einzige Weg zu einer eigenen Stimme | §8.2 |
+| δ | Erste eigene Zahlen zum Parakeet-STT aus §4.1 **[V]**, aber als Smoke-Test markiert: n = 2–3, synthetisches Testaudio, kein Verifizierer. Die 640-MB-VRAM-Angabe aus der Recherche ist damit **nicht** bestätigt | §4.1 |
+| ε | `canary-180m-flash` ist in `onnx-asr` 0.12.0 **nicht enthalten**. Verfügbar sind nur `parakeet-tdt-0.6b-v3` und `canary-1b-v2` | §4.1 |
+
+Gemessen wird in **T−1.12** (`spikes/nvidia-voice/SPEC.md`), zwei getrennt
+entscheidbare Arme. Der Verifizierer T−1.12.v steht noch aus; bis dahin ist
+nichts davon ein Ergebnis.
 
 ### v3.3 — nach der Prior-Art-Erhebung — **NICHT GEGENGELESEN**
 
