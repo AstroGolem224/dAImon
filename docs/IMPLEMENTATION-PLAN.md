@@ -401,6 +401,35 @@ tests/verify/T-0.0.sh             # muss grün sein, bevor P−1 beginnt
 - **Verifikation:** `tests/verify/T--1.11.sh` — verlangt ≥4 geprüfte Anwendungen und für mindestens zwei eine erfolgreiche Aktivierung; das Ergebnis entscheidet, ob AT-SPI in den Katalog aufgenommen wird
 - **Agent:** investigator · **Umfang:** M
 
+### T−1.12 — NVIDIA-Sprachstack als zweiter Pfad ∥
+> **Nachgetragen 2026-07-28.** Der Spike stand in `docs/DESIGN.md` v5.4, aber nicht in diesem Plan (v5.2) — Design und Plan waren auseinandergelaufen. Werkzeug und Spezifikation lagen bereits unter `spikes/nvidia-voice/` (`SPEC.md`), die Messung war nicht gelaufen. Die Akzeptanzliste unten ist aus jener `SPEC.md` übernommen, nicht neu erfunden.
+
+- **Ziel:** Belastbare Zahlen zu Latenz, VRAM und Qualität für beide Arme, plus die Aussage, ob beide **gleichzeitig** neben dem Eyes-VLM in die 32 GB passen.
+- **Dateien:** `spikes/nvidia-voice/` [vorhanden], `spikes/nvidia-voice/results.json` [erzeugt], `spikes/nvidia-voice/samples/` [erzeugt, ignoriert]
+- **Abhängigkeiten:** **T−1.12.v** · T−1.2 (liefert die ORT-Laufzeit) · T−1.10 (liefert die VLM-VRAM-Zahl für die Koexistenzrechnung)
+- **Nicht blockierend.** Es geht nicht um „NVIDIA statt sherpa", sondern ob ein zweiter, GPU-gestützter Pfad **neben** dem bestehenden trägt. T-3.9 bleibt in jedem Fall Vorgabe und Rückfall: CPU, 0 VRAM, p95 TTFA < 200 ms.
+- **Akzeptanz Arm A (ASR):**
+  - [ ] `onnx-asr` mit `onnxruntime-gpu==1.27.0` **nackt gepinnt**, keine `nvidia-*`-pip-Pakete — dieselbe Auflage wie T-3.8
+  - [ ] ≥2 Modelle gemessen, davon eines mit Deutsch (`parakeet-tdt-0.6b-v3`, `canary-1b-v2`)
+  - [ ] Gegen **sherpa-onnx als Grundlinie**, gleiches Audio, gleiche Maschine, gleicher Lauf
+  - [ ] Je Modell: p50/p95 für eine 5-s-Äußerung über ≥20 Läufe, Kaltstart, VRAM im Betrieb, VRAM nach Prozessende
+  - [ ] WER gegen bekannten Referenztext. **Die Zahl ist relativ, nicht absolut**, solange das Audio synthetisch ist — das steht als `audio_source` in `results.json` und in `NOTES.md`
+  - [ ] Prozessende gibt VRAM auf den Ausgangswert ±50 MB zurück
+- **Akzeptanz Arm B (TTS):**
+  - [ ] Belegt, ob `magpie_tts_multilingual_357m` auf sm_120 **überhaupt lädt und synthetisiert**. Die Riva-Aussage betrifft den NIM-Container, nicht zwingend NeMo direkt. **Ein Fehlschlag ist ein Ergebnis, kein Abbruch**
+  - [ ] Deutsche Synthese aus allen Sprecher-Identitäten, Samples nach `samples/`
+  - [ ] Gesamtlatenz und RTF für ~25 Wörter, ≥20 Läufe nach Aufwärmen, gegen sherpa-VITS `de_DE-thorsten-high` auf CPU
+  - [ ] **TTFA nur, wenn echt gemessen.** Ohne Streaming-Schleife gibt es kein Time-to-First-Audio: dann `ttfa_ms: null` plus `ttfa_reason` — **keine aus der Gesamtlatenz geschätzte Zahl**
+  - [ ] VRAM im Betrieb und nach Prozessende
+  - [ ] Notiert: Zahl der Stimmen, fehlendes Zero-Shot-Cloning, Langform-Beschränkung
+- **Akzeptanz beide:**
+  - [ ] Koexistenz gerechnet: `vram_asr + vram_tts + vram_vlm` gegen 32 607 MiB, mit dem VLM-Wert aus T−1.10 statt einer Schätzung
+  - [ ] `results.json` je Arm und Modell mit `{arm, model, license, gated, loaded, backend, cold_start_ms, p50_ms, p95_ms, ttfa_ms, ttfa_reason, rtf, vram_idle_mb, vram_peak_mb, vram_after_exit_mb, wer, audio_source, n, verdict}`
+  - [ ] Lizenzlage je Modell festgehalten, inklusive des Wortlauts der Magpie-Zustimmung
+- **Annahme- und Abbruchkriterien:** Arm A wird zweiter STT-Pfad, wenn er sherpa in WER schlägt **oder** mehr Sprachen abdeckt, bei p95 < 500 ms; sonst verworfen — die zweite Abhängigkeit hat sich dann nicht bezahlt. Arm B kommt in **T-6.4** (Charakterstimme), **nicht** in T-3.9, und nur wenn er hörbar besser klingt als thorsten; 3 GB VRAM für gleichwertige Sprache ist kein Handel. Übersteigt die VRAM-Summe 28 GB, schließen die Pfade einander aus und der Hub serialisiert sie über die Sperre aus T-3.7.
+- **Verifikation:** `tests/verify/T--1.12.sh` — prüft, dass `results.json` je Arm die geforderten Felder trägt, dass `n >= 20` ist, dass `ttfa_ms` **entweder** eine Zahl **oder** `null` mit nichtleerem `ttfa_reason` ist (eine geschätzte Zahl ist der Mutant), dass `audio_source` gesetzt ist, und dass die Koexistenzrechnung gegen den echten VLM-Wert steht. Ein `loaded: false` bei Arm B ist **kein** Fehlschlag des Verifizierers, solange es mit Begründung dokumentiert ist
+- **Agent:** investigator · **Umfang:** M
+
 ### T−1.8 — Test-Eingabevorrichtung ∥
 - **Ziel:** Automatisierte Klicks und Tasten für Tests, ohne auf den Produktions-Input-Broker zu warten.
 - **Dateien:** `tests/fixtures/input/` [neu]
@@ -423,6 +452,7 @@ for t in T--1.1 T--1.2 T--1.3 T--1.4; do tests/verify/$t.sh; done   # Exit-Statu
 tests/verify/T--1.5.sh
 tests/verify/T--1.6.sh
 tests/verify/T--1.8.sh
+tests/verify/T--1.12.sh   # nachgetragen 2026-07-28, nicht blockierend
 tests/verify/T--1.7.sh        # prueft nur, dass zu jedem Spike eine Entscheidung dokumentiert ist
 ```
 
