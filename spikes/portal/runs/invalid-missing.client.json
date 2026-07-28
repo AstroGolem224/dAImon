@@ -1,0 +1,29 @@
+{
+  "case": "invalid-missing",
+  "trace": "runs/invalid-missing.dbus.log",
+  "token_input": "Token absichtlich weggelassen",
+  "started_at": "2026-07-28T07:03:19+0200",
+  "status": "success",
+  "token_replaced_after_start": true,
+  "portal_requests": [
+    {
+      "method": "CreateSession",
+      "request_path": "/org/freedesktop/portal/desktop/request/1_544/createsession_06bb2175c3eb4f159a2cef0870f13742",
+      "elapsed_seconds": 0.002357,
+      "response": 0
+    },
+    {
+      "method": "SelectSources",
+      "request_path": "/org/freedesktop/portal/desktop/request/1_544/selectsources_407350238bb04dd19536f2f14d1dbc7c",
+      "elapsed_seconds": 0.000471,
+      "response": 0
+    },
+    {
+      "method": "Start",
+      "request_path": "/org/freedesktop/portal/desktop/request/1_544/start_ece29ba3d8b64924bb9f0755824be20f",
+      "elapsed_seconds": 2.882388,
+      "response": 0
+    }
+  ],
+  "finished_at": "2026-07-28T07:03:23+0200"
+}

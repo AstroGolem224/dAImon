@@ -1,38 +1,38 @@
-# dbus-monitor segment=1 monotonic=52686.676596
-signal time=1785182829.030926 sender=org.freedesktop.DBus -> destination=:1.459 serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameAcquired
-   string ":1.459"
-signal time=1785182829.030942 sender=org.freedesktop.DBus -> destination=:1.459 serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameLost
-   string ":1.459"
-method call time=1785182829.280940 sender=:1.460 -> destination=:1.49 serial=3 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.DBus.Introspectable; member=Introspect
-method call time=1785182829.281754 sender=:1.460 -> destination=:1.49 serial=5 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.ScreenCast; member=CreateSession
+# dbus-monitor segment=1 monotonic=84830.537950
+signal time=1785214972.892303 sender=org.freedesktop.DBus -> destination=:1.533 serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameAcquired
+   string ":1.533"
+signal time=1785214972.892319 sender=org.freedesktop.DBus -> destination=:1.533 serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameLost
+   string ":1.533"
+method call time=1785214973.142200 sender=:1.534 -> destination=:1.49 serial=3 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.DBus.Introspectable; member=Introspect
+method call time=1785214973.143194 sender=:1.534 -> destination=:1.49 serial=5 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.ScreenCast; member=CreateSession
    array [
       dict entry(
          string "session_handle_token"
-         variant             string "session_9d9164ef94f14d0e8028b75d2edd6671"
+         variant             string "session_2852d10580274332b0993d7650c196df"
       )
       dict entry(
          string "handle_token"
-         variant             string "createsession_926e5e5eaaa94a2aae4391dc3668156e"
+         variant             string "createsession_aff7593d7ea84fd0b5fab2189acb7a60"
       )
    ]
-method call time=1785182829.282524 sender=:1.49 -> destination=:1.62 serial=3238 path=/org/freedesktop/portal/desktop/session/1_460/session_9d9164ef94f14d0e8028b75d2edd6671; interface=org.freedesktop.DBus.Properties; member=GetAll
+method call time=1785214973.144604 sender=:1.49 -> destination=:1.62 serial=3945 path=/org/freedesktop/portal/desktop/session/1_534/session_2852d10580274332b0993d7650c196df; interface=org.freedesktop.DBus.Properties; member=GetAll
    string "org.freedesktop.impl.portal.Session"
-method call time=1785182829.282676 sender=:1.49 -> destination=:1.62 serial=3239 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.ScreenCast; member=CreateSession
-   object path "/org/freedesktop/portal/desktop/request/1_460/createsession_926e5e5eaaa94a2aae4391dc3668156e"
-   object path "/org/freedesktop/portal/desktop/session/1_460/session_9d9164ef94f14d0e8028b75d2edd6671"
+method call time=1785214973.144769 sender=:1.49 -> destination=:1.62 serial=3946 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.ScreenCast; member=CreateSession
+   object path "/org/freedesktop/portal/desktop/request/1_534/createsession_aff7593d7ea84fd0b5fab2189acb7a60"
+   object path "/org/freedesktop/portal/desktop/session/1_534/session_2852d10580274332b0993d7650c196df"
    string "com.anthropic.Claude"
    array [
    ]
-signal time=1785182829.321197 sender=:1.49 -> destination=:1.460 serial=3241 path=/org/freedesktop/portal/desktop/request/1_460/createsession_926e5e5eaaa94a2aae4391dc3668156e; interface=org.freedesktop.portal.Request; member=Response
+signal time=1785214973.146789 sender=:1.49 -> destination=:1.534 serial=3948 path=/org/freedesktop/portal/desktop/request/1_534/createsession_aff7593d7ea84fd0b5fab2189acb7a60; interface=org.freedesktop.portal.Request; member=Response
    uint32 0
    array [
       dict entry(
          string "session_handle"
-         variant             string "/org/freedesktop/portal/desktop/session/1_460/session_9d9164ef94f14d0e8028b75d2edd6671"
+         variant             string "/org/freedesktop/portal/desktop/session/1_534/session_2852d10580274332b0993d7650c196df"
       )
    ]
-method call time=1785182829.321466 sender=:1.460 -> destination=:1.49 serial=8 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.ScreenCast; member=SelectSources
-   object path "/org/freedesktop/portal/desktop/session/1_460/session_9d9164ef94f14d0e8028b75d2edd6671"
+method call time=1785214973.147092 sender=:1.534 -> destination=:1.49 serial=8 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.ScreenCast; member=SelectSources
+   object path "/org/freedesktop/portal/desktop/session/1_534/session_2852d10580274332b0993d7650c196df"
    array [
       dict entry(
          string "types"
@@ -48,12 +48,12 @@ method call time=1785182829.321466 sender=:1.460 -> destination=:1.49 serial=8 p
       )
       dict entry(
          string "handle_token"
-         variant             string "selectsources_94206b8aae2b405d87edc59597ca4280"
+         variant             string "selectsources_ecf49cc7af9d4ddabbc9f9d2e0eca306"
       )
    ]
-method call time=1785182829.321742 sender=:1.49 -> destination=:1.62 serial=3246 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.ScreenCast; member=SelectSources
-   object path "/org/freedesktop/portal/desktop/request/1_460/selectsources_94206b8aae2b405d87edc59597ca4280"
-   object path "/org/freedesktop/portal/desktop/session/1_460/session_9d9164ef94f14d0e8028b75d2edd6671"
+method call time=1785214973.147503 sender=:1.49 -> destination=:1.62 serial=3953 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.ScreenCast; member=SelectSources
+   object path "/org/freedesktop/portal/desktop/request/1_534/selectsources_ecf49cc7af9d4ddabbc9f9d2e0eca306"
+   object path "/org/freedesktop/portal/desktop/session/1_534/session_2852d10580274332b0993d7650c196df"
    string "com.anthropic.Claude"
    array [
       dict entry(
@@ -69,85 +69,100 @@ method call time=1785182829.321742 sender=:1.49 -> destination=:1.62 serial=3246
          variant             uint32 2
       )
    ]
-signal time=1785182829.321961 sender=:1.49 -> destination=:1.460 serial=3248 path=/org/freedesktop/portal/desktop/request/1_460/selectsources_94206b8aae2b405d87edc59597ca4280; interface=org.freedesktop.portal.Request; member=Response
+signal time=1785214973.147873 sender=:1.49 -> destination=:1.534 serial=3955 path=/org/freedesktop/portal/desktop/request/1_534/selectsources_ecf49cc7af9d4ddabbc9f9d2e0eca306; interface=org.freedesktop.portal.Request; member=Response
    uint32 0
    array [
    ]
-method call time=1785182829.322235 sender=:1.460 -> destination=:1.49 serial=11 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.ScreenCast; member=Start
-   object path "/org/freedesktop/portal/desktop/session/1_460/session_9d9164ef94f14d0e8028b75d2edd6671"
+method call time=1785214973.148064 sender=:1.534 -> destination=:1.49 serial=11 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.ScreenCast; member=Start
+   object path "/org/freedesktop/portal/desktop/session/1_534/session_2852d10580274332b0993d7650c196df"
    string ""
    array [
       dict entry(
          string "handle_token"
-         variant             string "start_317b5eae41264614930fd20af82f250e"
+         variant             string "start_50e497f985344b1e8faba03667c4c1ca"
       )
    ]
-method call time=1785182829.322475 sender=:1.49 -> destination=:1.62 serial=3253 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.ScreenCast; member=Start
-   object path "/org/freedesktop/portal/desktop/request/1_460/start_317b5eae41264614930fd20af82f250e"
-   object path "/org/freedesktop/portal/desktop/session/1_460/session_9d9164ef94f14d0e8028b75d2edd6671"
+method call time=1785214973.148294 sender=:1.49 -> destination=:1.62 serial=3960 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.ScreenCast; member=Start
+   object path "/org/freedesktop/portal/desktop/request/1_534/start_50e497f985344b1e8faba03667c4c1ca"
+   object path "/org/freedesktop/portal/desktop/session/1_534/session_2852d10580274332b0993d7650c196df"
    string "com.anthropic.Claude"
    string ""
    array [
    ]
-method call time=1785182829.440943 sender=:1.62 -> destination=org.freedesktop.portal.Desktop serial=3700 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.Settings; member=ReadAll
-   array [
-      string "org.kde.TabletMode"
-   ]
-method call time=1785182829.441128 sender=:1.49 -> destination=:1.58 serial=3255 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Settings; member=ReadAll
-   array [
-      string "org.kde.TabletMode"
-   ]
-method call time=1785182829.441390 sender=:1.49 -> destination=:1.62 serial=3256 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Settings; member=ReadAll
-   array [
-      string "org.kde.TabletMode"
-   ]
-signal time=1785182829.623848 sender=:1.62 -> destination=(null destination) serial=3709 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
-signal time=1785182829.660968 sender=:1.62 -> destination=(null destination) serial=3710 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
-signal time=1785182829.661198 sender=:1.62 -> destination=(null destination) serial=3712 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Settings; member=SettingChanged
-   string "org.kde.VirtualKeyboard"
-   string "active"
-   variant       boolean true
-signal time=1785182829.661304 sender=:1.49 -> destination=(null destination) serial=3258 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.Settings; member=SettingChanged
-   string "org.kde.VirtualKeyboard"
-   string "active"
-   variant       boolean true
-method call time=1785182832.045900 sender=:1.49 -> destination=:1.62 serial=3259 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=GetAppState
-method call time=1785182837.046571 sender=:1.49 -> destination=:1.62 serial=3261 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=GetAppState
-method call time=1785182839.814410 sender=:1.462 -> destination=org.freedesktop.portal.Desktop serial=2 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.DBus.Properties; member=Get
-   string "org.freedesktop.portal.Screenshot"
-   string "version"
-method call time=1785182839.880685 sender=:1.462 -> destination=org.freedesktop.portal.Desktop serial=44 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.host.portal.Registry; member=Register
-   string "org.kde.dolphin"
-   array [
-   ]
-signal time=1785182839.883332 sender=:1.62 -> destination=(null destination) serial=3715 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
-signal time=1785182839.896410 sender=:1.62 -> destination=(null destination) serial=3717 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Settings; member=SettingChanged
+signal time=1785214973.240329 sender=:1.62 -> destination=(null destination) serial=4339 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
+signal time=1785214973.242610 sender=:1.62 -> destination=(null destination) serial=4341 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Settings; member=SettingChanged
    string "org.kde.VirtualKeyboard"
    string "active"
    variant       boolean false
-signal time=1785182839.896460 sender=:1.62 -> destination=(null destination) serial=3718 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
-signal time=1785182839.896462 sender=:1.62 -> destination=(null destination) serial=3719 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
-signal time=1785182839.896520 sender=:1.49 -> destination=(null destination) serial=3267 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.Settings; member=SettingChanged
+signal time=1785214973.242802 sender=:1.49 -> destination=(null destination) serial=3962 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.Settings; member=SettingChanged
    string "org.kde.VirtualKeyboard"
    string "active"
    variant       boolean false
-method call time=1785182842.047192 sender=:1.49 -> destination=:1.62 serial=3268 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=GetAppState
-method call time=1785182847.047845 sender=:1.49 -> destination=:1.62 serial=3270 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=GetAppState
-method call time=1785182852.048466 sender=:1.49 -> destination=:1.62 serial=3272 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=GetAppState
-# dbus-monitor segment=2 monotonic=52711.677966
-signal time=1785182854.032503 sender=org.freedesktop.DBus -> destination=:1.466 serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameAcquired
-   string ":1.466"
-signal time=1785182854.032515 sender=org.freedesktop.DBus -> destination=:1.466 serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameLost
-   string ":1.466"
-signal time=1785182863.680910 sender=:1.62 -> destination=(null destination) serial=3724 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Settings; member=SettingChanged
+signal time=1785214973.261847 sender=:1.62 -> destination=(null destination) serial=4342 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
+signal time=1785214973.262844 sender=:1.62 -> destination=(null destination) serial=4344 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Settings; member=SettingChanged
    string "org.kde.VirtualKeyboard"
    string "active"
    variant       boolean true
-signal time=1785182863.680975 sender=:1.49 -> destination=(null destination) serial=3274 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.Settings; member=SettingChanged
+signal time=1785214973.262963 sender=:1.49 -> destination=(null destination) serial=3963 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.Settings; member=SettingChanged
    string "org.kde.VirtualKeyboard"
    string "active"
    variant       boolean true
-signal time=1785182863.681561 sender=:1.62 -> destination=(null destination) serial=3725 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
-signal time=1785182863.681763 sender=:1.62 -> destination=(null destination) serial=3726 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
-method call time=1785182868.681781 sender=:1.49 -> destination=:1.62 serial=3275 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=GetAppState
-method call time=1785182873.682283 sender=:1.49 -> destination=:1.62 serial=3277 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=GetAppState
+method call time=1785214974.386424 sender=:1.49 -> destination=:1.62 serial=3964 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=GetAppState
+signal time=1785214976.783312 sender=:1.62 -> destination=(null destination) serial=4347 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Settings; member=SettingChanged
+   string "org.kde.VirtualKeyboard"
+   string "active"
+   variant       boolean false
+signal time=1785214976.783333 sender=:1.62 -> destination=(null destination) serial=4348 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
+signal time=1785214976.783353 sender=:1.62 -> destination=(null destination) serial=4349 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
+signal time=1785214976.783472 sender=:1.49 -> destination=(null destination) serial=3966 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.Settings; member=SettingChanged
+   string "org.kde.VirtualKeyboard"
+   string "active"
+   variant       boolean false
+signal time=1785214976.785436 sender=:1.62 -> destination=(null destination) serial=4353 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Settings; member=SettingChanged
+   string "org.kde.VirtualKeyboard"
+   string "active"
+   variant       boolean true
+signal time=1785214976.793240 sender=:1.49 -> destination=:1.534 serial=3968 path=/org/freedesktop/portal/desktop/request/1_534/start_50e497f985344b1e8faba03667c4c1ca; interface=org.freedesktop.portal.Request; member=Response
+   uint32 0
+   array [
+      dict entry(
+         string "streams"
+         variant             array [
+               struct {
+                  uint32 132
+                  array [
+                     dict entry(
+                        string "position"
+                        variant                            struct {
+                              int32 0
+                              int32 0
+                           }
+                     )
+                     dict entry(
+                        string "size"
+                        variant                            struct {
+                              int32 5120
+                              int32 1440
+                           }
+                     )
+                     dict entry(
+                        string "source_type"
+                        variant                            uint32 1
+                     )
+                  ]
+               }
+            ]
+      )
+      dict entry(
+         string "restore_token"
+         variant             string "<TOKEN-A redigiert>"
+      )
+   ]
+signal time=1785214976.793284 sender=:1.49 -> destination=(null destination) serial=3970 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.Settings; member=SettingChanged
+   string "org.kde.VirtualKeyboard"
+   string "active"
+   variant       boolean true
+method call time=1785214976.793351 sender=:1.534 -> destination=:1.49 serial=14 path=/org/freedesktop/portal/desktop/session/1_534/session_2852d10580274332b0993d7650c196df; interface=org.freedesktop.DBus.Introspectable; member=Introspect
+method call time=1785214976.793562 sender=:1.534 -> destination=:1.49 serial=15 path=/org/freedesktop/portal/desktop/session/1_534/session_2852d10580274332b0993d7650c196df; interface=org.freedesktop.portal.Session; member=Close
+method call time=1785214976.800895 sender=:1.49 -> destination=:1.62 serial=3973 path=/org/freedesktop/portal/desktop/session/1_534/session_2852d10580274332b0993d7650c196df; interface=org.freedesktop.impl.portal.Session; member=Close
+signal time=1785214976.800953 sender=:1.62 -> destination=(null destination) serial=4356 path=/org/freedesktop/portal/desktop/session/1_534/session_2852d10580274332b0993d7650c196df; interface=org.freedesktop.impl.portal.Session; member=Closed

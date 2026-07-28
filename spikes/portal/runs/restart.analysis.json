@@ -1,0 +1,36 @@
+{
+  "trace": "spikes/portal/runs/restart.dbus.log",
+  "screen_cast_start_calls": [
+    {
+      "time": 1785214984.989425,
+      "serial": 11,
+      "header": "method call time=1785214984.989425 sender=:1.537 -> destination=:1.49 serial=11 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.ScreenCast; member=Start"
+    }
+  ],
+  "request_responses": [
+    {
+      "time": 1785214984.984104,
+      "path": "/org/freedesktop/portal/desktop/request/1_537/createsession_c3ac0b7530a64f23ae75c502ad6f171f",
+      "response": 0
+    },
+    {
+      "time": 1785214984.989225,
+      "path": "/org/freedesktop/portal/desktop/request/1_537/selectsources_9a9bb3075069416588dbc72847b86a97",
+      "response": 0
+    },
+    {
+      "time": 1785214984.994495,
+      "path": "/org/freedesktop/portal/desktop/request/1_537/start_604c76d58e3946149c380d3dcfe35cc3",
+      "response": 0
+    }
+  ],
+  "start_response": {
+    "time": 1785214984.994495,
+    "path": "/org/freedesktop/portal/desktop/request/1_537/start_604c76d58e3946149c380d3dcfe35cc3",
+    "response": 0
+  },
+  "start_request_latency_seconds": 0.00507,
+  "interaction_signals": [],
+  "prompted_from_dbus": false,
+  "derivation": "DBus-only: the ScreenCast.Start Request interval is bounded by its org.freedesktop.portal.Request.Response. KDE dialog runs contain portal SettingsChanged signals for org.kde.VirtualKeyboard/active; restored noninteractive runs do not."
+}

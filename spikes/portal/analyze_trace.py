@@ -81,17 +81,45 @@ def analyze(path: Path) -> dict[str, object]:
     # CreateSession, SelectSources, Start each emit Response in call order.
     start_response = responses[2] if starts and len(responses) >= 3 else None
     latency = None
+    interaction_signals: list[dict[str, object]] = []
     if starts and start_response:
         latency = round(float(start_response["time"]) - float(starts[0]["time"]), 6)
+        for header, body in parsed:
+            event_time = float(header["time"] or 0)
+            if not (float(starts[0]["time"]) <= event_time <= float(start_response["time"])):
+                continue
+            body_text = "\n".join(body)
+            if (
+                header["kind"] == "signal"
+                and header["interface"]
+                in {
+                    "org.freedesktop.portal.Settings",
+                    "org.freedesktop.impl.portal.Settings",
+                }
+                and "org.kde.VirtualKeyboard" in body_text
+                and '"active"' in body_text
+            ):
+                interaction_signals.append(
+                    {
+                        "time": event_time,
+                        "interface": header["interface"],
+                        "header": header["raw"],
+                    }
+                )
+    prompted = bool(interaction_signals) if start_response else None
     return {
         "trace": str(path),
         "screen_cast_start_calls": starts,
         "request_responses": responses,
         "start_response": start_response,
         "start_request_latency_seconds": latency,
+        "interaction_signals": interaction_signals,
+        "prompted_from_dbus": prompted,
         "derivation": (
-            "DBus-only: ScreenCast.Start method call to the third "
-            "org.freedesktop.portal.Request.Response signal"
+            "DBus-only: the ScreenCast.Start Request interval is bounded by "
+            "its org.freedesktop.portal.Request.Response. KDE dialog runs "
+            "contain portal SettingsChanged signals for "
+            "org.kde.VirtualKeyboard/active; restored noninteractive runs do not."
         ),
     }
 
@@ -99,8 +127,13 @@ def analyze(path: Path) -> dict[str, object]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("trace", type=Path)
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    print(json.dumps(analyze(args.trace), indent=2, ensure_ascii=False))
+    rendered = json.dumps(analyze(args.trace), indent=2, ensure_ascii=False) + "\n"
+    if args.output:
+        args.output.write_text(rendered, encoding="utf-8")
+    else:
+        print(rendered, end="")
     return 0
 
 

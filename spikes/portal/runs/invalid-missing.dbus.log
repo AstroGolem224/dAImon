@@ -1,0 +1,168 @@
+# dbus-monitor segment=1 monotonic=84857.591753
+signal time=1785214999.945999 sender=org.freedesktop.DBus -> destination=:1.543 serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameAcquired
+   string ":1.543"
+signal time=1785214999.946011 sender=org.freedesktop.DBus -> destination=:1.543 serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameLost
+   string ":1.543"
+method call time=1785215000.195981 sender=:1.544 -> destination=:1.49 serial=3 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.DBus.Introspectable; member=Introspect
+method call time=1785215000.196672 sender=:1.544 -> destination=:1.49 serial=5 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.ScreenCast; member=CreateSession
+   array [
+      dict entry(
+         string "session_handle_token"
+         variant             string "session_5e591cf1eebe4b9fa6c87d83f4184a6d"
+      )
+      dict entry(
+         string "handle_token"
+         variant             string "createsession_06bb2175c3eb4f159a2cef0870f13742"
+      )
+   ]
+method call time=1785215000.197398 sender=:1.49 -> destination=:1.62 serial=4073 path=/org/freedesktop/portal/desktop/session/1_544/session_5e591cf1eebe4b9fa6c87d83f4184a6d; interface=org.freedesktop.DBus.Properties; member=GetAll
+   string "org.freedesktop.impl.portal.Session"
+method call time=1785215000.197506 sender=:1.49 -> destination=:1.62 serial=4074 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.ScreenCast; member=CreateSession
+   object path "/org/freedesktop/portal/desktop/request/1_544/createsession_06bb2175c3eb4f159a2cef0870f13742"
+   object path "/org/freedesktop/portal/desktop/session/1_544/session_5e591cf1eebe4b9fa6c87d83f4184a6d"
+   string "com.anthropic.Claude"
+   array [
+   ]
+signal time=1785215000.198223 sender=:1.49 -> destination=:1.544 serial=4076 path=/org/freedesktop/portal/desktop/request/1_544/createsession_06bb2175c3eb4f159a2cef0870f13742; interface=org.freedesktop.portal.Request; member=Response
+   uint32 0
+   array [
+      dict entry(
+         string "session_handle"
+         variant             string "/org/freedesktop/portal/desktop/session/1_544/session_5e591cf1eebe4b9fa6c87d83f4184a6d"
+      )
+   ]
+method call time=1785215000.198500 sender=:1.544 -> destination=:1.49 serial=8 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.ScreenCast; member=SelectSources
+   object path "/org/freedesktop/portal/desktop/session/1_544/session_5e591cf1eebe4b9fa6c87d83f4184a6d"
+   array [
+      dict entry(
+         string "types"
+         variant             uint32 1
+      )
+      dict entry(
+         string "multiple"
+         variant             boolean false
+      )
+      dict entry(
+         string "persist_mode"
+         variant             uint32 2
+      )
+      dict entry(
+         string "handle_token"
+         variant             string "selectsources_407350238bb04dd19536f2f14d1dbc7c"
+      )
+   ]
+method call time=1785215000.198698 sender=:1.49 -> destination=:1.62 serial=4081 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.ScreenCast; member=SelectSources
+   object path "/org/freedesktop/portal/desktop/request/1_544/selectsources_407350238bb04dd19536f2f14d1dbc7c"
+   object path "/org/freedesktop/portal/desktop/session/1_544/session_5e591cf1eebe4b9fa6c87d83f4184a6d"
+   string "com.anthropic.Claude"
+   array [
+      dict entry(
+         string "types"
+         variant             uint32 1
+      )
+      dict entry(
+         string "multiple"
+         variant             boolean false
+      )
+      dict entry(
+         string "persist_mode"
+         variant             uint32 2
+      )
+   ]
+signal time=1785215000.198814 sender=:1.49 -> destination=:1.544 serial=4083 path=/org/freedesktop/portal/desktop/request/1_544/selectsources_407350238bb04dd19536f2f14d1dbc7c; interface=org.freedesktop.portal.Request; member=Response
+   uint32 0
+   array [
+   ]
+method call time=1785215000.198973 sender=:1.544 -> destination=:1.49 serial=11 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.ScreenCast; member=Start
+   object path "/org/freedesktop/portal/desktop/session/1_544/session_5e591cf1eebe4b9fa6c87d83f4184a6d"
+   string ""
+   array [
+      dict entry(
+         string "handle_token"
+         variant             string "start_ece29ba3d8b64924bb9f0755824be20f"
+      )
+   ]
+method call time=1785215000.199142 sender=:1.49 -> destination=:1.62 serial=4088 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.ScreenCast; member=Start
+   object path "/org/freedesktop/portal/desktop/request/1_544/start_ece29ba3d8b64924bb9f0755824be20f"
+   object path "/org/freedesktop/portal/desktop/session/1_544/session_5e591cf1eebe4b9fa6c87d83f4184a6d"
+   string "com.anthropic.Claude"
+   string ""
+   array [
+   ]
+signal time=1785215000.301293 sender=:1.62 -> destination=(null destination) serial=4425 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
+signal time=1785215000.304623 sender=:1.62 -> destination=(null destination) serial=4427 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Settings; member=SettingChanged
+   string "org.kde.VirtualKeyboard"
+   string "active"
+   variant       boolean false
+signal time=1785215000.304728 sender=:1.49 -> destination=(null destination) serial=4090 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.Settings; member=SettingChanged
+   string "org.kde.VirtualKeyboard"
+   string "active"
+   variant       boolean false
+signal time=1785215000.333299 sender=:1.62 -> destination=(null destination) serial=4428 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
+signal time=1785215000.333435 sender=:1.62 -> destination=(null destination) serial=4430 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Settings; member=SettingChanged
+   string "org.kde.VirtualKeyboard"
+   string "active"
+   variant       boolean true
+signal time=1785215000.333516 sender=:1.49 -> destination=(null destination) serial=4091 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.Settings; member=SettingChanged
+   string "org.kde.VirtualKeyboard"
+   string "active"
+   variant       boolean true
+signal time=1785215002.863020 sender=:1.62 -> destination=(null destination) serial=4431 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
+signal time=1785215003.068188 sender=:1.62 -> destination=(null destination) serial=4433 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Settings; member=SettingChanged
+   string "org.kde.VirtualKeyboard"
+   string "active"
+   variant       boolean false
+signal time=1785215003.068827 sender=:1.62 -> destination=(null destination) serial=4434 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
+signal time=1785215003.068835 sender=:1.62 -> destination=(null destination) serial=4435 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Background; member=RunningApplicationsChanged
+signal time=1785215003.068836 sender=:1.49 -> destination=(null destination) serial=4092 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.Settings; member=SettingChanged
+   string "org.kde.VirtualKeyboard"
+   string "active"
+   variant       boolean false
+signal time=1785215003.074745 sender=:1.62 -> destination=(null destination) serial=4439 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Settings; member=SettingChanged
+   string "org.kde.VirtualKeyboard"
+   string "active"
+   variant       boolean true
+signal time=1785215003.081096 sender=:1.49 -> destination=:1.544 serial=4094 path=/org/freedesktop/portal/desktop/request/1_544/start_ece29ba3d8b64924bb9f0755824be20f; interface=org.freedesktop.portal.Request; member=Response
+   uint32 0
+   array [
+      dict entry(
+         string "streams"
+         variant             array [
+               struct {
+                  uint32 129
+                  array [
+                     dict entry(
+                        string "position"
+                        variant                            struct {
+                              int32 0
+                              int32 0
+                           }
+                     )
+                     dict entry(
+                        string "size"
+                        variant                            struct {
+                              int32 5120
+                              int32 1440
+                           }
+                     )
+                     dict entry(
+                        string "source_type"
+                        variant                            uint32 1
+                     )
+                  ]
+               }
+            ]
+      )
+      dict entry(
+         string "restore_token"
+         variant             string "<TOKEN-B redigiert>"
+      )
+   ]
+signal time=1785215003.081563 sender=:1.49 -> destination=(null destination) serial=4096 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.Settings; member=SettingChanged
+   string "org.kde.VirtualKeyboard"
+   string "active"
+   variant       boolean true
+method call time=1785215003.081622 sender=:1.544 -> destination=:1.49 serial=14 path=/org/freedesktop/portal/desktop/session/1_544/session_5e591cf1eebe4b9fa6c87d83f4184a6d; interface=org.freedesktop.DBus.Introspectable; member=Introspect
+method call time=1785215003.082685 sender=:1.544 -> destination=:1.49 serial=15 path=/org/freedesktop/portal/desktop/session/1_544/session_5e591cf1eebe4b9fa6c87d83f4184a6d; interface=org.freedesktop.portal.Session; member=Close
+method call time=1785215003.086115 sender=:1.49 -> destination=:1.62 serial=4099 path=/org/freedesktop/portal/desktop/session/1_544/session_5e591cf1eebe4b9fa6c87d83f4184a6d; interface=org.freedesktop.impl.portal.Session; member=Close
+signal time=1785215003.086189 sender=:1.62 -> destination=(null destination) serial=4442 path=/org/freedesktop/portal/desktop/session/1_544/session_5e591cf1eebe4b9fa6c87d83f4184a6d; interface=org.freedesktop.impl.portal.Session; member=Closed

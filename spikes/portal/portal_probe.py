@@ -197,7 +197,8 @@ class PortalClient:
 
             timer_id = GLib.timeout_add(int(allowed * 1000), on_timeout)
             loop.run()
-            GLib.source_remove(timer_id)
+            if not answer.get("timeout"):
+                GLib.source_remove(timer_id)
         finally:
             self.bus.remove_signal_receiver(
                 on_response,
@@ -315,7 +316,7 @@ def choose_token(case: str, data: dict[str, Any]) -> tuple[str | None, str]:
     if case == "invalid-other-session":
         if not history:
             raise ValueError("Kein Token einer vorigen Session in history vorhanden")
-        return str(history[0]["token"]), "verbrauchter Token einer vorigen Session"
+        return str(history[0]["token"]), "Token aus einer anderen vorigen Session"
     raise ValueError(f"Unbekannter Fall: {case}")
 
 
@@ -420,4 +421,3 @@ def main() -> int:
 if __name__ == "__main__":
     signal.signal(signal.SIGTERM, lambda _signum, _frame: sys.exit(124))
     raise SystemExit(main())
-

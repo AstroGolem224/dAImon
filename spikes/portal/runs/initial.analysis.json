@@ -1,0 +1,72 @@
+{
+  "trace": "spikes/portal/runs/initial.dbus.log",
+  "screen_cast_start_calls": [
+    {
+      "time": 1785214973.148064,
+      "serial": 11,
+      "header": "method call time=1785214973.148064 sender=:1.534 -> destination=:1.49 serial=11 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.ScreenCast; member=Start"
+    }
+  ],
+  "request_responses": [
+    {
+      "time": 1785214973.146789,
+      "path": "/org/freedesktop/portal/desktop/request/1_534/createsession_aff7593d7ea84fd0b5fab2189acb7a60",
+      "response": 0
+    },
+    {
+      "time": 1785214973.147873,
+      "path": "/org/freedesktop/portal/desktop/request/1_534/selectsources_ecf49cc7af9d4ddabbc9f9d2e0eca306",
+      "response": 0
+    },
+    {
+      "time": 1785214976.79324,
+      "path": "/org/freedesktop/portal/desktop/request/1_534/start_50e497f985344b1e8faba03667c4c1ca",
+      "response": 0
+    }
+  ],
+  "start_response": {
+    "time": 1785214976.79324,
+    "path": "/org/freedesktop/portal/desktop/request/1_534/start_50e497f985344b1e8faba03667c4c1ca",
+    "response": 0
+  },
+  "start_request_latency_seconds": 3.645176,
+  "interaction_signals": [
+    {
+      "time": 1785214973.24261,
+      "interface": "org.freedesktop.impl.portal.Settings",
+      "header": "signal time=1785214973.242610 sender=:1.62 -> destination=(null destination) serial=4341 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Settings; member=SettingChanged"
+    },
+    {
+      "time": 1785214973.242802,
+      "interface": "org.freedesktop.portal.Settings",
+      "header": "signal time=1785214973.242802 sender=:1.49 -> destination=(null destination) serial=3962 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.Settings; member=SettingChanged"
+    },
+    {
+      "time": 1785214973.262844,
+      "interface": "org.freedesktop.impl.portal.Settings",
+      "header": "signal time=1785214973.262844 sender=:1.62 -> destination=(null destination) serial=4344 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Settings; member=SettingChanged"
+    },
+    {
+      "time": 1785214973.262963,
+      "interface": "org.freedesktop.portal.Settings",
+      "header": "signal time=1785214973.262963 sender=:1.49 -> destination=(null destination) serial=3963 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.Settings; member=SettingChanged"
+    },
+    {
+      "time": 1785214976.783312,
+      "interface": "org.freedesktop.impl.portal.Settings",
+      "header": "signal time=1785214976.783312 sender=:1.62 -> destination=(null destination) serial=4347 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Settings; member=SettingChanged"
+    },
+    {
+      "time": 1785214976.783472,
+      "interface": "org.freedesktop.portal.Settings",
+      "header": "signal time=1785214976.783472 sender=:1.49 -> destination=(null destination) serial=3966 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.Settings; member=SettingChanged"
+    },
+    {
+      "time": 1785214976.785436,
+      "interface": "org.freedesktop.impl.portal.Settings",
+      "header": "signal time=1785214976.785436 sender=:1.62 -> destination=(null destination) serial=4353 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.Settings; member=SettingChanged"
+    }
+  ],
+  "prompted_from_dbus": true,
+  "derivation": "DBus-only: the ScreenCast.Start Request interval is bounded by its org.freedesktop.portal.Request.Response. KDE dialog runs contain portal SettingsChanged signals for org.kde.VirtualKeyboard/active; restored noninteractive runs do not."
+}

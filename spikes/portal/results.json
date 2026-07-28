@@ -1,0 +1,8 @@
+{
+  "restart_prompted": false,
+  "reboot_prompted": "nicht geprueft — Reboot steht aus",
+  "invalid_token_behaviour": "Um ein Zeichen verfaelschter Token: KDE-Freigabedialog und erfolgreicher interaktiver Fallback. Token weggelassen: KDE-Freigabedialog und erfolgreicher interaktiver Fallback. Noch unbenutzter Token aus einer anderen Portal-Session: ohne Dialog akzeptiert; Restore-Tokens sind nicht an das erzeugende Session-Objekt gebunden.",
+  "verdict": "pass",
+  "recommendation": "persist_mode=2 verwenden, den restore_token nach jedem erfolgreichen Start sofort atomar ersetzen und bei fehlendem oder ungueltigem Token immer den interaktiven Portal-Fallback zulassen.",
+  "notes": "Kein Reboot durchgefuehrt. Erstlauf und Neustart kamen von getrennten DBus-Clients (:1.534 und :1.537). restart_prompted wurde nicht vom Client gemeldet, sondern aus runs/restart.dbus.log abgeleitet: ScreenCast.Start Zeile 97, Request.Response Zeile 113 nach 0,005070 s und keine KDE-Interaktionssignale im Request-Intervall. Der Erstlauf sowie die beiden interaktiven Fallbacks enthalten dagegen org.kde.VirtualKeyboard/active-Signale zwischen Start und Response."
+}

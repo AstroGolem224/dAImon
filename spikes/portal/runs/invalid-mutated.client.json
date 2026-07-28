@@ -1,0 +1,29 @@
+{
+  "case": "invalid-mutated",
+  "trace": "runs/invalid-mutated.dbus.log",
+  "token_input": "aktueller Token, letztes Zeichen geändert",
+  "started_at": "2026-07-28T07:03:10+0200",
+  "status": "success",
+  "token_replaced_after_start": true,
+  "portal_requests": [
+    {
+      "method": "CreateSession",
+      "request_path": "/org/freedesktop/portal/desktop/request/1_540/createsession_203799cea4c74dc08444548048844eb8",
+      "elapsed_seconds": 0.003979,
+      "response": 0
+    },
+    {
+      "method": "SelectSources",
+      "request_path": "/org/freedesktop/portal/desktop/request/1_540/selectsources_b46d7714e83a409ea82dd1b22995a38c",
+      "elapsed_seconds": 0.002466,
+      "response": 0
+    },
+    {
+      "method": "Start",
+      "request_path": "/org/freedesktop/portal/desktop/request/1_540/start_fc92de8172464c54b6ed0dba392e71c9",
+      "elapsed_seconds": 4.579183,
+      "response": 0
+    }
+  ],
+  "finished_at": "2026-07-28T07:03:15+0200"
+}
