@@ -1,0 +1,13 @@
+{
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "DAIMON_CLAUDE_PID=$PPID python3 -m daimon.hookbridge.hook_command"}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "DAIMON_CLAUDE_PID=$PPID python3 -m daimon.hookbridge.hook_command"}]}],
+    "PreToolUse": [{"matcher": ".*", "hooks": [{"type": "command", "command": "DAIMON_CLAUDE_PID=$PPID python3 -m daimon.hookbridge.hook_command"}]}],
+    "Notification": [{"hooks": [{"type": "command", "command": "DAIMON_CLAUDE_PID=$PPID python3 -m daimon.hookbridge.hook_command"}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "DAIMON_CLAUDE_PID=$PPID python3 -m daimon.hookbridge.hook_command"}]}],
+    "StopFailure": [{"hooks": [{"type": "command", "command": "DAIMON_CLAUDE_PID=$PPID python3 -m daimon.hookbridge.hook_command"}]}],
+    "SubagentStop": [{"hooks": [{"type": "command", "command": "DAIMON_CLAUDE_PID=$PPID python3 -m daimon.hookbridge.hook_command"}]}],
+    "PreCompact": [{"hooks": [{"type": "command", "command": "DAIMON_CLAUDE_PID=$PPID python3 -m daimon.hookbridge.hook_command"}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "DAIMON_CLAUDE_PID=$PPID python3 -m daimon.hookbridge.hook_command"}]}]
+  }
+}

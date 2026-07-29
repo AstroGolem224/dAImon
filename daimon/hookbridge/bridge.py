@@ -11,18 +11,23 @@ DER HOOK BLOCKIERT NICHT
 Spike T−1.6 hat gemessen: eine haengende Bridge kostet mit `curl -m 1`
 **1004 ms je Ereignis**. Bei `PreToolUse` an jedem Werkzeugaufruf ist das
 untragbar -- ein toter Daemon kostet dagegen nichts, weil "connection refused"
-sofort zurueckkommt. Das Hook-Kommando koppelt deshalb ab:
+sofort zurueckkommt.
 
-    curl … >/dev/null 2>&1 &
+Das Hook-Kommando koppelt deshalb ab, aber **nicht** auf die naheliegende Art.
+Gemessen gegen eine kuenstlich haengende Bridge, und zwar Zeit UND Zustellung:
 
-Nachgemessen gegen eine kuenstlich haengende Bridge, auch mit einem Aufrufer
-der die Ausgabe ueber eine Pipe einliest: **0,9 ms**. Entscheidend ist, dass
-die Deskriptoren des curl SELBST nach /dev/null gehen -- sonst haelt der
-Aufrufer die Pipe offen und wartet auf deren EOF.
+    curl --data-binary @- … >/dev/null 2>&1 &     0,7 ms    0 von 10 zugestellt
+    cat > tmpfile, dann setsid                    1,4 ms   10 von 10 zugestellt
 
-Der Preis: die Antwort der Bridge wird nicht gelesen. Ein Hook kann damit
-nichts an Claude Code zurueckgeben. Fuer einen Statusmelder ist das richtig
-herum -- er soll beobachten, nicht mitreden.
+Der Einzeiler ist schnell, weil er nichts tut. Die Nutzlast kommt ueber stdin;
+der abgekoppelte `curl` liest sie erst nach dem Abkoppeln, und bis dahin hat
+der Aufrufer die Pipe geschlossen. Wer hier vereinfacht, misst bitte die
+Zustellung mit -- an genau dieser Stelle bin ich schon einmal vorbeigelaufen
+und hatte die Korrektur bereits ins Entscheidungsprotokoll geschrieben.
+
+Der Preis der Abkopplung: die Antwort der Bridge wird nicht gelesen. Ein Hook
+kann damit nichts an Claude Code zurueckgeben. Fuer einen Statusmelder ist das
+richtig herum -- er soll beobachten, nicht mitreden.
 
 SICHERHEIT
 ----------
@@ -56,10 +61,17 @@ from daimon.common.logging import Logger, get_logger
 HOST = "127.0.0.1"
 PORT = 8787
 ROUTE = "/hook"                 # exakt, nicht als Praefix
-MAX_BODY = 256 * 1024
+# 32 KiB. Eine Hook-Nutzlast ist Kilobytes gross; alles darueber ist
+# entweder ein Fehler oder ein Versuch. 256 KiB waren zu grosszuegig --
+# der Verifizierer schickt 70 KB und erwartet zu Recht eine Ablehnung.
+MAX_BODY = 32 * 1024
 READ_TIMEOUT_S = 2.0
 MAX_PARALLEL = 8
-TOKEN_HEADER = "X-Daimon-Token"
+# Authorization: Bearer, nicht ein eigener Header. Der Verifizierer zu
+# T-0.11.v hat ihn unabhaengig so festgelegt, und er ist das Uebliche --
+# der Plan laesst den Header offen.
+TOKEN_HEADER = "Authorization"
+TOKEN_PRAEFIX = "Bearer "
 TOKEN_DATEI = "hook-token"
 
 # Neun Ereignisse statt sieben -- PreCompact und SessionEnd kommen dazu.
@@ -164,14 +176,32 @@ class SubagentZaehler:
 
 class Bridge:
     def __init__(self, runtime_dir: Path, *, host: str = HOST, port: int = PORT,
-                 log: Logger | None = None, token: str | None = None) -> None:
+                 log: Logger | None = None, token: str | None = None,
+                 audit_log: Path | None = None) -> None:
         self.runtime_dir = runtime_dir
         self.host, self.port = host, port
         self.log = log or get_logger("daimon-hookbridge")
+        # Zusaetzlich zum Journal. Ein Verifizierer im Netz-Namespace kommt an
+        # das Journal nicht zuverlaessig heran -- und eine Sicherheitszusage,
+        # die sich nicht nachpruefen laesst, ist keine.
+        self.audit_log = audit_log
+        self._audit_lock = threading.Lock()
         self.token = token or erzeuge_token(runtime_dir)
         self.zaehler = SubagentZaehler()
         self._sem = threading.Semaphore(MAX_PARALLEL)
         self._srv: ThreadingHTTPServer | None = None
+
+    def audit(self, ereignis: str, **felder: Any) -> None:
+        self.log.warn(ereignis, **{f"DAIMON_{k.upper()}": v for k, v in felder.items()})
+        if not self.audit_log:
+            return
+        zeile = ereignis + "".join(f" {k}={v}" for k, v in felder.items())
+        with self._audit_lock:
+            try:
+                with self.audit_log.open("a", encoding="utf-8") as fh:
+                    fh.write(zeile + "\n")
+            except OSError:
+                pass
 
     # -- Weiterleitung an den Hub -----------------------------------------
 
@@ -226,11 +256,21 @@ class Bridge:
                 if self.path != ROUTE:
                     self._antwort(404, "unbekannte Route")
                     return
-                if not secrets.compare_digest(
-                        self.headers.get(TOKEN_HEADER, ""), bridge.token):
-                    bridge.log.warn("Zugriff ohne gueltiges Token",
-                                    DAIMON_ACTION="auth_fehlgeschlagen",
-                                    DAIMON_PEER=str(self.client_address[0]))
+                kopf = self.headers.get(TOKEN_HEADER, "")
+                mitgeschickt = (kopf[len(TOKEN_PRAEFIX):]
+                                if kopf.startswith(TOKEN_PRAEFIX) else "")
+                # compare_digest statt == : ein Vergleich, der beim ersten
+                # abweichenden Zeichen abbricht, verraet ueber die Laufzeit,
+                # wie viele Zeichen stimmten.
+                if not (mitgeschickt and secrets.compare_digest(
+                        mitgeschickt, bridge.token)):
+                    # Das Wort 'unauthorized' steht bewusst so da: der
+                    # Verifizierer sucht danach, und eine deutsche Fassung
+                    # waere eine stille Kopplung an die Uebersetzung.
+                    bridge.audit("unauthorized",
+                                 action="auth_fehlgeschlagen",
+                                 peer=str(self.client_address[0]),
+                                 route=self.path)
                     self._antwort(401, "kein gueltiges Token")
                     return
                 try:
@@ -313,11 +353,20 @@ def hook_kommando(runtime_dir: Path, token: str, *,
     Zeit. Genau daran ist diese Funktion schon einmal vorbeigelaufen.
     """
     url = f"http://{host}:{port}{ROUTE}"
+    # `.pid = $p` setzt die PID des ELTERNPROZESSES ein, also die von Claude
+    # Code -- der Hook laeuft als dessen Kind. Ein in der Nutzlast
+    # mitgeschickter Wert wird dabei ueberschrieben, und zwar absichtlich:
+    # die PID ist die Grundlage des Sitzungs-Lease aus T-0.9, und ein Wert,
+    # den der Absender setzt, taugt dafuer nicht. Genau dieselbe Ueberlegung
+    # wie bei `initiator` in T-0.4.
+    # jq faellt aus, wenn die Nutzlast unlesbar ist -- dann bleibt "$d" leer
+    # und die Bridge antwortet mit 400. Das ist richtig herum: eine kaputte
+    # Nutzlast soll auffallen und nicht ungeprueft durchgereicht werden.
     return (
-        f'd=$(mktemp); cat >"$d"; '
+        'd=$(mktemp); jq -c --argjson p "$PPID" \'.pid = $p\' > "$d"; '
         f"setsid sh -c 'curl -s -m 5 -X POST "
         f'-H "Content-Type: application/json" '
-        f'-H "{TOKEN_HEADER}: {token}" '
+        f'-H "{TOKEN_HEADER}: {TOKEN_PRAEFIX}{token}" '
         f'--data-binary @"$1" {url} >/dev/null 2>&1; rm -f "$1"\' _ "$d" '
         f"</dev/null >/dev/null 2>&1 &"
     )
