@@ -19,7 +19,7 @@
 //! schon sichtbar ist und alles schluckt.
 
 use smithay_client_toolkit::compositor::{CompositorState, Region};
-use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
+use smithay_client_toolkit::shell::{wlr_layer::LayerSurface, WaylandSurface};
 
 /// Rechteck in Surface-Koordinaten.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
