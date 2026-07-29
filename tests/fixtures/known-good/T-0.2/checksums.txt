@@ -1,0 +1,16 @@
+# T-0.2 — Pruefsummen der vier Bestandsdateien.
+#
+# Die Akzeptanz verlangt Pruefsummen VOR dem Verschieben. Das ist woertlich
+# nicht mehr herstellbar: die Dateien kamen in b4fadb5 bereits unter ihren
+# Zielnamen ins Repo, die alten Namen (pet_daemon.py, PHASE3.md) hat git nie
+# gesehen, und auf der Platte liegen sie auch nicht mehr.
+#
+# Als Bezugspunkt dient deshalb der frueheste beweisbare Zustand: der Inhalt
+# aus b4fadb5. Damit bleibt die Substanz pruefbar -- eine Verschiebung darf
+# kein Byte aendern -- auch wenn der Zeitpunkt frueher liegt als vorgesehen.
+#
+# <sha256>  <pfad in b4fadb5>
+5de6ae38f5491828e9f49c6e6d8d2223f6424a7c024db33cf87a1ffa4b9aebe1  daimon/legacy_daemon.py
+c342b72988de2dbafb357edf62c80a6a223f0a5268cf1b450c7f58f3d9e64c38  config/claude-hooks.json
+21370f870273e23e9599c6d7cfc2d90c288735ee36d28ff7c383b07995b3f722  docs/attic/pet_client.gd
+8c3b28abc4054bc55eef5c587215f3f992ec5e9bb8f15994d3d78e99405e7e98  docs/PHASE3-original.md
