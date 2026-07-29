@@ -1,0 +1,20 @@
+# Mitgelieferte Vorgaben. Nach $XDG_CONFIG_HOME/daimon/daimon.toml kopieren und
+# dort anpassen -- die Vorgaben in daimon/common/config.py bleiben der Rueckfall,
+# eine Teilangabe ersetzt also nicht den ganzen Abschnitt.
+
+[hub]
+state_ttl_s = 3600
+
+[face]
+poll_ms = 250
+
+[face.palette]
+idle   = "#3a2418"
+active = "#ff6b1a"
+alert  = "#ffd24a"
+
+[persona]
+name = "Ember"
+
+[logging]
+identifier = "daimon"
