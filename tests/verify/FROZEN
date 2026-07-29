@@ -1,2 +1,3 @@
 # <sha256> <pfad relativ zum Repo> — von tests/verify/freeze.sh gepflegt
 d06185190cf8667e9ab713a359665d5fad895221bebbfbf7edfd8509f8750e1d tests/verify/T-0.0.sh
+7fcb5b76fd5a1f71e123f73dbe869593f824dd3cf37702a610600cb398c436ab tests/verify/T-0.7.sh
