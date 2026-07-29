@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""Gut-Stand-in fuer daimon-face (T-1.5): vorbildliches Idle-Verhalten.
+
+Meldet READY, bedient Diagnose- und Steuer-Socket (Modus 0600), schlaeft
+ansonsten und erhoeht frames_rendered nur bei einem tatsaechlichen
+Zustandswechsel. Kein Wayland, kein Rendern -- nur die Schnittstelle.
+DAIMON_MAX_SECS begrenzt die Laufzeit (Exit 3).
+"""
+import argparse
+import json
+import os
+import socket
+import threading
+import time
+
+
+def main() -> None:
+    p = argparse.ArgumentParser()
+    p.add_argument("--diag-socket", required=True)
+    p.add_argument("--control-socket", required=True)
+    p.add_argument("--pet-manifest")
+    p.add_argument("--sprite-position")
+    args = p.parse_args()
+
+    zustand = {"frames": 0, "sprite": "ruhig", "rev": 0}
+    schloss = threading.Lock()
+
+    def diag_zeile() -> bytes:
+        with schloss:
+            daten = {
+                "v": 1,
+                "rev": zustand["rev"],
+                "mood": "idle",
+                "sprite": zustand["sprite"],
+                "bubble_visible": False,
+                "last_render_ts": time.monotonic(),
+                "frames_rendered": zustand["frames"],
+            }
+        return (json.dumps(daten) + "\n").encode()
+
+    def bediene_diag(lauscher: socket.socket) -> None:
+        while True:
+            try:
+                verbindung, _ = lauscher.accept()
+            except OSError:
+                return
+            with verbindung:
+                try:
+                    verbindung.sendall(diag_zeile())
+                except OSError:
+                    pass
+
+    def bediene_steuerung(lauscher: socket.socket) -> None:
+        while True:
+            try:
+                verbindung, _ = lauscher.accept()
+            except OSError:
+                return
+            with verbindung:
+                try:
+                    zeile = verbindung.makefile("rb").readline().decode().strip()
+                except OSError:
+                    zeile = ""
+                teile = zeile.split()
+                if len(teile) == 2 and teile[0] == "state" and teile[1] in ("ruhig", "dringend"):
+                    with schloss:
+                        if zustand["sprite"] != teile[1]:
+                            # Nur ein tatsaechlicher Wechsel kostet einen Frame.
+                            zustand["frames"] += 1
+                        zustand["sprite"] = teile[1]
+                        zustand["rev"] += 1
+                    antwort = b"ok\n"
+                else:
+                    antwort = b"err\n"
+                try:
+                    verbindung.sendall(antwort)
+                except OSError:
+                    pass
+
+    lauscher = []
+    for pfad in (args.diag_socket, args.control_socket):
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.bind(pfad)
+        os.chmod(pfad, 0o600)
+        s.listen(8)
+        lauscher.append(s)
+
+    threading.Thread(target=bediene_diag, args=(lauscher[0],), daemon=True).start()
+    threading.Thread(target=bediene_steuerung, args=(lauscher[1],), daemon=True).start()
+
+    max_secs = float(os.environ.get("DAIMON_MAX_SECS", "0") or 0)
+    if max_secs > 0:
+        threading.Timer(max_secs, lambda: os._exit(3)).start()
+
+    print(f"READY pid={os.getpid()}", flush=True)
+
+    # Vorbildlich: im Leerlauf wird geschlafen, nichts gerendert.
+    while True:
+        time.sleep(0.5)
+
+
+if __name__ == "__main__":
+    main()

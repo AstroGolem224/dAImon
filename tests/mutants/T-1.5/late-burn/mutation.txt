@@ -1,0 +1,1 @@
+Das Stand-in ist die ersten 8 s nach READY vorbildlich ruhig und brennt danach durchgehend CPU und erhoeht frames_rendered fortlaufend — das soll Verifizierer mit zu kurzem Messfenster durchlassen und ab der Untergrenze die Kriterien "Idle-CPU im Mittel < 0,5 %" und "frames_rendered konstant im Messfenster" reissen.

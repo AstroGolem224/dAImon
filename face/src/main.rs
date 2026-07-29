@@ -262,7 +262,20 @@ impl CompositorHandler for App {
 
     fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {
         // Es gibt fuer die transparente Basissurface nie einen frame()-Request.
-        // Spaetere Renderer duerfen ihn bei !dirty nicht erneut armieren.
+        //
+        // T-1.5 (Frame-Callback-Drosselung) verlangt ein dirty/frame_pending,
+        // das bei !dirty nicht neu armiert. Hier wird ueberhaupt kein Callback
+        // armiert -- das ist strenger als die Zusage, und es ist gemessen:
+        // 0,000 % CPU-Mittel ueber 60 s, frames_rendered konstant, null
+        // damage_buffer und null commit im Ruhefenster (tests/verify/T-1.5.sh,
+        // eingefroren). Ein frame_pending-Automat ohne Callback waere toter
+        // Code gewesen und deshalb bewusst nicht gebaut; face/src/render.rs
+        // aus dem Plan existiert nicht.
+        //
+        // SOBALD ein Renderer hier tatsaechlich ein Callback armiert -- also
+        // bei Animation oder Sprechblase in Phase 2 -- muss das dirty-Flag
+        // nachgezogen und T-1.5.sh erneut gefahren werden. Ohne das faellt die
+        // Idle-CPU-Zusage, auf der die ganze Architektur steht.
     }
 
     fn surface_enter(

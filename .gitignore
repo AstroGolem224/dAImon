@@ -15,3 +15,10 @@ face/assets/preview_states.png
 /spikes/wakeword/sherpa-onnx-kws-*/
 /spikes/layershell/target/
 /spikes/layershell/evidence/*.png
+
+# Die Stand-ins der T-1.5-Fixtures liegen unter <fixture>/face/target/debug/,
+# weil der Verifizierer denselben Pfad wie im echten Repo erwartet. Die Regel
+# "target/" oben haette sie stillschweigend nie ins Repo gelassen -- und
+# meta.sh waere nach einem frischen Clone kaputt gewesen.
+!/tests/fixtures/known-good/**/target/
+!/tests/mutants/**/target/

@@ -1,0 +1,1 @@
+Das Stand-in verhaelt sich wie ein dauernd neu armiertes Frame-Callback: es brennt durchgehend CPU und erhoeht frames_rendered fortlaufend — das soll die Akzeptanzkriterien "Idle-CPU im Mittel < 0,5 %" und "frames_rendered konstant im Messfenster" (beide aus "bei !dirty wird das Callback nicht neu armiert") reissen.
