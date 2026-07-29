@@ -41,8 +41,25 @@ if [[ -f "$SUMS" ]]; then
     # den Pfad von damals fest, geprueft wird der Zielort.
     cur="$path"
     [[ "$path" == "daimon/legacy_daemon.py" ]] && cur="daimon/hub/legacy_daemon.py"
-    have="$(sha256sum "$REPO/$cur" 2>/dev/null | cut -d' ' -f1)"
-    chk "unveraendert: $cur" "${have:-fehlt}" "$want"
+
+    # Geprueft wird der Blob aus b4fadb5, nicht der Arbeitsbaum. T-0.2 sagt
+    # aus, dass das VERSCHIEBEN kein Byte geaendert hat -- das bleibt wahr,
+    # unabhaengig davon, was spaeter erlaubt daran geaendert wird.
+    blob="$(git -C "$REPO" show "b4fadb5:$path" 2>/dev/null | sha256sum | cut -d' ' -f1)"
+    chk "Ursprungsblob unveraendert: $path" "${blob:-fehlt}" "$want"
+
+    # Zusaetzlich der Arbeitsbaum -- aber nur fuer Dateien, die kein spaeterer
+    # Task aendern darf. config/claude-hooks.json ist in T-0.11 ausdruecklich
+    # als [aendern] gefuehrt: dort wird das Hook-Kommando eingesetzt. Es hier
+    # einzufrieren hiesse, zwei Tasks gegeneinander zu stellen.
+    if [[ "$cur" != "config/claude-hooks.json" ]]; then
+      have="$(sha256sum "$REPO/$cur" 2>/dev/null | cut -d' ' -f1)"
+      chk "Arbeitsbaum unveraendert: $cur" "${have:-fehlt}" "$want"
+    else
+      echo "  INFO $cur wird von T-0.11 planmaessig geaendert - nur Ursprungsblob geprueft"
+      chk "$cur ist weiterhin gueltiges JSON mit Hooks" \
+        "$(jq -e '.hooks | length > 0' "$REPO/$cur" >/dev/null 2>&1 && echo ja || echo nein)" ja
+    fi
   done < "$SUMS"
 fi
 

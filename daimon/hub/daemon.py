@@ -11,10 +11,13 @@ Prozess und nicht am Quelltext.
 Zwei Arten von Socket:
 
   * je Produzent einer (`hookbridge.sock`, `eyes.sock`, ...), Zeilen-JSON rein
-  * `state.sock`, auf dem der State ausgeliefert wird
+  * `state.sock` und `diag.sock`, beide nur lesend
 
 Die Trennung ist nicht Kosmetik: die Produzentensockets pruefen die
-Gegenstelle ueber T-0.7, der State-Socket ist nur lesend.
+Gegenstelle ueber T-0.7, die beiden lesenden nicht. Und die Diagnose bleibt
+aus demselben Grund auf einem Unix-Socket wie alles andere -- sie verraet
+Warteschlangenlaengen und Ereigniszaehler, also mehr ueber den Nutzer als in
+einen Netzwerkendpunkt gehoert.
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ import argparse
 import json
 import os
 import socket
+import time
 import threading
 from pathlib import Path
 
@@ -31,9 +35,11 @@ from daimon.common.config import Config, load as load_config
 from daimon.common.logging import Logger, get_logger
 from daimon.common.protocol import Event, ProtocolError
 from daimon.hub.bus import Bus, mood_of, projekt_aus_cwd
+from daimon.hub.diag import Diagnose
 from daimon.hub.state import HubState
 
 STATE_SOCKET = "state.sock"
+DIAG_SOCKET = "diag.sock"
 MAX_ZEILE = 1 << 20  # 1 MiB. Eine Hook-Nutzlast ist Kilobytes gross.
 
 
@@ -44,6 +50,7 @@ class Hub:
         self.runtime_dir = runtime_dir or self.cfg.runtime_dir
         self.log = log or get_logger("daimon-hub")
         self.state = HubState(ttl_s=float(self.cfg.get("hub.state_ttl_s", 3600)))
+        self.diag = Diagnose()
         self.bus = Bus()
         self._server: list[socket.socket] = []
         self._threads: list[threading.Thread] = []
@@ -54,7 +61,9 @@ class Hub:
 
     def _on_event(self, event: Event) -> None:
         if event.type != "hook":
+            self.diag.verworfen("fremder_typ")
             return
+        t0 = time.perf_counter()
         p = event.payload or {}
         mood, bubble = mood_of(p)
         cwd = p.get("cwd", "") or ""
@@ -68,6 +77,12 @@ class Hub:
             pid=int(pid) if isinstance(pid, int) else None,
             nonce=p.get("nonce", "") or "",
         )
+        if mood is None:
+            # Unbekanntes Ereignis. Es aendert nichts, aber es ist ein Befund:
+            # T-1.5 hat SubagentStop und Notification:auth_success genau so
+            # gefunden. Ohne Zaehler bliebe die Luecke unsichtbar.
+            self.diag.verworfen(f"unbekanntes_ereignis:{p.get('hook_event_name','?')}")
+        self.diag.hop("hook_to_state", (time.perf_counter() - t0) * 1000)
 
     # -- Produzentensockets ------------------------------------------------
 
@@ -121,8 +136,10 @@ class Hub:
 
     # -- State-Socket ------------------------------------------------------
 
-    def _horche_state(self) -> None:
-        pfad = self.runtime_dir / STATE_SOCKET
+    def _horche_einfach(self, dateiname: str, liefere) -> None:
+        """Ein Socket, eine Zeile JSON, fertig. Fuer State und Diagnose --
+        beide sind lesend und brauchen kein Protokoll."""
+        pfad = self.runtime_dir / dateiname
         if pfad.exists():
             pfad.unlink()
         srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -140,8 +157,7 @@ class Hub:
                 break
             with conn:
                 try:
-                    conn.sendall(
-                        json.dumps(self.state.snapshot()).encode() + b"\n")
+                    conn.sendall(json.dumps(liefere()).encode() + b"\n")
                 except OSError:
                     pass
 
@@ -154,9 +170,12 @@ class Hub:
             t = threading.Thread(target=self._horche_produzent, args=(p,), daemon=True)
             t.start()
             self._threads.append(t)
-        t = threading.Thread(target=self._horche_state, daemon=True)
-        t.start()
-        self._threads.append(t)
+        for datei, liefere in ((STATE_SOCKET, self.state.snapshot),
+                               (DIAG_SOCKET, self.diag.snapshot)):
+            t = threading.Thread(target=self._horche_einfach,
+                                 args=(datei, liefere), daemon=True)
+            t.start()
+            self._threads.append(t)
         self.log.info("Hub laeuft", DAIMON_ACTION="start",
                       DAIMON_RUNTIME=str(self.runtime_dir))
 

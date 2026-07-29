@@ -39,6 +39,11 @@ packages = ["daimon"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Mutanten und Gut-Muster sind PRUEFMATERIAL, kein Testcode. Sie enthalten
+# absichtlich kaputte Fassungen und mehrfach denselben Dateinamen -- pytest
+# bricht beim Sammeln daran ab. Ausgefuehrt werden sie ausschliesslich von
+# tests/verify/meta.sh, und zwar einzeln und in einem eigenen Baum.
+norecursedirs = ["mutants", "fixtures", ".venv", "*.egg-info"]
 # Ein Test, der haengt, blockiert die ganze Kette. Phase 0 hat Sockets und
 # Unterprozesse -- eine harte Obergrenze ist billiger als ein haengendes CI.
 timeout = 60
