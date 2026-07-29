@@ -13,7 +13,7 @@ noch) ist überholt und ersetzt.
 |---|---|
 | **Gate P−1** | **8 von 9 grün**. Rot nur `T--1.12` — Messung nicht gelaufen, korrekt so |
 | **Gate P0** | **11 von 11 grün**, `verify-frozen` sauber, `pytest` 154 grün + 4 dokumentiert rot |
-| **Phase 1** | T-1.1 bis T-1.5 stehen, am laufenden Prozess belegt. **Das Pet ist sichtbar.** |
+| **Phase 1** | T-1.1 bis T-1.6 stehen, am laufenden Prozess belegt. **Das MVP läuft: das Pet reagiert auf echte Sitzungen.** |
 
 Dokumente: `docs/DESIGN.md` v5.4, `docs/IMPLEMENTATION-PLAN.md` v3.3,
 `docs/feasibility-decisions.md` (Entscheidungsprotokoll aus T−1.7),
@@ -91,10 +91,37 @@ Zweite Abweichung: gemessen wird über `/proc/<pid>/stat`, nicht per `pidstat` �
 `sysstat` ist auf dieser Maschine nicht installiert, und das Tick-Delta ist ohnehin
 die genauere Größe. Steht im Skriptkopf.
 
-**Als nächstes:**
+**T-1.6 ist fertig** (Commit `755a5be`) — **das MVP läuft.**
 
-1. **T-1.6** Hub-Anbindung — *ab hier reagiert es auf echte Sessions; das ist das MVP*.
-   Der Steuer-Socket aus T-1.4 ist der Kanal, den der Hub später füttert.
+Der Hub sprach bisher nur `state.sock`: eine Zeile auf Anfrage, dann zu. Damit hätte
+das Face pollen müssen, und ein Poll-Timer hätte die gerade gemessene Null-Idle-CPU
+wieder aufgerissen. Deshalb hat der Hub jetzt einen **schiebenden Endpunkt**:
+
+- **`events.sock`**, 0600. Beim Verbinden sofort ein Snapshot, danach je einer pro
+  `rev`-Änderung. Liest nichts vom Client. Nachgesehen wird alle 50 ms — **im Hub**,
+  der ohnehin Threads hält, nicht im Face.
+- `face/src/hub.rs`: ein Thread blockiert in `read_line()`. Kein Timer im Face.
+- Mood → Sprite: `needs_input`/`failed` → `dringend`, alles andere → `ruhig`.
+- Unbekanntes `v` → `sleeping`, **Verbindung bleibt**. Hub weg → `sleeping`, kein
+  Absturz, kein Spam.
+
+Gemessen: Latenz p95 **50,5 ms** über 20 Wechsel (gefordert < 300 ms), `rev` synchron,
+`needs_input` → `dringend` belegt, Hub gekillt → `sleeping` und das Face lebt weiter,
+Idle-CPU **0,000 %** mit angehängtem Hub *und* in der Gegenprobe ohne.
+
+`tests/verify/T-1.6.sh` plus ein Mutant `ignoriert-rev` (verbindet sich brav,
+übernimmt neue `rev` nicht) — er fällt an acht Stellen durch. **Kein `freeze`**: der
+Plan sieht für T-1.6 keinen `.v`-Task vor.
+
+> **Der Plan misst die falsche Größe.** Er verlangt die Latenz gegen `last_render_ts`.
+> Mit zwei Sprites bilden `working` und `done` beide auf `ruhig` ab, `zustand_setzen`
+> steigt bei gleichem Namen aus und committet korrekterweise **nicht** —
+> `last_render_ts` bleibt stehen, obwohl alles funktioniert. Gemessen wird deshalb
+> das Nachziehen der Face-`rev`. Das ist eine Obergrenze und im Skriptkopf benannt.
+
+**Als nächstes:** Phase 1 ist damit inhaltlich durch bis auf T-1.7 (Auth-Agent und
+Vorschau) und T-1.8/T-1.9. Vor Gate P1 fehlen weiterhin die Verifizierer
+`T-1.1.sh` bis `T-1.3.sh`.
 
 **Offen und benannt:**
 
@@ -248,7 +275,10 @@ nicht zu unterscheiden.
    denselben Pfad wie im echten Repo erwartet — und `target/` steht in `.gitignore`.
    Nach einem frischen Clone wäre `meta.sh T-1.5` kaputt gewesen, ohne eine einzige
    Meldung. Gefunden nur, weil `git status` vor dem `git add` gelesen wurde.
-7. **Ein Pfad, der zur Bauzeit aufgelöst wurde.** `env!("CARGO_MANIFEST_DIR")` machte
+7. **`assert ... or True`** — in `tests/test_hub_push.py` selbst geschrieben, drei Tage
+   nachdem dieselbe tautologische Assertion im Review von T-1.4 angemahnt worden war.
+   Der Test war grün, egal was passierte. Jetzt `== b""`, und ein Mutant macht ihn rot.
+8. **Ein Pfad, der zur Bauzeit aufgelöst wurde.** `env!("CARGO_MANIFEST_DIR")` machte
    die Prüfung „unverändertes Community-Pet lädt" wertlos: kopiert wurde, gelesen
    wurden weiter die Repo-Assets. Der Test wäre auch bei zerstörter Kopie grün
    geblieben.
