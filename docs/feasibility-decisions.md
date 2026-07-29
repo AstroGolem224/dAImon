@@ -182,10 +182,48 @@ Ereignis; `-m 1` deckelt den Schaden, aber eine Sekunde je Werkzeugaufruf ist un
 wenn `PreToolUse` an jedem hängt.
 
 **Auflage für T-0.11:** die Bridge muss abgekoppelt aufgerufen werden oder mit einem
-deutlich kleineren Zeitlimit (Größenordnung 100 ms). Ein erster Versuch mit einem
-einfachen Hintergrundaufruf schlug fehl — der abgekoppelte Prozess erbt stdout und stderr,
-dadurch wartet der Aufrufer weiter. Die Abkopplung muss die Dateideskriptoren mitlösen und
-ist in T-0.11 zu **belegen**, nicht anzunehmen.
+deutlich kleineren Zeitlimit (Größenordnung 100 ms).
+
+> **Korrektur 2026-07-29, beim Umsetzen von T-0.11.** Hier stand, ein einfacher
+> Hintergrundaufruf schlage fehl, weil der abgekoppelte Prozess stdout und stderr erbe
+> und der Aufrufer deshalb weiter warte. **Das war falsch.** Nachgemessen gegen eine
+> künstlich hängende Bridge, jeweils Median aus mehreren Läufen, und ausdrücklich auch
+> mit einem Aufrufer, der die Ausgabe über eine Pipe einliest — so ruft Claude Code
+> seine Hooks auf:
+>
+> | Variante | Median |
+> |---|---:|
+> | blockierend, `curl -m 1` (Zustand aus T−1.6) | 1004 ms |
+> | `curl … >/dev/null 2>&1 &` | **0,9 ms** |
+> | `setsid` mit gelösten Deskriptoren | 1,4 ms |
+>
+> Der Hintergrundaufruf trägt also, sofern **die Deskriptoren des curl selbst** nach
+> `/dev/null` gehen. Was seinerzeit fehlschlug, war mein Messaufbau: er hielt eine Pipe
+> offen und wartete auf deren EOF. Die Schlussfolgerung stammte aus dem Werkzeug, nicht
+> aus der Sache — derselbe Fehler wie beim Wake-Word, eine Stufe kleiner.
+>
+> **Und noch eine Korrektur, eine Stunde später — die obige war ebenfalls falsch.**
+> Die Tabelle misst nur die *Zeit*. Wer auch die **Zustellung** misst, sieht das hier:
+>
+> | Variante | Median | zugestellt |
+> |---|---:|---:|
+> | `curl … >/dev/null 2>&1 &` | 0,7 ms | **0 von 10** |
+> | `cat > tmpfile`, dann `setsid` | 1,4 ms | **10 von 10** |
+>
+> Der einfache Hintergrundaufruf ist schnell, **weil er nichts tut**. Die Nutzlast kommt
+> über stdin; der abgekoppelte `curl` liest sie erst nach dem Abkoppeln, und bis dahin
+> hat der Aufrufer die Pipe geschlossen. Zehn von zehn Nutzlasten kamen kaputt an.
+>
+> Die ursprüngliche Sorge war also berechtigt, nur die Begründung stimmte nicht: es
+> scheitert nicht am Erben von stdout/stderr, sondern am Wettlauf um stdin.
+>
+> Umgesetzt ist deshalb `cat > tmpfile` im Vordergrund — das kostet genau die Zeit, die
+> das Lesen von stdin braucht — und danach `setsid` mit gelösten Deskriptoren.
+> 1,4 ms gegen eine Grenze von 200.
+>
+> Der Fehler dahinter ist der interessante Teil und derselbe wie beim Wake-Word: ich habe
+> die bequeme Größe gemessen (Latenz) statt der, um die es geht (kommt es an), und aus
+> einer grünen Zahl eine Aussage gemacht. Der Verifizierer zu T-0.11 misst deshalb beides.
 
 ### T−1.9 KWin-Fokus — bestanden
 
