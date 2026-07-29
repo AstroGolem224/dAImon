@@ -38,9 +38,12 @@ Dokumente: `docs/DESIGN.md` v5.4, `docs/IMPLEMENTATION-PLAN.md` v3.3,
 | T-0.11 | Hook-Bridge, **eingefroren**, 5 Mutanten, 43 Prüfungen |
 | T-0.12 / T-0.13 | KWin-Fokus-Watcher, Diagnose-Endpunkt |
 
-**Bewusst aufgeschoben:** T-0.8 (Marken, Kontingente, Tickets), T-0.10 (Gegendruck),
-T-0.14 (systemd-Units). Keiner liegt auf dem Weg zum sichtbaren Overlay — Matthias hat
-den kritischen Pfad gewählt.
+**T-0.8 ist nachgeholt** (Commit `337acba`), zusammen mit **T-0.8.v**. Vorgezogen aus
+Phase 1: T-1.7 wäre ohne Marken, Freigaben und Ticketbuch die Hülle einer
+Sicherheitsgrenze gewesen. `T-0.8.sh` ist **eingefroren**, **sechs** Mutanten werden
+erkannt — die fünf aus dem Plan plus `turn-id-wiederverwendbar` aus einem Review-Befund.
+
+**Noch aufgeschoben:** T-0.10 (Gegendruck), T-0.14 (systemd-Units).
 
 **Eingefroren** (`tests/verify/FROZEN`): `T-0.0`, `T-0.7`, `T-0.11`. Änderungen daran
 brauchen einen neuen `.v`-Task mit Mutationstest; der pre-commit-Hook lässt sie sonst
@@ -119,9 +122,58 @@ Plan sieht für T-1.6 keinen `.v`-Task vor.
 > `last_render_ts` bleibt stehen, obwohl alles funktioniert. Gemessen wird deshalb
 > das Nachziehen der Face-`rev`. Das ist eine Obergrenze und im Skriptkopf benannt.
 
-**Als nächstes:** Phase 1 ist damit inhaltlich durch bis auf T-1.7 (Auth-Agent und
-Vorschau) und T-1.8/T-1.9. Vor Gate P1 fehlen weiterhin die Verifizierer
-`T-1.1.sh` bis `T-1.3.sh`.
+---
+
+## T-0.8 — vorgezogen, weil T-1.7 daran hängt
+
+Vier Automaten mit **getrennten** Speichern: Rundenmarke, Aktionsfreigabe,
+API-Kontingent, Broker-Ticket. `daimon/hub/marks.py` und `daimon/hub/tickets.py`.
+
+`KontingentBuch.erlaubt_aktion()` und `.erlaubt_deklassifizierung()` geben konstant
+`False` zurück und sind **absichtlich aufrufbar** — eine Zusage, die man testen kann,
+ist mehr wert als ein Kommentar.
+
+**Wie gearbeitet wurde, und warum das Ergebnis zählt:** der Verifizierer entstand gegen
+die Akzeptanzliste, die Implementierung parallel gegen dieselbe Liste, ohne dass eine
+Seite die andere sah. Beim ersten Zusammentreffen **48 von 48 grün**. Zwei unabhängige
+Lesarten, die sich decken, sind der beste verfügbare Beleg, dass die Anforderung
+eindeutig war.
+
+**Zwei Befunde, die weder der Verifizierer noch die Tests der Gegenseite hatten:**
+
+1. Eine verbrauchte Rundenmarke ließ sich wiederbeleben, indem für dieselbe `turn_id`
+   erneut ausgegeben wurde. `turn_id` kommt aus dem Aufruf — ein Request-Feld steuerte
+   damit, ob eine abgeschlossene Runde wieder gilt.
+2. Ein Ticket mit falschem `auftrag_hash` wurde nicht verbraucht: Fehlversuche gratis,
+   Hash erratbar. Kein Umgehen der Bindung, aber ein Auskunftskanal — und inkonsistent,
+   weil `FreigabeBuch` die Nonce genau dafür verbrennt.
+
+Beide mit **Rücknahme-Probe** belegt: Fix raus → Test rot → Fix rein → grün.
+
+> **Ein dritter, ähnlich aussehender Fall wurde begründet nicht geändert.**
+> `FreigabeBuch.bestaetigen` setzt den Verbrauch ebenfalls zurück. Anders als bei der
+> `turn_id` braucht eine erneute Bestätigung aber eine **frische Nonce**, also eine
+> frische Vorschau und einen frischen Klick — neue Autorisierung, kein Replay. Der
+> Einwand kam vom Builder, und er hatte recht.
+
+---
+
+**Als nächstes: T-1.7** (Auth-Agent mit Absichtsmarken). Die Abhängigkeit T-0.8 steht
+jetzt. Offen darin und noch nicht entschieden:
+
+- **Der GUI-Stack des Auth-Agenten.** Bewusst offen gelassen: der Verifizierer soll die
+  **gerenderte** Region per Pixel- und Textextraktion prüfen, und diese Prüfung lässt
+  sich erst gegen ein echtes Fenster schreiben. Zu bedenken: T−1.11 hat gemessen, dass
+  Qt im Auslieferungszustand **gar keinen** AT-SPI-Baum exportiert —
+  `QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1` wäre nötig. GTK4 exportiert ohne Zutun, bringt
+  aber einen zweiten Toolkit-Stack.
+- **T-1.7.v** ist Umfang L mit fünf Mutanten und geht dem Bauen voraus.
+- Der sicherheitskritische Kern ist der **Vorschau-Sanitizer** aus §2.4: NFC, sichtbares
+  Escapen von Bidi-Overrides und Nullbreitenzeichen, Längenbegrenzung, Zitierung,
+  Markierung verwechselbarer Glyphen. Reine Logik, ohne GUI baubar.
+
+Vor Gate P1 fehlen weiterhin die Verifizierer `T-1.1.sh` bis `T-1.3.sh`, und der
+Alpha-Test in `input.rs` ist unverdrahtet.
 
 **Offen und benannt:**
 
