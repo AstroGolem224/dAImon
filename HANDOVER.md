@@ -11,7 +11,7 @@ noch) ist überholt und ersetzt.
 
 | | |
 |---|---|
-| **Gate P−1** | 7 von 9 grün. Rot: `T--1.6` und `T--1.12` — siehe „Offene Ehrlichkeit" |
+| **Gate P−1** | **8 von 9 grün**. Rot nur `T--1.12` — Messung nicht gelaufen, korrekt so |
 | **Gate P0** | **11 von 11 grün**, `verify-frozen` sauber, `pytest` 154 grün + 4 dokumentiert rot |
 | **Phase 1** | T-1.1 und T-1.2 stehen, am laufenden Prozess belegt |
 
@@ -205,8 +205,5 @@ Der Codex-Review des **Gesamtplans** endete nach 5 Runden ohne `APPROVED`. Die z
 benannten Punkte sind geschlossen — **aber diese Nacharbeit und alles danach ist nicht
 gegengelesen**, einschließlich der gesamten Phase 0 und dieses Dokuments.
 
-**`T--1.6` ist rot, obwohl die Auflage erfüllt ist.** In T-0.11 gemessen: 2,5 ms gegen
-eine Grenze von 200. Der Verifizierer liest noch `spikes/hookoverhead/results.json` mit
-den alten Zahlen aus der Zeit vor der Abkopplung. Nachzuziehen.
-
-**`T--1.12` ist rot, weil die Messung nicht gelaufen ist.** Das ist korrekt so.
+**`T--1.12` ist rot, weil die Messung nicht gelaufen ist.** Das ist korrekt so und der
+einzige rote Punkt in beiden Gates.
