@@ -13,7 +13,7 @@ noch) ist überholt und ersetzt.
 |---|---|
 | **Gate P−1** | **8 von 9 grün**. Rot nur `T--1.12` — Messung nicht gelaufen, korrekt so |
 | **Gate P0** | **11 von 11 grün**, `verify-frozen` sauber, `pytest` 154 grün + 4 dokumentiert rot |
-| **Phase 1** | T-1.1 bis T-1.4 stehen, am laufenden Prozess belegt. **Das Pet ist sichtbar.** |
+| **Phase 1** | T-1.1 bis T-1.5 stehen, am laufenden Prozess belegt. **Das Pet ist sichtbar.** |
 
 Dokumente: `docs/DESIGN.md` v5.4, `docs/IMPLEMENTATION-PLAN.md` v3.3,
 `docs/feasibility-decisions.md` (Entscheidungsprotokoll aus T−1.7),
@@ -72,10 +72,29 @@ kann ist eine Fähigkeit und keine Einstellung. T-1.6 füttert später denselben
 Kanal. Assets über `--pet-manifest`, `DAIMON_PET_MANIFEST` oder
 `./assets/pet.json`; der gewählte Pfad steht auf stderr.
 
-**Als nächstes, in dieser Reihenfolge:**
+**T-1.5 ist fertig** (Commit `3a1310e`), zusammen mit **T-1.5.v**. `T-1.5.sh` ist
+**eingefroren**, beide Mutanten (`rearmed-callback`, `late-burn`) werden erkannt.
+Gemessen am echten Binary über 60 s Ruhe: **0,000 % CPU-Mittel**,
+`frames_rendered` konstant, null `damage_buffer` und null `commit` im Ruhefenster.
+Positivkontrolle steht daneben — 80 Zustandswechsel erzeugen 0,01 CPU-Sekunden und
+`frames_rendered` 2 → 82; die Messung sieht Last, wenn welche da ist.
 
-1. **T-1.5** Frame-Callback-Drosselung
-2. **T-1.6** Hub-Anbindung — *ab hier reagiert es auf echte Sessions; das ist das MVP*
+> **`face/src/render.rs` entsteht nicht — bewusst.** Der Plan verlangt einen
+> `dirty`/`frame_pending`-Automaten. Seit T-1.4 armiert das Face überhaupt kein
+> Frame-Callback und hält keinen Timer; `calloop` blockiert in `poll()`. Das ist
+> strenger als die Zusage. Ein Automat ohne Callback wäre toter Code.
+> **Nachzuholen, sobald in Phase 2 Animation oder Sprechblase tatsächlich ein
+> Callback armieren** — der Kommentar an `CompositorHandler::frame()` in
+> `main.rs` sagt das an Ort und Stelle. Ohne das fällt die Idle-CPU-Zusage.
+
+Zweite Abweichung: gemessen wird über `/proc/<pid>/stat`, nicht per `pidstat` —
+`sysstat` ist auf dieser Maschine nicht installiert, und das Tick-Delta ist ohnehin
+die genauere Größe. Steht im Skriptkopf.
+
+**Als nächstes:**
+
+1. **T-1.6** Hub-Anbindung — *ab hier reagiert es auf echte Sessions; das ist das MVP*.
+   Der Steuer-Socket aus T-1.4 ist der Kanal, den der Hub später füttert.
 
 **Offen und benannt:**
 
@@ -224,7 +243,12 @@ nicht zu unterscheiden.
    eigene `input_region`; die der Elternsurface beschneidet sie **nicht**. Dieselbe
    Falle wie am 27.07., eine Etage tiefer. → **Jede committete Surface braucht ihre
    eigene gesetzte Region**, nicht die des Elternteils.
-6. **Ein Pfad, der zur Bauzeit aufgelöst wurde.** `env!("CARGO_MANIFEST_DIR")` machte
+6. **Eine `.gitignore`-Regel, die lautlos gefressen hätte.** Die Stand-ins der
+   T-1.5-Fixtures liegen unter `<fixture>/face/target/debug/`, weil der Verifizierer
+   denselben Pfad wie im echten Repo erwartet — und `target/` steht in `.gitignore`.
+   Nach einem frischen Clone wäre `meta.sh T-1.5` kaputt gewesen, ohne eine einzige
+   Meldung. Gefunden nur, weil `git status` vor dem `git add` gelesen wurde.
+7. **Ein Pfad, der zur Bauzeit aufgelöst wurde.** `env!("CARGO_MANIFEST_DIR")` machte
    die Prüfung „unverändertes Community-Pet lädt" wertlos: kopiert wurde, gelesen
    wurden weiter die Repo-Assets. Der Test wäre auch bei zerstörter Kopie grün
    geblieben.
