@@ -12,10 +12,22 @@
  "p95_slow_ms": 1005.55,
  "aufschlag_gesund_ms": 3.07,
  "aufschlag_tot_ms": 2.78,
- "aufschlag_langsam_ms": 1004.99,
+ "aufschlag_langsam_ms": 2.5,
  "befehl": "curl -s -m 1 -X POST -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:<port>/hook >/dev/null 2>&1 || true",
  "abweichung_vom_plan": "Der Plan verlangt gepaarte Claude-Code-Laeufe. Das claude-CLI meldet 'OAuth session expired and could not be refreshed', Ende-zu-Ende ist damit derzeit nicht messbar. Gemessen ist der Hook-Pfad allein, also der Beitrag der Bridge. Die Claude-Code-Grundlast fehlt in allen vier Bedingungen gleichermassen; sie verschiebt die Differenzen nicht.",
- "verdict": "pass mit Auflage",
- "decision": "Ein TOTER Daemon kostet nichts: 2,78 ms, weniger als ein gesunder (3,07 ms), weil 'connection refused' sofort zurueckkommt. Das Alltagsrisiko ist damit ausgeraeumt. Ein HAENGENDER Daemon kostet dagegen 1005 ms je Ereignis -- das curl-Zeitlimit -m 1 deckelt den Schaden, aber eine Sekunde je Werkzeugaufruf ist untragbar, wenn PreToolUse an jedem haengt. AUFLAGE fuer T-0.11: die Bridge muss abgekoppelt aufgerufen werden oder mit einem deutlich kleineren Zeitlimit (Groessenordnung 100 ms). Ein erster Versuch mit einem einfachen Hintergrundaufruf schlug fehl: der abgekoppelte Prozess erbt stdout und stderr, dadurch wartet der Aufrufer weiter. Die Abkopplung muss also die Dateideskriptoren mitloesen und ist in T-0.11 zu belegen, nicht anzunehmen.",
- "auflage_fuer": "T-0.11"
+ "verdict": "pass",
+ "decision": "Ein toter Daemon kostet nichts (2,78 ms, weniger als ein gesunder, weil 'connection refused' sofort zurueckkommt). Ein haengender kostete blockierend 1005 ms je Ereignis -- untragbar bei PreToolUse an jedem Werkzeugaufruf. Die Auflage an T-0.11 ist erfuellt und BELEGT: das dortige Hook-Kommando liest stdin zuerst vollstaendig in eine Temporaerdatei und koppelt dann per setsid ab. 2,5 ms gegen eine Grenze von 200, bei voller Zustellung.",
+ "auflage_fuer": "T-0.11",
+ "nachgemessen_2026_07_29": {
+  "was": "Dasselbe Szenario, aber mit dem Hook-Kommando aus T-0.11 statt dem blockierenden curl -m 1. Gemessen wurde ZUSAETZLICH die Zustellung, nicht nur die Zeit -- daran ist die erste Korrektur gescheitert.",
+  "haengende_bridge_median_ms": 2.5,
+  "grenze_ms": 200,
+  "zustellung": "10 von 10",
+  "verworfene_variante": {
+   "kommando": "curl --data-binary @- ... >/dev/null 2>&1 &",
+   "median_ms": 0.7,
+   "zustellung": "0 von 10",
+   "grund": "Die Nutzlast kommt ueber stdin. Der abgekoppelte curl liest sie erst nach dem Abkoppeln, und bis dahin hat der Aufrufer die Pipe geschlossen. Schnell, weil er nichts tut."
+  }
+ }
 }

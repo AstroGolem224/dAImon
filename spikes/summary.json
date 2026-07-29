@@ -40,8 +40,8 @@
   },
   "T-1.6": {
    "spike_dir": "spikes/hookoverhead",
-   "verdict": "pass mit Auflage",
-   "decision": "Ein TOTER Daemon kostet nichts: 2,78 ms, weniger als ein gesunder (3,07 ms), weil 'connection refused' sofort zurueckkommt. Das Alltagsrisiko ist damit ausgeraeumt. Ein HAENGENDER Daemon kostet dagegen 1005 ms je Ereignis -- das curl-Zeitlimit -m 1 deckelt den Schaden, aber eine Sekunde je Werkzeugaufruf ist untragbar, wenn PreToolUse an jedem haengt. AUFLAGE fuer T-0.11: die Bridge muss abgekoppelt aufgerufen werden oder mit einem deutlich kleineren Zeitlimit (Groessenordnung 100 ms). Ein erster Versuch mit einem einfachen Hintergrundaufruf schlug fehl: der abgekoppelte Prozess erbt stdout und stderr, dadurch wartet der Aufrufer weiter. Die Abkopplung muss also die Dateideskriptoren mitloesen und ist in T-0.11 zu belegen, nicht anzunehmen.",
+   "verdict": "pass",
+   "decision": "Ein toter Daemon kostet nichts (2,78 ms, weniger als ein gesunder, weil 'connection refused' sofort zurueckkommt). Ein haengender kostete blockierend 1005 ms je Ereignis -- untragbar bei PreToolUse an jedem Werkzeugaufruf. Die Auflage an T-0.11 ist erfuellt und BELEGT: das dortige Hook-Kommando liest stdin zuerst vollstaendig in eine Temporaerdatei und koppelt dann per setsid ab. 2,5 ms gegen eine Grenze von 200, bei voller Zustellung.",
    "blockierend": false,
    "results": "spikes/hookoverhead/results.json"
   },

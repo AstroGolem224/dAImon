@@ -1,106 +1,156 @@
-# Übergabe — Stand 2026-07-27, Abend
+# Übergabe — Stand 2026-07-29
 
-Für die nächste Sitzung. Diese Datei enthält alles, was nicht aus dem Repo hervorgeht.
+Alles, was nicht aus dem Repo hervorgeht. Die vorige Fassung (27.07., Phase −1 lief
+noch) ist überholt und ersetzt.
 
 ---
 
 ## Wo wir stehen
 
-Planung ist durch, **Phase −1 (Machbarkeits-Spikes) läuft**. Kein Produktivcode geschrieben.
+**Phase −1 abgeschlossen, Gate P0 durchfahren, Phase 1 begonnen.** Das Overlay läuft.
 
-Repo: `https://github.com/AstroGolem224/dAImon` — alles gepusht.
-
-| Dokument | Inhalt |
+| | |
 |---|---|
-| `docs/DESIGN.md` v5.3 | Architektur, **§1.3 Bedrohungsmodell zuerst lesen** |
-| `docs/IMPLEMENTATION-PLAN.md` v5.3 | 161 Tasks, 10 Phasen, Anhang D = 46 Verifizierer |
-| `docs/PRIOR-ART.md` | was übernommen / gelesen / gemieden wird |
-| `PLAN-REVIEW-LOG.md` | 5 Runden adversarialer Review gegen Codex |
-| `README.md` | Einstieg |
+| **Gate P−1** | 7 von 9 grün. Rot: `T--1.6` und `T--1.12` — siehe „Offene Ehrlichkeit" |
+| **Gate P0** | **11 von 11 grün**, `verify-frozen` sauber, `pytest` 154 grün + 4 dokumentiert rot |
+| **Phase 1** | T-1.1 und T-1.2 stehen, am laufenden Prozess belegt |
 
-Die Planungsdokumente liegen zusätzlich unter `/home/itiger013/Dokumente/UMBRA-Notes/DDs/dAImon/` — **das ist die Quelle**, `docs/` ist eine Kopie. Bei Änderungen beide pflegen:
+Dokumente: `docs/DESIGN.md` v5.4, `docs/IMPLEMENTATION-PLAN.md` v3.3,
+`docs/feasibility-decisions.md` (Entscheidungsprotokoll aus T−1.7),
+`spikes/summary.json` (maschinenlesbar).
 
-```bash
-cp /home/itiger013/Dokumente/UMBRA-Notes/DDs/dAImon/dAImon-Design.md docs/DESIGN.md
-cp /home/itiger013/Dokumente/UMBRA-Notes/DDs/dAImon/dAImon-Implementierungsplan.md docs/IMPLEMENTATION-PLAN.md
+**Quelle der Planungsdokumente ist `/home/itiger013/Dokumente/UMBRA-Notes/DDs/dAImon/`,
+`docs/` ist die Kopie. Beide pflegen** — derzeit identisch.
+
+---
+
+## Fertig in Phase 0
+
+| Task | Inhalt |
+|---|---|
+| T-0.1 | Verzeichnisbaum, `pyproject.toml`, venv 3.12.13, pytest |
+| T-0.2 | Bestandsdateien einsortiert, Legacy-Daemon läuft nachweislich |
+| T-0.3.t | Mood-Mapping festgeschrieben: 21 grün + **4 `xfail(strict=True)`** |
+| T-0.4 | Protokoll-Schemas, 44 Tests |
+| T-0.5 / T-0.6 | Konfiguration, strukturiertes Logging ins Journal |
+| T-0.7 | IPC über `SO_PEERPIDFD`, **eingefroren**, 3 Mutanten |
+| T-0.9 | Hub: Bus, State, Sitzungs-Leases |
+| T-0.11 | Hook-Bridge, **eingefroren**, 5 Mutanten, 43 Prüfungen |
+| T-0.12 / T-0.13 | KWin-Fokus-Watcher, Diagnose-Endpunkt |
+
+**Bewusst aufgeschoben:** T-0.8 (Marken, Kontingente, Tickets), T-0.10 (Gegendruck),
+T-0.14 (systemd-Units). Keiner liegt auf dem Weg zum sichtbaren Overlay — Matthias hat
+den kritischen Pfad gewählt.
+
+**Eingefroren** (`tests/verify/FROZEN`): `T-0.0`, `T-0.7`, `T-0.11`. Änderungen daran
+brauchen einen neuen `.v`-Task mit Mutationstest; der pre-commit-Hook lässt sie sonst
+nicht durch.
+
+---
+
+## Phase 1 — Stand und nächste Schritte
+
+`face/` ist ein Rust-Crate, gebaut aus dem gemessenen Spike T−1.3 statt neu erfunden.
+
+**Belegt am laufenden Prozess**, nicht am Quelltext:
+
+```
+DRI-Deskriptoren   0        Kernzusage §8.1
+GPU-Bibliotheken   0        kein libEGL, libGL, libvulkan, libgbm
+Diagnose-Socket    srw-------  antwortet mit gültigem JSON
+Watchdog           DAIMON_MAX_SECS, Vorgabe 90, Exit 3
 ```
 
----
+**Als nächstes, in dieser Reihenfolge:**
 
-## Phase −1: Spike-Stand
+1. **T-1.4** Sprite-Subsurface und SlotPool — *ab hier ist etwas zu sehen*
+2. **T-1.5** Frame-Callback-Drosselung
+3. **T-1.6** Hub-Anbindung — *ab hier reagiert es auf echte Sessions; das ist das MVP*
 
-| Spike | Status | Ergebnis |
-|---|---|---|
-| **T−1.2** ONNX sm_120 | ✅ **bestanden** | pip-Wheel `onnxruntime-gpu==1.27.0` hat native `sm_120a`-Cubins. Arch-Paket ist *schlechter* (PTX auf `compute_121`, lädt auf sm_120 nicht). C-API-Worker hart blockiert — ORT-Kern ist statisch ins pybind-Modul gelinkt |
-| **T−1.3** layer-shell | ✅ **bestanden** | Overlay über Vollbild sichtbar, Idle-CPU **0,17 %**, **kein GPU-Kontext** (null DRI-FDs), Click-Through funktioniert. KDE-Bug 503121 reproduziert (0/20), Umgehung „Properties neu setzen" 20/20 |
-| **T−1.9** KWin-Fokus | ✅ **bestanden** | 50/50, keine Auslassung, p95 **0,9 ms**. Aber: `captionChanged` feuert nur bei Titeländerung — der Abtast-Timer trägt den Großteil |
-| **T−1.10** OCR-Kosten | ✅ **bestanden** | tesseract bleibt, als Arbeitsprozess mit `tessdata_fast`, ein Thread. Vollbild 3,3 s, Ausschnitt 0,35 s. **Korrektur:** Regionen-Zuschnitt bringt nichts (deckt 97–99 %), der Gewinn liegt im Fensterzuschnitt. VLM kann es nicht ersetzen — liefert auf Vollbildern nichts und halluziniert |
-| **T−1.1** Wake-Word | ⏸ **wartet auf Matthias** | Werkzeug fertig, Aufnahmen fehlen |
-| T−1.4 Portal-Persistenz | offen | ich hatte es noch nicht angefangen |
-| T−1.11 AT-SPI2 | offen | dito |
-| T−1.5 Mood-Mapping | teilweise | Fokus-Probe läuft mit und sammelt |
-| `kwin --replace` | offen | **nicht getestet**, weil FreeCAD ungespeicherte Arbeit offen hatte |
+**Offen und benannt:**
 
-**Alle drei harten Weichen sind durch.** T−1.1 ist die letzte blockierende.
+- Der Alpha-Test in `face/src/input.rs` ist geschrieben und getestet, aber **nicht
+  verdrahtet** — bis T-1.4 gibt es kein Sprite. Der Compiler weist ihn als unbenutzt
+  aus, und das soll er, bis er gebraucht wird.
+- Die Verifizierer `T-1.1.sh` bis `T-1.3.sh` **fehlen**. Die Akzeptanz verlangt
+  Screenshot plus Pixelprobe über einem Vollbildfenster und Klickzähler über die
+  Test-Eingabevorrichtung aus T−1.8.
 
 ---
 
-## Was Matthias tun muss (T−1.1)
+## Was Matthias tun kann
+
+**Nichts Blockierendes.** Zwei Kleinigkeiten bei Gelegenheit:
 
 ```bash
-cd /home/itiger013/Dokumente/Github/dAImon/spikes/wakeword
-python3 record.py positive              # 50 Proben, geführt durch 8 Bedingungen
-python3 record.py background --min 60   # mehrfach, bis 3 h zusammen sind
-python3 record.py status
-venv/bin/python evaluate.py             # rechnet FRR und FAR
+# T−1.4, Reboot-Teil — nach dem nächsten regulären Neustart, ein Befehl:
+timeout --foreground --signal=TERM --kill-after=5s 130s python3 spikes/portal/reboot_check.py
 ```
 
-Wake-Word ist **„Embershard"**. Wichtiger Befund vor der ersten Aufnahme:
-
-> `EMBERSHARD` als **ein Wort** schlägt **nie** an — bei keiner Schwelle.
-> `EMBER SHARD` als **zwei Wörter** feuert zuverlässig.
-> Unterschied liegt allein in der Tokenisierung: `▁E M BER SH ARD` gegen `▁E M BER ▁SHA R D`.
-> `keywords.txt` nutzt deshalb die Zweiwortform. Gesprochen bleibt es dasselbe Wort.
-
-Zielwerte: FRR < 10 %, FAR < 1/h. Wird beides nicht gleichzeitig erreicht → Plan B `livekit-wakeword` (trainiert deutsch), Plan C nur Push-to-Talk.
-
-`samples/` ist ignoriert — Stimmaufnahmen bleiben lokal.
+**T−1.12** (NVIDIA-Sprachstack) ist im Plan und im Gate, aber ungemessen. Werkzeug liegt
+unter `spikes/nvidia-voice/` samt `SPEC.md`. Nicht blockierend.
 
 ---
 
-## Laufende Prozesse
+## Entscheidungen, die feststehen
 
-**Fokus-Probe** sammelt weiter für T−1.5:
-```bash
-pgrep -af spikes/focus/probe.py
-# Beenden:
-pkill -f spikes/focus/probe.py
-kwriteconfig6 --file kwinrc --group Plugins --key daimon-focusprobeEnabled false
-qdbus6 org.kde.KWin /KWin org.kde.KWin.reconfigure
-```
+**T−1.1 Wake-Word → Plan C.** Push-to-Talk als Grundlage, kein Wake-Word in Phase 3,
+**T-3.5 und T-3.6 entfallen**. FRR 19 % auf 16 Aussprachen aus *einer* Bedingung, FAR
+ungemessen — ein `pass` wäre darauf nicht zu halten. Kostet wenig, weil §1.3 für
+Aktionen ohnehin PTT plus Bestätigung verlangt.
 
-**OCR-Benchmark ist fertig.** `spikes/ocr/results.json` und `NOTES.md` liegen vor.
+> **Nachrüstbar, Hebel beziffert:** die Keyword-*Schreibweise* dominiert alles.
+> `EMBER SHARD` trifft 3 von 16, `EMBA SHARD` trifft 11, plus `EMBA SHOT` 13. Und
+> `BOOST` dominiert die Schwelle — acht Schwellenwerte ändern nichts, `boost 1.5 → 3.0`
+> verdoppelt. `evaluate.py` suchte vorher die falsche Achse ab.
+
+**T−1.10 OCR → tesseract behalten, als dauerhafter Arbeitsprozess.** Zuschnitt aufs
+**fokussierte Fenster**, nicht auf Textregionen: deren Vereinigung deckt 97–99 % ab, und
+Einzelboxen kosten 261 × 60 ms = 15,7 s gegen 3,3 s Vollbild. **Kein VLM im Textpfad** —
+es erzeugt plausible falsche Wörter statt sichtbaren Mülls, und das ist der schlechtere
+Fehler.
+
+**T−1.11 AT-SPI2 → in den Katalog, als Teilfläche.** Qt exportiert im
+Auslieferungszustand **gar keinen Baum**; `QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1` ist nötig
+und für fremde, bereits laufende Programme nicht erzwingbar.
+
+**T−1.4 Portal:** `restore_token` hält über den Prozessneustart. **Aber:** ein Token aus
+einer *anderen* Session wird ohne Dialog akzeptiert — `token.json` ist damit eine
+**Fähigkeit**, keine Einstellung. Gehört ins Bedrohungsmodell.
+
+**T-3.8 STT:** Design v5.4 legt `nemo-parakeet-tdt-0.6b-v3` fest. `whisper-base` ist für
+Deutsch unbrauchbar (halluziniert „im basat") — gemessen, war aber ohnehin das falsche
+Modell.
 
 ---
 
-## Fallen, die uns schon erwischt haben
+## Fallen, die uns erwischt haben
 
-**Ein Overlay ohne Input-Region blockiert die Maus.** Eine Wayland-Surface **ohne** gesetzte `input_region` nimmt Eingaben auf ihrer **ganzen** Fläche an. Bildschirmfüllend heißt: der Rechner ist mit der Maus nicht mehr bedienbar. Im Journal steht **nichts**, weil aus Compositor-Sicht alles korrekt ist. Ist real passiert.
-→ Behoben: leere Region ist Vorgabe, plus Watchdog im Prozess (`SPIKE_MAX_SECS`, Vorgabe 90 s). **Beide Fixes nicht rückgängig machen.**
-→ Beim Beauftragen von Overlay-Arbeit: immer `SPIKE_MAX_SECS=15` mitgeben.
+**Ein Overlay ohne Input-Region blockiert die Maus.** Eine Wayland-Surface **ohne**
+gesetzte `input_region` nimmt Eingaben auf ihrer **ganzen** Fläche an. Bildschirmfüllend
+heißt: der Rechner ist mit der Maus nicht mehr bedienbar, und im Journal steht
+**nichts**. Real passiert am 27.07.
+→ `face/src/input.rs`: leere Region ist Vorgabe, `darf_committen()` gated **jeden**
+Commit, bei `false` wird abgebrochen. **Jeden** Overlay-Lauf mit `DAIMON_MAX_SECS=15`.
 
-**`ydotool mousemove -a` positioniert auf dieser Maschine nicht.** Jedes absolute Ziel landet bei `(0,0)`, Exit-Code 0, keine Fehlermeldung. Nur relative Bewegung geht, und die unterliegt der Zeigerbeschleunigung (30er-Schritt kommt als 53 an). Hat einen ganzen Spike-Durchlauf verfälscht.
-→ Für Phase 4: **libei ist die einzige Option für alles mit Positionierung.**
+**`ydotool mousemove -a` positioniert auf dieser Maschine nicht.** Jedes absolute Ziel
+landet bei `(0,0)`, Exit 0, keine Meldung. Für Phase 4: **libei ist die einzige Option**.
 
-**Latenzverhältnisse taugen nicht als JIT-Nachweis.** Kalt/warm liegt auch mit gesperrtem Cache bei 770–900× (cuBLAS-Init). Nur `cuobjdump` beantwortet die Frage.
+**`kwin_wayland --replace` ist auf Plasma 6 sicher** — entgegen der alten Annahme.
+`kwin_wayland_wrapper` startet neu, die Sitzung überlebt. Belegt: PID 1962 → 166314,
+Script nach 1,4 s wieder da. Trotzdem vorher fragen.
 
-**`kwin --replace` nicht laufen lassen**, ohne vorher zu fragen — Matthias hat oft ungespeicherte Arbeit offen.
+**Der schnelle Weg war der, der nichts tat.** Das Hook-Kommando mit
+`curl --data-binary @- … &` misst 0,7 ms und stellt **0 von 10** Nutzlasten zu: die
+Nutzlast kommt über stdin, der abgekoppelte curl rennt gegen den Aufrufer, der die Pipe
+schließt. Richtig ist `cat > tmpfile`, dann `setsid` — 1,4 ms, 10 von 10.
 
 ---
 
 ## Wie hier gearbeitet wird
 
-**Rollen sind maschinell durchgesetzt.** `.claude/hooks/role_guard.py` als `PreToolUse`-Hook, `.githooks/pre-commit`, `tests/verify/verify-frozen.sh`.
+**Rollen sind maschinell durchgesetzt.** `.claude/hooks/role_guard.py` als `PreToolUse`,
+`.githooks/pre-commit`, `tests/verify/verify-frozen.sh`.
 
 ```bash
 export DAIMON_ROLE=investigator   # spikes/, docs/, tests/evidence/
@@ -108,39 +158,55 @@ export DAIMON_ROLE=builder        # Produktivcode, NICHT tests/verify/
 export DAIMON_ROLE=reviewer       # Verifizierer, NICHT daimon/ face/
 ```
 
-**Fehlt die Variable, ist Schreiben überall verboten** — fail closed. `tests/verify/T-0.0.sh` prüft das mit 19 Assertions.
+> **Falle:** der Hook wird gegen die **CWD des Tool-Calls** aufgelöst. Ein `cd` in einen
+> Unterordner legt jeden weiteren Aufruf lahm, auch den von Subagenten. Der Pfad ist
+> inzwischen absolut, aber: **keine `cd` in Bash-Aufrufen**, nur absolute Pfade. Und
+> `2>&1` löst die Schreib-Erkennung des Guards aus.
 
-**Verifizierer-Regime:** `T-x.y.v` (reviewer) kommt **vor** `T-x.y` (builder). Mutanten unter `tests/mutants/`, Hash eingefroren in `tests/verify/FROZEN`. Jedes Phasen-Gate beginnt mit `verify-frozen.sh`.
+**Verifizierer vor Implementierung, und delegiert.** Der Verifizierer entsteht
+unabhängig gegen die Akzeptanzliste, nicht gegen den Code. Bei T-0.11 hat er **vier
+echte Lücken** gefunden — darunter eine, die ich für seinen Fehler hielt und umschreiben
+wollte. Er hatte recht; ich hatte ihn nicht zu Ende gelesen.
 
-**Commits:** deutsch, ausführlich, erklären *warum*. Kein `git add -A` ohne vorher `git status` zu prüfen — hat schon versehentlich Spike-Artefakte eingesammelt.
+**Delegation:** `codex exec --dangerously-bypass-approvals-and-sandbox -` mit dem
+Auftrag auf stdin; `kimi -p "$(cat auftrag.md)"` (**kein** `-y`/`--auto`, kollidiert mit
+`-p`). Aufträge nach `/tmp/claude-…/scratchpad/`, und sie benennen ausdrücklich Rolle,
+Auflagen und was **nicht** angefasst werden darf.
 
-**PMTool:** Projekt `dAImon`, ID `d9e36f7c-8e0f-480f-890d-7c52258ed12c`. Spalten: backlog `709e3cb5…`, in_progress `11dfbfdc…`, review `fe52c15a…`, done `922f0db3…`. Endpunkt für Tasks: `GET /api/projects/<id>/tasks`, `PUT /api/tasks/<id>`.
+**Commits:** deutsch, ausführlich, erklären das *Warum* — und benennen eigene Fehler.
+Kein `git add -A` ohne vorheriges `git status`.
+
+**PMTool:** Projekt `dAImon`, ID `d9e36f7c-8e0f-480f-890d-7c52258ed12c`.
 
 ---
 
-## Wichtige Designentscheidungen, die nicht offensichtlich sind
+## Der wiederkehrende Fehler dieser Sitzung
 
-1. **§1.3 Bedrohungsmodell:** Ein Angreifer mit Codeausführung unter derselben uid wird **nicht** abgewehrt. Deshalb gibt es keine Signaturen zwischen eigenen Prozessen — der Schlüssel wäre ohnehin per `ptrace` lesbar.
-2. **Sprache autorisiert nicht.** Audio ist nicht authentifizierbar. Aktionen brauchen Push-to-Talk plus Bestätigung der kanonisierten Aktion.
-3. **Injektionsabwehr durch Fähigkeitsentzug**, nicht durch Prompt-Delimiter: Der Durchgang, der Bildschirmtext liest, hat kein Werkzeugschema.
-4. **Vorgabe der Herkunftsmarkierung ist `tainted`**, `trusted` muss behauptet werden.
-5. **Dauermitschnitt ist gewollt** (Bildschirm + Ton, 30 Tage Text, 48 h Bilder). Aber: nur auf Nachfrage durchsuchbar, proaktives Verhalten sieht die Historie nicht. **Der Pausenschalter beim Ton ist nicht optional** (§201 StGB, Dritte im Raum) — Abbruchkriterium von Phase 7.
-6. **Gatterkette:** kein gekacheltes dHash (screenpipe hat das zweimal verworfen) — **und auch kein Zuschnitt auf die Regionen-Vereinigung**, die deckt 97–99 % des Vollbilds ab. Der Gewinn liegt im **Zuschnitt aufs fokussierte Fenster** plus quantisierter Signatur. Gemessen in T−1.10.
-7. **OCR als dauerhafter Arbeitsprozess**, nicht wegen Geschwindigkeit, sondern Isolation: tesseracts OpenMP kostet ~800 ms extra, wenn numpy im selben Prozess liegt.
+Dreimal dasselbe, jedes Mal von einem Test oder Build aufgedeckt, nie durch Nachdenken:
 
----
+1. **Wake-Word:** Schwellen ausschließlich an Negativbeispielen geeicht. Matthias fiel
+   dreimal durch, obwohl sein Mikrofon im Diktat tadellos läuft. Es fehlte eine
+   **Positivkontrolle** — sie liegt jetzt als `spikes/wakeword/control.py` fest.
+2. **Hook-Kommando:** Latenz gemessen statt Zustellung. „0,9 ms" war schnell, weil
+   nichts ankam.
+3. **`commit_gezaehlt`:** ein `grep` mit `head -6` abgeschnitten, das Fehlen des
+   Treffers für einen Befund gehalten, eine Lücke gemeldet die keine war.
 
-## Nächste sinnvolle Schritte
-
-1. **T−1.4** (Portal-`restore_token` über Neustart) und **T−1.11** (AT-SPI2) — beide allein machbar
-3. **T−1.1** sobald Matthias aufgenommen hat
-4. Dann **T−1.7 Entscheidungsprotokoll**, danach Gate P−1
-5. Erst danach P0.0 → P0
-
-**Nicht** mit P0 anfangen, bevor T−1.1 entschieden ist — davon hängt ab, ob Phase 3 ein Wake-Word bekommt oder nur Push-to-Talk.
+**Die Lehre, die im Repo bleiben soll:** die bequeme Größe zu messen ist nicht dasselbe
+wie die richtige zu messen. Und ohne Positivkontrolle ist „0 Treffer" nicht
+interpretierbar — schwieriges Wort, schlechte Aufnahme und kaputter Aufbau sind dann
+nicht zu unterscheiden.
 
 ---
 
 ## Offene Ehrlichkeit
 
-Der Codex-Review endete nach 5 Runden **ohne `APPROVED`**. Schlussurteil: Design „broadly sound", Plan „still not safe to start". Die zwei dort benannten Punkte sind inzwischen geschlossen (Anhang C4 und D) — **aber diese Nacharbeit und alles danach ist nicht gegengelesen.** Steht so im README und in den Anhängen.
+Der Codex-Review des **Gesamtplans** endete nach 5 Runden ohne `APPROVED`. Die zwei dort
+benannten Punkte sind geschlossen — **aber diese Nacharbeit und alles danach ist nicht
+gegengelesen**, einschließlich der gesamten Phase 0 und dieses Dokuments.
+
+**`T--1.6` ist rot, obwohl die Auflage erfüllt ist.** In T-0.11 gemessen: 2,5 ms gegen
+eine Grenze von 200. Der Verifizierer liest noch `spikes/hookoverhead/results.json` mit
+den alten Zahlen aus der Zeit vor der Abkopplung. Nachzuziehen.
+
+**`T--1.12` ist rot, weil die Messung nicht gelaufen ist.** Das ist korrekt so.
