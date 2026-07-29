@@ -19,7 +19,7 @@
 //! schon sichtbar ist und alles schluckt.
 
 use smithay_client_toolkit::compositor::{CompositorState, Region};
-use smithay_client_toolkit::shell::{wlr_layer::LayerSurface, WaylandSurface};
+use wayland_client::protocol::wl_surface;
 
 /// Rechteck in Surface-Koordinaten.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -52,7 +52,10 @@ pub struct InputRegion {
 
 impl InputRegion {
     pub fn new() -> Self {
-        Self { aktuell: None, gesetzt_mindestens_einmal: false }
+        Self {
+            aktuell: None,
+            gesetzt_mindestens_einmal: false,
+        }
     }
 
     /// Muss vor dem ersten Commit aufgerufen werden. Gibt zurueck, ob die
@@ -60,7 +63,7 @@ impl InputRegion {
     pub fn anwenden(
         &mut self,
         compositor: &CompositorState,
-        layer: &LayerSurface,
+        surface: &wl_surface::WlSurface,
         gewuenscht: Option<Box2D>,
     ) -> bool {
         let normiert = gewuenscht.filter(|b| !b.leer());
@@ -75,7 +78,7 @@ impl InputRegion {
         if let Some(b) = normiert {
             region.add(b.x, b.y, b.w, b.h);
         }
-        layer.set_input_region(Some(region.wl_region()));
+        surface.set_input_region(Some(region.wl_region()));
 
         self.aktuell = normiert;
         self.gesetzt_mindestens_einmal = true;
@@ -119,7 +122,12 @@ mod tests {
 
     #[test]
     fn box_enthaelt_nur_innen() {
-        let b = Box2D { x: 10, y: 10, w: 20, h: 20 };
+        let b = Box2D {
+            x: 10,
+            y: 10,
+            w: 20,
+            h: 20,
+        };
         assert!(b.enthaelt(10, 10));
         assert!(b.enthaelt(29, 29));
         assert!(!b.enthaelt(30, 30));
@@ -128,8 +136,20 @@ mod tests {
 
     #[test]
     fn leere_box_erkannt() {
-        assert!(Box2D { x: 0, y: 0, w: 0, h: 10 }.leer());
-        assert!(!Box2D { x: 0, y: 0, w: 1, h: 1 }.leer());
+        assert!(Box2D {
+            x: 0,
+            y: 0,
+            w: 0,
+            h: 10
+        }
+        .leer());
+        assert!(!Box2D {
+            x: 0,
+            y: 0,
+            w: 1,
+            h: 1
+        }
+        .leer());
     }
 
     #[test]

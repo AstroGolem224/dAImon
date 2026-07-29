@@ -49,8 +49,13 @@ impl FaceState {
         )
     }
 
-    /// Beim tatsaechlichen Commit aufrufen, nicht beim Zustandsempfang.
-    pub fn commit_gezaehlt(&mut self) {
+    /// Nur Commits mit angehaengtem Buffer sind gezeichnete Frames. Ein
+    /// bufferloser Initial- oder Property-Commit darf die Diagnose nicht von
+    /// "noch nie gezeichnet" wegbewegen.
+    pub fn commit_gezaehlt(&mut self, mit_buffer: bool) {
+        if !mit_buffer {
+            return;
+        }
         self.frames_rendered += 1;
         self.last_render_ts = jetzt();
     }
@@ -124,8 +129,14 @@ mod tests {
             frames_rendered: 7,
         };
         let j = s.als_json();
-        for feld in ["rev", "mood", "sprite", "bubble_visible",
-                     "last_render_ts", "frames_rendered"] {
+        for feld in [
+            "rev",
+            "mood",
+            "sprite",
+            "bubble_visible",
+            "last_render_ts",
+            "frames_rendered",
+        ] {
             assert!(j.contains(feld), "{feld} fehlt in {j}");
         }
     }
@@ -134,14 +145,28 @@ mod tests {
     fn commit_setzt_zeitstempel_und_zaehler() {
         let mut s = FaceState::default();
         assert_eq!(s.last_render_ts, 0.0);
-        s.commit_gezaehlt();
+        s.commit_gezaehlt(true);
         assert_eq!(s.frames_rendered, 1);
-        assert!(s.last_render_ts > 1_700_000_000.0, "Zeitstempel nicht gesetzt");
+        assert!(
+            s.last_render_ts > 1_700_000_000.0,
+            "Zeitstempel nicht gesetzt"
+        );
+    }
+
+    #[test]
+    fn bufferloser_commit_ist_kein_frame() {
+        let mut s = FaceState::default();
+        s.commit_gezaehlt(false);
+        assert_eq!(s.frames_rendered, 0);
+        assert_eq!(s.last_render_ts, 0.0);
     }
 
     #[test]
     fn anfuehrungszeichen_werden_escapet() {
-        let s = FaceState { mood: "a\"b".into(), ..Default::default() };
+        let s = FaceState {
+            mood: "a\"b".into(),
+            ..Default::default()
+        };
         assert!(s.als_json().contains("a\\\"b"));
     }
 }

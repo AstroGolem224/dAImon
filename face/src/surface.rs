@@ -10,27 +10,40 @@ use smithay_client_toolkit::{
         WaylandSurface,
     },
     shm::slot::SlotPool,
+    subcompositor::{SubcompositorState, SubsurfaceData},
 };
 use wayland_client::{
-    protocol::{wl_output, wl_shm},
+    protocol::{wl_output, wl_shm, wl_subsurface, wl_surface},
     QueueHandle,
 };
 
-use crate::input::{Box2D, InputRegion};
+use crate::{
+    input::{Box2D, InputRegion},
+    sprite::{zustand_abbilden, SpriteAtlas},
+};
+
+struct SpriteSurface {
+    subsurface: wl_subsurface::WlSubsurface,
+    surface: wl_surface::WlSurface,
+    input_region: InputRegion,
+    position: (i32, i32),
+}
 
 pub struct OverlaySurface {
     layer: LayerSurface,
     input_region: InputRegion,
+    sprite: SpriteSurface,
     puffer_committiert: bool,
 }
 
 impl OverlaySurface {
     pub fn neu<State>(
         compositor: &CompositorState,
+        subcompositor: &SubcompositorState,
         layer_shell: &LayerShell,
         qh: &QueueHandle<State>,
         output: &wl_output::WlOutput,
-        gewuenschte_input_region: Option<Box2D>,
+        sprite_position: (i32, i32),
     ) -> Self
     where
         State: wayland_client::Dispatch<
@@ -39,7 +52,8 @@ impl OverlaySurface {
             > + wayland_client::Dispatch<
                 wayland_client::protocol::wl_surface::WlSurface,
                 SurfaceData<()>,
-            > + 'static,
+            > + wayland_client::Dispatch<wl_subsurface::WlSubsurface, SubsurfaceData>
+            + 'static,
     {
         let wl_surface = compositor.create_surface(qh);
         let layer = layer_shell.create_layer_surface(
@@ -51,10 +65,20 @@ impl OverlaySurface {
             // ein pro-Output-Overlay deshalb keine stabile Zuordnung.
             Some(output),
         );
+        let (subsurface, sprite_surface) =
+            subcompositor.create_subsurface(layer.wl_surface().clone(), qh);
+        subsurface.set_desync();
+        subsurface.set_position(sprite_position.0, sprite_position.1);
 
         let mut ergebnis = Self {
             layer,
             input_region: InputRegion::new(),
+            sprite: SpriteSurface {
+                subsurface,
+                surface: sprite_surface,
+                input_region: InputRegion::new(),
+                position: sprite_position,
+            },
             puffer_committiert: false,
         };
         ergebnis.properties_neu_setzen();
@@ -68,7 +92,7 @@ impl OverlaySurface {
         // bedeutet hier eine gesetzte, leere Region und damit Click-Through.
         ergebnis
             .input_region
-            .anwenden(compositor, &ergebnis.layer, gewuenschte_input_region);
+            .anwenden(compositor, ergebnis.layer.wl_surface(), None);
         ergebnis
     }
 
@@ -106,6 +130,101 @@ impl OverlaySurface {
         self.layer.commit();
         self.puffer_committiert = true;
         true
+    }
+
+    /// Zeichnet Frame 0 des gewaehlten Zustands auf die desynchronisierte
+    /// Sprite-Subsurface. Beim ersten sichtbaren Sprite wird zuvor die
+    /// Input-Regionen der Elternsurface und der Sprite-Subsurface gesetzt.
+    /// Beide Surfaces laufen vor ihrem jeweiligen Commit durch ihr eigenes
+    /// Sicherheits-Gate.
+    ///
+    /// Rueckgabewert ist die Anzahl tatsaechlicher Wayland-Commits.
+    pub fn sprite_committen(
+        &mut self,
+        compositor: &CompositorState,
+        pool: &mut SlotPool,
+        atlas: &SpriteAtlas,
+        zustand: &str,
+    ) -> Result<u64, String> {
+        let abbildung = zustand_abbilden(zustand, &atlas.layout);
+        let frame = atlas.frame(abbildung.zeile, 0)?;
+        let breite = i32::try_from(atlas.layout.cell_w)
+            .map_err(|_| "Sprite-Breite passt nicht in i32".to_string())?;
+        let hoehe = i32::try_from(atlas.layout.cell_h)
+            .map_err(|_| "Sprite-Hoehe passt nicht in i32".to_string())?;
+        let stride = breite
+            .checked_mul(4)
+            .ok_or_else(|| "Sprite-Stride ist zu gross".to_string())?;
+
+        let bbox = Box2D {
+            x: self.sprite.position.0,
+            y: self.sprite.position.1,
+            w: breite,
+            h: hoehe,
+        };
+        // Erst alle falliblen Pufferschritte abschliessen. So kann danach kein
+        // bereits erfolgter Input-Commit in einem Err-Rueckgabepfad verloren
+        // gehen.
+        let (buffer, canvas) = pool
+            .create_buffer(breite, hoehe, stride, wl_shm::Format::Argb8888)
+            .map_err(|fehler| format!("wl_shm-Sprite-Puffer: {fehler}"))?;
+        canvas.copy_from_slice(&frame);
+        self.sprite.surface.damage_buffer(0, 0, breite, hoehe);
+        buffer
+            .attach_to(&self.sprite.surface)
+            .map_err(|fehler| format!("wl_shm-Sprite anhaengen: {fehler}"))?;
+
+        if self
+            .input_region
+            .anwenden(compositor, self.layer.wl_surface(), Some(bbox))
+            && !self.sicher_committen()
+        {
+            return Err("Input-Region konnte nicht sicher committet werden".into());
+        }
+
+        self.sprite.input_region.anwenden(
+            compositor,
+            &self.sprite.surface,
+            Some(Box2D {
+                x: 0,
+                y: 0,
+                w: breite,
+                h: hoehe,
+            }),
+        );
+        if !self.sprite.input_region.darf_committen() {
+            eprintln!("SICHERHEITSABBRUCH: Sprite-Subsurface ohne gesetzte Input-Region");
+            return Err("Sprite-Commit durch eigenes Input-Gate abgelehnt".into());
+        }
+        self.sprite.surface.commit();
+        Ok(1)
+    }
+
+    /// Verschiebt das Pet ohne Buffer-Aenderung. Nur die Position und die
+    /// Input-Bounding-Box werden auf dem Parent angewandt.
+    #[allow(dead_code)]
+    pub fn sprite_position_setzen(
+        &mut self,
+        compositor: &CompositorState,
+        position: (i32, i32),
+        groesse: (i32, i32),
+    ) -> bool {
+        if self.sprite.position == position {
+            return false;
+        }
+        self.sprite.position = position;
+        self.sprite.subsurface.set_position(position.0, position.1);
+        self.input_region.anwenden(
+            compositor,
+            self.layer.wl_surface(),
+            Some(Box2D {
+                x: position.0,
+                y: position.1,
+                w: groesse.0,
+                h: groesse.1,
+            }),
+        );
+        self.sicher_committen()
     }
 
     /// KDE-Bug 503121: Nach einem NULL-Buffer-Unmap liefert KWin ohne diese
