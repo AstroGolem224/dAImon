@@ -33,8 +33,8 @@
   },
   "T-1.5": {
    "spike_dir": "spikes/mood",
-   "verdict": "pass mit Auflage",
-   "decision": "Das Mapping wird uebernommen wie es ist, mit einer offenen Pruefung. Datenbasis sind bislang 2 Sitzungen statt der geforderten 5 -- Matthias hat entschieden, die Erhebung nicht abzuwarten. Was daraus schon belegt ist: StopFailure ist ein echtes Hook-Ereignis und feuert (Beleg: eine an abgelaufenem OAuth gescheiterte Sitzung lieferte SessionStart, UserPromptSubmit, StopFailure, SessionEnd mit reason 'other'), und die Hooks greifen ohne Neustart. Der Rekorder laeuft weiter; analyze.py ist jederzeit erneut ausfuehrbar. AUFLAGE fuer T-0.3.t: die Abweichungsklasse NICHT_ENTSCHEIDBAR muss dort als Test auftauchen. Eine Notification ohne notification_type macht needs_input und idle ununterscheidbar -- und needs_input ist der Mood, an dem die ganze Idee haengt.",
+   "verdict": "pass",
+   "decision": "Das Mapping aus docs/PHASE3-original.md 4 wird uebernommen. Belegt an 23 Sitzungen mit 668 Ereignissen. Die gefundenen Abweichungen gehen als Tests nach T-0.3.t: TOTER_EINTRAG heisst, der Mood ist ueber diesen Weg unerreichbar; LUECKE heisst, der Client wuesste bei diesem Ereignis nicht was er zeigen soll; NICHT_ENTSCHEIDBAR heisst, die Nutzlast traegt das Unterscheidungsmerkmal nicht und trifft damit T-0.7.",
    "blockierend": false,
    "results": "spikes/mood/results.json"
   },

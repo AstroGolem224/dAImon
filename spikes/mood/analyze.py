@@ -146,6 +146,21 @@ def main():
         "prioritaet": PRIORITY,
         "verdict": "pending" if not enough else ("pass" if not any(
             m["art"] == "NICHT_ENTSCHEIDBAR" for m in mismatches) else "pass mit Auflage"),
+        # T-1.7 verlangt je Spike ein `decision`. Dieses Skript schreibt
+        # results.json komplett neu -- ein von Hand nachgetragenes Feld waere
+        # beim naechsten Lauf weg. Genau das ist einmal passiert. Die
+        # Entscheidung wird deshalb hier miterzeugt.
+        "decision": (
+            "Noch nicht entschieden -- die Datenbasis reicht nicht."
+            if not enough else
+            "Das Mapping aus docs/PHASE3-original.md 4 wird uebernommen. "
+            f"Belegt an {len(sessions)} Sitzungen mit {len(rows)} Ereignissen. "
+            "Die gefundenen Abweichungen gehen als Tests nach T-0.3.t: "
+            "TOTER_EINTRAG heisst, der Mood ist ueber diesen Weg unerreichbar; "
+            "LUECKE heisst, der Client wuesste bei diesem Ereignis nicht was er "
+            "zeigen soll; NICHT_ENTSCHEIDBAR heisst, die Nutzlast traegt das "
+            "Unterscheidungsmerkmal nicht und trifft damit T-0.7."
+        ),
         "recommendation": (
             f"Noch nicht auswertbar: {len(sessions)} von 5 geforderten Sitzungen. "
             "Der Rekorder laeuft; erneut ausfuehren, sobald mehr Sitzungen vorliegen."
