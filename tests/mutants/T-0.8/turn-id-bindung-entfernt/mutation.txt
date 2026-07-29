@@ -1,0 +1,1 @@
+MarkenBuch.einloesen ignoriert die turn_id und entnimmt irgendeine offene Marke. Das soll das Akzeptanzkriterium "an turn_id gebunden" reissen.

@@ -1,0 +1,1 @@
+Ticketbuch._schreiben tut nichts; das Buch existiert nur im Speicher. Das soll das Akzeptanzkriterium "persistentes, atomares Ticketbuch" reissen -- ein Absturz zwischen Ausgabe und Ausfuehrung waere sonst eine Wiedereinloesung.

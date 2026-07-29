@@ -1,0 +1,1 @@
+MarkenBuch.einloesen entnimmt die Marke nicht mehr, sondern liest sie nur -- sie bleibt nach der Einloesung offen. Das soll das Akzeptanzkriterium "Rundenmarke ist einmal einloesbar" reissen.

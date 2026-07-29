@@ -1,0 +1,1 @@
+KontingentBuch.erlaubt_aktion liefert True. Das soll das Akzeptanzkriterium "API-Kontingent autorisiert keine Aktion und deklassifiziert nichts" reissen -- das Loch, gegen das Design 2.4 ausdruecklich argumentiert.

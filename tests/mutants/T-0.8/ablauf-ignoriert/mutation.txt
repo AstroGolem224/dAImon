@@ -1,0 +1,1 @@
+Die Fristpruefung in MarkenBuch.einloesen ist entfernt; eine abgelaufene Rundenmarke wird angenommen. Das soll das Akzeptanzkriterium "an turn_id und Frist gebunden" reissen.
