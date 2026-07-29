@@ -13,7 +13,7 @@ noch) ist überholt und ersetzt.
 |---|---|
 | **Gate P−1** | **8 von 9 grün**. Rot nur `T--1.12` — Messung nicht gelaufen, korrekt so |
 | **Gate P0** | **11 von 11 grün**, `verify-frozen` sauber, `pytest` 154 grün + 4 dokumentiert rot |
-| **Phase 1** | T-1.1 und T-1.2 stehen, am laufenden Prozess belegt |
+| **Phase 1** | T-1.1 bis T-1.4 stehen, am laufenden Prozess belegt. **Das Pet ist sichtbar.** |
 
 Dokumente: `docs/DESIGN.md` v5.4, `docs/IMPLEMENTATION-PLAN.md` v3.3,
 `docs/feasibility-decisions.md` (Entscheidungsprotokoll aus T−1.7),
@@ -61,20 +61,35 @@ Diagnose-Socket    srw-------  antwortet mit gültigem JSON
 Watchdog           DAIMON_MAX_SECS, Vorgabe 90, Exit 3
 ```
 
+**T-1.4 ist fertig** (Commit `fda0578`). Zwei Zustände, `ruhig` und `dringend`, je
+Frame 0 der Zeile aus `pet.json`, aus einem einmal beim Start dekodierten Sheet.
+Keine Animation — das ist T-1.5. Die Hauptschleife läuft jetzt über `calloop`,
+weil der Steuer-Thread die in `poll()` schlafende Wayland-Schleife wecken muss.
+
+Zustandswechsel läuft über `--control-socket` (0600, `state ruhig|dringend`),
+**nicht** über den Diagnose-Socket: Diagnose ist lesend, ein Socket der beides
+kann ist eine Fähigkeit und keine Einstellung. T-1.6 füttert später denselben
+Kanal. Assets über `--pet-manifest`, `DAIMON_PET_MANIFEST` oder
+`./assets/pet.json`; der gewählte Pfad steht auf stderr.
+
 **Als nächstes, in dieser Reihenfolge:**
 
-1. **T-1.4** Sprite-Subsurface und SlotPool — *ab hier ist etwas zu sehen*
-2. **T-1.5** Frame-Callback-Drosselung
-3. **T-1.6** Hub-Anbindung — *ab hier reagiert es auf echte Sessions; das ist das MVP*
+1. **T-1.5** Frame-Callback-Drosselung
+2. **T-1.6** Hub-Anbindung — *ab hier reagiert es auf echte Sessions; das ist das MVP*
 
 **Offen und benannt:**
 
-- Der Alpha-Test in `face/src/input.rs` ist geschrieben und getestet, aber **nicht
-  verdrahtet** — bis T-1.4 gibt es kein Sprite. Der Compiler weist ihn als unbenutzt
-  aus, und das soll er, bis er gebraucht wird.
+- Der Alpha-Test in `face/src/input.rs` ist geschrieben und getestet, aber **weiterhin
+  nicht verdrahtet**. Bis T-1.4 gab es kein Sprite; jetzt gibt es eins, und damit ist
+  das T-1.3-Kriterium „Alpha-Test verwirft Klicks auf transparente Ränder" **ab jetzt
+  überhaupt erst umsetzbar**. Die Sprite-Subsurface nimmt derzeit Klicks auf ihrer
+  ganzen 192×208-Zelle an, Ecken eingeschlossen.
 - Die Verifizierer `T-1.1.sh` bis `T-1.3.sh` **fehlen**. Die Akzeptanz verlangt
   Screenshot plus Pixelprobe über einem Vollbildfenster und Klickzähler über die
   Test-Eingabevorrichtung aus T−1.8.
+- „Bewegung über `set_position()` **ohne Neuzeichnen**" ist aus dem
+  Protokoll-Mitschnitt nicht belegbar — es stünde nur mit einer Korrelation gegen
+  `attach`/`commit`. Steht in `T-1.4.sh` als INFO, nicht als Kriterium. Bewusst so.
 
 ---
 
@@ -196,6 +211,23 @@ Dreimal dasselbe, jedes Mal von einem Test oder Build aufgedeckt, nie durch Nach
 wie die richtige zu messen. Und ohne Positivkontrolle ist „0 Treffer" nicht
 interpretierbar — schwieriges Wort, schlechte Aufnahme und kaputter Aufbau sind dann
 nicht zu unterscheiden.
+
+**In T-1.4 dreimal wieder, in neuen Kleidern:**
+
+4. **Der Verifizierer war grün und hat nichts gemessen.** Er baute nur, wenn das
+   Binary *fehlte* — und `cargo test` baut den Unit-Test-Harness, nicht das
+   Bin-Target. Ein absichtlich kaputt gemachter Zustandswechsel blieb grün, weil
+   ein Binary von vorgestern lief. → **Ein grüner Verifizierer sagt nichts, solange
+   nicht gezeigt ist, dass er rot werden KANN.** Jeder neue Verifizierer bekommt ab
+   sofort mindestens einen Mutanten, bevor er als bestanden gilt.
+5. **Das Sicherheitsgate war nur scheinbar aktiv.** Die Sprite-Subsurface hatte keine
+   eigene `input_region`; die der Elternsurface beschneidet sie **nicht**. Dieselbe
+   Falle wie am 27.07., eine Etage tiefer. → **Jede committete Surface braucht ihre
+   eigene gesetzte Region**, nicht die des Elternteils.
+6. **Ein Pfad, der zur Bauzeit aufgelöst wurde.** `env!("CARGO_MANIFEST_DIR")` machte
+   die Prüfung „unverändertes Community-Pet lädt" wertlos: kopiert wurde, gelesen
+   wurden weiter die Repo-Assets. Der Test wäre auch bei zerstörter Kopie grün
+   geblieben.
 
 ---
 
