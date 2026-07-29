@@ -2,6 +2,7 @@
 
 mod control;
 mod diag;
+mod hub;
 mod input;
 mod sprite;
 mod surface;
@@ -19,6 +20,7 @@ use calloop::{
 };
 use control::ControlSocket;
 use diag::{DiagSocket, FaceState};
+use hub::{HubVerbindung, HubZustand};
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
@@ -42,6 +44,7 @@ use wayland_client::{
 struct Optionen {
     diag_socket: Option<PathBuf>,
     control_socket: Option<PathBuf>,
+    hub_socket: Option<PathBuf>,
     sprite_position: Option<(i32, i32)>,
     pet_manifest: Option<PathBuf>,
 }
@@ -77,6 +80,12 @@ where
                     .ok_or_else(|| "--diag-socket braucht einen Pfad".to_string())?;
                 ergebnis.diag_socket = Some(PathBuf::from(wert));
             }
+            "--hub-socket" => {
+                let wert = args
+                    .next()
+                    .ok_or_else(|| "--hub-socket braucht einen Pfad".to_string())?;
+                ergebnis.hub_socket = Some(PathBuf::from(wert));
+            }
             "--control-socket" => {
                 let wert = args
                     .next()
@@ -103,7 +112,7 @@ where
             "--help" | "-h" => {
                 println!(
                     "Verwendung: daimon-face [--diag-socket PFAD] \
-                     [--control-socket PFAD] [--pet-manifest PFAD] \
+                     [--control-socket PFAD] [--hub-socket PFAD] [--pet-manifest PFAD] \
                      [--sprite-position x,y]"
                 );
                 std::process::exit(0);
@@ -199,6 +208,25 @@ impl App {
             Ok(mut zustand) => zustand.sprite = name.to_owned(),
             Err(vergiftet) => vergiftet.into_inner().sprite = name.to_owned(),
         }
+    }
+
+    fn diagnose_hub_setzen(&self, rev: u64, mood: &str) {
+        let mut zustand = match self.diagnose.lock() {
+            Ok(z) => z,
+            Err(vergiftet) => vergiftet.into_inner(),
+        };
+        zustand.rev = rev;
+        zustand.mood = mood.to_owned();
+    }
+
+    /// Uebernimmt einen Hub-Snapshot. `rev` und `mood` sind die Wahrheit des
+    /// Hubs und werden immer gespiegelt; gezeichnet wird nur, wenn sich der
+    /// abgeleitete Sprite tatsaechlich aendert -- `zustand_setzen` steigt bei
+    /// gleichem Namen sofort wieder aus. Ein Hub, der im Sekundentakt zwischen
+    /// `thinking` und `working` wechselt, erzeugt so keinen einzigen Commit.
+    fn hub_zustand_uebernehmen(&mut self, zustand: &hub::HubZustand) {
+        self.diagnose_hub_setzen(zustand.rev, &zustand.mood);
+        self.zustand_setzen(hub::mood_zu_sprite(&zustand.mood));
     }
 
     fn zustand_setzen(&mut self, name: &str) {
@@ -502,6 +530,19 @@ fn main() {
             std::process::exit(2);
         })
     });
+
+    let (hub_sender, hub_channel) = channel::<HubZustand>();
+    handle
+        .insert_source(hub_channel, |event, _, app| {
+            if let ChannelEvent::Msg(zustand) = event {
+                app.hub_zustand_uebernehmen(&zustand);
+            }
+        })
+        .expect("Hub-Kanal konnte nicht in calloop eingefuegt werden");
+    let _hub = optionen
+        .hub_socket
+        .as_deref()
+        .map(|pfad| HubVerbindung::starten(pfad, hub_sender));
 
     // None blockiert bis Wayland oder ein Steuerbefehl den poll()-Aufruf
     // weckt. Es gibt weder Timer noch dauernd neu armierte Frame-Callbacks.

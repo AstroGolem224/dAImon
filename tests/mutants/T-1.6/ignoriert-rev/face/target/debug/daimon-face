@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+"""Mutante ignoriert-rev fuer T-1.6: verhaelt sich an der Oberflaeche wie ein
+vorbildliches Face -- verbindet sich zum Hub, meldet READY, bedient Diagnose-
+und Steuer-Socket (Modus 0600) --, uebernimmt aber nur den ERSTEN Snapshot
+und danach keine neue rev mehr. Der Hub-Zustand bleibt fuer immer der Stand
+beim Verbinden. DAIMON_MAX_SECS begrenzt die Laufzeit (Exit 3).
+"""
+import argparse
+import json
+import os
+import socket
+import threading
+import time
+
+
+def main() -> None:
+    p = argparse.ArgumentParser()
+    p.add_argument("--hub-socket")
+    p.add_argument("--diag-socket", required=True)
+    p.add_argument("--control-socket", required=True)
+    p.add_argument("--pet-manifest")
+    p.add_argument("--sprite-position")
+    args = p.parse_args()
+
+    zustand = {"rev": 0, "mood": "sleeping", "frames": 0, "sprite": "ruhig"}
+    schloss = threading.Lock()
+
+    # Brav verbinden und den ersten Snapshot uebernehmen -- dann nie wieder
+    # lesen. Genau das ist die Mutation: neue rev wird ignoriert. Die
+    # Verbindung bleibt offen (in hub_verbindung gehalten, sonst raeumt sie
+    # der Garbage-Collector ab).
+    hub_verbindung = None
+    if args.hub_socket:
+        try:
+            c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            c.settimeout(5)
+            c.connect(args.hub_socket)
+            snap = json.loads(c.makefile("rb").readline())
+            zustand["rev"] = snap.get("rev", 0)
+            zustand["mood"] = snap.get("mood", "sleeping")
+            zustand["sprite"] = (
+                "dringend"
+                if zustand["mood"] in ("needs_input", "failed")
+                else "ruhig"
+            )
+            hub_verbindung = c
+        except (OSError, ValueError):
+            pass
+
+    def diag_zeile() -> bytes:
+        with schloss:
+            daten = {
+                "v": 1,
+                "rev": zustand["rev"],
+                "mood": zustand["mood"],
+                "sprite": zustand["sprite"],
+                "bubble_visible": False,
+                "last_render_ts": time.monotonic(),
+                "frames_rendered": zustand["frames"],
+            }
+        return (json.dumps(daten) + "\n").encode()
+
+    def bediene_diag(lauscher: socket.socket) -> None:
+        while True:
+            try:
+                verbindung, _ = lauscher.accept()
+            except OSError:
+                return
+            with verbindung:
+                try:
+                    verbindung.sendall(diag_zeile())
+                except OSError:
+                    pass
+
+    def bediene_ctl(lauscher: socket.socket) -> None:
+        while True:
+            try:
+                verbindung, _ = lauscher.accept()
+            except OSError:
+                return
+            with verbindung:
+                try:
+                    zeile = verbindung.makefile("rb").readline().decode().strip()
+                    teile = zeile.split()
+                    if len(teile) == 2 and teile[0] == "state" and teile[1] in (
+                        "ruhig",
+                        "dringend",
+                    ):
+                        with schloss:
+                            zustand["sprite"] = teile[1]
+                            zustand["frames"] += 1
+                        antwort = b"ok\n"
+                    else:
+                        antwort = b"err\n"
+                    verbindung.sendall(antwort)
+                except OSError:
+                    pass
+
+    for pfad, ziel in (
+        (args.diag_socket, bediene_diag),
+        (args.control_socket, bediene_ctl),
+    ):
+        lauscher = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        lauscher.bind(pfad)
+        os.chmod(pfad, 0o600)
+        lauscher.listen(4)
+        threading.Thread(target=ziel, args=(lauscher,), daemon=True).start()
+
+    print(f"READY pid={os.getpid()}", flush=True)
+
+    max_secs = float(os.environ.get("DAIMON_MAX_SECS", "0") or 0)
+    t0 = time.monotonic()
+    while True:
+        if max_secs and time.monotonic() - t0 > max_secs:
+            os._exit(3)
+        time.sleep(0.2)
+
+
+if __name__ == "__main__":
+    main()

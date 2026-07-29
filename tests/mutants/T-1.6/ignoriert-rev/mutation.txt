@@ -1,0 +1,1 @@
+Das Stand-in verbindet sich brav zum Hub und meldet den ersten Snapshot über seinen Diagnose-Socket, übernimmt aber danach keine neue rev mehr — es soll die Akzeptanzkriterien „Diffed auf rev" (Face-rev folgt der Hub-rev nach jedem Wechsel) und „Unbekanntes v → sleeping" sowie die Latenzmessung reißen, weil all das ein Mitgehen mit dem Hub-Zustand verlangt.

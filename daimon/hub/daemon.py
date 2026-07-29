@@ -40,7 +40,12 @@ from daimon.hub.state import HubState
 
 STATE_SOCKET = "state.sock"
 DIAG_SOCKET = "diag.sock"
+EVENTS_SOCKET = "events.sock"
 MAX_ZEILE = 1 << 20  # 1 MiB. Eine Hook-Nutzlast ist Kilobytes gross.
+
+# Wie oft der Push-Endpunkt nachsieht, ob sich `rev` bewegt hat. 50 ms deckelt
+# die Zustellverzoegerung; T-1.6 verlangt p95 < 300 ms, das ist reichlich Luft.
+PUSH_INTERVALL_S = 0.05
 
 
 class Hub:
@@ -161,6 +166,55 @@ class Hub:
                 except OSError:
                     pass
 
+    # -- Push-Socket -------------------------------------------------------
+
+    def _horche_push(self) -> None:
+        """`events.sock`: beim Verbinden sofort ein Snapshot, danach je einer
+        pro `rev`-Aenderung. Der Endpunkt liest nichts vom Client.
+
+        Warum Push und nicht der vorhandene lesende `state.sock`: das Face
+        haengt damit an einem Deskriptor und braucht **keinen Timer**. Die
+        Null-Idle-CPU aus T-1.5 (gemessen: 0,000 % ueber 60 s) war die Zusage,
+        auf der die ganze Overlay-Architektur steht -- ein Poll-Timer im Face
+        haette sie wieder aufgemacht. Nachgesehen wird stattdessen hier, in
+        einem Daemon, der ohnehin Threads haelt.
+        """
+        pfad = self.runtime_dir / EVENTS_SOCKET
+        if pfad.exists():
+            pfad.unlink()
+        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        srv.bind(str(pfad))
+        os.chmod(pfad, 0o600)
+        srv.listen(8)
+        srv.settimeout(0.5)
+        self._server.append(srv)
+        while not self._stop.is_set():
+            try:
+                conn, _ = srv.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            t = threading.Thread(target=self._push_schleife, args=(conn,),
+                                 daemon=True)
+            t.start()
+            self._threads.append(t)
+
+    def _push_schleife(self, conn: socket.socket) -> None:
+        letzte_rev = None
+        with conn:
+            while not self._stop.is_set():
+                schnapp = self.state.snapshot()
+                if schnapp["rev"] != letzte_rev:
+                    try:
+                        conn.sendall(json.dumps(schnapp).encode() + b"\n")
+                    except OSError:
+                        # Client weg. Kein Log: ein Face, das neu startet,
+                        # darf keine Zeile im Journal kosten.
+                        return
+                    letzte_rev = schnapp["rev"]
+                self._stop.wait(PUSH_INTERVALL_S)
+
     # -- Leben --------------------------------------------------------------
 
     def start(self, produzenten: list[str] | None = None) -> None:
@@ -176,6 +230,9 @@ class Hub:
                                  args=(datei, liefere), daemon=True)
             t.start()
             self._threads.append(t)
+        t = threading.Thread(target=self._horche_push, daemon=True)
+        t.start()
+        self._threads.append(t)
         self.log.info("Hub laeuft", DAIMON_ACTION="start",
                       DAIMON_RUNTIME=str(self.runtime_dir))
 
