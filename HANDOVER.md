@@ -158,19 +158,54 @@ Beide mit **Rücknahme-Probe** belegt: Fix raus → Test rot → Fix rein → gr
 
 ---
 
-**Als nächstes: T-1.7** (Auth-Agent mit Absichtsmarken). Die Abhängigkeit T-0.8 steht
-jetzt. Offen darin und noch nicht entschieden:
+---
 
-- **Der GUI-Stack des Auth-Agenten.** Bewusst offen gelassen: der Verifizierer soll die
-  **gerenderte** Region per Pixel- und Textextraktion prüfen, und diese Prüfung lässt
-  sich erst gegen ein echtes Fenster schreiben. Zu bedenken: T−1.11 hat gemessen, dass
-  Qt im Auslieferungszustand **gar keinen** AT-SPI-Baum exportiert —
-  `QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1` wäre nötig. GTK4 exportiert ohne Zutun, bringt
-  aber einen zweiten Toolkit-Stack.
-- **T-1.7.v** ist Umfang L mit fünf Mutanten und geht dem Bauen voraus.
-- Der sicherheitskritische Kern ist der **Vorschau-Sanitizer** aus §2.4: NFC, sichtbares
-  Escapen von Bidi-Overrides und Nullbreitenzeichen, Längenbegrenzung, Zitierung,
-  Markierung verwechselbarer Glyphen. Reine Logik, ohne GUI baubar.
+## T-1.7 — Teil 1 steht, Teil 2 ist das Fenster
+
+**GUI-Stack ist entschieden: GTK4.** Und daraus folgt eine Eigenheit, die man kennen
+muss, bevor man Teil 2 anfängt:
+
+> **Der Auth-Agent läuft unter System-Python 3.14, nicht im venv.** PyGObject liegt nur
+> für 3.14; das venv ist durch T-1.2 auf 3.12 festgenagelt (cuobjdump-Nachweis für
+> `onnxruntime-gpu`, nicht verhandelbar). `gi` ist eine kompilierte Erweiterung — aus
+> dem venv nicht importierbar, auch nicht mit `--system-site-packages`.
+> Deshalb ist `daimon/auth/preview.py` **reines stdlib**: es muss unter beiden
+> Interpretern laufen, damit es im venv getestet und im Dialog benutzt werden kann.
+> Der Auth-Agent ist ohnehin ein eigener Prozess mit eigener systemd-Unit.
+
+**Fertig in Teil 1** (Commit `466e6ef`):
+
+- `daimon/auth/preview.py` — der Sanitizer. **Die Ausgabe ist reines ASCII**, schärfer
+  als §2.4 verlangt: eine Tabelle verwechselbarer Glyphen ist unvollständig, sobald
+  Unicode wächst, und eine unvollständige Sperrliste ist bei einer Sicherheitsanzeige
+  die falsche Fehlerrichtung. NFC zuerst, Backslash verdoppelt, Längengrenze auf die
+  **Ausgabe**, `isascii()`-Wache am Funktionsende.
+- Beschriftungen kommen aus festen Tabellen, `vorschau()` nimmt **Schlüssel statt
+  Texte** — wer keinen Text übergeben kann, kann keinen Modelltext hineinreichen.
+- **Das Face hat keinen Produzenteneintrag mehr.** `"face": {"intent_mark"}` stand in
+  `PRODUZENTEN` — damit war „alle Bestätigungen liegen im Auth-Agenten" nur behauptet.
+  Neu: `"auth": {"intent_mark", "freigabe"}`, und die `turn_id` erzeugt der Hub.
+
+**Was Teil 2 noch bringen muss:** GTK4-Dialog, Push-to-Talk über `kglobalaccel`
+(**Umschaltung, nicht Halten** — keine verlässlichen Loslass-Ereignisse; Zeitlimit als
+Rückfall), `config/systemd/daimon-auth.service`, und die drei Prüfungen, die ein echtes
+Fenster brauchen: PTT-Umschaltung, p95 < 200 ms, und die **gerenderte** Region per
+Pixel- und Textextraktion. Werkzeug dafür ist da: `tesseract` ist installiert, die
+AT-SPI-Registry läuft, und GTK4 exportiert den Baum ohne Zutun (anders als Qt, siehe
+T−1.11).
+
+`tests/verify/T-1.7.sh` deckt Teil 1 ab und **listet am Ende auf, was er nicht prüft**.
+Vier der fünf Plan-Mutanten stehen; `Halten statt Umschaltung` fehlt.
+**Noch nicht eingefroren** — das geht erst nach Teil 2, danach bräuchte jede Ergänzung
+einen neuen `.v`-Task.
+
+> **Offen und benannt: `ears` darf weiterhin `intent_mark` senden.** Design §2.4 erteilt
+> dem Wake-Word nur ein **API-Kontingent**, keine Rundenmarke. Wirkungslos ist es heute
+> — der Hub behandelt den Typ nur auf dem `auth`-Socket, und `MarkenBuch.ausgeben`
+> erzwingt `quelle="auth"` — aber es *behauptet* eine Fähigkeit, die es nicht geben
+> soll. Genau so eine Behauptung war der `face`-Eintrag. Nicht mitentschieden, weil der
+> Ears-Agent noch nicht existiert; der Hinweis steht als Kommentar **direkt an der
+> Tabelle** in `ipc.py`, nicht nur hier.
 
 Vor Gate P1 fehlen weiterhin die Verifizierer `T-1.1.sh` bis `T-1.3.sh`, und der
 Alpha-Test in `input.rs` ist unverdrahtet.
