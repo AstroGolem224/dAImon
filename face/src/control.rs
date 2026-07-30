@@ -98,11 +98,30 @@ fn verbindung_bearbeiten(mut stream: UnixStream, sender: &Sender<String>, lese_t
     let _ = stream.write_all(if ok { b"ok\n" } else { b"err\n" });
 }
 
-fn befehl_parsen(zeile: &str) -> Option<&'static str> {
-    match zeile {
-        "state ruhig\n" => Some("ruhig"),
-        "state dringend\n" => Some("dringend"),
-        _ => None,
+/// Bekannte Hub-Moods. Der Steuer-Socket nimmt sie an, damit T-1.8 pruefbar
+/// ist: der Ton haengt am Mood, und `needs_input` und `failed` sind
+/// derselbe Sprite -- ueber `state dringend` waeren sie nicht zu trennen.
+const MOODS: [&str; 8] = [
+    "sleeping", "idle", "observing", "thinking", "working", "done", "failed",
+    "needs_input",
+];
+
+/// Gibt den weiterzureichenden Befehl zurueck. `state X` liefert den
+/// Sprite-Namen, `mood X` das mit `mood:` vorangestellte Wort -- die
+/// Hauptschleife unterscheidet daran, welchen Weg sie nimmt.
+fn befehl_parsen(zeile: &str) -> Option<String> {
+    // Der Zeilenumbruch ist Teil des Vertrags, nicht Beiwerk: eine halbe
+    // Zeile ist keine Nachricht. `strip_suffix` statt `trim` -- sonst waere
+    // "state ruhig" ohne Abschluss plötzlich gueltig, und ein Client, der
+    // mitten im Senden abbricht, wuerde einen Zustandswechsel ausloesen.
+    let rumpf = zeile.strip_suffix('\n')?;
+    match rumpf {
+        "state ruhig" => Some("ruhig".to_owned()),
+        "state dringend" => Some("dringend".to_owned()),
+        _ => rumpf
+            .strip_prefix("mood ")
+            .filter(|name| MOODS.contains(name))
+            .map(|name| format!("mood:{name}")),
     }
 }
 
@@ -133,9 +152,21 @@ mod tests {
     }
 
     #[test]
+    fn mood_wird_erkannt_und_unbekanntes_abgelehnt() {
+        assert_eq!(
+            befehl_parsen("mood needs_input\n").as_deref(),
+            Some("mood:needs_input")
+        );
+        assert_eq!(befehl_parsen("mood failed\n").as_deref(), Some("mood:failed"));
+        assert_eq!(befehl_parsen("mood gibt-es-nicht\n"), None);
+        assert_eq!(befehl_parsen("mood\n"), None);
+        assert_eq!(befehl_parsen("mood \n"), None);
+    }
+
+    #[test]
     fn nur_bekannte_exakte_befehle_werden_angenommen() {
-        assert_eq!(befehl_parsen("state ruhig\n"), Some("ruhig"));
-        assert_eq!(befehl_parsen("state dringend\n"), Some("dringend"));
+        assert_eq!(befehl_parsen("state ruhig\n").as_deref(), Some("ruhig"));
+        assert_eq!(befehl_parsen("state dringend\n").as_deref(), Some("dringend"));
         assert_eq!(befehl_parsen("state panik\n"), None);
         assert_eq!(befehl_parsen("state ruhig extra\n"), None);
         assert_eq!(befehl_parsen("state ruhig"), None);

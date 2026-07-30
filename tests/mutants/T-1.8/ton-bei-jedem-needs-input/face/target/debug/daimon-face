@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""Mutant fuer T-1.8: der Ton haengt am Zustand statt am UEBERGANG.
+
+Stand-in fuer das Face. Es erfuellt den Vertrag (READY, Diagnose-Socket 0600,
+Steuer-Socket mit `mood`, `--ton`/DAIMON_FACE_TON) bis auf eine Stelle: es
+zaehlt einen Ton bei JEDEM `needs_input`, nicht nur beim Wechsel dorthin.
+
+Die Plan-Folge needs_input, needs_input, done, failed, needs_input ergibt
+damit 3 statt 2. Genau das soll der Verifizierer fangen.
+
+Es ruft einen Abspieler tatsaechlich auf -- sonst wuerde es an der Pruefung
+"es wurde wirklich ein Abspieler gestartet" scheitern und ueber die
+Ausloeseregel, um die es hier geht, gar nichts aussagen.
+"""
+
+import json
+import os
+import shutil
+import socket
+import subprocess
+import stat
+import sys
+import threading
+import time
+
+MOODS = {"sleeping", "idle", "observing", "thinking", "working",
+         "done", "failed", "needs_input"}
+
+zustand = {
+    "v": 1, "rev": 0, "mood": "sleeping", "sprite": "ruhig",
+    "bubble_visible": False, "last_render_ts": 0.0,
+    "frames_rendered": 2, "toene_gespielt": 0,
+}
+sperre = threading.Lock()
+
+
+def argumente():
+    ton = None
+    diag = ctl = None
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--diag-socket":
+            i += 1; diag = args[i]
+        elif a == "--control-socket":
+            i += 1; ctl = args[i]
+        elif a == "--ton":
+            i += 1; ton = args[i]
+        elif a in ("--hub-socket", "--pet-manifest", "--sprite-position"):
+            i += 1
+        i += 1
+    if ton is None:
+        umgebung = os.environ.get("DAIMON_FACE_TON")
+        ton = "aus" if umgebung == "0" else "ein"
+    if ton not in ("ein", "aus"):
+        print(f"ungueltiger Wert fuer --ton: {ton}", file=sys.stderr)
+        sys.exit(2)
+    return diag, ctl, ton == "ein"
+
+
+def bediene_diag(pfad):
+    if os.path.exists(pfad):
+        os.unlink(pfad)
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(pfad)
+    os.chmod(pfad, stat.S_IRUSR | stat.S_IWUSR)
+    srv.listen(8)
+    while True:
+        conn, _ = srv.accept()
+        with conn, sperre:
+            try:
+                conn.sendall(json.dumps(zustand).encode() + b"\n")
+            except OSError:
+                pass
+
+
+def bediene_ctl(pfad, ton_an):
+    if os.path.exists(pfad):
+        os.unlink(pfad)
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(pfad)
+    os.chmod(pfad, stat.S_IRUSR | stat.S_IWUSR)
+    srv.listen(8)
+    while True:
+        conn, _ = srv.accept()
+        with conn:
+            conn.settimeout(3)
+            try:
+                zeile = conn.makefile("rb").readline().decode().strip()
+            except OSError:
+                continue
+            antwort = b"err\n"
+            teile = zeile.split()
+            if len(teile) == 2 and teile[0] == "mood" and teile[1] in MOODS:
+                neu = teile[1]
+                with sperre:
+                    zustand["rev"] += 1
+                    zustand["mood"] = neu
+                    zustand["sprite"] = ("dringend"
+                                         if neu in ("needs_input", "failed")
+                                         else "ruhig")
+                    # DIE MUTATION: kein Vergleich mit dem vorherigen Mood.
+                    # Jeder needs_input zaehlt, auch der wiederholte.
+                    if ton_an and neu == "needs_input":
+                        # Der Mutant SPIELT wirklich ab -- er ist nur ueber
+                        # das WANN falsch. Ein Stand-in, das gar nichts
+                        # abspielt, fiele aus dem falschen Grund durch und
+                        # bewiese ueber die Auslöseregel nichts.
+                        for programm in ("canberra-gtk-play", "paplay"):
+                            pfad = shutil.which(programm)
+                            if pfad:
+                                subprocess.run([pfad, "-i", "x"],
+                                               stdout=subprocess.DEVNULL,
+                                               stderr=subprocess.DEVNULL,
+                                               check=False)
+                                break
+                        zustand["toene_gespielt"] += 1
+                        zustand["last_render_ts"] = time.time()
+                antwort = b"ok\n"
+            elif len(teile) == 2 and teile[0] == "state" and teile[1] in ("ruhig", "dringend"):
+                with sperre:
+                    zustand["sprite"] = teile[1]
+                    zustand["rev"] += 1
+                antwort = b"ok\n"
+            try:
+                conn.sendall(antwort)
+            except OSError:
+                pass
+
+
+def watchdog():
+    sekunden = int(os.environ.get("DAIMON_MAX_SECS", "90"))
+    time.sleep(sekunden)
+    os._exit(3)
+
+
+def main():
+    diag, ctl, ton_an = argumente()
+    threading.Thread(target=watchdog, daemon=True).start()
+    if diag:
+        threading.Thread(target=bediene_diag, args=(diag,), daemon=True).start()
+    if ctl:
+        threading.Thread(target=bediene_ctl, args=(ctl, ton_an), daemon=True).start()
+    for _ in range(100):
+        if (not diag or os.path.exists(diag)) and (not ctl or os.path.exists(ctl)):
+            break
+        time.sleep(0.05)
+    print(f"READY pid={os.getpid()}", flush=True)
+    while True:
+        time.sleep(3600)
+
+
+if __name__ == "__main__":
+    main()

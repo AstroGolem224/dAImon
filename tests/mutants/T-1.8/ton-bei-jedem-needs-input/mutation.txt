@@ -1,0 +1,1 @@
+Das Stand-in zaehlt einen Ton bei JEDEM needs_input statt nur beim UEBERGANG dorthin. Die Plan-Folge needs_input, needs_input, done, failed, needs_input ergibt damit 3 statt 2. Das soll das Akzeptanzkriterium "Kein Ton bei done, failed oder wiederholtem needs_input" reissen.

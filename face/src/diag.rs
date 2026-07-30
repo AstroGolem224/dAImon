@@ -30,6 +30,8 @@ pub struct FaceState {
     /// Unix-Zeit des letzten *Commits*. 0 = noch nie gezeichnet.
     pub last_render_ts: f64,
     pub frames_rendered: u64,
+    /// T-1.8: wie oft ein Ton tatsaechlich gestartet wurde.
+    pub toene_gespielt: u64,
 }
 
 impl FaceState {
@@ -38,14 +40,15 @@ impl FaceState {
             concat!(
                 "{{\"v\":1,\"rev\":{},\"mood\":\"{}\",\"sprite\":\"{}\",",
                 "\"bubble_visible\":{},\"last_render_ts\":{:.6},",
-                "\"frames_rendered\":{}}}"
+                "\"frames_rendered\":{},\"toene_gespielt\":{}}}"
             ),
             self.rev,
             escape(&self.mood),
             escape(&self.sprite),
             self.bubble_visible,
             self.last_render_ts,
-            self.frames_rendered
+            self.frames_rendered,
+            self.toene_gespielt
         )
     }
 
@@ -127,9 +130,11 @@ mod tests {
             bubble_visible: true,
             last_render_ts: 1.5,
             frames_rendered: 7,
+            toene_gespielt: 3,
         };
         let j = s.als_json();
         for feld in [
+            "toene_gespielt",
             "rev",
             "mood",
             "sprite",

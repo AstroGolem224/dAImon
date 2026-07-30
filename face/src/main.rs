@@ -4,6 +4,7 @@ mod control;
 mod diag;
 mod hub;
 mod input;
+mod sound;
 mod sprite;
 mod surface;
 
@@ -32,6 +33,7 @@ use smithay_client_toolkit::{
     shm::{slot::SlotPool, Shm, ShmHandler},
     subcompositor::SubcompositorState,
 };
+use sound::Tonspieler;
 use sprite::{zustand_abbilden, SpriteAtlas};
 use surface::OverlaySurface;
 use wayland_client::{
@@ -45,6 +47,7 @@ struct Optionen {
     diag_socket: Option<PathBuf>,
     control_socket: Option<PathBuf>,
     hub_socket: Option<PathBuf>,
+    ton: Option<bool>,
     sprite_position: Option<(i32, i32)>,
     pet_manifest: Option<PathBuf>,
 }
@@ -80,6 +83,16 @@ where
                     .ok_or_else(|| "--diag-socket braucht einen Pfad".to_string())?;
                 ergebnis.diag_socket = Some(PathBuf::from(wert));
             }
+            "--ton" => {
+                let wert = args
+                    .next()
+                    .ok_or_else(|| "--ton braucht ein|aus".to_string())?;
+                ergebnis.ton = Some(match wert.as_str() {
+                    "ein" => true,
+                    "aus" => false,
+                    _ => return Err(format!("--ton braucht ein|aus, war: {wert}")),
+                });
+            }
             "--hub-socket" => {
                 let wert = args
                     .next()
@@ -113,6 +126,7 @@ where
                 println!(
                     "Verwendung: daimon-face [--diag-socket PFAD] \
                      [--control-socket PFAD] [--hub-socket PFAD] [--pet-manifest PFAD] \
+                     [--ton ein|aus] \
                      [--sprite-position x,y]"
                 );
                 std::process::exit(0);
@@ -186,6 +200,8 @@ struct App {
     overlay: Option<OverlaySurface>,
     diagnose: Arc<Mutex<FaceState>>,
     aktueller_zustand: String,
+    aktueller_mood: String,
+    ton: Tonspieler,
     beendet: bool,
 }
 
@@ -225,8 +241,27 @@ impl App {
     /// gleichem Namen sofort wieder aus. Ein Hub, der im Sekundentakt zwischen
     /// `thinking` und `working` wechselt, erzeugt so keinen einzigen Commit.
     fn hub_zustand_uebernehmen(&mut self, zustand: &hub::HubZustand) {
+        // Der Ton haengt am MOOD und am UEBERGANG, nicht am Sprite:
+        // `needs_input` und `failed` sind beide `dringend`, und ein
+        // spritebasierter Ausloeser piepte bei jedem Fehlschlag.
+        if sound::loest_ton_aus(&self.aktueller_mood, &zustand.mood) && self.ton.spielen() {
+            match self.diagnose.lock() {
+                Ok(mut d) => d.toene_gespielt += 1,
+                Err(vergiftet) => vergiftet.into_inner().toene_gespielt += 1,
+            }
+        }
+        self.aktueller_mood = zustand.mood.clone();
         self.diagnose_hub_setzen(zustand.rev, &zustand.mood);
         self.zustand_setzen(hub::mood_zu_sprite(&zustand.mood));
+    }
+
+    /// Fuer den Steuer-Socket: zaehlt die rev weiter, damit ein per `mood`
+    /// gesetzter Zustand von aussen genauso aussieht wie einer vom Hub.
+    fn naechste_rev(&self) -> u64 {
+        match self.diagnose.lock() {
+            Ok(d) => d.rev + 1,
+            Err(vergiftet) => vergiftet.into_inner().rev + 1,
+        }
     }
 
     fn zustand_setzen(&mut self, name: &str) {
@@ -471,6 +506,27 @@ fn main() {
         .as_deref()
         .and_then(|pfad| DiagSocket::starten(pfad, Arc::clone(&diagnose)));
 
+    // Kommandozeile gewinnt ueber die Umgebung. Ein ungueltiger Wert ist
+    // oben schon Exit 2 -- ein stilles Standardverhalten waere bei einer
+    // abschaltbaren Zusage die falsche Fehlerrichtung.
+    let ton_an = match optionen.ton {
+        Some(wert) => wert,
+        None => match std::env::var("DAIMON_FACE_TON") {
+            Err(_) => true,
+            Ok(wert) => match wert.as_str() {
+                "0" => false,
+                "1" => true,
+                // Kein stilles Standardverhalten bei einem Tippfehler: wer
+                // den Ton abschalten will und sich vertippt, bekaeme ihn
+                // sonst weiter zu hoeren und haette keinen Hinweis darauf.
+                _ => {
+                    eprintln!("DAIMON_FACE_TON braucht 0 oder 1, war: {wert}");
+                    std::process::exit(2);
+                }
+            },
+        },
+    };
+
     let mut app = App {
         registry_state: RegistryState::new(&globals),
         output_state: OutputState::new(&globals, &qh),
@@ -483,6 +539,8 @@ fn main() {
         overlay: None,
         diagnose,
         aktueller_zustand: "ruhig".into(),
+        aktueller_mood: "sleeping".into(),
+        ton: Tonspieler::neu(ton_an),
         beendet: false,
     };
 
@@ -519,8 +577,20 @@ fn main() {
     let (control_sender, control_channel) = channel::<String>();
     handle
         .insert_source(control_channel, |event, _, app| {
-            if let ChannelEvent::Msg(zustand) = event {
-                app.zustand_setzen(&zustand);
+            if let ChannelEvent::Msg(befehl) = event {
+                match befehl.strip_prefix("mood:") {
+                    // Derselbe Weg wie ein Hub-Snapshot: ein zweiter,
+                    // eigener Pfad wuerde etwas anderes pruefen als den
+                    // Ernstfall.
+                    Some(mood) => {
+                        let rev = app.naechste_rev();
+                        app.hub_zustand_uebernehmen(&HubZustand {
+                            rev,
+                            mood: mood.to_owned(),
+                        });
+                    }
+                    None => app.zustand_setzen(&befehl),
+                }
             }
         })
         .expect("Control-Kanal konnte nicht in calloop eingefuegt werden");
