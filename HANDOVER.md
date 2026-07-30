@@ -186,18 +186,33 @@ muss, bevor man Teil 2 anfängt:
   `PRODUZENTEN` — damit war „alle Bestätigungen liegen im Auth-Agenten" nur behauptet.
   Neu: `"auth": {"intent_mark", "freigabe"}`, und die `turn_id` erzeugt der Hub.
 
-**Was Teil 2 noch bringen muss:** GTK4-Dialog, Push-to-Talk über `kglobalaccel`
-(**Umschaltung, nicht Halten** — keine verlässlichen Loslass-Ereignisse; Zeitlimit als
-Rückfall), `config/systemd/daimon-auth.service`, und die drei Prüfungen, die ein echtes
-Fenster brauchen: PTT-Umschaltung, p95 < 200 ms, und die **gerenderte** Region per
-Pixel- und Textextraktion. Werkzeug dafür ist da: `tesseract` ist installiert, die
-AT-SPI-Registry läuft, und GTK4 exportiert den Baum ohne Zutun (anders als Qt, siehe
-T−1.11).
+**Teil 2 ist fertig** (Commit `2fa2350`), `tests/verify/T-1.7.sh` ist **eingefroren**,
+alle fünf Plan-Mutanten werden erkannt. `daimon/auth/ptt.py` (Umschaltautomat, stdlib,
+venv-testbar), `daimon/auth/agent.py` (GTK4, System-Python), `config/systemd/daimon-auth.service`.
 
-`tests/verify/T-1.7.sh` deckt Teil 1 ab und **listet am Ende auf, was er nicht prüft**.
-Vier der fünf Plan-Mutanten stehen; `Halten statt Umschaltung` fehlt.
-**Noch nicht eingefroren** — das geht erst nach Teil 2, danach bräuchte jede Ergänzung
-einen neuen `.v`-Task.
+### Vier Dinge, die man wissen muss, bevor man hier weitermacht
+
+1. **`kglobalaccel` schweigt bei `flags=0`.** `setShortcut` nimmt die Bindung an und
+   meldet Erfolg, aber das Signal kommt nie — weder bei `invokeShortcut` noch bei einem
+   echten Tastendruck. Der `flags`-Parameter steuert `setPresent`; mit 0 wird die
+   Verknüpfung nie scharf. **`SetPresent=2`** (hier `flags=6`) lässt die Kette laufen.
+2. **Ein Wayland-Client kennt seine eigene Bildschirmposition nicht.** AT-SPI meldet für
+   das Fenster `(0, 0)` — das Protokoll gibt sie ihm nicht. Ein Screenshot-Zuschnitt auf
+   diese Koordinaten fotografiert die linke obere Bildschirmecke. Weil die sich nicht
+   ändert, kommt zweimal dasselbe Bild heraus, und das sieht aus wie ein kaputter
+   Sanitizer. **`spectacle -a`** nimmt das aktive Fenster, ganz ohne Koordinaten.
+3. **Screenshots gehen nur über `spectacle`.** `grim` scheitert (KWin implementiert
+   `wlr-screencopy` nicht), und `org.kde.KWin.ScreenShot2` weist einen beliebigen
+   `python3` mit *„The process is not authorized to take a screenshot"* ab — die
+   Schnittstelle prüft das aufrufende Programm.
+4. **`jq -r '.feld // empty'` behandelt `false` wie `null`.** Ein Vergleich gegen
+   `"false"` ist damit immer leer. Hat im Verifizierer eine echte Prüfung entwertet.
+
+**OCR ist kein Kriterium**, sondern ein Hinweis: `/usr/share/tessdata` hat nur `afr` und
+`osd`, keine lateinischen Sprachdaten, und damit scheitert die OCR-Positivkontrolle.
+Nachrüstbar mit `pacman -S tesseract-data-eng`. Die Zusage wird stattdessen direkt
+gemessen — derselbe Dialog zweimal aufgenommen ergibt **0** Unterschied, der
+verwechselbare Pfad gegen den harmlosen **43 498 700**.
 
 > **Offen und benannt: `ears` darf weiterhin `intent_mark` senden.** Design §2.4 erteilt
 > dem Wake-Word nur ein **API-Kontingent**, keine Rundenmarke. Wirkungslos ist es heute
