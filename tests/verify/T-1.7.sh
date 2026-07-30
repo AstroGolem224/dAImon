@@ -614,8 +614,63 @@ PYEOF
         magick compare -metric AE "$1" "$2" null: 2>&1 | tr -d '\n' \
           | grep -oE '^[0-9.e+-]+' | awk '{printf "%.0f", $1+0}'
       }
+      # Gehoert das AKTIVE Fenster dem Agenten?
+      #
+      # `spectacle -a` nimmt das aktive Fenster. Wandert der Fokus zwischen
+      # zwei Aufnahmen -- Benachrichtigung, anderer Prozess, Spectacle selbst
+      # --, wird ein fremdes Fenster geknipst, und der Vergleich misst zwei
+      # verschiedene Dinge. Genau das hat die Positivkontrolle etwa jeden
+      # zweiten Lauf reissen lassen: Rauschen normalerweise 0, gelegentlich
+      # 13 331 100. Das Kriterium stimmte, die Kamera nicht.
+      #
+      # AT-SPI kennt den ACTIVE-Zustand jedes Fensters und die PID seiner
+      # Anwendung. Das ist der richtige Anker. Ein Vergleich der BILDMASSE
+      # waere es nicht: AT-SPI meldet die Client-Flaeche (hier 612x173),
+      # spectacle liefert Rahmen und Schatten mit (742x331) -- die weichen
+      # legitim voneinander ab.
+      #
+      # Bewusst NICHT: den Fokus selbst erzwingen. Ein Test, der sich seine
+      # Bedingungen herstellt, prueft weniger als einer, der sie vorfindet.
+      aktiv_gehoert_agent() { "$SYSPY" - "$agent_pid" <<'AKTIVEOF'
+import sys
+import gi
+gi.require_version("Atspi", "2.0")
+from gi.repository import Atspi
+
+pid = int(sys.argv[1])
+Atspi.init()
+desktop = Atspi.get_desktop(0)
+for i in range(desktop.get_child_count()):
+    try:
+        app = desktop.get_child_at_index(i)
+    except Exception:
+        continue
+    for j in range(app.get_child_count()):
+        try:
+            fenster = app.get_child_at_index(j)
+            if not fenster.get_state_set().contains(Atspi.StateType.ACTIVE):
+                continue
+            print("ja" if app.get_process_id() == pid else "nein")
+            sys.exit(0)
+        except Exception:
+            continue
+print("nein")
+AKTIVEOF
+      }
+
       aufnehmen() {
-        timeout 60 spectacle -a -b -n -o "$tmp/$1.png" >/dev/null 2>&1
+        local ziel="$1" versuch
+        for versuch in 1 2 3 4 5; do
+          if [[ "$(aktiv_gehoert_agent)" == ja ]]; then
+            timeout 60 spectacle -a -b -n -o "$tmp/$ziel.png" >/dev/null 2>&1 || return 1
+            # Nach der Aufnahme noch einmal: der Fokus koennte waehrend des
+            # Schusses gewandert sein.
+            [[ "$(aktiv_gehoert_agent)" == ja ]] && return 0
+          fi
+          sleep 0.8
+        done
+        echo "  INFO Aufnahme '$ziel': das aktive Fenster gehoert nicht dem Agenten" >&2
+        return 1
       }
 
       actl 'schliessen' >/dev/null; sleep 0.6
