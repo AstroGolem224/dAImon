@@ -13,7 +13,7 @@ noch) ist überholt und ersetzt.
 |---|---|
 | **Gate P−1** | **8 von 9 grün**. Rot nur `T--1.12` — Messung nicht gelaufen, korrekt so |
 | **Gate P0** | **11 von 11 grün**, `verify-frozen` sauber, `pytest` 154 grün + 4 dokumentiert rot |
-| **Phase 1** | T-1.1 bis T-1.6 stehen, am laufenden Prozess belegt. **Das MVP läuft: das Pet reagiert auf echte Sitzungen.** |
+| **Phase 1** | T-1.1 bis T-1.8 stehen, am laufenden Prozess belegt. **Das MVP läuft: das Pet reagiert auf echte Sitzungen.** |
 
 Dokumente: `docs/DESIGN.md` v5.4, `docs/IMPLEMENTATION-PLAN.md` v3.3,
 `docs/feasibility-decisions.md` (Entscheidungsprotokoll aus T−1.7),
@@ -221,6 +221,51 @@ verwechselbare Pfad gegen den harmlosen **43 498 700**.
 > soll. Genau so eine Behauptung war der `face`-Eintrag. Nicht mitentschieden, weil der
 > Ears-Agent noch nicht existiert; der Hinweis steht als Kommentar **direkt an der
 > Tabelle** in `ipc.py`, nicht nur hier.
+
+---
+
+## T-1.8 — Ton bei `needs_input`
+
+Fertig (Commit `5974d94`). `face/src/sound.rs`, Ton über einen abgekoppelten
+Fremdprozess (`canberra-gtk-play`, Rückfall `paplay`) — **kein Audio-Crate**, aus
+demselben Grund wie kein GPU-Stack. Abschaltbar über `--ton ein|aus` und
+`DAIMON_FACE_TON`; ungültiger Wert ist Exit 2. Der Steuer-Socket kennt jetzt
+`mood <name>`, weil `state dringend` `needs_input` und `failed` nicht trennt.
+
+**Der Ton hängt am Mood und am Übergang, nie am Sprite** — beide bilden auf
+`dringend` ab, und ein spritebasierter Auslöser piepte bei jedem Fehlschlag.
+
+> **Dieser Task hatte keinen unabhängigen Builder.** Beide Subagenten waren beim
+> Bauen weg (codex am Limit, kimi mit 429). Verifizierer und Mutant standen davor
+> und unabhängig, die Trennung, die zählt, ist also erhalten. Das Gegenlesen wurde
+> nachgeholt, sobald codex zurück war — **zwei Runden, neun Befunde, alle
+> abgearbeitet**. Der wichtigste: der Verifizierer beobachtete nur den vom
+> Prüfling **selbst geführten** Zähler. Ein Prüfling, der gar keinen Ton startet
+> und bloß hochzählt, hätte jede Prüfung bestanden. Jetzt schiebt der Verifizierer
+> Attrappen in den `PATH` und gleicht echte Aufrufe gegen den Zähler ab — **je
+> Übergang**, nicht als Summe.
+
+---
+
+## ⚠ Offener Mangel: `T-1.7.sh` ist flakig, und er ist eingefroren
+
+Die Positivkontrolle der Pixelprobe („zwei Aufnahmen desselben Dialogs sind
+gleich") schlägt **etwa jeden zweiten Lauf** fehl. Gemessen: Rauschen normalerweise
+`0`, gelegentlich `13 331 100`.
+
+**Ursache:** `spectacle -a` nimmt das **aktive** Fenster. Wandert der Fokus
+zwischen den beiden Aufnahmen — Benachrichtigung, anderer Prozess, Spectacle
+selbst — wird ein anderes Fenster geknipst, und der Vergleich misst zwei
+verschiedene Dinge.
+
+**Das Kriterium selbst ist in Ordnung**, die Kamera ist es nicht. Die eigentliche
+Aussage (verwechselbarer gegen harmlosen Pfad: 43–57 Mio Unterschied) war in jedem
+Lauf stabil.
+
+**Zu tun:** Das ist ein eingefrorener Verifizierer — die Korrektur braucht einen
+neuen `.v`-Task mit Mutationstest, nicht eine stille Änderung. Naheliegender Fix:
+vor jeder Aufnahme prüfen, dass das aktive Fenster wirklich das des Agenten ist
+(AT-SPI kennt den Fenstertitel), und sonst wiederholen statt zu messen.
 
 Vor Gate P1 fehlen weiterhin die Verifizierer `T-1.1.sh` bis `T-1.3.sh`, und der
 Alpha-Test in `input.rs` ist unverdrahtet.
