@@ -13,7 +13,7 @@ noch) ist überholt und ersetzt.
 |---|---|
 | **Gate P−1** | **8 von 9 grün**. Rot nur `T--1.12` — Messung nicht gelaufen, korrekt so |
 | **Gate P0** | **11 von 11 grün**, `verify-frozen` sauber, `pytest` 154 grün + 4 dokumentiert rot |
-| **Phase 1** | T-1.1 bis T-1.8 stehen, am laufenden Prozess belegt. **Das MVP läuft: das Pet reagiert auf echte Sitzungen.** |
+| **Phase 1** | T-1.1 bis T-1.9 stehen, am laufenden Prozess belegt. **Das MVP läuft: das Pet reagiert auf echte Sitzungen.** |
 
 Dokumente: `docs/DESIGN.md` v5.4, `docs/IMPLEMENTATION-PLAN.md` v3.3,
 `docs/feasibility-decisions.md` (Entscheidungsprotokoll aus T−1.7),
@@ -43,7 +43,8 @@ Phase 1: T-1.7 wäre ohne Marken, Freigaben und Ticketbuch die Hülle einer
 Sicherheitsgrenze gewesen. `T-0.8.sh` ist **eingefroren**, **sechs** Mutanten werden
 erkannt — die fünf aus dem Plan plus `turn-id-wiederverwendbar` aus einem Review-Befund.
 
-**Noch aufgeschoben:** T-0.10 (Gegendruck), T-0.14 (systemd-Units).
+**T-0.14 ist nachgeholt** (Commit `36a3dff`), zusammen mit **T-1.9**. Vier Units,
+`T-0.14.sh` eingefroren. **Noch aufgeschoben:** nur T-0.10 (Gegendruck).
 
 **Eingefroren** (`tests/verify/FROZEN`): `T-0.0`, `T-0.7`, `T-0.11`. Änderungen daran
 brauchen einen neuen `.v`-Task mit Mutationstest; der pre-commit-Hook lässt sie sonst
@@ -247,25 +248,54 @@ demselben Grund wie kein GPU-Stack. Abschaltbar über `--ton ein|aus` und
 
 ---
 
-## ⚠ Offener Mangel: `T-1.7.sh` ist flakig, und er ist eingefroren
+## T-1.7.v2 — die flakige Pixelprobe, erledigt
 
-Die Positivkontrolle der Pixelprobe („zwei Aufnahmen desselben Dialogs sind
-gleich") schlägt **etwa jeden zweiten Lauf** fehl. Gemessen: Rauschen normalerweise
-`0`, gelegentlich `13 331 100`.
+`T-1.7.sh` fiel etwa jeden zweiten Lauf durch. Behoben über den vorgesehenen Weg:
+FROZEN-Zeile gelöst, geändert, `meta.sh`, neu eingefroren (Commit `ed27776`).
 
-**Ursache:** `spectacle -a` nimmt das **aktive** Fenster. Wandert der Fokus
-zwischen den beiden Aufnahmen — Benachrichtigung, anderer Prozess, Spectacle
-selbst — wird ein anderes Fenster geknipst, und der Vergleich misst zwei
-verschiedene Dinge.
+`spectacle -a` nimmt das **aktive** Fenster; wandert der Fokus zwischen zwei
+Aufnahmen, werden zwei verschiedene Fenster verglichen. Jetzt prüft AT-SPI vor *und*
+nach jeder Aufnahme, ob das aktive Fenster dem Agenten gehört (`StateType.ACTIVE`
+plus PID), sonst wird wiederholt. Fünf Läufe: Exit 0, Rauschen 0, Unterschied jedes
+Mal exakt 43 498 700.
 
-**Das Kriterium selbst ist in Ordnung**, die Kamera ist es nicht. Die eigentliche
-Aussage (verwechselbarer gegen harmlosen Pfad: 43–57 Mio Unterschied) war in jedem
-Lauf stabil.
+> **Der erste Fix war falsch:** Bildmaße gegen AT-SPI-Maße prüfen. AT-SPI meldet die
+> **Client-Fläche** (612×173), `spectacle` liefert Rahmen und Schatten mit (742×331) —
+> das Verhältnis ist nicht einmal konstant. Ein Vergleich, der eine Übereinstimmung
+> erwartete, die es nie gab.
 
-**Zu tun:** Das ist ein eingefrorener Verifizierer — die Korrektur braucht einen
-neuen `.v`-Task mit Mutationstest, nicht eine stille Änderung. Naheliegender Fix:
-vor jeder Aufnahme prüfen, dass das aktive Fenster wirklich das des Agenten ist
-(AT-SPI kennt den Fenstertitel), und sonst wiederholen statt zu messen.
+---
+
+## T-0.14 und T-1.9 — die Units laufen
+
+Vier Units: `daimon-hub`, `daimon-hookbridge`, `daimon-focus`, `daimon-face`, alle
+nach ~/.config/systemd/user installiert und aktiv. `systemd-analyze security`: Hub
+**3.6 OK**, Face **3.6 OK**. Details in [docs/INSTALL.md](docs/INSTALL.md).
+
+**Die Bridge hat eine eigene Unit**, und das ist der Punkt: sie hält den einzigen
+TCP-Listener und braucht `AF_INET`. Im Hub-Prozess würde sie dessen
+`RestrictAddressFamilies=AF_UNIX` unmöglich machen.
+
+### Vier Dinge, die man wissen muss
+
+1. **`InaccessiblePaths=` ohne `-`-Präfix tötet die Unit**, wenn der Pfad fehlt —
+   `status=226/NAMESPACE`, alle Units auf einmal, weil `~/.gnupg` hier nicht existiert.
+   Mit `-%h/.gnupg` werden fehlende Pfade übergangen. Design §7.5 nennt den Pfad, nicht
+   die Fallstricke seiner Schreibweise.
+2. **`PR_SET_DUMPABLE=0` sperrt `/proc/<pid>/fd`** — auch für Prüfungen. Eine
+   Positivkontrolle, die dort liest, hält eine erfolgreiche Härtung für einen Befund.
+3. **curl-Exitcodes taugen nicht als Sandbox-Beleg.** Bei nicht erreichbarem Ziel
+   liefern beide Varianten `rc=7`; gleiche Codes sehen aus wie „die Beschränkung
+   bewirkt nichts". Messbar ist es eine Ebene tiefer: unter `AF_UNIX` lässt sich ein
+   AF_INET-Socket gar nicht erst anlegen (rc=0 gegen rc=9).
+4. **DBus-Objekte brauchen starke Referenzen.** In `focus.py` wurden `BusName` und
+   Objekt weggeräumt, der Busname freigegeben, und `Type=dbus` hielt den Dienst für
+   gescheitert. Von Hand gestartet fällt das nicht auf.
+
+`tests/verify/T-1.9.sh` prüft am laufenden Dienst: `frames_rendered > 0` (ein Face,
+das nur den Socket anlegt und nie zeichnet, wäre sonst grün) und `Restart=on-failure`
+per `kill -9` mit anschließend neuer MainPID.
+
 
 Vor Gate P1 fehlen weiterhin die Verifizierer `T-1.1.sh` bis `T-1.3.sh`, und der
 Alpha-Test in `input.rs` ist unverdrahtet.
