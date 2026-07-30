@@ -1,0 +1,64 @@
+# dAImon Auth-Agent (T-1.7): GTK4-Bestaetigungsdialog und Push-to-Talk.
+#
+# Haertung nach Design 7.5 (Basis + Zeile "auth": ProtectHome=read-only,
+# kein Netz, kein Modellkanal). Jede Direktive ist begruendet, damit eine
+# spaetere "Vereinfachung" sichtbar wird, welche Schutzschicht sie abtraegt.
+#
+# Installation: systemctl --user link <dieser Pfad>; systemctl --user start daimon-auth
+
+[Unit]
+Description=dAImon Auth-Agent (Bestaetigungsdialoge, Push-to-Talk)
+# Der Agent zeigt Fenster und braucht DBus/Wayland der Sitzung.
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+
+# WICHTIG: System-Python, NICHT das Projekt-venv. PyGObject (gi) ist eine
+# kompilierte Erweiterung und liegt nur im System-Python 3.14; das venv ist
+# auf 3.12 festgenagelt (T-1.2) und kann gi nicht importieren. Wer hier den
+# venv-Pfad "repariert", bekommt einen Agenten, der beim Start stirbt --
+# das ist der Grund fuer den absoluten System-Pfad.
+ExecStart=/usr/bin/python3 %h/Dokumente/Github/dAImon/daimon/auth/agent.py \
+    --hub-socket %t/daimon/auth.sock \
+    --diag-socket %t/daimon/auth-diag.sock \
+    --control-socket %t/daimon/auth-control.sock
+
+# Produktivbetrieb: der DAIMON_MAX_SECS-Watchdog (Notbremse fuer manuelle
+# Laeufe, Vorgabe 90 s) ist hier aus -- systemd uebernimmt mit Restart.
+Environment=DAIMON_MAX_SECS=0
+Restart=on-failure
+RestartSec=2
+
+# Kein neue Privilegien erwerben: der Agent bestaetigt Aktionen, er fuehrt
+# sie nicht aus.
+NoNewPrivileges=yes
+# Leere Capability-Menge: Unix-Sockets, DBus und Wayland brauchen keine.
+CapabilityBoundingSet=
+# Systemverzeichnisse nur lesen; geschrieben wird ausschliesslich in das
+# Runtime-Verzeichnis unten.
+ProtectSystem=strict
+# Die drei Sockets (Hub-Anbindung, Diagnose, Steuerung) liegen hier.
+ReadWritePaths=%t/daimon
+# Home nur lesen (Design 7.5, Zeile "auth"): ~/.config bleibt lesbar, aber
+# nichts im Home wird beschrieben. Schluesselmaterial ist zusaetzlich ganz
+# unsichtbar.
+ProtectHome=read-only
+InaccessiblePaths=%h/.ssh %h/.gnupg %h/.local/share/keyrings %h/.pki
+# Kein Mitsehen auf fremde Prozesse; /proc nur die eigene Sicht.
+ProtectProc=invisible
+ProcSubset=pid
+# Eigenes /tmp: ein Bestaetigungsdialog hat keinen Grund, fremde
+# Temp-Dateien zu sehen.
+PrivateTmp=yes
+# Nur Unix-Sockets: DBus, Wayland und die dAImon-Sockets laufen alle
+# darueber. Internet-Protokollfamilien (IPv4/IPv6) sind nicht dabei --
+# fehlt hier AF_UNIX, sterben DBus UND Wayland (Design 7.5).
+RestrictAddressFamilies=AF_UNIX
+# Üblicher Dienst-Umfang, ohne privilegierte und veraltete Aufrufe.
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+
+[Install]
+WantedBy=graphical-session.target

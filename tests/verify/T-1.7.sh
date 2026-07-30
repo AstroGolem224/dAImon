@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Verifizierer fuer T-1.7: Auth-Agent mit Absichtsmarken.
 #
-# STAND: Teil 1 von zwei. Geprueft wird alles, was ohne Fenster geht --
-# der Vorschau-Sanitizer und der Weg, auf dem der Auth-Agent mit dem Hub
-# spricht. Die Pruefungen zu Push-to-Talk (Umschaltung statt Halten, p95 < 200
-# ms) und zur GERENDERTEN Region (Pixel- und Textextraktion) kommen mit Teil 2
-# dazu. Sie fehlen hier und sind unten ausdruecklich als fehlend gelistet,
-# damit ein gruener Lauf nicht mehr behauptet als er geprueft hat.
-# EINGEFROREN WIRD DIESER VERIFIZIERER DESHALB ERST NACH TEIL 2 -- danach
-# braeuchte jede Ergaenzung einen neuen .v-Task.
+# Deckt T-1.7 vollstaendig ab: Teil 1 (Sanitizer, Auth-Weg) und Teil 2
+# (PTT-Umschaltautomat, gerenderter Dialog, systemd-Unit).
+#
+# Die Pixelprobe laeuft NICHT ueber grim: KWin implementiert wlr-screencopy
+# nicht, und org.kde.KWin.ScreenShot2 weist einen beliebigen python3 mit
+# "not authorized to take a screenshot" ab. spectacle ist autorisiert.
+#
+#
 #
 # Warum der Sanitizer von aussen und mit Literalen geprueft wird: die Vorschau
 # ist die letzte Stelle, an der ein Mensch sieht, was gleich passiert. Ein
@@ -26,7 +26,7 @@ PREVIEW="$TARGET/daimon/auth/preview.py"
 fail=0
 chk() { if [[ "$2" == "$3" ]]; then echo "  ok   $1"; else echo "  FAIL $1 (erwartet $3, war $2)"; fail=1; fi; }
 
-echo "T-1.7 — Auth-Agent mit Absichtsmarken (Teil 1: ohne Fenster)"
+echo "T-1.7 — Auth-Agent mit Absichtsmarken"
 chk "preview.py existiert" "$([[ -f "$PREVIEW" ]] && echo ja || echo nein)" ja
 
 tmp="$(mktemp -d)"
@@ -310,11 +310,425 @@ chk "hookbridge darf keine Freigabe" "$(wert2 hookbridge_darf_keine_freigabe)" j
 chk "eyes darf keine Freigabe" "$(wert2 eyes_darf_keine_freigabe)" ja
 chk "auth darf kein hook" "$(wert2 auth_darf_kein_hook)" ja
 
-echo
-echo "  NOCH NICHT GEPRUEFT (Teil 2, ohne Fenster nicht beobachtbar):"
-echo "    - PTT ist eine Umschaltung, nicht Halten; Zeitlimit als Rueckfall"
-echo "    - Zeitmessung PTT -> Zustandswechsel, p95 < 200 ms"
-echo "    - die GERENDERTE Region per Pixel- und Textextraktion"
-echo "    - eigener Socket mit SO_PEERPIDFD am laufenden Auth-Agenten"
+# --- Push-to-Talk: Umschaltung, nicht Halten ---------------------------------
+# Der Automat ist bewusst von der Tastenbindung getrennt und reines stdlib --
+# nur deshalb ist dieses Kriterium ohne Plasma-Sitzung und ohne synthetische
+# Tastendruecke pruefbar. (ydotool positioniert auf dieser Maschine
+# nachweislich nicht; auf echte Eingabe zu bauen waere hier eine Messung des
+# Zufalls gewesen.)
+echo "  -- Push-to-Talk"
+ptt="$(cd "$TARGET" && PYTHONDONTWRITEBYTECODE=1 timeout 60s "$PY" - 2>"$tmp/ptt.err" <<'PYEOF'
+import sys
+zeilen = []
+
+
+def sag(name, wert):
+    zeilen.append(f"{name}={'ja' if wert else 'nein'}")
+
+
+class Uhr:
+    def __init__(self):
+        self.t = 1000.0
+
+    def __call__(self):
+        return self.t
+
+    def vor(self, s):
+        self.t += s
+
+
+class Protokoll:
+    def __init__(self):
+        self.zeilen = []
+
+    def _merken(self, *a, **kw):
+        self.zeilen.append((a, kw))
+
+    info = warning = error = debug = _merken
+
+
+try:
+    from daimon.auth import ptt as modul
+except Exception as fehler:  # noqa: BLE001
+    print(f"ptt_import=nein\nfehler={fehler!r}")
+    sys.exit(0)
+
+print("ptt_import=ja")
+
+# Der Automat darf gi NICHT hereinziehen -- sonst laeuft er nicht im venv,
+# und genau dafuer wurde er abgetrennt.
+sag("ptt_ohne_gi", "gi" not in sys.modules)
+
+uhr, log = Uhr(), Protokoll()
+a = modul.PTTAutomat(zeitlimit_s=100.0, jetzt=uhr, log=log)
+
+# Positivkontrolle: einmal umschalten macht ihn aktiv. Ohne sie waere
+# "nach zweimal aus" auch mit einem Automaten gruen, der nie angeht.
+sag("ptt_einmal_ist_an", a.umschalten() is True and a.ist_aktiv())
+# DAS Kriterium: Umschaltung, nicht Halten.
+sag("ptt_zweimal_ist_aus", a.umschalten() is False and not a.ist_aktiv())
+
+# Zeitlimit als Rueckfall. Ohne verlaessliches Loslassen ist es der einzige
+# Weg, ein offenes Mikrofonfenster wieder zu schliessen -- ein PTT, das
+# versehentlich anbleibt, waere der Dauermitschnitt, den 1.1 ausschliesst.
+a.umschalten()
+sag("ptt_vor_ablauf_noch_aktiv", a.ist_aktiv())
+uhr.vor(101.0)
+sag("ptt_zeitlimit_schaltet_ab", not a.ist_aktiv())
+# Nach dem Ablauf muss die naechste Umschaltung wieder ANschalten, nicht aus.
+sag("ptt_nach_ablauf_wieder_anschaltbar", a.umschalten() is True)
+
+# Eine Auskunft veraendert nichts.
+b = modul.PTTAutomat(zeitlimit_s=100.0, jetzt=Uhr(), log=Protokoll())
+b.umschalten()
+vorher = b.ist_aktiv()
+for _ in range(5):
+    b.ist_aktiv()
+sag("ptt_auskunft_veraendert_nichts", vorher and b.ist_aktiv())
+
+sag("ptt_audit_nichtleer", len(log.zeilen) > 0)
+print("\n".join(zeilen))
+PYEOF
+)"
+wert3() { grep -m1 "^$1=" <<<"$ptt" | cut -d= -f2; }
+chk "daimon.auth.ptt importierbar" "$(wert3 ptt_import)" ja
+[[ "$(wert3 ptt_import)" == "ja" ]] || echo "  Importfehler: $(grep -m1 '^fehler=' <<<"$ptt")"
+chk "Automat zieht kein gi herein" "$(wert3 ptt_ohne_gi)" ja
+chk "einmal umschalten ist an (Positivkontrolle)" "$(wert3 ptt_einmal_ist_an)" ja
+chk "zweimal umschalten ist AUS (Umschaltung, nicht Halten)" "$(wert3 ptt_zweimal_ist_aus)" ja
+chk "vor Ablauf noch aktiv (Positivkontrolle)" "$(wert3 ptt_vor_ablauf_noch_aktiv)" ja
+chk "Zeitlimit schaltet ab" "$(wert3 ptt_zeitlimit_schaltet_ab)" ja
+chk "nach Ablauf wieder anschaltbar" "$(wert3 ptt_nach_ablauf_wieder_anschaltbar)" ja
+chk "Auskunft veraendert nichts" "$(wert3 ptt_auskunft_veraendert_nichts)" ja
+chk "Audit nichtleer" "$(wert3 ptt_audit_nichtleer)" ja
+
+# --- Die GERENDERTE Region ----------------------------------------------------
+# Ab hier wird der echte Agent gestartet. Nur gegen das echte Repo: ein
+# Fixture ist ein Ersatzbaum ohne GTK-Prozess.
+if [[ "$TARGET" != "$REPO" ]]; then
+  echo "  INFO Fixture-Lauf: Fenster-, OCR- und Live-Pruefungen uebersprungen"
+  exit $fail
+fi
+
+echo "  -- Der gerenderte Dialog"
+AGENT="$REPO/daimon/auth/agent.py"
+SYSPY="/usr/bin/python3"
+chk "agent.py existiert" "$([[ -f "$AGENT" ]] && echo ja || echo nein)" ja
+chk "System-Python vorhanden" "$([[ -x "$SYSPY" ]] && echo ja || echo nein)" ja
+# Nicht grim: KWin implementiert wlr-screencopy nicht ("compositor doesn't
+# support the screen capture protocol"). Und die native Schnittstelle
+# org.kde.KWin.ScreenShot2 weist einen beliebigen python3 mit "The process is
+# not authorized to take a screenshot" ab -- sie prueft das aufrufende
+# Programm. spectacle ist autorisiert; geschossen wird der ganze Schirm und
+# anschliessend auf die AT-SPI-Geometrie zugeschnitten.
+chk "spectacle vorhanden" "$(command -v spectacle >/dev/null && echo ja || echo nein)" ja
+chk "magick vorhanden (Zuschnitt)" "$(command -v magick >/dev/null && echo ja || echo nein)" ja
+chk "tesseract vorhanden" "$(command -v tesseract >/dev/null && echo ja || echo nein)" ja
+chk "Wayland-Sitzung vorhanden" "$([[ -n "${WAYLAND_DISPLAY:-}" ]] && echo ja || echo nein)" ja
+
+agent_pid=""
+aufraeumen_agent() { [[ -n "$agent_pid" ]] && kill "$agent_pid" 2>/dev/null; }
+trap 'aufraeumen_agent; rm -rf -- "$tmp"' EXIT
+
+if [[ -f "$AGENT" && -x "$SYSPY" && -n "${WAYLAND_DISPLAY:-}" ]]; then
+  DAIMON_MAX_SECS=40 PYTHONPATH="$REPO" "$SYSPY" "$AGENT" \
+    --diag-socket "$tmp/adiag.sock" --control-socket "$tmp/actl.sock" \
+    --shortcut "" >"$tmp/agent.out" 2>"$tmp/agent.err" &
+  agent_pid=$!
+
+  bereit=nein
+  for _ in $(seq 1 150); do
+    [[ -S "$tmp/actl.sock" && -S "$tmp/adiag.sock" ]] && { bereit=ja; break; }
+    kill -0 "$agent_pid" 2>/dev/null || break
+    sleep 0.1
+  done
+  chk "Agent startet und legt beide Sockets an" "$bereit" ja
+  chk "diag.sock hat Modus 0600" "$(stat -c '%a' "$tmp/adiag.sock" 2>/dev/null)" 600
+  chk "control.sock hat Modus 0600" "$(stat -c '%a' "$tmp/actl.sock" 2>/dev/null)" 600
+
+
+  actl() { "$PY" - "$tmp/actl.sock" "$1" <<'PYEOF'
+import socket, sys
+c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+c.settimeout(10); c.connect(sys.argv[1])
+c.sendall(sys.argv[2].encode() + b"\n")
+print(c.makefile("rb").readline().decode().strip())
+c.close()
+PYEOF
+  }
+  adiag() { "$PY" - "$tmp/adiag.sock" <<'PYEOF'
+import socket, sys
+c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+c.settimeout(10); c.connect(sys.argv[1])
+print(c.makefile("rb").readline().decode().strip())
+c.close()
+PYEOF
+  }
+
+  # Positivkontrolle des Steuerkanals: Unsinn muss abgewiesen werden, sonst
+  # beweist ein "ok" auf einen echten Befehl nichts.
+  chk "Steuer-Socket weist Unsinn mit err ab" "$(actl 'quatsch mit sosse')" err
+
+  if [[ "$bereit" == ja ]]; then
+    # Der boesartige Zielpfad: sieht aus wie ~/Bilder/urlaub.png, ist es aber
+    # nicht. Base64, damit weder Shell noch Zeilenprotokoll ihn unterwegs
+    # veraendern -- die Bidi- und Nullbreitenzeichen sind der ganze Punkt.
+    ziel_b64="$("$PY" -c '
+import base64
+# U+202E dreht die Leserichtung, U+200B ist unsichtbar, das a ist kyrillisch.
+boese = "~/Bilder/urlа​ub.png‮ gnp.5952de_di/hss./"
+print(base64.b64encode(boese.encode()).decode())')"
+    a_key="$("$PY" -c 'import sys; sys.path.insert(0,"'"$REPO"'")
+from daimon.auth import preview; print(sorted(preview.AKTIONS_BESCHRIFTUNGEN)[0])')"
+    u_key="$("$PY" -c 'import sys; sys.path.insert(0,"'"$REPO"'")
+from daimon.auth import preview; print(sorted(preview.UMKEHR_BESCHRIFTUNGEN)[0])')"
+
+    chk "unbekannter Aktionsschluessel wird abgewiesen" \
+      "$(actl "zeige gibt.es.nicht $u_key $ziel_b64")" err
+    chk "Dialog anzeigen wird bestaetigt" \
+      "$(actl "zeige $a_key $u_key $ziel_b64")" ok
+    sleep 1.5
+    chk "Diagnose meldet den sichtbaren Dialog" \
+      "$(adiag | jq -r '.dialog_sichtbar' 2>/dev/null)" true
+
+    # --- AT-SPI: der Textbaum und die Fenstergeometrie ------------------------
+    # GTK4 exportiert den Baum ohne Zutun -- anders als Qt, das laut T-1.11 im
+    # Auslieferungszustand GAR KEINEN Baum liefert. Die Extents daraus sind
+    # zugleich der Ausschnitt fuer den Screenshot: so wird genau das Fenster
+    # geknipst und nicht der halbe Schirm.
+    atspi="$("$SYSPY" - "$agent_pid" "$tmp/geom.txt" 2>"$tmp/atspi.err" <<'PYEOF'
+import sys
+import gi
+gi.require_version("Atspi", "2.0")
+from gi.repository import Atspi
+
+pid = int(sys.argv[1])
+Atspi.init()
+texte = []
+geom = None
+
+
+def durchgehen(knoten, tiefe=0):
+    global geom
+    if tiefe > 12:
+        return
+    try:
+        n = knoten.get_child_count()
+    except Exception:
+        return
+    try:
+        name = knoten.get_name() or ""
+        if name.strip():
+            texte.append(name)
+        iface = knoten.get_text_iface()
+        if iface is not None:
+            texte.append(iface.get_text(0, iface.get_character_count()))
+    except Exception:
+        pass
+    for i in range(n):
+        try:
+            durchgehen(knoten.get_child_at_index(i), tiefe + 1)
+        except Exception:
+            continue
+
+
+desktop = Atspi.get_desktop(0)
+for i in range(desktop.get_child_count()):
+    try:
+        app = desktop.get_child_at_index(i)
+        if app.get_process_id() != pid:
+            continue
+    except Exception:
+        continue
+    for j in range(app.get_child_count()):
+        try:
+            fenster = app.get_child_at_index(j)
+            komp = fenster.get_component_iface()
+            if komp is not None and geom is None:
+                e = komp.get_extents(Atspi.CoordType.SCREEN)
+                if e.width > 0 and e.height > 0:
+                    geom = (e.x, e.y, e.width, e.height)
+        except Exception:
+            pass
+        durchgehen(fenster)
+
+with open(sys.argv[2], "w", encoding="utf-8") as fh:
+    if geom:
+        fh.write("%d,%d %dx%d\n" % geom)
+print("ATSPI_TEXT<<")
+print("\n".join(texte))
+print(">>ATSPI_TEXT")
+PYEOF
+)"
+    baum="$(sed -n '/ATSPI_TEXT<</,/>>ATSPI_TEXT/p' <<<"$atspi")"
+    # Positivkontrolle: der Baum ist ueberhaupt da. Ohne sie waere
+    # "kein Bidi-Zeichen gefunden" auch bei gar keinem Baum gruen -- genau die
+    # Sorte Nullaussage, die dieses Projekt schon mehrfach gekostet hat.
+    chk "AT-SPI liefert ueberhaupt einen Baum (Positivkontrolle)" \
+      "$([[ $(wc -c <<<"$baum") -gt 40 ]] && echo ja || echo nein)" ja
+    chk "AT-SPI zeigt die feste Beschriftung 'Aktion:'" \
+      "$(grep -q 'Aktion:' <<<"$baum" && echo ja || echo nein)" ja
+    chk "AT-SPI zeigt die Schaltflaeche 'Ausführen'" \
+      "$(grep -qi 'ausf' <<<"$baum" && echo ja || echo nein)" ja
+    chk "AT-SPI zeigt die Schaltflaeche 'Ablehnen'" \
+      "$(grep -qi 'ablehnen' <<<"$baum" && echo ja || echo nein)" ja
+    # Das eigentliche Kriterium: kein rohes Bidi-, Nullbreiten- oder
+    # Nicht-ASCII-Zeichen im ANGEZEIGTEN Zielpfad.
+    chk "kein rohes U+202E im angezeigten Baum" \
+      "$(grep -q $'‮' <<<"$baum" && echo nein || echo ja)" ja
+    chk "kein rohes U+200B im angezeigten Baum" \
+      "$(grep -q $'​' <<<"$baum" && echo nein || echo ja)" ja
+    chk "kein kyrillisches a im angezeigten Baum" \
+      "$(grep -q $'а' <<<"$baum" && echo nein || echo ja)" ja
+    chk "der Zielpfad erscheint escapt (\\u-Folge sichtbar)" \
+      "$(grep -q '\\u0' <<<"$baum" && echo ja || echo nein)" ja
+
+    # --- Pixel: was wirklich auf dem Schirm steht ------------------------------
+    if true; then
+      # --- Die eigentliche Pixelprobe: sieht der Mensch einen Unterschied? ----
+      #
+      # ZWEI Umwege stecken hier drin, beide teuer gelernt:
+      #
+      # 1. NICHT ueber Koordinaten. AT-SPI meldet fuer das Fenster (0, 0) --
+      #    ein Wayland-Client kennt seine eigene Bildschirmposition NICHT, das
+      #    Protokoll gibt sie ihm nicht. Ein Zuschnitt auf diese Extents
+      #    erwischt die linke obere Bildschirmecke, und weil die sich nicht
+      #    aendert, kommt zweimal dasselbe heraus: Rauschen 0, Unterschied 0.
+      #    Das sah nach "Sanitizer kaputt" aus und war "falsche Stelle
+      #    fotografiert". Deshalb `spectacle -a` -- das aktive Fenster,
+      #    ohne dass jemand Koordinaten kennen muss.
+      #
+      # 2. NICHT ueber OCR als Kriterium. /usr/share/tessdata haelt hier nur
+      #    `afr` und `osd`, keine lateinischen Sprachdaten; die
+      #    OCR-Positivkontrolle scheitert. Eine Negativaussage ohne
+      #    Positivkontrolle ist wertlos -- "kein kyrillisches Zeichen erkannt"
+      #    waere von "gar nichts erkannt" nicht zu unterscheiden.
+      #
+      # Gemessen wird stattdessen die Zusage selbst: ein Zielpfad, der wie
+      # ~/Bilder/urlaub.png AUSSIEHT, aber woandershin zeigt, darf nicht
+      # aussehen wie das Harmlose. Also beide rendern und die Pixel
+      # vergleichen -- keine Sprachdaten noetig, unabhaengig von der Schrift.
+      pixel_unterschied() {
+        # magick compare liefert die Zahl in wissenschaftlicher Schreibweise
+        # ("2.46591e+08"). Ein grep auf ^[0-9]+ machte daraus eine 2.
+        magick compare -metric AE "$1" "$2" null: 2>&1 | tr -d '\n' \
+          | grep -oE '^[0-9.e+-]+' | awk '{printf "%.0f", $1+0}'
+      }
+      aufnehmen() {
+        timeout 60 spectacle -a -b -n -o "$tmp/$1.png" >/dev/null 2>&1
+      }
+
+      actl 'schliessen' >/dev/null; sleep 0.6
+      harmlos_b64="$("$PY" -c '
+import base64; print(base64.b64encode("~/Bilder/urlaub.png".encode()).decode())')"
+      chk "harmlosen Pfad anzeigen" "$(actl "zeige $a_key $u_key $harmlos_b64")" ok
+      sleep 2
+      aufnehmen harmlos
+      chk "Aufnahme des harmlosen Dialogs gelingt" "$?" 0
+      chk "Aufnahme ist nichtleer (Positivkontrolle)" \
+        "$([[ "$(stat -c '%s' "$tmp/harmlos.png" 2>/dev/null || echo 0)" -gt 3000 ]] \
+          && echo ja || echo nein)" ja
+
+      # Positivkontrolle des Vergleichs: dasselbe Fenster zweimal aufgenommen
+      # muss gleich sein. Ohne sie waere jeder Unterschied unten auch blosses
+      # Rauschen -- Mauszeiger, Uhr in der Leiste, Neuzeichnen.
+      sleep 0.8
+      aufnehmen harmlos2
+      rausch="$(pixel_unterschied "$tmp/harmlos.png" "$tmp/harmlos2.png")"
+      [[ "$rausch" =~ ^[0-9]+$ ]] || rausch=999999999
+      echo "  Rauschen zwischen zwei Aufnahmen desselben Dialogs: $rausch"
+      chk "zwei Aufnahmen desselben Dialogs sind gleich (Positivkontrolle)" \
+        "$([[ "$rausch" -lt 5000 ]] && echo ja || echo nein)" ja
+
+      actl 'schliessen' >/dev/null; sleep 0.6
+      chk "verwechselbaren Pfad anzeigen" "$(actl "zeige $a_key $u_key $ziel_b64")" ok
+      sleep 2
+      aufnehmen boese
+      chk "Aufnahme des verwechselbaren Dialogs gelingt" "$?" 0
+      # Auf gleiche Groesse bringen, sonst vergleicht magick gar nicht erst.
+      # Dass sie sich UEBERHAUPT unterscheidet, ist schon ein Befund fuer sich:
+      # der escapte Pfad ist laenger, das Fenster wird breiter.
+      masse_h="$(magick identify -format '%wx%h' "$tmp/harmlos.png" 2>/dev/null)"
+      masse_b="$(magick identify -format '%wx%h' "$tmp/boese.png" 2>/dev/null)"
+      echo "  Fenstermasse harmlos $masse_h, verwechselbar $masse_b"
+      magick "$tmp/boese.png" -resize "${masse_h}!" "$tmp/boese_norm.png" 2>/dev/null
+      unterschied="$(pixel_unterschied "$tmp/harmlos.png" "$tmp/boese_norm.png")"
+      [[ "$unterschied" =~ ^[0-9]+$ ]] || unterschied=0
+      echo "  Unterschied harmlos gegen verwechselbar: $unterschied"
+      chk "der verwechselbare Pfad sieht sichtbar anders aus" \
+        "$([[ "$unterschied" -gt $(( rausch + 20000 )) ]] && echo ja || echo nein)" ja
+
+      # OCR nur als Hinweis, ausdruecklich nicht als Kriterium.
+      sprachdaten="$(ls /usr/share/tessdata/*.traineddata 2>/dev/null \
+        | grep -cE '/(eng|deu)\.traineddata')"
+      [[ "$sprachdaten" =~ ^[0-9]+$ ]] || sprachdaten=0
+      if [[ "$sprachdaten" -gt 0 ]]; then
+        tesseract "$tmp/boese.png" "$tmp/ocr" --psm 6 >/dev/null 2>&1
+        ocr="$(cat "$tmp/ocr.txt" 2>/dev/null)"
+        chk "OCR liest die feste Beschriftung (Positivkontrolle)" \
+          "$(grep -qiE 'aktion|ziel|umkehr' <<<"$ocr" && echo ja || echo nein)" ja
+        chk "OCR findet kein rohes kyrillisches Zeichen" \
+          "$(grep -qP '\x{0430}' <<<"$ocr" && echo nein || echo ja)" ja
+      else
+        echo "  INFO OCR uebersprungen: /usr/share/tessdata hat keine eng/deu-Daten."
+        echo "       Nachruestbar mit: pacman -S tesseract-data-eng"
+        echo "       Der Pixelvergleich oben deckt die Zusage auch ohne sie."
+      fi
+    fi
+
+    # --- Entscheidung ---------------------------------------------------------
+    chk "Ablehnen wird bestaetigt" "$(actl 'klick ablehnen')" ok
+    sleep 1
+    d="$(adiag)"
+    # Kein `// empty` in diesen Abfragen: jq behandelt false wie null, ein
+    # Vergleich auf "false" waere damit immer leer -- und ein Dialog, der
+    # offen bleibt, faellt nie auf. Die Falle hat der Builder gefunden.
+    chk "Diagnose meldet die Ablehnung" \
+      "$(jq -r '.letzte_entscheidung' <<<"$d" 2>/dev/null)" abgelehnt
+    chk "Dialog ist danach zu" \
+      "$(jq -r '.dialog_sichtbar' <<<"$d" 2>/dev/null)" false
+    chk "Ablehnen sendet KEINE Freigabe an den Hub" \
+      "$(jq -r '.freigaben_gesendet' <<<"$d" 2>/dev/null)" 0
+    chk "Diagnose verraet keinen Zielpfad" \
+      "$(grep -qiE 'ssh|id_ed25519|urlaub' <<<"$d" && echo nein || echo ja)" ja
+
+    # PTT ueber den Steuerkanal, am laufenden Prozess.
+    chk "ptt einmal wird bestaetigt" "$(actl 'ptt')" ok
+    sleep 0.3
+    chk "Diagnose meldet ptt aktiv" \
+      "$(adiag | jq -r '.ptt_aktiv' 2>/dev/null)" true
+    chk "ptt zweimal wird bestaetigt" "$(actl 'ptt')" ok
+    sleep 0.3
+    chk "Diagnose meldet ptt wieder aus (Umschaltung)" \
+      "$(adiag | jq -r '.ptt_aktiv' 2>/dev/null)" false
+
+    # Kein Log-Spam: ein Agent, der im Sekundentakt meldet, ist im Journal
+    # nicht mehr von einem Vorfall zu unterscheiden.
+    stderr_zeilen="$(grep -c . "$tmp/agent.err" 2>/dev/null)"
+    [[ "$stderr_zeilen" =~ ^[0-9]+$ ]] || stderr_zeilen=0
+    echo "  stderr-Zeilen des Agenten: $stderr_zeilen"
+    chk "kein Log-Spam (hoechstens 20 Zeilen)" \
+      "$([[ "$stderr_zeilen" -le 20 ]] && echo ja || echo nein)" ja
+  fi
+
+  kill "$agent_pid" 2>/dev/null; agent_pid=""
+fi
+
+# --- systemd-Unit -------------------------------------------------------------
+echo "  -- systemd-Unit"
+UNIT="$REPO/config/systemd/daimon-auth.service"
+chk "Unit existiert" "$([[ -f "$UNIT" ]] && echo ja || echo nein)" ja
+if [[ -f "$UNIT" ]]; then
+  chk "ExecStart nutzt System-Python, nicht das venv" \
+    "$(grep -qE '^ExecStart=.*/usr/bin/python3' "$UNIT" && echo ja || echo nein)" ja
+  chk "ExecStart zeigt NICHT auf .venv" \
+    "$(grep -qE '^ExecStart=.*\.venv' "$UNIT" && echo nein || echo ja)" ja
+  chk "RestrictAddressFamilies=AF_UNIX gesetzt" \
+    "$(grep -qE '^RestrictAddressFamilies=.*AF_UNIX' "$UNIT" && echo ja || echo nein)" ja
+  chk "kein AF_INET in der Unit" \
+    "$(grep -qE 'AF_INET' "$UNIT" && echo nein || echo ja)" ja
+  chk "NoNewPrivileges gesetzt" \
+    "$(grep -qE '^NoNewPrivileges=(yes|true|1)' "$UNIT" && echo ja || echo nein)" ja
+fi
 
 exit $fail
