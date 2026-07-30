@@ -1,0 +1,1 @@
+PRODUZENTEN bekommt wieder einen face-Eintrag mit intent_mark und freigabe. Das soll das Akzeptanzkriterium "Face kann keine Freigabe erteilen -- vom Hub abgewiesen" reissen, und mit ihm "PTT und alle Bestaetigungsdialoge liegen im Auth-Agenten, nie im Face".

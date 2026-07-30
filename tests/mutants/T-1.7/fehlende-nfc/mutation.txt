@@ -1,0 +1,1 @@
+Die NFC-Normalisierung faellt weg. Das soll das Akzeptanzkriterium "Werte werden Unicode-normalisiert" reissen: zwei optisch identische Pfade ergeben dann zwei verschiedene Anzeigen, und der Nutzer bestaetigt nicht, was er zu lesen glaubt.

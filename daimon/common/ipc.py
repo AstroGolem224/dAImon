@@ -55,10 +55,23 @@ SO_PEERPIDFD = getattr(socket, "SO_PEERPIDFD", 77)
 # Ein Socket je Produzent, und die erlaubten Ereignistypen dazu.
 PRODUZENTEN: dict[str, frozenset[str]] = {
     "hookbridge": frozenset({"hook"}),
+    # OFFEN, bewusst nicht in T-1.7 mitentschieden: `intent_mark` steht hier
+    # noch, obwohl Design 2.4 dem Wake-Word ausdruecklich nur ein
+    # API-Kontingent erteilt, keine Rundenmarke. Wirkungslos ist es heute
+    # (der Hub behandelt `intent_mark` nur auf dem auth-Socket, und
+    # `MarkenBuch.ausgeben` erzwingt quelle="auth") -- aber es BEHAUPTET eine
+    # Faehigkeit, die es nicht geben soll, und genau so eine Behauptung hat
+    # T-1.7 beim Face beseitigt. Wer den Ears-Agenten baut, entscheidet das
+    # mit: streichen, oder durch einen eigenen Typ `wake_word` ersetzen, der
+    # auf `KontingentBuch.ausgeben(quelle="wake_word")` fuehrt.
     "ears": frozenset({"utterance", "intent_mark"}),
     "eyes": frozenset({"screen"}),
     "kwin": frozenset({"window"}),
-    "face": frozenset({"intent_mark"}),
+    # T-1.7: Absichtsmarken und Freigaben gehoeren dem Auth-Agenten, nie dem
+    # Face. Das Face ist ein Anzeigeprozess und hat keinen Produzentensocket
+    # mehr -- solange es `intent_mark` senden durfte, war die Grenze aus
+    # Design 2.4 nur behauptet.
+    "auth": frozenset({"intent_mark", "freigabe"}),
 }
 
 

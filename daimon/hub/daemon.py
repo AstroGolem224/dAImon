@@ -18,6 +18,11 @@ Gegenstelle ueber T-0.7, die beiden lesenden nicht. Und die Diagnose bleibt
 aus demselben Grund auf einem Unix-Socket wie alles andere -- sie verraet
 Warteschlangenlaengen und Ereigniszaehler, also mehr ueber den Nutzer als in
 einen Netzwerkendpunkt gehoert.
+
+Der `auth`-Socket (T-1.7) ist der einzige Produzent, dessen Ereignisse nicht
+auf den Bus gehen: `intent_mark` und `freigabe` werden hier im Hub gegen
+MarkenBuch und FreigabeBuch verarbeitet -- die Marke bleibt im Hub (Design
+2.4), und die turn_id erzeugt der Hub selbst, nie der Absender.
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import socket
 import time
 import threading
@@ -36,6 +42,7 @@ from daimon.common.logging import Logger, get_logger
 from daimon.common.protocol import Event, ProtocolError
 from daimon.hub.bus import Bus, mood_of, projekt_aus_cwd
 from daimon.hub.diag import Diagnose
+from daimon.hub.marks import FreigabeBuch, MarkenBuch, MarkenFehler
 from daimon.hub.state import HubState
 
 STATE_SOCKET = "state.sock"
@@ -57,6 +64,11 @@ class Hub:
         self.state = HubState(ttl_s=float(self.cfg.get("hub.state_ttl_s", 3600)))
         self.diag = Diagnose()
         self.bus = Bus()
+        # T-1.7: Marken- und Freigabebuch leben im Hub (Design 2.4: "Die
+        # Marke bleibt im Hub"). Der Auth-Agent meldet nur; ausgegeben und
+        # bestaetigt wird hier.
+        self.marken = MarkenBuch(log=self.log)
+        self.freigaben = FreigabeBuch(log=self.log)
         self._server: list[socket.socket] = []
         self._threads: list[threading.Thread] = []
         self._stop = threading.Event()
@@ -115,8 +127,54 @@ class Hub:
                     self.log.error("Typ nicht erlaubt, Verbindung ab",
                                    DAIMON_PRODUZENT=produzent,
                                    DAIMON_GRUND=str(exc)[:200])
+                    self._zaehle_abweisung(event.type)
                     return
+                if produzent == "auth":
+                    # Auth-Ereignisse gehen nicht auf den Bus: der Hub gibt
+                    # Marken aus und bestaetigt Freigaben selbst (T-1.7).
+                    if not self._verarbeite_auth(event):
+                        return  # Abweisung: Verbindung ab, Hub laeuft weiter
+                    continue
                 self.bus.publish(event)
+
+    def _zaehle_abweisung(self, typ: str) -> None:
+        """Diagnose-Zaehler fuer abgewiesene Anfragen. Nur zaehlen -- keine
+        turn_id, keine Nonce, kein Hash: die Diagnose ist kein Auskunftskanal
+        ueber Geheimnisse."""
+        if typ == "intent_mark":
+            self.diag.zaehle("rundenmarke", "abgelehnt")
+        elif typ == "freigabe":
+            self.diag.zaehle("aktionsfreigabe", "abgelehnt")
+
+    def _verarbeite_auth(self, event: Event) -> bool:
+        """`intent_mark` und `freigabe` vom auth-Socket. True = angenommen,
+        False = abgewiesen (die Verbindung wird geschlossen, nicht der Hub).
+
+        `ipc.pruefe_typ` hat den Typ bereits gegen PRODUZENTEN gewehrt; hier
+        koennen nur noch die beiden auth-Typen ankommen.
+        """
+        p = event.payload or {}
+        try:
+            if event.type == "intent_mark":
+                # Die turn_id erzeugt der HUB, nicht der Absender (Design
+                # 2.4: "Die Marke bleibt im Hub"). Eine mitgeschickte
+                # turn_id im Payload wird nicht gelesen.
+                self.marken.ausgeben(quelle="auth",
+                                     turn_id=secrets.token_hex(16))
+                self.diag.zaehle("rundenmarke", "ausgegeben")
+            else:  # "freigabe"
+                # Nonce und Hash kommen aus der Nachricht, alles andere
+                # nicht.
+                self.freigaben.bestaetigen(
+                    nonce=p.get("nonce", ""),
+                    action_hash=p.get("action_hash", ""))
+                self.diag.zaehle("aktionsfreigabe", "ausgegeben")
+            return True
+        except MarkenFehler as exc:
+            self.log.warn("Auth-Anfrage abgewiesen, Verbindung ab",
+                          DAIMON_TYP=event.type, DAIMON_GRUND=str(exc)[:200])
+            self._zaehle_abweisung(event.type)
+            return False
 
     def _horche_produzent(self, produzent: str) -> None:
         srv = ipc.listen(self.runtime_dir, produzent)
@@ -220,7 +278,7 @@ class Hub:
     def start(self, produzenten: list[str] | None = None) -> None:
         self.runtime_dir.mkdir(parents=True, exist_ok=True)
         os.chmod(self.runtime_dir, 0o700)
-        for p in produzenten or ["hookbridge"]:
+        for p in produzenten or ["hookbridge", "auth"]:
             t = threading.Thread(target=self._horche_produzent, args=(p,), daemon=True)
             t.start()
             self._threads.append(t)

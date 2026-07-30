@@ -1,0 +1,1 @@
+wert_saeubern gibt den normalisierten Wert ungeschuetzt zurueck. Das soll das Akzeptanzkriterium "Parameterwerte escapt, laengenbegrenzt, in Anfuehrungszeichen" reissen -- Steuerzeichen, ANSI und Bidi landen roh in der Anzeige.

@@ -1,0 +1,1 @@
+Nur die Bidi-Klasse (U+202A-U+202E, U+2066-U+2069) wird durchgelassen, alles andere bleibt escapt; die ASCII-Zusicherung am Funktionsende ist entfernt. Der gezielte Fall: ein Zielpfad, der wie ~/Bilder/urlaub.png aussieht und in Wahrheit woanders hinzeigt.
