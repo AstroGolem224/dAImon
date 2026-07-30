@@ -1,0 +1,1 @@
+Die Zeile After=daimon-hub.service fehlt. Das soll das Akzeptanzkriterium "After=daimon-hub.service" reissen -- ohne sie startet das Face vor dem Hub, verbindet sich ins Leere und bleibt bis zum ersten Wiederholungsversuch auf sleeping.

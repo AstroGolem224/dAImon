@@ -1,0 +1,33 @@
+# Gut-Muster fuer T-0.14. Unabhaengig von der Implementierung geschrieben --
+# eine Vorlage, die aus dem Produktivstand kopiert waere, bewiese nur, dass
+# der Stand der Stand ist.
+[Unit]
+Description=dAImon-Hub (Gut-Muster)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+# venv-Python: die Python-Version ist durch T-1.2 auf 3.12 festgenagelt
+# (cuobjdump-Nachweis fuer onnxruntime-gpu). Nicht "reparieren".
+ExecStart=%h/Dokumente/Github/dAImon/.venv/bin/python -m daimon.hub.daemon
+Restart=on-failure
+
+# --- Haertung nach Design 7.5 ------------------------------------------------
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectProc=invisible
+ProcSubset=pid
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+# Der TCP-Port liegt in der Bridge, nicht hier. Nur deshalb ist diese
+# Direktive im Hub ueberhaupt erfuellbar.
+RestrictAddressFamilies=AF_UNIX
+InaccessiblePaths=%h/.ssh %h/.gnupg %h/.local/share/keyrings %h/.pki
+# Der Hub schreibt Ticketbuch und Audit. Ohne das waere er mit
+# ProtectSystem=strict funktionsunfaehig.
+ReadWritePaths=%t/daimon %h/.local/share/daimon
+
+[Install]
+WantedBy=graphical-session.target

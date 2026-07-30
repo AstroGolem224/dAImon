@@ -125,8 +125,12 @@ class FocusReceiver:
 
         DBusGMainLoop(set_as_default=True)
         bus = dbus.SessionBus()
-        dbus.service.BusName(SERVICE, bus)
-        Objekt(bus, PATH)
+        # Beide Objekte muessen fuer die gesamte MainLoop leben. Ohne starke
+        # Referenzen gibt BusName den Namen direkt wieder frei; Type=dbus
+        # erkennt den Verlust und systemd beendet den vermeintlich gestarteten
+        # Dienst sofort.
+        bus_name = dbus.service.BusName(SERVICE, bus)
+        objekt = Objekt(bus, PATH)
         GLib.MainLoop().run()
 
 

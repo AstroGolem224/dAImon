@@ -28,6 +28,7 @@ MarkenBuch und FreigabeBuch verarbeitet -- die Marke bleibt im Hub (Design
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import os
 import secrets
@@ -53,6 +54,19 @@ MAX_ZEILE = 1 << 20  # 1 MiB. Eine Hook-Nutzlast ist Kilobytes gross.
 # Wie oft der Push-Endpunkt nachsieht, ob sich `rev` bewegt hat. 50 ms deckelt
 # die Zustellverzoegerung; T-1.6 verlangt p95 < 300 ms, das ist reichlich Luft.
 PUSH_INTERVALL_S = 0.05
+PR_SET_DUMPABLE = 4
+
+
+def _dumpbarkeit_abschalten() -> None:
+    """Design 7.5: keine ptrace-/Core-Dump-Freigabe fuer den Hub.
+
+    Das ist nur eine Haertungsgeste gegen versehentliche Diagnosezugriffe,
+    keine Grenze gegen einen bereits kompromittierten Benutzerprozess.
+    """
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0:
+        fehler = ctypes.get_errno()
+        raise OSError(fehler, os.strerror(fehler))
 
 
 class Hub:
@@ -310,6 +324,7 @@ def main() -> int:
     ap.add_argument("--runtime-dir", type=Path, default=None)
     args = ap.parse_args()
 
+    _dumpbarkeit_abschalten()
     hub = Hub(runtime_dir=args.runtime_dir)
     hub.start()
     try:

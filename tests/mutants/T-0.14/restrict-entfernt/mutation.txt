@@ -1,0 +1,1 @@
+RestrictAddressFamilies ist im Hub ersatzlos entfernt. Das soll das Akzeptanzkriterium "Hub: RestrictAddressFamilies=AF_UNIX" reissen -- ohne die Direktive faellt eine ganze Schutzschicht weg, und zwar lautlos.

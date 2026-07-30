@@ -1,0 +1,1 @@
+Der Hub darf wieder AF_INET. Das soll die Zusage reissen, dass der TCP-Port in der Bridge liegt und nicht im Hub -- genau die Trennung, die die Direktive im Hub ueberhaupt erst erfuellbar macht.

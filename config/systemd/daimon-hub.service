@@ -1,0 +1,55 @@
+# dAImon Hub (T-0.14): Unix-Socket-Bus und gemeinsamer Sitzungszustand.
+#
+# Haertung nach Design 7.5 (Basis + Zeile "hub"). Jede Direktive ist
+# begruendet, damit eine spaetere "Vereinfachung" sichtbar wird, welche
+# Schutzschicht sie abtraegt.
+#
+# Installation: systemctl --user link <dieser Pfad>; systemctl --user start daimon-hub
+
+[Unit]
+Description=dAImon Hub (Unix-Socket-Bus und Sitzungszustand)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+
+# WICHTIG: Projekt-venv, nicht System-Python. Der Hub soll exakt mit den
+# im Projekt festgeschriebenen Python-Abhaengigkeiten laufen.
+ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
+    -m daimon.hub.daemon --runtime-dir %t/daimon
+Restart=on-failure
+RestartSec=2
+
+# Kein Erwerb neuer Privilegien; der Hub vermittelt Zustand, fuehrt aber
+# keine privilegierten Aktionen aus.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+# Systemverzeichnisse sind nur lesbar. Home bleibt lesbar, damit die
+# Konfiguration unter ~/.config/daimon geladen werden kann.
+ProtectSystem=strict
+ProtectHome=read-only
+# Der Hub erzeugt seine Unix-Sockets im Runtime-tmpfs und persistente
+# Ticket-/Auditdaten ausschliesslich unter $XDG_STATE_HOME/daimon. Auf
+# dieser Installation ist das der XDG-Standardpfad ~/.local/state/daimon.
+ReadWritePaths=%t/daimon %h/.local/state/daimon
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+# Fremde Prozesse und Nicht-PID-Teile von /proc sind fuer den Hub unsichtbar.
+ProtectProc=invisible
+ProcSubset=pid
+# Keine gemeinsam sichtbaren Temp-Dateien und keine Core-Dumps.
+PrivateTmp=yes
+LimitCORE=0
+# Sockets, Tickets und Auditdateien duerfen nie durch die Standard-umask
+# versehentlich gruppen- oder weltlesbar entstehen.
+UMask=0077
+# Der Hub spricht ausschliesslich ueber Unix-Sockets. AF_INET/AF_INET6
+# fehlen absichtlich; AF_UNIX muss fuer IPC und Peer-Credentials enthalten
+# bleiben.
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+
+[Install]
+WantedBy=graphical-session.target

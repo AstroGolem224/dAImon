@@ -1,0 +1,25 @@
+[Unit]
+Description=dAImon-Face (Gut-Muster)
+PartOf=graphical-session.target
+After=daimon-hub.service
+Wants=daimon-hub.service
+
+[Service]
+Type=simple
+ExecStart=%h/Dokumente/Github/dAImon/face/target/debug/daimon-face
+Restart=on-failure
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectProc=invisible
+ProcSubset=pid
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+# AF_UNIX MUSS drin bleiben: ohne ihn faellt der Wayland-Socket weg, und das
+# Overlay startet gar nicht erst (Design 7.5, "Direktiven, die brechen").
+RestrictAddressFamilies=AF_UNIX
+InaccessiblePaths=%h/.ssh %h/.gnupg %h/.local/share/keyrings %h/.pki
+
+[Install]
+WantedBy=graphical-session.target

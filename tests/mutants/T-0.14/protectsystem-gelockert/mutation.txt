@@ -1,0 +1,1 @@
+ProtectSystem ist von strict auf full gelockert. Das soll die Haertung nach Design 7.5 reissen: mit full bleibt /etc beschreibbar, mit strict ist das gesamte Dateisystem ausser den ReadWritePaths schreibgeschuetzt.
