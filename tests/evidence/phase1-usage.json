@@ -1,0 +1,65 @@
+{
+  "_recorder": {
+    "cpu_baselines": {
+      "daimon-face.service": {
+        "cpu_ticks": 2,
+        "pid": 689296,
+        "start_ticks": 34755868,
+        "uptime_s": 350260.45
+      },
+      "daimon-focus.service": {
+        "cpu_ticks": 5,
+        "pid": 633048,
+        "start_ticks": 30925556,
+        "uptime_s": 350260.45
+      },
+      "daimon-hookbridge.service": {
+        "cpu_ticks": 89,
+        "pid": 633060,
+        "start_ticks": 30925568,
+        "uptime_s": 350260.45
+      },
+      "daimon-hub.service": {
+        "cpu_ticks": 108,
+        "pid": 689276,
+        "start_ticks": 34755667,
+        "uptime_s": 350260.45
+      }
+    },
+    "face_tones": {
+      "pid": 689296,
+      "value": 0
+    },
+    "restart_baselines": {
+      "daimon-face.service": 0,
+      "daimon-focus.service": 0,
+      "daimon-hookbridge.service": 0,
+      "daimon-hub.service": 0
+    }
+  },
+  "ablenkungen": null,
+  "crashes": 0,
+  "days": 1,
+  "fehlalarme": null,
+  "idle_cpu_p95": 0.091158,
+  "needs_input_events": 0,
+  "tage": [
+    {
+      "crashes": 0,
+      "datum": "2026-07-31",
+      "dienste": [
+        "daimon-face.service",
+        "daimon-focus.service",
+        "daimon-hookbridge.service",
+        "daimon-hub.service"
+      ],
+      "idle_cpu_samples": [
+        0.091158
+      ],
+      "laufzeit_stichproben": 2,
+      "needs_input_events": 0
+    }
+  ],
+  "v": 1,
+  "verdict": "pending"
+}

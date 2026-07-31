@@ -42,6 +42,24 @@ rm ~/.config/systemd/user/daimon-{hub,hookbridge,focus,face}.service
 systemctl --user daemon-reload
 ```
 
+## Phase-1-Alltagstest aufzeichnen
+
+Der Timer liest alle fünf Minuten ausschließlich systemd-Zähler,
+`/proc/<pid>/stat` und den Face-Diagnose-Socket. Er schreibt die fortlaufende
+Messung nach `tests/evidence/phase1-usage.json`. `fehlalarme`,
+`ablenkungen` und `verdict` sind bewusst menschliche Angaben; Matthias trägt
+sie nach dem Test zum Beispiel in einer Zeile ein:
+
+```bash
+jq '.fehlalarme=0 | .ablenkungen=0 | .verdict="weiter"' tests/evidence/phase1-usage.json > tests/evidence/phase1-usage.json.tmp && mv tests/evidence/phase1-usage.json.tmp tests/evidence/phase1-usage.json
+```
+
+Service und Timer installieren und die Uhr starten:
+
+```bash
+install -m 0644 config/systemd/daimon-phase1.{service,timer} ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now daimon-phase1.timer
+```
+
 ## Gemessene Sandbox-Bewertung
 
 Die folgenden tatsächlichen Gesamtnoten stammen am 30. Juli 2026 von
