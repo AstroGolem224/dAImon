@@ -13,7 +13,7 @@ noch) ist überholt und ersetzt.
 |---|---|
 | **Gate P−1** | **8 von 9 grün**. Rot nur `T--1.12` — Messung nicht gelaufen, korrekt so |
 | **Gate P0** | **11 von 11 grün**, `verify-frozen` sauber, `pytest` 154 grün + 4 dokumentiert rot |
-| **Phase 2** | **T-2.1 steht.** `T-2.1.sh` eingefroren, neun Verifizierer insgesamt |
+| **Phase 2** | **T-2.1 und T-2.2 stehen.** `T-2.1.sh` eingefroren, neun Verifizierer insgesamt |
 | **Gate P1** | **4 von 5 grün**. Rot nur `T-1.10` — 5 Arbeitstage Normalbetrieb, Uhr läuft seit 31.07. |
 | **Phase 1** | T-1.1 bis T-1.9 stehen, am laufenden Prozess belegt. **Das MVP läuft: das Pet reagiert auf echte Sitzungen.** |
 
@@ -586,3 +586,41 @@ Bauzeit herein; 547 KB je Fixture in die Historie wären Verschwendung.
 **Als nächstes:** T-2.2 (Sprechblase als zweite Subsurface). Sie verlangt
 ausdrücklich, dass eine Textänderung den **Sprite nicht neu zeichnet** — der
 Zähler `frames_rendered` muss dabei stehen bleiben.
+
+---
+
+## T-2.2 — die Sprechblase
+
+Commit `36623ea`. Eigene Subsurface, Schrift über **`fontdue`** (pures Rust, kein
+C-Anteil, keine Fontconfig — dieselbe Abwägung wie beim `png`-Crate). DejaVu Sans,
+Lizenztext liegt bei.
+
+**Der Kernbeleg ist eine Zeile:** `Sprite-Zähler 22 → 22, Blasen-Zähler 1 → 2`.
+Eine reine Textänderung zeichnet den Sprite nicht mit. Dafür gibt es die zweite
+Surface — bei einer Blase im Sekundentakt wäre alles andere die Idle-CPU-Zusage.
+
+**Der Blasentext wird am Hub gesäubert**, bevor das Face ihn sieht: er kommt aus
+Hook-Nutzlasten, und `daimon/auth/preview.py` kann das schon. Zwei Sanitizer in
+Python und Rust wären auseinandergedriftet.
+
+**Das Face hat wieder einen Kanal zum Hub — genau einen:**
+`"face": frozenset({"bubble_dismiss"})`. Kein `intent_mark`, keine `freigabe`.
+
+### T-1.7.v3 — ein Grep, der an Anführungszeichen zu umgehen war
+
+Der Builder schrieb den Eintrag zuerst als `'face'` mit **einfachen**
+Anführungszeichen — und sagte im Bericht offen, warum: der eingefrorene
+`T-1.7.sh` verglich auf `"face":`, und so löst er nicht aus.
+
+Ehrlich gemeldet, Weg trotzdem falsch. Richtig war: **das Kriterium war überholt**
+(T-1.7 verlangte „face hat gar keinen Eintrag"). Also normalisiert, den frozenen
+Verifizierer sichtbar rot werden lassen, dann über den vorgesehenen Weg das
+Kriterium geändert: geprüft wird jetzt die **Menge** statt der Abwesenheit, und
+sie wird **aus Python ausgelesen, nicht aus dem Dateitext**.
+
+> **Lehre fürs Repo:** ein Verifizierer, der Quelltext per `grep` prüft, ist an
+> Schreibweise zu umgehen. Wo es geht, den Wert zur Laufzeit auslesen.
+
+**Als nächstes:** T-2.3 (Ziehen über Subsurface-Position) — es baut auf der
+Test-Eingabevorrichtung auf, und dort gilt weiterhin: der Zeiger lässt sich auf
+dieser Maschine nicht gezielt positionieren, weder absolut noch relativ.
