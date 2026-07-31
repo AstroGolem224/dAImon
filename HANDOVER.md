@@ -13,7 +13,7 @@ noch) ist überholt und ersetzt.
 |---|---|
 | **Gate P−1** | **8 von 9 grün**. Rot nur `T--1.12` — Messung nicht gelaufen, korrekt so |
 | **Gate P0** | **11 von 11 grün**, `verify-frozen` sauber, `pytest` 154 grün + 4 dokumentiert rot |
-| **Phase 2** | **T-2.1 und T-2.2 stehen.** `T-2.1.sh` eingefroren, neun Verifizierer insgesamt |
+| **Phase 2** | **T-2.1 bis T-2.3 stehen.** `T-2.1.sh` eingefroren, neun Verifizierer insgesamt |
 | **Gate P1** | **4 von 5 grün**. Rot nur `T-1.10` — 5 Arbeitstage Normalbetrieb, Uhr läuft seit 31.07. |
 | **Phase 1** | T-1.1 bis T-1.9 stehen, am laufenden Prozess belegt. **Das MVP läuft: das Pet reagiert auf echte Sitzungen.** |
 
@@ -624,3 +624,26 @@ sie wird **aus Python ausgelesen, nicht aus dem Dateitext**.
 **Als nächstes:** T-2.3 (Ziehen über Subsurface-Position) — es baut auf der
 Test-Eingabevorrichtung auf, und dort gilt weiterhin: der Zeiger lässt sich auf
 dieser Maschine nicht gezielt positionieren, weder absolut noch relativ.
+
+---
+
+## T-2.3 — Ziehen
+
+Commit siehe `git log`. Der Beleg steht in zwei Zahlen: echtes Ziehen über 356 px
+ergibt `configure_empfangen 1 → 1` und **0,294 %** CPU. Derselbe Zug mit dem
+Mutanten, der über `set_margin` schiebt: **1 → 41** — vierzig Bewegungsschritte,
+vierzig Roundtrips. `set_margin` ändert die Surface-*Rolle*, `set_position` nicht.
+
+Die Position überlebt den Neustart: `~/.local/state/daimon/face-position.json`,
+atomar geschrieben. Kaputte Datei → Vorgabe statt Absturz; Position außerhalb des
+Schirms → auf den sichtbaren Bereich geklemmt, sonst wäre das Pet nach einem
+Monitorwechsel unerreichbar.
+
+> **Neunte Gestalt desselben Fehlers, diesmal in meinem Verifizierer:** die erste
+> Fassung nahm den *ersten* ausgebliebenen Klick als „Zeiger steht über dem Pet".
+> Die Klickspur beginnt hier aber mit Fehlmessungen — ohne einen vorher
+> **angekommenen** Klick ist ein ausgebliebener keine Aussage. Gefunden hat es der
+> Builder beim Gegenlesen.
+
+**Als nächstes:** T-2.4 (Ein-/Ausblenden härten, Bug 503121 im Alltag) — dafür gibt
+es einen `.v`-Task im Plan, also volles Regime mit Mutanten und `freeze`.
