@@ -41,6 +41,12 @@ pub struct FaceState {
     /// Aktuelle Subsurface-Position, damit Ziehen von aussen messbar ist.
     pub sprite_x: i32,
     pub sprite_y: i32,
+    /// T-2.5: Name des `wl_output`, an den die Layer-Surface gebunden ist.
+    /// Leer, solange nichts gebunden ist.
+    pub output: String,
+    /// T-2.5: +1 je Neuerzeugung der Layer-Surface nach Output-Removal.
+    /// Die Erstbindung zaehlt nicht mit.
+    pub output_wechsel: u64,
 }
 
 impl FaceState {
@@ -51,7 +57,8 @@ impl FaceState {
                 "\"bubble_visible\":{},\"sichtbar\":{},\"last_render_ts\":{:.6},",
                 "\"frames_rendered\":{},\"bubble_frames_rendered\":{},",
                 "\"toene_gespielt\":{},\"configure_empfangen\":{},",
-                "\"sprite_x\":{},\"sprite_y\":{}}}"
+                "\"sprite_x\":{},\"sprite_y\":{},",
+                "\"output\":\"{}\",\"output_wechsel\":{}}}"
             ),
             self.rev,
             escape(&self.mood),
@@ -64,7 +71,9 @@ impl FaceState {
             self.toene_gespielt,
             self.configure_empfangen,
             self.sprite_x,
-            self.sprite_y
+            self.sprite_y,
+            escape(&self.output),
+            self.output_wechsel
         )
     }
 
@@ -156,6 +165,8 @@ mod tests {
             configure_empfangen: 4,
             sprite_x: 120,
             sprite_y: 80,
+            output: "HDMI-A-1".into(),
+            output_wechsel: 2,
         };
         let j = s.als_json();
         for feld in [
@@ -174,6 +185,20 @@ mod tests {
         ] {
             assert!(j.contains(feld), "{feld} fehlt in {j}");
         }
+    }
+
+    /// Der Verifizierer liest genau diese zwei Schluessel zur Laufzeit. Der
+    /// Test prueft deshalb die vollstaendige Schreibweise samt Wert, nicht
+    /// nur das Vorkommen des Namens.
+    #[test]
+    fn output_und_wechselzaehler_stehen_wortwoertlich_im_json() {
+        let mut s = FaceState::default();
+        assert!(s.als_json().contains("\"output\":\"\""), "{}", s.als_json());
+        assert!(s.als_json().contains("\"output_wechsel\":0"));
+        s.output = "HDMI-A-1".into();
+        s.output_wechsel = 3;
+        assert!(s.als_json().contains("\"output\":\"HDMI-A-1\""));
+        assert!(s.als_json().contains("\"output_wechsel\":3"));
     }
 
     #[test]

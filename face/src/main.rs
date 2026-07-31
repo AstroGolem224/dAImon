@@ -5,6 +5,7 @@ mod control;
 mod diag;
 mod hub;
 mod input;
+mod output;
 mod position;
 mod render;
 mod sound;
@@ -225,6 +226,10 @@ struct App {
     pointer: Option<wl_pointer::WlPointer>,
     shm: Shm,
     compositor: CompositorState,
+    // T-2.5: fuer die Neuerzeugung der Layer-Surface nach Output-Removal.
+    // Vorher lagen beide nur als lokale Variablen in `main`.
+    subcompositor: SubcompositorState,
+    layer_shell: LayerShell,
     qh: QueueHandle<App>,
     pool: SlotPool,
     atlas: SpriteAtlas,
@@ -241,6 +246,10 @@ struct App {
     ziehen: Option<Ziehen>,
     sprite_groesse: (i32, i32),
     output_groesse: (i32, i32),
+    /// T-2.5: der Output, an den die Layer-Surface explizit gebunden ist.
+    gebundener_output: Option<wl_output::WlOutput>,
+    /// T-2.5: `DAIMON_FACE_OUTPUT`, auch nach einem Wechsel noch der Wunsch.
+    output_wunsch: Option<String>,
     positionsdatei: PathBuf,
     beendet: bool,
 }
@@ -293,6 +302,85 @@ impl App {
         if frame {
             zustand.bubble_frame_gezaehlt();
         }
+    }
+
+    /// `wechsel` unterscheidet die Erstbindung (false) von der Neuerzeugung
+    /// nach Output-Removal (true). Nur letztere zaehlt `output_wechsel` hoch.
+    fn diagnose_output_setzen(&self, name: &str, wechsel: bool) {
+        let mut zustand = match self.diagnose.lock() {
+            Ok(z) => z,
+            Err(vergiftet) => vergiftet.into_inner(),
+        };
+        zustand.output = name.to_owned();
+        if wechsel {
+            zustand.output_wechsel += 1;
+        }
+    }
+
+    /// T-2.5: Erzeugt die Layer-Surface an einem anderen Output neu. Der
+    /// verlorene Output wird ausgeschlossen -- je nach Ereignisreihenfolge
+    /// steht er noch in der Registry, wenn `closed` zuerst eintrifft.
+    ///
+    /// `false` heisst: es ist kein Output mehr da. Dann ist Beenden richtig --
+    /// ein Overlay ohne Ausgabe hat nichts, worauf es zeichnen koennte.
+    fn output_neu_binden(&mut self) -> bool {
+        let verloren = self.gebundener_output.take();
+        let alte_position = self
+            .overlay
+            .as_ref()
+            .map(OverlaySurface::sprite_position)
+            .unwrap_or((0, 0));
+        // Die alte Surface gehoert zu einem Output, den es nicht mehr gibt.
+        self.overlay = None;
+        // Ein Frame-Callback der alten Surface kommt nie mehr. Bliebe
+        // frame_pending stehen, waere `callback_armieren` fuer immer false
+        // und der Farbluebergang eingefroren -- still und ohne Fehlermeldung.
+        self.render.frame_empfangen();
+
+        let Some((output, name)) = output::waehlen(
+            &self.output_state,
+            self.output_wunsch.as_deref(),
+            verloren.as_ref(),
+        ) else {
+            eprintln!("Kein wl_output mehr verfuegbar; Face beendet sich");
+            self.beendet = true;
+            return false;
+        };
+
+        let output_groesse = self
+            .output_state
+            .info(&output)
+            .and_then(|info| info.logical_size)
+            .unwrap_or(self.output_groesse);
+        self.output_groesse = output_groesse;
+        let position =
+            position::position_klemmen(alte_position, self.sprite_groesse, output_groesse);
+
+        let overlay = OverlaySurface::neu(
+            &self.compositor,
+            &self.subcompositor,
+            &self.layer_shell,
+            &self.qh,
+            &output,
+            position,
+            self.sprite_groesse,
+            output_groesse,
+        );
+        if !overlay.initial_commit() {
+            eprintln!("Neue Layer-Surface konnte nicht committet werden");
+            self.beendet = true;
+            return false;
+        }
+        self.commit_zaehlen(false);
+        self.gebundener_output = Some(output);
+        self.overlay = Some(overlay);
+        self.diagnose_position_setzen(position);
+        // Der Zaehler steigt hier, nicht erst beim configure: die Bindung an
+        // den neuen Output ist zu diesem Zeitpunkt vollzogen, und ob ein
+        // configure folgt, entscheidet der Compositor.
+        self.diagnose_output_setzen(&name, true);
+        eprintln!("Layer-Surface an Output {name} neu erzeugt");
+        true
     }
 
     fn diagnose_sichtbarkeit_setzen(&self, sichtbar: bool) {
@@ -700,16 +788,40 @@ impl OutputHandler for App {
 
     fn update_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {}
 
-    fn output_destroyed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {
-        // Die Layer-Surface wird bei Output-Removal vom Compositor geschlossen.
-        // Eine spaetere Multi-Monitor-Stufe erzeugt sie am neuen Output neu.
+    fn output_destroyed(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        output: wl_output::WlOutput,
+    ) {
+        // Nur der gebundene Output zaehlt. Ist er bereits abgeraeumt, hat
+        // `closed` den Wechsel schon erledigt und `gebundener_output` ist None.
+        if self.gebundener_output.as_ref() != Some(&output) {
+            return;
+        }
+        self.output_neu_binden();
     }
 }
 
 impl LayerShellHandler for App {
-    fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &LayerSurface) {
-        self.overlay = None;
-        self.beendet = true;
+    fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, layer: &LayerSurface) {
+        // Nach einer Neuerzeugung trifft das `closed` der ALTEN Surface ein.
+        // Das darf den Prozess nicht mehr beenden -- genau daran starb das
+        // Face vor T-2.5 bei jedem Monitorwechsel.
+        if !self
+            .overlay
+            .as_ref()
+            .is_some_and(|overlay| overlay.layer() == layer)
+        {
+            return;
+        }
+        // ponytail: kein Grund-Unterscheiden. Der Compositor sagt nicht, warum
+        // er schliesst; wir versuchen einen anderen Output und beenden nur,
+        // wenn keiner uebrig ist. Obergrenze: schliesst der Compositor uns bei
+        // genau einem Monitor aus einem anderen Grund, beenden wir wie bisher.
+        // Ausbaupfad, falls das je auffaellt: Wiederholung am selben Output
+        // mit Backoff statt sofortigem Beenden.
+        self.output_neu_binden();
     }
 
     fn configure(
@@ -888,6 +1000,8 @@ fn main() {
         pointer: None,
         shm,
         compositor,
+        subcompositor,
+        layer_shell,
         qh: qh.clone(),
         // Fuer den 1x1-ARGB-Puffer reichen vier Byte; SlotPool vergroessert
         // sich spaeter fuer Sprites selbststaendig.
@@ -909,6 +1023,12 @@ fn main() {
         ziehen: None,
         sprite_groesse: (0, 0),
         output_groesse: (0, 0),
+        gebundener_output: None,
+        // Ein leerer Wert ist wie „nicht gesetzt"; sonst waere ein
+        // versehentlich geleertes DAIMON_FACE_OUTPUT ein unbekannter Name.
+        output_wunsch: std::env::var("DAIMON_FACE_OUTPUT")
+            .ok()
+            .filter(|wert| !wert.is_empty()),
         positionsdatei: position::zustandspfad(),
         beendet: false,
     };
@@ -916,11 +1036,21 @@ fn main() {
     // Erst nach den Roundtrips kennt OutputState die wl_output-Objekte.
     event_queue.roundtrip(&mut app).expect("Output-Roundtrip");
     event_queue.roundtrip(&mut app).expect("Output-Roundtrip");
-    let output = app
-        .output_state
-        .outputs()
-        .next()
-        .expect("kein wl_output gefunden");
+    let (output, output_name) =
+        output::waehlen(&app.output_state, app.output_wunsch.as_deref(), None)
+            .unwrap_or_else(|| {
+                eprintln!("kein wl_output gefunden");
+                std::process::exit(2);
+            });
+    match app.output_wunsch.as_deref() {
+        Some(wunsch) if wunsch != output_name => eprintln!(
+            "DAIMON_FACE_OUTPUT={wunsch} ist unbekannt; Rueckfall auf ersten Output {output_name}"
+        ),
+        Some(_) => eprintln!("Output gebunden (DAIMON_FACE_OUTPUT): {output_name}"),
+        None => eprintln!("Kein DAIMON_FACE_OUTPUT gesetzt; erster Output: {output_name}"),
+    }
+    app.gebundener_output = Some(output.clone());
+    app.diagnose_output_setzen(&output_name, false);
     let output_groesse = app
         .output_state
         .info(&output)
@@ -945,8 +1075,8 @@ fn main() {
 
     let overlay = OverlaySurface::neu(
         &app.compositor,
-        &subcompositor,
-        &layer_shell,
+        &app.subcompositor,
+        &app.layer_shell,
         &qh,
         &output,
         startposition,
