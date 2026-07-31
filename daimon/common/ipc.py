@@ -67,10 +67,10 @@ PRODUZENTEN: dict[str, frozenset[str]] = {
     "ears": frozenset({"utterance", "intent_mark"}),
     "eyes": frozenset({"screen"}),
     "kwin": frozenset({"window"}),
-    # T-1.7: Absichtsmarken und Freigaben gehoeren dem Auth-Agenten, nie dem
-    # Face. Das Face ist ein Anzeigeprozess und hat keinen Produzentensocket
-    # mehr -- solange es `intent_mark` senden durfte, war die Grenze aus
-    # Design 2.4 nur behauptet.
+    # T-1.7 bleibt die Grenze: Das Face darf weder `intent_mark` noch
+    # `freigabe` senden. T-2.2 oeffnet ausschliesslich den engen Meldeweg fuer
+    # eine vom Nutzer weggeklickte Blase; die Menge darf nicht wieder wachsen.
+    "face": frozenset({"bubble_dismiss"}),
     "auth": frozenset({"intent_mark", "freigabe"}),
 }
 

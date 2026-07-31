@@ -69,6 +69,10 @@ impl FaceState {
 
     pub fn bubble_frame_gezaehlt(&mut self) {
         self.bubble_frames_rendered += 1;
+        // MUTANT: die Blase zeichnet den Sprite mit. Genau das soll die
+        // eigene Subsurface verhindern.
+        self.frames_rendered += 1;
+        self.last_render_ts = jetzt();
     }
 }
 

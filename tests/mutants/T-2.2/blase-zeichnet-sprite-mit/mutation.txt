@@ -1,0 +1,1 @@
+Eine Blasenaktualisierung zaehlt zusaetzlich einen Sprite-Frame -- so, wie es waere, wenn die Blase auf derselben Surface laege statt auf einer eigenen. Das soll das Akzeptanzkriterium "Aktualisierung zeichnet den Sprite NICHT neu" reissen. Bei einer Blase, die sich im Sekundentakt aendert, waere das die Idle-CPU-Zusage aus T-1.5.

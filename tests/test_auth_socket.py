@@ -116,21 +116,25 @@ def test_freigabe_mit_falschem_hash_wird_abgewiesen(hub):
 
 
 # ---------------------------------------------------------------------------
-# Face hat keinen Produzentensocket mehr
+# Face hat nur den engen Blasen-Meldeweg
 # ---------------------------------------------------------------------------
 
-def test_face_hat_keinen_produzenteneintrag_mehr():
-    """T-1.7: PTT und Bestaetigungsdialoge liegen im Auth-Agenten, nie im
-    Face. Solange das Face `intent_mark` senden durfte, war diese Grenze nur
-    behauptet."""
-    assert "face" not in ipc.PRODUZENTEN
+def test_face_darf_nur_bubble_dismiss():
+    """T-1.7 bleibt bestehen: keine Marke und keine Freigabe vom Face."""
+    assert ipc.PRODUZENTEN["face"] == frozenset({"bubble_dismiss"})
+    ipc.pruefe_typ("face", "bubble_dismiss")
     with pytest.raises(ipc.MessageTypeError):
         ipc.pruefe_typ("face", "intent_mark")
+    with pytest.raises(ipc.MessageTypeError):
+        ipc.pruefe_typ("face", "freigabe")
 
 
-def test_face_socket_wird_nicht_geoeffnet(tmp_path):
-    with pytest.raises(ValueError):
-        ipc.listen(tmp_path, "face")
+def test_face_socket_wird_geoeffnet(tmp_path):
+    srv = ipc.listen(tmp_path, "face")
+    try:
+        assert (tmp_path / "face.sock").exists()
+    finally:
+        srv.close()
 
 
 # ---------------------------------------------------------------------------

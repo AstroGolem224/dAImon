@@ -34,9 +34,10 @@ def hub(tmp_path):
     h.stop()
 
 
-def sende(rt: Path, payload: dict, typ: str = "hook") -> None:
+def sende(rt: Path, payload: dict, typ: str = "hook",
+          produzent: str = "hookbridge") -> None:
     c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    c.connect(str(rt / "hookbridge.sock"))
+    c.connect(str(rt / f"{produzent}.sock"))
     c.sendall(json.dumps({"v": 1, "type": typ, "payload": payload}).encode() + b"\n")
     time.sleep(0.25)
     c.close()
@@ -73,6 +74,41 @@ def test_ereignis_setzt_mood_und_bubble(hub):
     s = hole_state(hub.runtime_dir)
     assert s["mood"] == "needs_input"
     assert s["bubble"]["urgent"] is True
+
+
+def test_blasentext_wird_vor_dem_zustand_gesaeubert(hub):
+    sende(hub.runtime_dir, {
+        "hook_event_name": "Notification",
+        "session_id": "s1",
+        "notification_type": "permission_prompt",
+        "message": "harmlos\u202Etxt\u200B",
+    })
+    body = hole_state(hub.runtime_dir)["bubble"]["body"]
+    assert body == r"harmlos\u202Etxt\u200B"
+    assert body.isascii()
+
+
+def test_bubble_dismiss_ueber_face_loescht_blase(hub):
+    sende(hub.runtime_dir, {
+        "hook_event_name": "Notification",
+        "session_id": "s1",
+        "notification_type": "permission_prompt",
+        "message": "Bash ausfuehren?",
+    })
+    assert hole_state(hub.runtime_dir)["bubble"] is not None
+    sende(hub.runtime_dir, {}, typ="bubble_dismiss", produzent="face")
+    assert hole_state(hub.runtime_dir)["bubble"] is None
+
+
+def test_bubble_dismiss_ueber_hookbridge_wird_abgewiesen(hub):
+    sende(hub.runtime_dir, {
+        "hook_event_name": "Notification",
+        "session_id": "s1",
+        "notification_type": "permission_prompt",
+        "message": "bleibt",
+    })
+    sende(hub.runtime_dir, {}, typ="bubble_dismiss")
+    assert hole_state(hub.runtime_dir)["bubble"] is not None
 
 
 # --------------------------------------------------------------------------

@@ -253,8 +253,21 @@ IPC="$TARGET/daimon/common/ipc.py"
 # keine Laufzeitbeobachtung. Der Verhaltensbeleg steht darunter.
 chk "Produzent 'auth' existiert" \
   "$(grep -qE '^\s*"auth":' "$IPC" 2>/dev/null && echo ja || echo nein)" ja
-chk "Produzent 'face' hat keinen Eintrag mehr" \
-  "$(grep -qE '^\s*"face":' "$IPC" 2>/dev/null && echo nein || echo ja)" ja
+# T-1.7 verlangte urspruenglich, dass `face` GAR KEINEN Eintrag hat. Seit
+# T-2.2 hat es einen -- aber einen engen: die Blase, die der Nutzer
+# weggeklickt hat, darf gemeldet werden. Die Grenze, um die es T-1.7 ging,
+# ist damit unveraendert: keine Absichtsmarke, keine Freigabe.
+#
+# Geprueft wird deshalb die MENGE, nicht die Abwesenheit. Ein Textvergleich
+# auf `"face":` waere ausserdem an Anfuehrungszeichen zu umgehen -- genau das
+# ist beim Bau von T-2.2 passiert, und es ist der Grund fuer diese Fassung
+# (T-1.7.v3).
+face_menge="$(cd "$TARGET" && "$PY" -c '
+from daimon.common import ipc
+print(",".join(sorted(ipc.PRODUZENTEN.get("face", []))))' 2>/dev/null)"
+echo "  face darf senden: ${face_menge:-<nichts>}"
+chk "face darf hoechstens bubble_dismiss" \
+  "$([[ "$face_menge" == "bubble_dismiss" || -z "$face_menge" ]] && echo ja || echo nein)" ja
 
 auth="$(cd "$TARGET" && PYTHONDONTWRITEBYTECODE=1 timeout 60s "$PY" - 2>"$tmp/auth.err" <<'PYEOF'
 import sys

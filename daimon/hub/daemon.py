@@ -37,6 +37,7 @@ import time
 import threading
 from pathlib import Path
 
+from daimon.auth.preview import wert_saeubern
 from daimon.common import ipc
 from daimon.common.config import Config, load as load_config
 from daimon.common.logging import Logger, get_logger
@@ -97,6 +98,15 @@ class Hub:
         t0 = time.perf_counter()
         p = event.payload or {}
         mood, bubble = mood_of(p)
+        if bubble is not None:
+            # Hook-Text wird genau an der Hub-Grenze fuer alle Anzeigen
+            # gesaeubert. Das Face rendert nur diesen Zustand und baut die
+            # Unicode-/Laengenregeln aus preview.py absichtlich nicht nach.
+            bubble = {
+                **bubble,
+                "title": wert_saeubern(str(bubble.get("title", ""))),
+                "body": wert_saeubern(str(bubble.get("body", ""))),
+            }
         cwd = p.get("cwd", "") or ""
         pid = p.get("pid")
         self.state.apply(
@@ -148,6 +158,12 @@ class Hub:
                     # Marken aus und bestaetigt Freigaben selbst (T-1.7).
                     if not self._verarbeite_auth(event):
                         return  # Abweisung: Verbindung ab, Hub laeuft weiter
+                    continue
+                if produzent == "face":
+                    # `ipc.pruefe_typ` laesst hier ausschliesslich
+                    # bubble_dismiss durch. Das Face erhaelt insbesondere
+                    # keine Auth-Faehigkeit aus T-1.7 zurueck.
+                    self.state.clear_bubble()
                     continue
                 self.bus.publish(event)
 
@@ -292,7 +308,7 @@ class Hub:
     def start(self, produzenten: list[str] | None = None) -> None:
         self.runtime_dir.mkdir(parents=True, exist_ok=True)
         os.chmod(self.runtime_dir, 0o700)
-        for p in produzenten or ["hookbridge", "auth"]:
+        for p in produzenten or ["hookbridge", "face", "auth"]:
             t = threading.Thread(target=self._horche_produzent, args=(p,), daemon=True)
             t.start()
             self._threads.append(t)
