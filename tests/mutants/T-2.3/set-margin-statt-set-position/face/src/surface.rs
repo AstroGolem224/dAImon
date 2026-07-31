@@ -438,7 +438,12 @@ impl OverlaySurface {
         let bewegt = self.sprite.position != position;
         if bewegt {
             self.sprite.position = position;
-            self.sprite.subsurface.set_position(position.0, position.1);
+            // MUTANT: die Position wandert ueber set_margin der
+            // Layer-Surface statt ueber die Subsurface. Jede Aenderung ist
+            // damit eine Aenderung der Surface-Rolle -- der Compositor
+            // antwortet mit configure, also einem Roundtrip je Bewegung.
+            self.layer.set_margin(position.1, 0, 0, position.0);
+            self.layer.commit();
         }
         if self.bubble.sichtbar {
             let bubble_position = position_klemmen(
