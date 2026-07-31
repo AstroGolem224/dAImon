@@ -13,6 +13,7 @@ noch) ist überholt und ersetzt.
 |---|---|
 | **Gate P−1** | **8 von 9 grün**. Rot nur `T--1.12` — Messung nicht gelaufen, korrekt so |
 | **Gate P0** | **11 von 11 grün**, `verify-frozen` sauber, `pytest` 154 grün + 4 dokumentiert rot |
+| **Gate P1** | **4 von 5 grün**. Rot nur `T-1.10` — 5 Arbeitstage Normalbetrieb, Uhr läuft seit 31.07. |
 | **Phase 1** | T-1.1 bis T-1.9 stehen, am laufenden Prozess belegt. **Das MVP läuft: das Pet reagiert auf echte Sitzungen.** |
 
 Dokumente: `docs/DESIGN.md` v5.4, `docs/IMPLEMENTATION-PLAN.md` v3.3,
@@ -333,7 +334,47 @@ Die Vorrichtung aus Spike T−1.8 liegt jetzt unter [tests/harness/](tests/harne
 > zeichnet — `working` → `done`, beide Sprite `ruhig`. Der Zeitstempel muss dann
 > **stehen bleiben**.
 
-Damit ist Phase 1 verifiziert. Offen für Gate P1 ist nichts mehr aus dieser Liste.
+Damit ist Phase 1 verifiziert.
+
+---
+
+## Gate P1 — durchgefahren, 4 von 5
+
+| Prüfung | Ergebnis |
+|---|---|
+| `verify-frozen.sh` | **grün** — acht Verifizierer unverändert |
+| `T-1.10.sh` | **rot** — 1 Tag von 5, Urteil offen. Siehe unten |
+| `T-1.5.sh` (Idle-CPU) | **grün** — 0,000 % über 60 s |
+| `T-1.1.sh` (Vollbild) | **grün** — 29 von 29 |
+| GPU-Freiheit am systemd-Dienst | **grün** — kein Compute-Client, nicht in `process_info`, kein `/dev/nvidia`- oder `/dev/dri`-Deskriptor. Positivkontrolle: `nvidia-smi` sieht 13 Prozesse, das Face ist keiner davon |
+
+### Der eine rote Punkt
+
+**T-1.10 verlangt ≥5 Arbeitstage Normalbetrieb.** Das ist Kalenderzeit und
+nicht abzukürzen — dieselbe Lage wie `T--1.12` in Gate P−1. Was gebaut wurde,
+ist die Aufzeichnung, damit die Uhr überhaupt laufen kann:
+`tools/phase1_recorder.py` plus `daimon-phase1.timer` (alle 5 Minuten,
+~96 Stichproben je Arbeitstag). Stand Tag 1: `idle_cpu_p95` 0,091 %,
+`crashes` 0.
+
+**Scharfschalten, falls noch nicht geschehen:**
+
+```bash
+install -m 0644 config/systemd/daimon-phase1.{service,timer} ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now daimon-phase1.timer
+```
+
+**Was Matthias selbst eintragen muss** — kein Programm kann es messen:
+`fehlalarme` und `ablenkungen` in `tests/evidence/phase1-usage.json` (Vorgabe
+`null`, und `null` heißt „noch niemand hat hingesehen"), sowie das `verdict`
+und `docs/phase1-verdict.md`. Der Verifizierer wertet `pending` ausdrücklich
+als **rot** — ein Recorder, der sich selbst ein „gut" ausstellt, hätte kein
+Urteil gefällt, sondern eine Prüfung umgangen.
+
+> **Kopplung, die man kennen muss:** `needs_input_events` kommt aus dem
+> Ton-Zähler `toene_gespielt` — die richtige Quelle, weil der nur beim
+> *Übergang* nach `needs_input` steigt. Wer den Ton abschaltet
+> (`--ton aus` / `DAIMON_FACE_TON=0`), schaltet damit auch diese Messung ab.
+> Die Face-Unit setzt nichts, der Ton ist also an.
 
 **Offen und benannt:**
 
