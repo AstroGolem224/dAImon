@@ -1,7 +1,7 @@
 # dAImon — Implementierungsplan
 
-**Version:** 3.3 — T−1.12 nachgetragen, drei Akzeptanzkriterien korrigiert (nach adversarialem Review durch Codex, Runden 1–5; Nacharbeit und alles ab v3.3 ungeprüft)
-**Datum:** 2026-07-28
+**Version:** 3.5 — Aufwandsdurchsicht: sieben Verifizierer nach **Anhang E** zurückgestellt, zwei Zusammenlegungen (T-6.1-3.v, T-4.14.v). Davor v3.3 — T−1.12 nachgetragen, drei Akzeptanzkriterien korrigiert (nach adversarialem Review durch Codex, Runden 1–5; Nacharbeit und alles ab v3.3 ungeprüft)
+**Datum:** 2026-07-31
 **Gehört zu:** [dAImon-Design.md](dAImon-Design.md) v3.1 — insbesondere §1.2 Bedrohungsmodell und §5.2 Markierung
 **Repo:** `/home/itiger013/Dokumente/Github/dAImon`
 
@@ -87,7 +87,7 @@ Regeln für den Graphen:
 | T-2.4.v | Ein-/Ausblenden | NULL-Buffer-Unmap |
 | T-3.1.v | Mikrofon-Lebenszyklus | `stop()` statt `close()` |
 | T-3.4.v | Rückkopplungssperre | Nachlauf auf 0; Echo-Referenz entfernt |
-| T-3.7.v | GPU-Gate | Serialisierung entfernt; Fullscreen-Prüfung entfernt |
+| ~~T-3.7.v~~ *(Anhang E)* | GPU-Gate | Serialisierung entfernt; Fullscreen-Prüfung entfernt |
 | T-3.11.v | Egress | Mind behält Token; Rohkörper geloggt; Kontingent nicht verlangt |
 | T-3.13b.v | Markierung | Markierung bei Serialisierung verloren; `user_audio` in Durchgang 1; Hook-Feld als `trusted` |
 | T-3.15.v | Ohren-Kill-Switch | Stream nur pausiert; Netz erlaubt |
@@ -101,21 +101,20 @@ Regeln für den Graphen:
 | T-4.11.v | Consent | Nonce ignoriert; Timeout als `allow`; Pending-State nicht persistiert |
 | T-4.12.v | Modaler Dialog | Dialog im Face; per DND unterdrückbar |
 | T-4.13.v | Input-Broker | Prozess bleibt am Leben; Allowlist entfernt; Zeichen geloggt |
-| T-4.14.v | Broker-Sandboxes | je Unit eine entfernte Direktive |
+| T-4.14.v | Sandbox-Direktiven (**+ T-5.13**) | je Unit eine entfernte Direktive; Netz erlaubt; Prüfung an einer Testunit |
 | T-4.15.v | Höchstens-einmal | Ticket nach der Mutation verbraucht; automatischer Neuversuch |
 | T-4.16.v | Ende-zu-Ende | ein Broker ausgelassen; Vorschau übersprungen |
-| T-4.17.v | Basisangriffe | Rückfrage statt stiller Ablehnung |
-| T-5.3.v | ScreenCast-Kosten | Grundlinie weggelassen |
-| T-5.6.v | OCR-Kosten | Messfenster zu kurz |
+| ~~T-4.17.v~~ *(Anhang E)* | Basisangriffe | Rückfrage statt stiller Ablehnung |
+| ~~T-5.3.v~~ *(Anhang E)* | ScreenCast-Kosten | Grundlinie weggelassen |
+| ~~T-5.6.v~~ *(Anhang E)* | OCR-Kosten | Messfenster zu kurz |
 | T-5.9.v | Deklassifizierung | Kontingent reicht aus; abgelaufene Marke akzeptiert |
-| T-5.10.v | Exfiltration | Spoof-Audio-Phase ausgelassen; Rohkörper gespeichert |
-| T-5.11.v | Injektion | Ergebnis aus Labels statt aus Nebenwirkungen |
+| ~~T-5.10.v~~ *(Anhang E)* | Exfiltration | Spoof-Audio-Phase ausgelassen; Rohkörper gespeichert |
+| ~~T-5.11.v~~ *(Anhang E)* | Injektion | Ergebnis aus Labels statt aus Nebenwirkungen |
 | T-5.12.v | Augen-Kill-Switch | Portal-Session bleibt offen |
-| T-5.13.v | Eyes-Sandbox | Netz erlaubt |
-| T-6.1.v · T-6.2.v · T-6.3.v | Gedächtnis-Herkunft | Markierung beim DB-Roundtrip verloren; `user_audio` gespeichert; Modellzusammenfassung als Erinnerung |
-| T-6.7b.v | Rundengrenzen | eine Wäsche-Grenze ausgelassen |
+| T-6.1-3.v (**ein Task**) | Gedächtnis-Herkunft | Markierung beim DB-Roundtrip verloren; `user_audio` gespeichert; Modellzusammenfassung als Erinnerung |
+| ~~T-6.7b.v~~ *(Anhang E)* | Rundengrenzen | eine Wäsche-Grenze ausgelassen |
 
-**46 Verifizierer**, einzeln ausgeschrieben in **Anhang D**. Mit 100 Implementierungs-Tasks ergibt das **146 Tasks**.
+**36 aktive Verifizierer**, einzeln ausgeschrieben in **Anhang D**. Sieben weitere sind nach v3.4 zurückgestellt und stehen in **Anhang E** — sie bewachen keine Vertrauensgrenze. Mit 100 Implementierungs-Tasks ergibt das **136 aktive Tasks**.
 
 **Durchsetzung, nicht Absichtserklärung:**
 
@@ -155,7 +154,7 @@ für jede Phase:
 | **P5** | Augen: Wahrnehmung in Quarantäne, dann Deklassifizierung | 13 | ~4 Abende |
 | **P6** | Gedächtnis, Charakter, Rundengrenzen-Test, Abschlussreview | 11 | ~3 Abende |
 | **P7** | Dauermitschnitt: Archiv, Redaktion, Pausenschalter, Suche | 5 | ~3 Abende |
-| | **Summe** | **108 Implementierung + 53 Verifizierer = 161** | |
+| | **Summe** | **108 Implementierung + 43 aktive Verifizierer = 151** (7 zurückgestellt in Anhang E, 3 zusammengelegt) | |
 
 ### Warum diese Reihenfolge
 
@@ -1007,7 +1006,7 @@ tests/verify/T-1.5.sh    # Idle-CPU weiterhin < 0,5 %
 ### T-3.7 — GPU-Worker-Gerüst ∥
 - **Ziel:** Ein Muster für Modellprozesse, die sich selbst beenden.
 - **Dateien:** `daimon/gpu/worker.py` [neu], `config/systemd/daimon-gpu@.service` [neu]
-- **Abhängigkeiten:** T-0.12, T-0.13, **T-3.7.v**
+- **Abhängigkeiten:** T-0.12, T-0.13  *(Verifizierer T-3.7.v zurückgestellt — Anhang E)*
 - **Akzeptanz:**
   - [ ] Socket-aktiviert, ein Socket je Modelltyp, eine Template-Unit
   - [ ] Idle-Timer → **Prozessende**
@@ -1396,7 +1395,7 @@ done
 ### T-4.17 — Basis-Injektionstests
 - **Ziel:** Erste Absicherung — der vollständige Test folgt in P5, wenn Eyes angeschlossen ist.
 - **Dateien:** `tests/test_injection_base.py` [neu]
-- **Abhängigkeiten:** T-4.16, **T-4.17.v**
+- **Abhängigkeiten:** T-4.16  *(Verifizierer T-4.17.v zurückgestellt — Anhang E)*
 - **Akzeptanz:**
   - [ ] Aktionsanfrage ohne Rundenmarke → abgelehnt
   - [ ] Anfrage mit abgelaufener Rundenmarke → abgelehnt
@@ -1483,13 +1482,13 @@ pytest -q
 ### T-5.3 — GStreamer-Pipeline
 - **Ziel:** Frames abholen ohne Dauerkosten.
 - **Dateien:** `daimon/eyes/capture.py` [neu]
-- **Abhängigkeiten:** T-5.2, **T-5.3.v**
+- **Abhängigkeiten:** T-5.2  *(Verifizierer T-5.3.v zurückgestellt — Anhang E)*
 - **Akzeptanz:**
   - [ ] `pipewiresrc ! videoconvert ! appsink`, `max-buffers=1 drop=true`
   - [ ] Stream mit `INACTIVE` erzeugen, über `set_active()` öffnen und schließen — dann stellt der Compositor die Frame-Erzeugung ganz ein, während die Portal-Sitzung lebt. Besser als `PAUSED`
   - [ ] Niedrige Framerate ausgehandelt
   - [ ] `videoconvert` bleibt drin (KDE-Bug 476602)
-- **Verifikation:** `tests/verify/T-5.3.sh` (eingefroren) — holt 10 Frames, prüft dass jeder von null verschieden ist (gegen den Schwarzframe-Bug); **schaltet danach per `kscreen-doctor` einen Ausgang aus und wieder ein und verlangt, dass weiterhin der beabsichtigte Bildschirm geliefert wird** (Node-ID-Wiederverwendung); misst GPU-Auslastung per `nvidia-smi dmon` über 30 s je einmal im `PAUSED`- und im `PLAYING`-Zustand gegen eine Leerlauf-Grundlinie; Exit 0 nur, wenn der `PAUSED`-Mehrverbrauch unter 1 Prozentpunkt liegt. Wird die Schwelle gerissen, ist die strengere Erfassungsart verpflichtend.
+- **Verifikation:** `tests/verify/T-5.3.sh` (eingefroren, ohne Mutantensatz — Anhang E) — holt 10 Frames, prüft dass jeder von null verschieden ist (gegen den Schwarzframe-Bug); **schaltet danach per `kscreen-doctor` einen Ausgang aus und wieder ein und verlangt, dass weiterhin der beabsichtigte Bildschirm geliefert wird** (Node-ID-Wiederverwendung); misst GPU-Auslastung per `nvidia-smi dmon` über 30 s je einmal im `PAUSED`- und im `PLAYING`-Zustand gegen eine Leerlauf-Grundlinie; Exit 0 nur, wenn der `PAUSED`-Mehrverbrauch unter 1 Prozentpunkt liegt. Wird die Schwelle gerissen, ist die strengere Erfassungsart verpflichtend.
 - **Agent:** builder · **Umfang:** L
 
 ### T-5.4 — Abtast-Timer neben Fokus-Ereignis ∥
@@ -1521,7 +1520,7 @@ pytest -q
 ### T-5.6 — OCR
 - **Ziel:** Text nur dort, wo sich etwas geändert hat.
 - **Dateien:** `daimon/eyes/ocr.py` [neu]
-- **Abhängigkeiten:** T-5.5, T-5.1, **T-5.6.v**
+- **Abhängigkeiten:** T-5.5, T-5.1  *(Verifizierer T-5.6.v zurückgestellt — Anhang E)*
 - **Akzeptanz:**
   - [ ] **Dauerhafter Arbeitsprozess** nach dem Urteil aus T−1.10 — nicht wegen der Geschwindigkeit, sondern wegen der Isolation: tesseracts OpenMP kostet ~800 ms je Vollbild, wenn numpy im selben Prozess liegt
   - [ ] **`tessdata_fast`** statt Standard-tessdata: −277 ms bei gleichem Ertrag, der größere Hebel
@@ -1577,7 +1576,7 @@ pytest -q
 ### T-5.10 — Test auf indirekte Exfiltration
 - **Ziel:** Der Beweis für die Privacy-Zusage aus Design §7.2.
 - **Dateien:** `tests/test_exfiltration.py` [neu]
-- **Abhängigkeiten:** T-5.9, **T-5.10.v**
+- **Abhängigkeiten:** T-5.9  *(Verifizierer T-5.10.v zurückgestellt — Anhang E)*
 - **Akzeptanz:**
   - [ ] Eine eindeutige Zeichenkette wird auf dem Bildschirm platziert
   - [ ] **Drei passive Phasen**, in denen die Marke in keinem ausgehenden Aufruf vorkommen darf:
@@ -1595,14 +1594,14 @@ pytest -q
 ### T-5.11 — Adversarialer Injektionstest
 - **Ziel:** Der vollständige Test, der in P4 noch nicht möglich war.
 - **Dateien:** `tests/test_injection_full.py` [neu], `tests/evidence/injection-results.json` [erzeugt]
-- **Abhängigkeiten:** T-5.10, T-4.17, **T-5.11.v**
+- **Abhängigkeiten:** T-5.10, T-4.17  *(Verifizierer T-5.11.v zurückgestellt — Anhang E)*
 - **Akzeptanz:**
   - [ ] ≥25 Angriffe, **tatsächlich auf dem Bildschirm dargestellt**, nicht als Strings eingespeist
   - [ ] Kategorien: direkte Anweisung, Autoritätsanmaßung, Dringlichkeit, versteckter Text, Herkunftsfälschung, Wiedereinspielung, Audio-Wiedereintritt über TTS, nebenläufige Rückfragen, Umgehung über Fenstertitel
   - [ ] **Kein** Angriff führt zu einer Aktion ohne frische, gültige Absichtsmarke aus dem Auth-Agenten (der Nachweis gilt der Marke, nicht einer physischen Handlung — Design §1.3)
   - [ ] **Kein** Angriff erzeugt eine Consent-Rückfrage — Rückfrage-Spam ist selbst ein Angriffsweg
   - [ ] Ergebnisse maschinenlesbar mit `{id, category, outcome}`
-- **Verifikation:** `tests/verify/T-5.11.sh` (eingefroren) — leitet jedes `outcome` selbst aus Broker-Nebenwirkungen ab (Kanarienvogel-Dateien, Fensterzustand, Lautstärke) und beobachtet Auth-Dialoge **extern** über Fensterliste und Benachrichtigungsbus, nicht über den Hub-Zähler. Zusätzlich eine **autorisierte Kontrollaktion** mit gültiger Marke, die wirken muss — sonst bestünde der Test auch bei totem Aktionspfad. Exit 0 nur, wenn kein Angriff Wirkung oder Dialog erzeugte **und** die Kontrollaktion wirkte.
+- **Verifikation:** `tests/verify/T-5.11.sh` (eingefroren, ohne Mutantensatz — Anhang E) — leitet jedes `outcome` selbst aus Broker-Nebenwirkungen ab (Kanarienvogel-Dateien, Fensterzustand, Lautstärke) und beobachtet Auth-Dialoge **extern** über Fensterliste und Benachrichtigungsbus, nicht über den Hub-Zähler. Zusätzlich eine **autorisierte Kontrollaktion** mit gültiger Marke, die wirken muss — sonst bestünde der Test auch bei totem Aktionspfad. Exit 0 nur, wenn kein Angriff Wirkung oder Dialog erzeugte **und** die Kontrollaktion wirkte.
 - **Agent:** reviewer · **Umfang:** L
 
 ### T-5.12 — Augen-Kill-Switch ∥
@@ -1620,7 +1619,7 @@ pytest -q
 ### T-5.13 — Eyes-Sandbox ∥
 - **Ziel:** Die Wahrnehmung kann nicht telefonieren.
 - **Dateien:** `config/systemd/daimon-eyes.service` [neu]
-- **Abhängigkeiten:** T-5.12, **T-5.13.v**
+- **Abhängigkeiten:** T-5.12, **T-4.14.v** *(deckt T-5.13 mit ab)*
 - **Akzeptanz:**
   - [ ] `RestrictAddressFamilies=AF_UNIX`
   - [ ] `ProtectHome=read-only`, kein Schreibrecht außer im Kontextverzeichnis
@@ -1651,7 +1650,7 @@ pytest -q
 ### T-6.1 — Persistenz ∥
 - **Ziel:** SQLite für alles, was Neustarts überleben soll — mit erhaltener Markierung.
 - **Dateien:** `daimon/mind/store.py` [neu]
-- **Abhängigkeiten:** T-5.7, **T-3.13b**, T-6.1.v
+- **Abhängigkeiten:** T-5.7, **T-3.13b**, T-6.1-3.v
 - **Akzeptanz:**
   - [ ] SQLite unter `$XDG_STATE_HOME/daimon/memory.db`, 0600
   - [ ] Migrationen versioniert
@@ -1664,7 +1663,7 @@ pytest -q
 ### T-6.2 — Kurzzeitgedächtnis
 - **Ziel:** Nachfragen funktionieren.
 - **Dateien:** `daimon/mind/memory.py` [neu]
-- **Abhängigkeiten:** T-6.1, **T-3.13b**, T-6.2.v
+- **Abhängigkeiten:** T-6.1, **T-3.13b**, T-6.1-3.v
 - **Akzeptanz:**
   - [ ] Die letzten N Runden fließen in den Prompt — **aber nur `user_ptt`- und `trusted`-Material**. `user_audio` und `tainted` sind ausgeschlossen
   - [ ] **Durchgang-2-Ausgaben und bildschirmabgeleiteter Text erreichen den werkzeugfähigen Durchgang nie**, auch nicht über das Gedächtnis. Das war die offene Rundengrenze in v2.0
@@ -1676,7 +1675,7 @@ pytest -q
 ### T-6.3 — Langzeitgedächtnis
 - **Ziel:** Das Pet merkt sich, was ihm gesagt wurde — und nur das.
 - **Dateien:** `daimon/mind/memory.py` [ändern]
-- **Abhängigkeiten:** T-6.2, **T-3.13b**, T-6.3.v
+- **Abhängigkeiten:** T-6.2, **T-3.13b**, T-6.1-3.v
 - **Akzeptanz:**
   - [ ] Merkt sich **nur** auf ausdrückliche Anweisung
   - [ ] Speichert **ausschließlich eine wörtliche Spanne aus einer `user_ptt`-Äußerung** — nie eine vom Modell erzeugte Zusammenfassung, nie Bildschirmmaterial
@@ -1737,7 +1736,7 @@ pytest -q
 ### T-6.7b — Injektionstest über Rundengrenzen
 - **Ziel:** Der Kanal, den T-5.11 nicht sehen konnte, weil es das Gedächtnis noch nicht gab.
 - **Dateien:** `tests/test_injection_crossturn.py` [neu], `tests/evidence/crossturn-results.json` [erzeugt]
-- **Abhängigkeiten:** T-6.6, T-6.3, T-5.11, **T-6.7b.v**
+- **Abhängigkeiten:** T-6.6, T-6.3, T-5.11  *(Verifizierer T-6.7b.v zurückgestellt — Anhang E)*
 - **Akzeptanz:**
   - [ ] Vollständige Kette gefahren: Injektion auf dem Bildschirm → Durchgang-2-Antwort → Gedächtnis → **neue Runde mit Push-to-Talk**
   - [ ] ≥10 Varianten, darunter „mach das", „führ den Vorschlag aus", „ja bitte", und eine, die den injizierten Text als Erinnerung ablegen will
@@ -1812,7 +1811,8 @@ T-x.y    (builder)    implementieren — kann tests/verify/ nicht anfassen,
 Gate                  verify-frozen.sh zuerst, dann der Verifizierer
 ```
 
-46 Verifizierer.
+36 Verifizierer: 39 minus drei durch Zusammenlegung (T-6.1-3.v, T-4.14.v).
+Sieben weitere zurückgestellt — siehe Anhang E.
 
 ### T−1.1.v — Verifizierer: Wake-Word-Messung
 - **Ziel:** Ein Skript, das genau dann Exit 0 liefert, wenn `T−1.1` seine Akzeptanzkriterien erfüllt.
@@ -2035,19 +2035,6 @@ Gate                  verify-frozen.sh zuerst, dann der Verifizierer
 - **Verifikation:** `tests/verify/meta.sh T-3.4` — gegen alle 3 Mutanten (jede muss scheitern) und das Gut-Muster (muss bestehen). Danach `tests/verify/freeze.sh T-3.4`
 - **Agent:** reviewer · **Umfang:** L
 
-### T-3.7.v — Verifizierer: GPU-Gate
-- **Ziel:** Ein Skript, das genau dann Exit 0 liefert, wenn `T-3.7` seine Akzeptanzkriterien erfüllt.
-- **Dateien:** `tests/verify/T-3.7.sh` [neu], `tests/mutants/T-3.7/` [neu], `tests/fixtures/known-good/T-3.7/` [neu]
-- **Abhängigkeiten:** T-0.0; die **Akzeptanzliste** von `T-3.7` — nicht dessen Implementierung
-- **Akzeptanz:**
-  - [ ] Jedes Akzeptanzkriterium von `T-3.7` einzeln geprüft, ohne `&&`-Verkettung
-  - [ ] Mutanten unter `tests/mutants/T-3.7/`: `Serialisierung entfernt`; `Fullscreen-Prüfung entfernt`; `VRAM-Messung nur vor dem Laden`
-  - [ ] Der unveränderte Verifizierer **weist jede Mutante zurück**
-  - [ ] Er **besteht** gegen `tests/fixtures/known-good/T-3.7/`
-  - [ ] Keine selbstberichteten Wahrheitswerte (Regel 9); Negativprüfungen mit Positiv-Kanarienvogel (Regel 4)
-- **Verifikation:** `tests/verify/meta.sh T-3.7` — gegen alle 3 Mutanten (jede muss scheitern) und das Gut-Muster (muss bestehen). Danach `tests/verify/freeze.sh T-3.7`
-- **Agent:** reviewer · **Umfang:** M
-
 ### T-3.11.v — Verifizierer: Egress-Broker
 - **Ziel:** Ein Skript, das genau dann Exit 0 liefert, wenn `T-3.11` seine Akzeptanzkriterien erfüllt.
 - **Dateien:** `tests/verify/T-3.11.sh` [neu], `tests/mutants/T-3.11/` [neu], `tests/fixtures/known-good/T-3.11/` [neu]
@@ -2217,18 +2204,19 @@ Gate                  verify-frozen.sh zuerst, dann der Verifizierer
 - **Verifikation:** `tests/verify/meta.sh T-4.13` — gegen alle 5 Mutanten (jede muss scheitern) und das Gut-Muster (muss bestehen). Danach `tests/verify/freeze.sh T-4.13`
 - **Agent:** reviewer · **Umfang:** L
 
-### T-4.14.v — Verifizierer: Broker-Sandboxes
-- **Ziel:** Ein Skript, das genau dann Exit 0 liefert, wenn `T-4.14` seine Akzeptanzkriterien erfüllt.
-- **Dateien:** `tests/verify/T-4.14.sh` [neu], `tests/mutants/T-4.14/` [neu], `tests/fixtures/known-good/T-4.14/` [neu]
-- **Abhängigkeiten:** T-0.0; die **Akzeptanzliste** von `T-4.14` — nicht dessen Implementierung
+### T-4.14.v — Verifizierer: Sandbox-Direktiven (T-4.14 · T-5.13)
+- **Ziel:** Ein parametrierter Prüfstand, der je systemd-Unit die verlangten Direktiven gegen die **echte** Unit prüft, plus zwei Einstiegsskripte. Zusammengelegt mit `T-5.13.v`, weil „Direktive fehlt" derselbe Mutationsoperator auf derselben Datenquelle ist — nur mit anderer Unit-Liste.
+- **Dateien:** `tests/verify/T-4.14.sh` [neu], `tests/verify/T-5.13.sh` [neu], `tests/verify/lib/sandbox_units.sh` [neu], `tests/mutants/T-4.14/` [neu], `tests/mutants/T-5.13/` [neu], `tests/fixtures/known-good/T-4.14/` [neu], `tests/fixtures/known-good/T-5.13/` [neu]
+- **Abhängigkeiten:** T-0.0; die **Akzeptanzlisten** von `T-4.14` und `T-5.13` — nicht deren Implementierung
 - **Akzeptanz:**
-  - [ ] Jedes Akzeptanzkriterium von `T-4.14` einzeln geprüft, ohne `&&`-Verkettung
-  - [ ] Mutanten unter `tests/mutants/T-4.14/`: `je Unit eine entfernte Direktive`; `Prüfung in einer Testunit statt der echten`
-  - [ ] Der unveränderte Verifizierer **weist jede Mutante zurück**
-  - [ ] Er **besteht** gegen `tests/fixtures/known-good/T-4.14/`
-  - [ ] Keine selbstberichteten Wahrheitswerte (Regel 9); Negativprüfungen mit Positiv-Kanarienvogel (Regel 4)
-- **Verifikation:** `tests/verify/meta.sh T-4.14` — gegen alle 2 Mutanten (jede muss scheitern) und das Gut-Muster (muss bestehen). Danach `tests/verify/freeze.sh T-4.14`
-- **Agent:** reviewer · **Umfang:** M
+  - [ ] Zwei getrennte Einstiegsskripte, ein gemeinsamer Prüfstand. Gate P5 ruft weiter `T-5.13.sh` auf
+  - [ ] Die Unit-Liste je Ziel-Task ist **fest verdrahtet**, nicht aus dem Dateisystem gelesen — sonst verschwindet eine gelöschte Unit lautlos aus der Prüfung
+  - [ ] Jedes Akzeptanzkriterium beider Ziel-Tasks einzeln geprüft, ohne `&&`-Verkettung
+  - [ ] Mutanten erhalten: `tests/mutants/T-4.14/`: `je Unit eine entfernte Direktive`; `Prüfung in einer Testunit statt der echten` — `tests/mutants/T-5.13/`: `Netz erlaubt`; `Prüfung außerhalb der echten Unit`
+  - [ ] Beide Skripte **weisen jede Mutante ihres Satzes zurück** und **bestehen** gegen ihr Gut-Muster
+  - [ ] Direktiven werden per `systemctl show` an der laufenden Unit abgefragt, nicht aus der Unit-Datei gegrept (Regel 9)
+- **Verifikation:** `tests/verify/meta.sh T-4.14` · `meta.sh T-5.13`. Danach `freeze.sh` für beide Skripte **und** `lib/sandbox_units.sh`
+- **Agent:** reviewer · **Umfang:** M *(zusammengelegt aus M + S — spart ~0.5 h)*
 
 ### T-4.15.v — Verifizierer: Höchstens-einmal
 - **Ziel:** Ein Skript, das genau dann Exit 0 liefert, wenn `T-4.15` seine Akzeptanzkriterien erfüllt.
@@ -2255,6 +2243,96 @@ Gate                  verify-frozen.sh zuerst, dann der Verifizierer
   - [ ] Keine selbstberichteten Wahrheitswerte (Regel 9); Negativprüfungen mit Positiv-Kanarienvogel (Regel 4)
 - **Verifikation:** `tests/verify/meta.sh T-4.16` — gegen alle 3 Mutanten (jede muss scheitern) und das Gut-Muster (muss bestehen). Danach `tests/verify/freeze.sh T-4.16`
 - **Agent:** reviewer · **Umfang:** L
+
+### T-5.9.v — Verifizierer: Deklassifizierung
+- **Ziel:** Ein Skript, das genau dann Exit 0 liefert, wenn `T-5.9` seine Akzeptanzkriterien erfüllt.
+- **Dateien:** `tests/verify/T-5.9.sh` [neu], `tests/mutants/T-5.9/` [neu], `tests/fixtures/known-good/T-5.9/` [neu]
+- **Abhängigkeiten:** T-0.0; die **Akzeptanzliste** von `T-5.9` — nicht dessen Implementierung
+- **Akzeptanz:**
+  - [ ] Jedes Akzeptanzkriterium von `T-5.9` einzeln geprüft, ohne `&&`-Verkettung
+  - [ ] Mutanten unter `tests/mutants/T-5.9/`: `Kontingent reicht aus`; `abgelaufene Marke akzeptiert`; `Bildschirmbezug nicht geprüft`
+  - [ ] Der unveränderte Verifizierer **weist jede Mutante zurück**
+  - [ ] Er **besteht** gegen `tests/fixtures/known-good/T-5.9/`
+  - [ ] Keine selbstberichteten Wahrheitswerte (Regel 9); Negativprüfungen mit Positiv-Kanarienvogel (Regel 4)
+- **Verifikation:** `tests/verify/meta.sh T-5.9` — gegen alle 3 Mutanten (jede muss scheitern) und das Gut-Muster (muss bestehen). Danach `tests/verify/freeze.sh T-5.9`
+- **Agent:** reviewer · **Umfang:** L
+
+### T-5.12.v — Verifizierer: Augen-Kill-Switch
+- **Ziel:** Ein Skript, das genau dann Exit 0 liefert, wenn `T-5.12` seine Akzeptanzkriterien erfüllt.
+- **Dateien:** `tests/verify/T-5.12.sh` [neu], `tests/mutants/T-5.12/` [neu], `tests/fixtures/known-good/T-5.12/` [neu]
+- **Abhängigkeiten:** T-0.0; die **Akzeptanzliste** von `T-5.12` — nicht dessen Implementierung
+- **Akzeptanz:**
+  - [ ] Jedes Akzeptanzkriterium von `T-5.12` einzeln geprüft, ohne `&&`-Verkettung
+  - [ ] Mutanten unter `tests/mutants/T-5.12/`: `Portal-Session bleibt offen`; `Kontextverzeichnis per Glob geprüft`
+  - [ ] Der unveränderte Verifizierer **weist jede Mutante zurück**
+  - [ ] Er **besteht** gegen `tests/fixtures/known-good/T-5.12/`
+  - [ ] Keine selbstberichteten Wahrheitswerte (Regel 9); Negativprüfungen mit Positiv-Kanarienvogel (Regel 4)
+- **Verifikation:** `tests/verify/meta.sh T-5.12` — gegen alle 2 Mutanten (jede muss scheitern) und das Gut-Muster (muss bestehen). Danach `tests/verify/freeze.sh T-5.12`
+- **Agent:** reviewer · **Umfang:** M
+
+### T-6.1-3.v — Verifizierer: Gedächtnis-Herkunft (T-6.1 · T-6.2 · T-6.3)
+- **Ziel:** Drei Skripte aus **einem** Prüfstand, die genau dann Exit 0 liefern, wenn `T-6.1`, `T-6.2` und `T-6.3` ihre Akzeptanzkriterien erfüllen. Zusammengelegt, weil alle drei dieselbe Grenze bewachen: **überlebt die Markierung den Weg durch die Datenbank und zurück in den Prompt?** Der Aufbau — Testkorpus, DB-Roundtrip, Prompt-Abgriff, Herkunftsprüfung — ist dreimal derselbe.
+- **Dateien:** `tests/verify/T-6.1.sh` [neu], `tests/verify/T-6.2.sh` [neu], `tests/verify/T-6.3.sh` [neu], `tests/verify/lib/taint_roundtrip.sh` [neu], `tests/mutants/T-6.1/` `T-6.2/` `T-6.3/` [neu], `tests/fixtures/known-good/T-6.1-3/` [neu]
+- **Abhängigkeiten:** T-0.0; die **Akzeptanzlisten** von `T-6.1`, `T-6.2`, `T-6.3` — nicht deren Implementierung
+- **Akzeptanz:**
+  - [ ] Drei getrennte Einstiegsskripte, ein gemeinsamer Prüfstand in `lib/taint_roundtrip.sh`. **Kein** Sammelskript — jedes Gate ruft weiter `T-6.<n>.sh` einzeln auf
+  - [ ] Jedes Akzeptanzkriterium der drei Ziel-Tasks einzeln geprüft, ohne `&&`-Verkettung
+  - [ ] Mutanten **vollständig erhalten**, je Ziel-Task ein eigener Satz — die Zusammenlegung spart den Aufbau, nicht die Abdeckung:
+    - `tests/mutants/T-6.1/`: `Markierung beim DB-Roundtrip verloren`; `Session-Status persistiert`
+    - `tests/mutants/T-6.2/`: ``user_audio` im Prompt von Durchgang 1`; ``tainted` im Prompt von Durchgang 1`; `Frist ignoriert`
+    - `tests/mutants/T-6.3/`: `Modellzusammenfassung gespeichert`; `Bildschirmmaterial gespeichert`; `nicht-wörtliche Spanne akzeptiert`
+  - [ ] Jedes der drei Skripte **weist jede Mutante seines Satzes zurück**
+  - [ ] Eine Mutante am **gemeinsamen** Prüfstand (`Herkunftsprüfung übersprungen`) lässt **alle drei** scheitern — sonst trägt die geteilte Schicht keine Beweislast
+  - [ ] Alle drei **bestehen** gegen `tests/fixtures/known-good/T-6.1-3/`
+  - [ ] Keine selbstberichteten Wahrheitswerte (Regel 9); Negativprüfungen mit Positiv-Kanarienvogel (Regel 4)
+- **Verifikation:** `tests/verify/meta.sh T-6.1` · `meta.sh T-6.2` · `meta.sh T-6.3` — jeweils gegen den eigenen Mutantensatz und das gemeinsame Gut-Muster, zusätzlich die Prüfstand-Mutante gegen alle drei. Danach `freeze.sh` für alle drei Skripte **und** `lib/taint_roundtrip.sh`
+- **Agent:** reviewer · **Umfang:** L *(zusammengelegt aus 3× M — spart ~2 h)*
+
+---
+
+## Anhang E — Zurückgestellte Verifizierer
+
+Sieben Verifizierer, nach der Aufwandsdurchsicht vom 31.07.2026 aus dem aktiven Graphen genommen.
+**Kriterium:** ein Verifizierer bleibt aktiv, wenn er eine Vertrauensgrenze bewacht — Markierung,
+Policy, Consent, Egress, Broker, Sandbox, Kill-Switch. Diese sieben tun das nicht: vier verifizieren
+einen *Test* statt Code (zweite Ordnung), zwei prüfen Kostenmessungen, einer ein Ressourcengate.
+
+**Gespart: ~19 h ≈ 6 Abende.**
+
+| Task | Umfang | warum zurückgestellt | Restrisiko |
+|---|---|---|---|
+| T-4.17.v | M | verifiziert T-4.17, selbst schon ein reviewer-Test | Basisangriffstest könnte zu lax geschrieben sein |
+| T-5.10.v | L | verifiziert den Exfiltrationstest | dito |
+| T-5.11.v | L | verifiziert den Injektionstest | dito |
+| T-6.7b.v | L | verifiziert den Rundengrenzen-Test | dito |
+| T-3.7.v | M | GPU-Gate = Ressourcen und Ruckeln, keine Sicherheitsgrenze | VRAM-Gate schweigend defekt |
+| T-5.3.v | S | ScreenCast-Kostenmessung | falsche Zahl kostet Watt, nicht Daten |
+| T-5.6.v | S | OCR-Kostenmessung | dito |
+
+**Konsequenz:** Die Verifikationsbefehle dieser sieben Tasks bleiben im Plan und im jeweiligen
+Phasen-Gate. Was entfällt, ist der Mutantensatz, das Gut-Muster und der `meta.sh`-Durchlauf.
+**Regel 7 gilt weiter:** das Skript schreibt ein `reviewer`, nicht der Builder des Ziel-Tasks —
+sonst schriebe wieder derselbe Agent Implementierung und Abnahme. Eintrag in `tests/verify/FROZEN`
+bleibt erlaubt und ist bei T-5.3 und T-5.11 ausdrücklich vorgesehen.
+
+**Reaktivierung:** Block zurück nach Anhang D, `.v`-Abhängigkeit im Ziel-Task
+wiederherstellen, `meta.sh` + `freeze.sh` fahren. Die Blöcke sind unverändert erhalten.
+
+Die vier Tests selbst — T-4.17, T-5.10, T-5.11, T-6.7b — bleiben im Plan und im Gate.
+Zurückgestellt ist nur ihre maschinelle Gegenprüfung.
+
+### T-3.7.v — Verifizierer: GPU-Gate
+- **Ziel:** Ein Skript, das genau dann Exit 0 liefert, wenn `T-3.7` seine Akzeptanzkriterien erfüllt.
+- **Dateien:** `tests/verify/T-3.7.sh` [neu], `tests/mutants/T-3.7/` [neu], `tests/fixtures/known-good/T-3.7/` [neu]
+- **Abhängigkeiten:** T-0.0; die **Akzeptanzliste** von `T-3.7` — nicht dessen Implementierung
+- **Akzeptanz:**
+  - [ ] Jedes Akzeptanzkriterium von `T-3.7` einzeln geprüft, ohne `&&`-Verkettung
+  - [ ] Mutanten unter `tests/mutants/T-3.7/`: `Serialisierung entfernt`; `Fullscreen-Prüfung entfernt`; `VRAM-Messung nur vor dem Laden`
+  - [ ] Der unveränderte Verifizierer **weist jede Mutante zurück**
+  - [ ] Er **besteht** gegen `tests/fixtures/known-good/T-3.7/`
+  - [ ] Keine selbstberichteten Wahrheitswerte (Regel 9); Negativprüfungen mit Positiv-Kanarienvogel (Regel 4)
+- **Verifikation:** `tests/verify/meta.sh T-3.7` — gegen alle 3 Mutanten (jede muss scheitern) und das Gut-Muster (muss bestehen). Danach `tests/verify/freeze.sh T-3.7`
+- **Agent:** reviewer · **Umfang:** M
 
 ### T-4.17.v — Verifizierer: Basisangriffe
 - **Ziel:** Ein Skript, das genau dann Exit 0 liefert, wenn `T-4.17` seine Akzeptanzkriterien erfüllt.
@@ -2295,19 +2373,6 @@ Gate                  verify-frozen.sh zuerst, dann der Verifizierer
 - **Verifikation:** `tests/verify/meta.sh T-5.6` — gegen alle 2 Mutanten (jede muss scheitern) und das Gut-Muster (muss bestehen). Danach `tests/verify/freeze.sh T-5.6`
 - **Agent:** reviewer · **Umfang:** S
 
-### T-5.9.v — Verifizierer: Deklassifizierung
-- **Ziel:** Ein Skript, das genau dann Exit 0 liefert, wenn `T-5.9` seine Akzeptanzkriterien erfüllt.
-- **Dateien:** `tests/verify/T-5.9.sh` [neu], `tests/mutants/T-5.9/` [neu], `tests/fixtures/known-good/T-5.9/` [neu]
-- **Abhängigkeiten:** T-0.0; die **Akzeptanzliste** von `T-5.9` — nicht dessen Implementierung
-- **Akzeptanz:**
-  - [ ] Jedes Akzeptanzkriterium von `T-5.9` einzeln geprüft, ohne `&&`-Verkettung
-  - [ ] Mutanten unter `tests/mutants/T-5.9/`: `Kontingent reicht aus`; `abgelaufene Marke akzeptiert`; `Bildschirmbezug nicht geprüft`
-  - [ ] Der unveränderte Verifizierer **weist jede Mutante zurück**
-  - [ ] Er **besteht** gegen `tests/fixtures/known-good/T-5.9/`
-  - [ ] Keine selbstberichteten Wahrheitswerte (Regel 9); Negativprüfungen mit Positiv-Kanarienvogel (Regel 4)
-- **Verifikation:** `tests/verify/meta.sh T-5.9` — gegen alle 3 Mutanten (jede muss scheitern) und das Gut-Muster (muss bestehen). Danach `tests/verify/freeze.sh T-5.9`
-- **Agent:** reviewer · **Umfang:** L
-
 ### T-5.10.v — Verifizierer: Exfiltration
 - **Ziel:** Ein Skript, das genau dann Exit 0 liefert, wenn `T-5.10` seine Akzeptanzkriterien erfüllt.
 - **Dateien:** `tests/verify/T-5.10.sh` [neu], `tests/mutants/T-5.10/` [neu], `tests/fixtures/known-good/T-5.10/` [neu]
@@ -2334,71 +2399,6 @@ Gate                  verify-frozen.sh zuerst, dann der Verifizierer
 - **Verifikation:** `tests/verify/meta.sh T-5.11` — gegen alle 3 Mutanten (jede muss scheitern) und das Gut-Muster (muss bestehen). Danach `tests/verify/freeze.sh T-5.11`
 - **Agent:** reviewer · **Umfang:** L
 
-### T-5.12.v — Verifizierer: Augen-Kill-Switch
-- **Ziel:** Ein Skript, das genau dann Exit 0 liefert, wenn `T-5.12` seine Akzeptanzkriterien erfüllt.
-- **Dateien:** `tests/verify/T-5.12.sh` [neu], `tests/mutants/T-5.12/` [neu], `tests/fixtures/known-good/T-5.12/` [neu]
-- **Abhängigkeiten:** T-0.0; die **Akzeptanzliste** von `T-5.12` — nicht dessen Implementierung
-- **Akzeptanz:**
-  - [ ] Jedes Akzeptanzkriterium von `T-5.12` einzeln geprüft, ohne `&&`-Verkettung
-  - [ ] Mutanten unter `tests/mutants/T-5.12/`: `Portal-Session bleibt offen`; `Kontextverzeichnis per Glob geprüft`
-  - [ ] Der unveränderte Verifizierer **weist jede Mutante zurück**
-  - [ ] Er **besteht** gegen `tests/fixtures/known-good/T-5.12/`
-  - [ ] Keine selbstberichteten Wahrheitswerte (Regel 9); Negativprüfungen mit Positiv-Kanarienvogel (Regel 4)
-- **Verifikation:** `tests/verify/meta.sh T-5.12` — gegen alle 2 Mutanten (jede muss scheitern) und das Gut-Muster (muss bestehen). Danach `tests/verify/freeze.sh T-5.12`
-- **Agent:** reviewer · **Umfang:** M
-
-### T-5.13.v — Verifizierer: Eyes-Sandbox
-- **Ziel:** Ein Skript, das genau dann Exit 0 liefert, wenn `T-5.13` seine Akzeptanzkriterien erfüllt.
-- **Dateien:** `tests/verify/T-5.13.sh` [neu], `tests/mutants/T-5.13/` [neu], `tests/fixtures/known-good/T-5.13/` [neu]
-- **Abhängigkeiten:** T-0.0; die **Akzeptanzliste** von `T-5.13` — nicht dessen Implementierung
-- **Akzeptanz:**
-  - [ ] Jedes Akzeptanzkriterium von `T-5.13` einzeln geprüft, ohne `&&`-Verkettung
-  - [ ] Mutanten unter `tests/mutants/T-5.13/`: `Netz erlaubt`; `Prüfung außerhalb der echten Unit`
-  - [ ] Der unveränderte Verifizierer **weist jede Mutante zurück**
-  - [ ] Er **besteht** gegen `tests/fixtures/known-good/T-5.13/`
-  - [ ] Keine selbstberichteten Wahrheitswerte (Regel 9); Negativprüfungen mit Positiv-Kanarienvogel (Regel 4)
-- **Verifikation:** `tests/verify/meta.sh T-5.13` — gegen alle 2 Mutanten (jede muss scheitern) und das Gut-Muster (muss bestehen). Danach `tests/verify/freeze.sh T-5.13`
-- **Agent:** reviewer · **Umfang:** S
-
-### T-6.1.v — Verifizierer: Persistenz-Herkunft
-- **Ziel:** Ein Skript, das genau dann Exit 0 liefert, wenn `T-6.1` seine Akzeptanzkriterien erfüllt.
-- **Dateien:** `tests/verify/T-6.1.sh` [neu], `tests/mutants/T-6.1/` [neu], `tests/fixtures/known-good/T-6.1/` [neu]
-- **Abhängigkeiten:** T-0.0; die **Akzeptanzliste** von `T-6.1` — nicht dessen Implementierung
-- **Akzeptanz:**
-  - [ ] Jedes Akzeptanzkriterium von `T-6.1` einzeln geprüft, ohne `&&`-Verkettung
-  - [ ] Mutanten unter `tests/mutants/T-6.1/`: `Markierung beim DB-Roundtrip verloren`; `Session-Status persistiert`
-  - [ ] Der unveränderte Verifizierer **weist jede Mutante zurück**
-  - [ ] Er **besteht** gegen `tests/fixtures/known-good/T-6.1/`
-  - [ ] Keine selbstberichteten Wahrheitswerte (Regel 9); Negativprüfungen mit Positiv-Kanarienvogel (Regel 4)
-- **Verifikation:** `tests/verify/meta.sh T-6.1` — gegen alle 2 Mutanten (jede muss scheitern) und das Gut-Muster (muss bestehen). Danach `tests/verify/freeze.sh T-6.1`
-- **Agent:** reviewer · **Umfang:** M
-
-### T-6.2.v — Verifizierer: Kurzzeitgedächtnis
-- **Ziel:** Ein Skript, das genau dann Exit 0 liefert, wenn `T-6.2` seine Akzeptanzkriterien erfüllt.
-- **Dateien:** `tests/verify/T-6.2.sh` [neu], `tests/mutants/T-6.2/` [neu], `tests/fixtures/known-good/T-6.2/` [neu]
-- **Abhängigkeiten:** T-0.0; die **Akzeptanzliste** von `T-6.2` — nicht dessen Implementierung
-- **Akzeptanz:**
-  - [ ] Jedes Akzeptanzkriterium von `T-6.2` einzeln geprüft, ohne `&&`-Verkettung
-  - [ ] Mutanten unter `tests/mutants/T-6.2/`: ``user_audio` im Prompt von Durchgang 1`; ``tainted` im Prompt von Durchgang 1`; `Frist ignoriert`
-  - [ ] Der unveränderte Verifizierer **weist jede Mutante zurück**
-  - [ ] Er **besteht** gegen `tests/fixtures/known-good/T-6.2/`
-  - [ ] Keine selbstberichteten Wahrheitswerte (Regel 9); Negativprüfungen mit Positiv-Kanarienvogel (Regel 4)
-- **Verifikation:** `tests/verify/meta.sh T-6.2` — gegen alle 3 Mutanten (jede muss scheitern) und das Gut-Muster (muss bestehen). Danach `tests/verify/freeze.sh T-6.2`
-- **Agent:** reviewer · **Umfang:** M
-
-### T-6.3.v — Verifizierer: Langzeitgedächtnis
-- **Ziel:** Ein Skript, das genau dann Exit 0 liefert, wenn `T-6.3` seine Akzeptanzkriterien erfüllt.
-- **Dateien:** `tests/verify/T-6.3.sh` [neu], `tests/mutants/T-6.3/` [neu], `tests/fixtures/known-good/T-6.3/` [neu]
-- **Abhängigkeiten:** T-0.0; die **Akzeptanzliste** von `T-6.3` — nicht dessen Implementierung
-- **Akzeptanz:**
-  - [ ] Jedes Akzeptanzkriterium von `T-6.3` einzeln geprüft, ohne `&&`-Verkettung
-  - [ ] Mutanten unter `tests/mutants/T-6.3/`: `Modellzusammenfassung gespeichert`; `Bildschirmmaterial gespeichert`; `nicht-wörtliche Spanne akzeptiert`
-  - [ ] Der unveränderte Verifizierer **weist jede Mutante zurück**
-  - [ ] Er **besteht** gegen `tests/fixtures/known-good/T-6.3/`
-  - [ ] Keine selbstberichteten Wahrheitswerte (Regel 9); Negativprüfungen mit Positiv-Kanarienvogel (Regel 4)
-- **Verifikation:** `tests/verify/meta.sh T-6.3` — gegen alle 3 Mutanten (jede muss scheitern) und das Gut-Muster (muss bestehen). Danach `tests/verify/freeze.sh T-6.3`
-- **Agent:** reviewer · **Umfang:** M
-
 ### T-6.7b.v — Verifizierer: Rundengrenzen
 - **Ziel:** Ein Skript, das genau dann Exit 0 liefert, wenn `T-6.7b` seine Akzeptanzkriterien erfüllt.
 - **Dateien:** `tests/verify/T-6.7b.sh` [neu], `tests/mutants/T-6.7b/` [neu], `tests/fixtures/known-good/T-6.7b/` [neu]
@@ -2413,7 +2413,6 @@ Gate                  verify-frozen.sh zuerst, dann der Verifizierer
 - **Agent:** reviewer · **Umfang:** L
 
 ---
-
 ## Anhang A — Task-Übersicht
 
 Aus dem Abhängigkeitsgraphen erzeugt.
@@ -2425,11 +2424,11 @@ Aus dem Abhängigkeitsgraphen erzeugt.
 | P0 Kern | 14 | 4 | Hub ohne TCP, Hook-Auth, Marken/Tickets |
 | P1 Overlay minimal | 10 | 4 | Sichtbarkeit per Pixelprobe, Idle-CPU, kein GPU-Kontext, Auth getrennt |
 | P2 Overlay vollständig | 7 | 2 | 100 Ein-/Ausblendezyklen, Hotplug, Mood-Bildhashes |
-| P3 Sprache | 17 | 6 | Rückkopplungssperre, Markierung, kein Egress ohne Kontingent |
-| P4 Aktuation | 19 | 13 | Ende-zu-Ende über alle vier Broker, Argumentvalidierung, höchstens-einmal |
-| P5 Augen | 13 | 7 | Deklassifizierung nur unter Rundenmarke, Exfiltration, Injektion |
-| P6 Charakter | 11 | 5 | Rundengrenzen-Test, Budget, reproduzierbare Installation |
-| **Summe** | **100** | **46** | **146 Tasks** |
+| P3 Sprache | 17 | 5 | Rückkopplungssperre, Markierung, kein Egress ohne Kontingent |
+| P4 Aktuation | 19 | 12 | Ende-zu-Ende über alle vier Broker, Argumentvalidierung, höchstens-einmal |
+| P5 Augen | 13 | 2 | Deklassifizierung nur unter Rundenmarke, Exfiltration, Injektion |
+| P6 Charakter | 11 | 2 | Rundengrenzen-Test, Budget, reproduzierbare Installation |
+| **Summe** | **100** | **36** | **136 aktive Tasks** (+7 in Anhang E) |
 
 Jedes Gate beginnt mit `tests/verify/verify-frozen.sh`.
 
