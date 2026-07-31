@@ -1,0 +1,3 @@
+Die Layer-Surface wird mit None statt mit Some(output) erzeugt -- der Compositor waehlt den Monitor. Der Diagnose-Vertrag ist erfuellt (output/output_wechsel existieren), aber `output` bleibt leer und DAIMON_FACE_OUTPUT hat keine Wirkung.
+
+Das soll Kriterium 1 reissen (explizite, benannte Bindung) und Kriterium 3 (konfigurierbarer Output). Gemessen wird beides zur Laufzeit: am Diagnose-Feld und daran, dass `get_layer_surface` im Protokoll-Mitschnitt kein `wl_output@N` nennt.

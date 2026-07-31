@@ -1,0 +1,9 @@
+ACHTUNG: Dieser Mutant wird vom Verifizierer ABSICHTLICH NICHT gefangen. Er ist der Beleg fuer eine Blindstelle, kein Testfall, der gruen werden soll.
+
+Die Mutation: `DAIMON_FACE_OUTPUT` wird gelesen und sofort verworfen; gebunden wird immer der erste Output. Die Bindung selbst ist explizit und benannt (Kriterium 1 erfuellt), der Name wandert korrekt in die Diagnose, der DPMS-Zyklus wird ueberlebt.
+
+Warum das nicht auffaellt: diese Maschine hat genau einen Output (HDMI-A-1). 'der erste Output' und 'der per Namen gewuenschte Output' sind derselbe Name. Alle drei Teilpruefungen von Kriterium 3 melden gruen, obwohl die zugesagte Auswahl nach Namen gar nicht stattfindet.
+
+Warum das nicht 'behoben' wird: die einzige ehrliche Gegenprobe braucht einen zweiten Monitor -- DAIMON_FACE_OUTPUT auf den zweiten setzen und pruefen, dass NICHT der erste gebunden wird. Ein Ersatz ueber ein Selbstzeugnis des Prueflings (etwa eine stderr-Zeile 'habe Output X gewaehlt') wuerde nur den vom Pruefling selbst gefuehrten Bericht messen -- derselbe Fehler wie beim T-1.8-Verifizierer, Fall 9 in HANDOVER.md. Die Blindstelle wird deshalb benannt und dokumentiert statt zugedeckt.
+
+Erwartetes Ergebnis: tests/verify/T-2.5.sh meldet gegen diesen Baum Exit 0. Wenn er hier jemals rot wird, hat jemand eine Pruefung hinzugefuegt, die mehr kann -- dann gehoert dieser Text korrigiert.

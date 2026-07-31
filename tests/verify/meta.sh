@@ -24,17 +24,25 @@ mutdir="$REPO/tests/mutants/${task}"
 mapfile -t mutants < <(find "$mutdir" -mindepth 1 -maxdepth 1 -type d | sort)
 (( ${#mutants[@]} > 0 )) || { echo "meta: keine Mutanten fuer $task" >&2; exit 1; }
 
+# Die Ausgabe wird AUFGEHOBEN, nicht verworfen. Ein Verifizierer, der nur
+# gelegentlich scheitert, ist sonst nicht zu diagnostizieren: man sieht, DASS
+# er rot war, und nie WORAN. Real passiert bei T-2.5 -- ein roter Lauf unter
+# sechs, und das Protokoll lag in /dev/null.
+log="$(mktemp -d)/meta-${task}"
 echo "meta[$task]: Gut-Muster ..."
-if ! DAIMON_FIXTURE="$good" "$verifier" >/dev/null 2>&1; then
+if ! DAIMON_FIXTURE="$good" "$verifier" >"$log-good.txt" 2>&1; then
     echo "meta[$task]: FEHLER -- Verifizierer scheitert am Gut-Muster." >&2
+    echo "meta[$task]: Protokoll: $log-good.txt" >&2
+    grep -E "FAIL" "$log-good.txt" >&2 || true
     exit 1
 fi
 
 rc=0
 for m in "${mutants[@]}"; do
     name="$(basename "$m")"
-    if DAIMON_FIXTURE="$m" "$verifier" >/dev/null 2>&1; then
+    if DAIMON_FIXTURE="$m" "$verifier" >"$log-$name.txt" 2>&1; then
         echo "meta[$task]: FEHLER -- Mutante '$name' wurde NICHT erkannt." >&2
+        echo "meta[$task]: Protokoll: $log-$name.txt" >&2
         rc=1
     else
         echo "meta[$task]: Mutante '$name' erkannt."

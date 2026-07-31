@@ -1,0 +1,5 @@
+Output-Bindung und DAIMON_FACE_OUTPUT sind korrekt umgesetzt -- der Mutant besteht Kriterium 1 und 3 absichtlich, damit sein Durchfallen eine Aussage ueber Kriterium 4 ist und nicht ueber irgendetwas anderes.
+
+Kaputt ist nur: ab dem zweiten `configure` -- auf dieser Maschine gemessen genau der DPMS-Wake -- committet `sprite_committen` nichts mehr und meldet Ok(0). Der Prozess lebt weiter, der Steuer-Socket antwortet weiter mit `ok`, aber `last_render_ts` steht still.
+
+Genau dafuer reicht 'der Prozess lebt noch' als Messung nicht. Der Verifizierer erzwingt nach dem Wake einen Zustandswechsel und verlangt einen frischen Zeitstempel binnen 2 s.
