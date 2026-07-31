@@ -13,6 +13,7 @@ noch) ist überholt und ersetzt.
 |---|---|
 | **Gate P−1** | **8 von 9 grün**. Rot nur `T--1.12` — Messung nicht gelaufen, korrekt so |
 | **Gate P0** | **11 von 11 grün**, `verify-frozen` sauber, `pytest` 154 grün + 4 dokumentiert rot |
+| **Phase 2** | **T-2.1 steht.** `T-2.1.sh` eingefroren, neun Verifizierer insgesamt |
 | **Gate P1** | **4 von 5 grün**. Rot nur `T-1.10` — 5 Arbeitstage Normalbetrieb, Uhr läuft seit 31.07. |
 | **Phase 1** | T-1.1 bis T-1.9 stehen, am laufenden Prozess belegt. **Das MVP läuft: das Pet reagiert auf echte Sitzungen.** |
 
@@ -546,3 +547,42 @@ gegengelesen**, einschließlich der gesamten Phase 0 und dieses Dokuments.
 
 **`T--1.12` ist rot, weil die Messung nicht gelaufen ist.** Das ist korrekt so und der
 einzige rote Punkt in beiden Gates.
+
+---
+
+## Phase 2 — T-2.1 steht
+
+Commit `0562701`. Acht Moods über **Tönung im Code**, nicht über neue Assets —
+`pet.json` sagt es selbst: „Der Mood ist die Helligkeit." Eigene Mood-Zeilen hätte
+ein fremdes Community-Pet nicht, und T-1.4 sagt zu, dass eines lädt.
+
+**Der Alpha-Kanal wird nicht getönt.** Sonst änderte sich die Input-Region mit dem
+Mood, und die Zeilenläufe aus T-1.3 müssten je Mood neu gerechnet werden.
+
+**Die aufgeschobene Schuld aus T-1.5 ist bezahlt.** `face/src/render.rs` gibt es
+jetzt: `dirty`/`frame_pending`, 320 ms Übergang, garantiertes Ende. Gegenprobe:
+`T-1.5.sh` misst weiterhin **0,000 % über 60 s** — das Callback entwaffnet sich. Die
+Prüfung ist zusätzlich in `T-2.1.sh` eingebaut, wer die Animation ändert fährt sie mit.
+
+> **Bezeichner können die Zusage nicht tragen.** Über alle acht Moods gibt es genau
+> **zwei** `sprite`-Bezeichner (`ruhig`, `dringend`). `T-2.1.sh` vergleicht deshalb
+> Pixel: 28 Paare, Rauschen gemessen **0,000**, geringster Abstand **2,949**
+> (`observing` gegen `done`).
+
+### T-2.1 hat `T-1.2.sh` kaputt gemacht — zu Recht
+
+Der Test nutzte `working` → `done` als Fall *ohne* Neuzeichnen, weil beide auf
+`ruhig` abbilden. Seit T-2.1 hat jeder Mood eine eigene Tönung; der Wechsel zeichnet
+neu. **Die Prämisse war weg, nicht der Code kaputt.** Der Fall ohne Neuzeichnen ist
+jetzt eine *zweite Sitzung mit demselben Mood*: `rev` steigt, der gewinnende Mood
+bleibt, es gibt nichts zu committen.
+
+### Fixture-Bäume mit Rust-Crate
+
+Sie brauchen `pet.json` (kopiert, 788 Byte) **und** das Sprite-Sheet — letzteres als
+**Symlink** auf die echten Assets. Ein Rust-Test zieht es über `include_str!` zur
+Bauzeit herein; 547 KB je Fixture in die Historie wären Verschwendung.
+
+**Als nächstes:** T-2.2 (Sprechblase als zweite Subsurface). Sie verlangt
+ausdrücklich, dass eine Textänderung den **Sprite nicht neu zeichnet** — der
+Zähler `frames_rendered` muss dabei stehen bleiben.
