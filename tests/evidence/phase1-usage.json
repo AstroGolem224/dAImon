@@ -5,25 +5,25 @@
         "cpu_ticks": 2,
         "pid": 766919,
         "start_ticks": 35699178,
-        "uptime_s": 369446.05
+        "uptime_s": 375916.03
       },
       "daimon-focus.service": {
         "cpu_ticks": 5,
         "pid": 633048,
         "start_ticks": 30925556,
-        "uptime_s": 369446.05
+        "uptime_s": 375916.03
       },
       "daimon-hookbridge.service": {
-        "cpu_ticks": 135,
+        "cpu_ticks": 151,
         "pid": 633060,
         "start_ticks": 30925568,
-        "uptime_s": 369446.05
+        "uptime_s": 375916.03
       },
       "daimon-hub.service": {
-        "cpu_ticks": 761,
+        "cpu_ticks": 1147,
         "pid": 766851,
         "start_ticks": 35698978,
-        "uptime_s": 369446.05
+        "uptime_s": 375916.03
       }
     },
     "face_tones": {
@@ -41,7 +41,7 @@
   "crashes": 0,
   "days": 1,
   "fehlalarme": null,
-  "idle_cpu_p95": 0.081678,
+  "idle_cpu_p95": 0.081681,
   "needs_input_events": 0,
   "tage": [
     {
@@ -104,9 +104,30 @@
         0.061286,
         0.062837,
         0.053064,
-        0.0588
+        0.0588,
+        0.058072,
+        0.058065,
+        0.058065,
+        0.051613,
+        0.048387,
+        0.062831,
+        0.04975,
+        0.055539,
+        0.051613,
+        0.051613,
+        0.058065,
+        0.054839,
+        0.058063,
+        0.06614,
+        0.079594,
+        0.081681,
+        0.064514,
+        0.071304,
+        0.067427,
+        0.074189,
+        0.083871
       ],
-      "laufzeit_stichproben": 52,
+      "laufzeit_stichproben": 73,
       "needs_input_events": 0
     }
   ],

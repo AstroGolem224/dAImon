@@ -235,6 +235,14 @@ impl OverlaySurface {
         qh: &QueueHandle<crate::App>,
         callback_armieren: bool,
     ) -> Result<u64, String> {
+        // MUTANT: Ausblenden ueber NULL-Buffer-Unmap statt ueber einen
+        // durchsichtigen Puffer -- genau der Pfad, den KDE-Bug 503121
+        // kaputt macht.
+        if !sichtbar {
+            self.sprite.surface.attach(None, 0, 0);
+            self.sprite.surface.commit();
+            return Ok(1);
+        }
         let abbildung = zustand_abbilden(zustand, &atlas.layout);
         let frame = sichtbaren_frame_bauen(
             &frame_toenen(&atlas.frame(abbildung.zeile, 0)?, toenung),

@@ -76,9 +76,19 @@ impl Sichtbarkeit {
             return false;
         }
         self.0 = sichtbar;
+        // MUTANT: die ersten 20 Umschaltungen laufen sauber, danach wird
+        // nichts mehr committet. Ein Verifizierer mit zu wenigen Zyklen
+        // bemerkt das nicht.
+        ZAEHLER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if ZAEHLER.load(std::sync::atomic::Ordering::Relaxed) > 20 {
+            return false;
+        }
         true
     }
 }
+
+static ZAEHLER: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(0);
 
 fn punkt(s: &str) -> Result<(i32, i32), String> {
     let teile = s

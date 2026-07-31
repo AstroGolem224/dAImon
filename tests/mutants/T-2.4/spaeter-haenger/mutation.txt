@@ -1,0 +1,3 @@
+Die ersten 20 Umschaltungen laufen sauber, danach committet der Pruefling nichts mehr -- der Zeitstempel bleibt stehen.
+
+Steht im Plan-Katalog fuer "nur 5 statt 100 Zyklen". Das ist eine Mutation der PRUEFMETHODE und als Fixture nicht direkt ausdrueckbar; ein Ersatzbaum kann nicht bewirken, dass der Verifizierer weniger Zyklen faehrt. Die Ersatzform kehrt es um: ein Pruefling, der erst spaet haengt. Ein Verifizierer mit 5 Zyklen bestuende ihn, einer mit 100 faellt durch -- dieselbe Bauart wie late-burn in T-1.5.

@@ -1,0 +1,1 @@
+Ausgeblendet wird ueber attach(NULL) statt ueber einen durchsichtigen Puffer -- genau der Pfad, den KDE-Bug 503121 kaputt macht (im Spike 0 von 20 configure ohne erneut gesetzte Layer-Properties). Das soll das Akzeptanzkriterium "NULL-Buffer-Unmap wird nicht verwendet" reissen, und zwar am Protokoll-Mitschnitt, nicht am Quelltext.
