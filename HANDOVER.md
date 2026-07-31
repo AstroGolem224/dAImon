@@ -297,8 +297,43 @@ das nur den Socket anlegt und nie zeichnet, wäre sonst grün) und `Restart=on-f
 per `kill -9` mit anschließend neuer MainPID.
 
 
-Vor Gate P1 fehlen weiterhin die Verifizierer `T-1.1.sh` bis `T-1.3.sh`, und der
-Alpha-Test in `input.rs` ist unverdrahtet.
+---
+
+## T-1.1 bis T-1.3 — die Verifizierer sind nachgezogen
+
+Commit `5c1ff30`. **Acht Verifizierer eingefroren.** `T-1.1.sh` mit drei Mutanten
+und `meta.sh`; T-1.2 und T-1.3 mit je einem Mutanten, kein `freeze` (der Plan sieht
+für sie keinen `.v`-Task vor).
+
+**Der Alpha-Test ist verdrahtet.** Die Sprite-Region sind jetzt die sichtbaren
+Zeilenläufe: **95 Rechtecke, 3 760 statt 39 936 Pixel** — 90,6 % der Zelle sind
+wieder klickdurchlässig.
+
+Die Vorrichtung aus Spike T−1.8 liegt jetzt unter [tests/harness/](tests/harness/).
+
+### Drei Fallen, alle in meinen eigenen Vorrichtungen
+
+1. **Der Zeiger lässt sich hier gar nicht positionieren.** Dass `ydotool mousemove -a`
+   nicht funktioniert, war bekannt. Neu: auch **relative** Bewegungen sind unbrauchbar,
+   weil sie durch die Zeigerbeschleunigung laufen. Gemessen: nominell auf `(996,604)`
+   geschickt, der Klick kam bei `(3984,1439)` an. Die erste Fassung von `T-1.3.sh` hat
+   daraus einen Befund *gegen* das Face gemacht, den es nicht gab. `T-1.3.sh` misst
+   deshalb **koordinatenfrei**: eine Klickspur über den Schirm, und gezählt wird der
+   Unterschied zwischen „kommt unten an" und „kommt nicht an" (55 an, 5 gefangen).
+2. **Fixture-Kopien bringen ein gebautes `target/` mit.** Beide Mutanten bestanden,
+   weil sie das Binary der *unmutierten* Quelle starteten. Fixture-Bäume werden jetzt
+   immer neu gebaut, über `CARGO_TARGET_DIR` in ein temporäres Verzeichnis — sonst
+   lägen kompilierte Rust-Targets in der Historie.
+3. **Zu früh eingefroren.** `T-1.1.sh` wurde vor Fix 2 eingefroren; `verify-frozen` hat
+   es gefangen und das Gate abgebrochen. Nachgezogen über den vorgesehenen Weg.
+
+> **`last_render_ts` braucht einen schärferen Test als der Plan nennt.** „Liegt nach dem
+> Setzzeitpunkt" gilt für einen **Empfangs**zeitstempel genauso. Unterscheidbar wird es
+> an einem Wechsel, bei dem der Hub sich bewegt und das Face korrekterweise *nicht*
+> zeichnet — `working` → `done`, beide Sprite `ruhig`. Der Zeitstempel muss dann
+> **stehen bleiben**.
+
+Damit ist Phase 1 verifiziert. Offen für Gate P1 ist nichts mehr aus dieser Liste.
 
 **Offen und benannt:**
 
