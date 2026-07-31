@@ -129,52 +129,57 @@ echo "  frames_rendered: $f1 -> $f2"
 chk "frames_rendered ist gestiegen (es wurde wirklich gezeichnet)" \
   "$([[ "$f2" -gt "$f1" ]] && echo ja || echo nein)" ja
 
-# --- Der Kern: ein Zustandswechsel OHNE Neuzeichnen bewegt ihn NICHT ---------
+# --- Der Kern: eine rev-Aenderung OHNE Neuzeichnen bewegt ihn NICHT ----------
 #
 # "last_render_ts liegt nach dem Setzzeitpunkt" allein ist zu schwach: ein
-# Empfangszeitstempel liegt dort ebenfalls. Unterscheidbar wird es erst an
-# einem Wechsel, bei dem der Hub sich bewegt und das Face korrekterweise
-# NICHT zeichnet -- `working` und `done` bilden beide auf den Sprite `ruhig`
-# ab, es gibt also nichts neu zu committen. Ein Empfangszeitstempel wanderte
-# hier mit, ein Commitzeitstempel bleibt stehen.
-# Erst auf `working` -- dieser Wechsel zeichnet noch wirklich, weil der
-# Sprite von `dringend` auf `ruhig` geht. DANACH wird gemessen.
+# EMPFANGSzeitstempel liegt dort ebenfalls. Unterscheidbar wird es erst an
+# einem Fall, in dem der Hub sich bewegt und das Face korrekterweise NICHT
+# zeichnet.
+#
+# Frueher war das `working` -> `done`: beide Sprite `ruhig`, also nichts neu
+# zu committen. **Seit T-2.1 gilt das nicht mehr** -- jeder Mood hat eine
+# eigene Toenung, `working` ist orange und `done` gruen, und der Wechsel
+# zeichnet sehr wohl neu. Die alte Prueffassung ist daran zu Recht
+# gescheitert; die Praemisse war weg, nicht der Code kaputt.
+#
+# Was bleibt: eine ZWEITE Sitzung mit DEMSELBEN Mood. Die `rev` steigt (es ist
+# eine neue Sitzung), der gewinnende Mood bleibt `working`, die Toenung damit
+# auch -- und es gibt nichts zu zeichnen.
 "$PY" - "$rt" <<'PYEOF2'
 import json, socket, sys, time
-c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-c.settimeout(5); c.connect(sys.argv[1] + "/hookbridge.sock")
-c.sendall(json.dumps({"v": 1, "type": "hook", "payload": {
-    "hook_event_name": "PreToolUse", "session_id": "t12",
-    "tool_name": "Read"}}).encode() + b"\n")
-c.close(); time.sleep(0.5)
+def hook(payload):
+    c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    c.settimeout(5); c.connect(sys.argv[1] + "/hookbridge.sock")
+    c.sendall(json.dumps({"v": 1, "type": "hook", "payload": payload}).encode() + b"\n")
+    c.close(); time.sleep(0.5)
+hook({"hook_event_name": "PreToolUse", "session_id": "t12", "tool_name": "Read"})
 PYEOF2
-sleep 1.5
+sleep 2
 vor="$(diag)"
 rev_vor="$(jq -r '.rev' <<<"$vor")"
 ts_vor="$(jq -r '.last_render_ts' <<<"$vor")"
-# Und jetzt `working` -> `done`: beide bilden auf `ruhig` ab, es gibt nichts
-# neu zu committen.
+mood_vor="$(jq -r '.mood' <<<"$vor")"
 "$PY" - "$rt" <<'PYEOF2'
 import json, socket, sys, time
 c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 c.settimeout(5); c.connect(sys.argv[1] + "/hookbridge.sock")
 c.sendall(json.dumps({"v": 1, "type": "hook", "payload": {
-    "hook_event_name": "Stop", "session_id": "t12"}}).encode() + b"\n")
+    "hook_event_name": "PreToolUse", "session_id": "t12zwei",
+    "tool_name": "Read"}}).encode() + b"\n")
 c.close(); time.sleep(0.5)
 PYEOF2
-sleep 1.5
+sleep 2
 nach="$(diag)"
 rev_nach="$(jq -r '.rev' <<<"$nach")"
 ts_nach="$(jq -r '.last_render_ts' <<<"$nach")"
 mood_nach="$(jq -r '.mood' <<<"$nach")"
-sprite_nach="$(jq -r '.sprite' <<<"$nach")"
-echo "  rev $rev_vor -> $rev_nach, mood=$mood_nach sprite=$sprite_nach"
+echo "  rev $rev_vor -> $rev_nach, mood $mood_vor -> $mood_nach"
 echo "  last_render_ts $ts_vor -> $ts_nach"
 # Positivkontrolle: der Zustand ist wirklich angekommen. Ohne sie waere
 # "Zeitstempel unveraendert" auch bei einem toten Hub-Kanal gruen.
 chk "die rev ist gestiegen (der Zustand kam an)" \
   "$([[ "$rev_nach" -gt "$rev_vor" ]] && echo ja || echo nein)" ja
-chk "der Sprite blieb dabei ruhig (kein Neuzeichnen noetig)" "$sprite_nach" ruhig
+chk "der Mood blieb derselbe (kein Neuzeichnen noetig)" "$mood_nach" "$mood_vor"
 chk "last_render_ts blieb stehen (Commitzeit, nicht Empfangszeit)" \
   "$(awk -v a="$ts_vor" -v b="$ts_nach" 'BEGIN {print (a==b) ? "ja" : "nein"}')" ja
 

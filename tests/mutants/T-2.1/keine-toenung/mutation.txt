@@ -1,0 +1,3 @@
+frame_toenen gibt den Frame ungetoent zurueck; alle acht Moods sehen identisch aus. Die sprite-Bezeichner wechseln dabei weiterhin zwischen ruhig und dringend.
+
+Steht im Plan-Katalog fuer "Vergleich ueber Bezeichner statt Bildhash": ein Verifizierer, der auf den Diagnose-Bezeichner sieht statt auf die Pixel, bemerkt hier nichts. Gemessen am echten Stand gibt es ueber acht Moods ohnehin nur ZWEI verschiedene Bezeichner -- Bezeichner koennen die Zusage also gar nicht tragen.

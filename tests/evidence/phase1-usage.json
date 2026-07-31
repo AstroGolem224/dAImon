@@ -3,31 +3,31 @@
     "cpu_baselines": {
       "daimon-face.service": {
         "cpu_ticks": 2,
-        "pid": 689296,
-        "start_ticks": 34755868,
-        "uptime_s": 350260.45
+        "pid": 766919,
+        "start_ticks": 35699178,
+        "uptime_s": 358076.06
       },
       "daimon-focus.service": {
         "cpu_ticks": 5,
         "pid": 633048,
         "start_ticks": 30925556,
-        "uptime_s": 350260.45
+        "uptime_s": 358076.06
       },
       "daimon-hookbridge.service": {
-        "cpu_ticks": 89,
+        "cpu_ticks": 108,
         "pid": 633060,
         "start_ticks": 30925568,
-        "uptime_s": 350260.45
+        "uptime_s": 358076.06
       },
       "daimon-hub.service": {
-        "cpu_ticks": 108,
-        "pid": 689276,
-        "start_ticks": 34755667,
-        "uptime_s": 350260.45
+        "cpu_ticks": 84,
+        "pid": 766851,
+        "start_ticks": 35698978,
+        "uptime_s": 358076.06
       }
     },
     "face_tones": {
-      "pid": 689296,
+      "pid": 766919,
       "value": 0
     },
     "restart_baselines": {
@@ -54,9 +54,22 @@
         "daimon-hub.service"
       ],
       "idle_cpu_samples": [
-        0.091158
+        0.091158,
+        0.036043,
+        0.044928,
+        0.04194,
+        0.04516,
+        0.048392,
+        0.039683,
+        0.039801,
+        0.0,
+        0.081678,
+        0.003226,
+        0.067727,
+        0.083134,
+        0.080838
       ],
-      "laufzeit_stichproben": 2,
+      "laufzeit_stichproben": 15,
       "needs_input_events": 0
     }
   ],
