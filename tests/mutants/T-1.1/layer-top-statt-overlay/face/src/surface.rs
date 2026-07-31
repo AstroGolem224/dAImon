@@ -62,7 +62,7 @@ impl OverlaySurface {
         let layer = layer_shell.create_layer_surface(
             qh,
             wl_surface,
-            Layer::Overlay,
+            Layer::Top,  // MUTANT
             Some("daimon-face"),
             // NULL wuerde den zuletzt benutzten Monitor waehlen und ist fuer
             // ein pro-Output-Overlay deshalb keine stabile Zuordnung.
@@ -244,7 +244,7 @@ impl OverlaySurface {
         self.layer.set_size(0, 0);
         self.layer
             .set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
-        self.layer.set_layer(Layer::Overlay);
+        self.layer.set_layer(Layer::Top);  // MUTANT
         self.layer.set_margin(0, 0, 0, 0);
         self.layer.set_exclusive_zone(-1);
         self.layer

@@ -1,0 +1,1 @@
+Die Layer-Surface liegt auf Layer::Top statt Layer::Overlay. Damit liegt sie UNTER einem Vollbildfenster, und die Pixelprobe sieht an der Sonde weiterhin die Vollbildfarbe. Das soll das Akzeptanzkriterium "Layer::Overlay" reissen -- und zwar an der Wirkung, nicht am Quelltext.

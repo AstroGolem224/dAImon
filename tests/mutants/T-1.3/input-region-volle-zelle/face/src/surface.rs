@@ -191,7 +191,7 @@ impl OverlaySurface {
             .sprite
             .input_laeufe
             .entry(frame_koordinaten)
-            .or_insert_with(|| sichtbare_laeufe(&frame, atlas.layout.cell_w, atlas.layout.cell_h));
+            .or_insert_with(|| volle_zelle_statt_laeufe(&frame, atlas.layout.cell_w, atlas.layout.cell_h));
         self.sprite
             .input_region
             .laeufe_anwenden(compositor, &self.sprite.surface, input_laeufe);
@@ -261,4 +261,10 @@ impl OverlaySurface {
         self.layer.commit();
         true
     }
+}
+
+/// MUTANT: liefert statt der sichtbaren Zeilenlaeufe die ganze Zelle. Damit
+/// schluckt das Pet auch Klicks auf seinen durchsichtigen Raendern.
+fn volle_zelle_statt_laeufe(_pixel: &[u8], breite: u32, hoehe: u32) -> Vec<crate::input::Box2D> {
+    vec![crate::input::Box2D { x: 0, y: 0, w: breite as i32, h: hoehe as i32 }]
 }

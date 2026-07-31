@@ -1,0 +1,1 @@
+last_render_ts wird beim ZUSTANDSEMPFANG gesetzt statt beim tatsaechlichen Commit. Das soll das Akzeptanzkriterium "last_render_ts ist der Zeitpunkt des tatsaechlichen Commits, nicht des Zustandsempfangs" reissen -- ein Face, das den Zustand entgegennimmt und dann NICHT zeichnet, waere mit einem Empfangszeitstempel gruen und trotzdem kaputt.

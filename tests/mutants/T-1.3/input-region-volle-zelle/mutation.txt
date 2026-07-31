@@ -1,0 +1,1 @@
+Die Input-Region der Sprite-Subsurface ist wieder die volle 192x208-Zelle statt der sichtbaren Zeilenlaeufe. Das soll das Akzeptanzkriterium "Alpha-Test verwirft Klicks auf transparente Raender" reissen: das Pet schluckt dann Klicks auf seinen durchsichtigen Ecken, obwohl dort nichts zu sehen ist.

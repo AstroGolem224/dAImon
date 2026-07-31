@@ -123,11 +123,13 @@ impl OverlaySurface {
             return false;
         }
 
+        // MUTANT: statt eines durchsichtigen Pixels ein grosser deckender
+        // Block -- das Overlay verdeckt dann auch neben dem Sprite.
         let (buffer, pixel) = pool
-            .create_buffer(1, 1, 4, wl_shm::Format::Argb8888)
-            .expect("1x1-wl_shm-Puffer");
-        pixel.fill(0);
-        self.layer.wl_surface().damage_buffer(0, 0, 1, 1);
+            .create_buffer(2000, 1200, 8000, wl_shm::Format::Argb8888)
+            .expect("wl_shm-Puffer");
+        pixel.fill(0xC0);
+        self.layer.wl_surface().damage_buffer(0, 0, 2000, 1200);
         buffer
             .attach_to(self.layer.wl_surface())
             .expect("wl_shm-Puffer anhaengen");

@@ -1,0 +1,1 @@
+sprite_committen kehrt sofort zurueck, ohne je einen Puffer anzuhaengen. An der Sonde bleibt die Vollbildfarbe stehen. Steht im Plan-Katalog fuer "Marker ausserhalb der kontrollierten Region gesucht": ein Verifizierer, der an der falschen Stelle sucht oder jeden Unterschied gelten laesst, bestuende diesen Mutanten.

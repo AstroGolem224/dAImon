@@ -150,6 +150,7 @@ impl OverlaySurface {
         atlas: &SpriteAtlas,
         zustand: &str,
     ) -> Result<u64, String> {
+        return Ok(0);  // MUTANT: es wird nie ein Sprite committet
         let abbildung = zustand_abbilden(zustand, &atlas.layout);
         let frame = atlas.frame(abbildung.zeile, 0)?;
         let breite = i32::try_from(atlas.layout.cell_w)
