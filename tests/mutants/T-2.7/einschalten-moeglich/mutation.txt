@@ -1,0 +1,22 @@
+MUTANT: es gibt doch einen Weg zum Einschalten.
+
+`wahrnehmung_an` steht in der Produzententabelle des Face, der Hub startet die
+Unit damit wieder, und das Menue bekommt `menu ears_an` / `menu eyes_an` als
+wirksame Eintraege -- statt als dargestellte, aber deaktivierte.
+
+Die Allowlist bleibt dabei streng: eingeschaltet werden koennen nur dieselben
+zwei Units, die auch abgeschaltet werden koennen. Der Mutant besteht Abschnitt
+5 des Verifizierers deshalb vollstaendig -- sein Durchfallen ist eine Aussage
+ueber die Einseitigkeit und ueber nichts anderes.
+
+Warum das ein Fehler ist und nicht bloss ein fehlendes Feature: ein Overlay,
+das Wahrnehmung nur abschalten kann, ist fail-safe -- im schlimmsten Fall
+sieht und hoert dAImon nichts mehr. Ein Overlay, das sie wieder einschalten
+kann, kann Mikrofon und Bildschirmzugriff ohne den Auth-Agenten reaktivieren.
+Einschalten gehoert nach der Entscheidung von Matthias zum Auth-Agenten und
+existiert in P2 nicht.
+
+Gefangen von: Abschnitt 1 (die face-Menge ist nicht mehr genau zwei Typen),
+Abschnitt 7 (eine abgeschaltete Attrappe laeuft nach den Einschaltversuchen
+wieder) und Abschnitt 8c (`menu ears_an` zaehlt menu_aktionen hoch, obwohl der
+Eintrag deaktiviert sein muesste).

@@ -1,0 +1,7 @@
+Die face-Menge waechst um `hook` -- einen Typ, den niemand beschlossen hat.
+
+Das soll die Obergrenze reissen. Absichtlich ein HARMLOS klingender Typ und
+nicht `freigabe`: `face-darf-freigeben` deckt den offensichtlichen Fall schon
+ab. Hier geht es um das leise Wachsen -- genau die Bewegung, die der
+Kommentar an PRODUZENTEN seit T-1.7 untersagt und die mit T-2.7 einmal
+bewusst gemacht wurde. Ein zweites Mal darf sie nicht unbemerkt passieren.

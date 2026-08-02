@@ -1,0 +1,12 @@
+`wahrnehmung_an` existiert -- aber beim AUTH-Agenten, nicht beim Face.
+
+Das ist die interessante Stelle: die Obergrenze fuer das Face bleibt
+unberuehrt, der Mutant muss also allein an der Einseitigkeits-Pruefung
+scheitern. Faellt er durch andere Pruefungen, ist er als Beleg wertlos.
+
+Warum das zaehlt: die Zusage hinter T-2.7 lautet, der schlimmste Fall eines
+uebernommenen Overlays sei, dass Wahrnehmung AUSGEHT. Gibt es irgendwo ein
+Einschalten, ist aus dem Kill-Switch ein Schalter geworden -- und ein
+Schalter laesst sich auch gegen den Nutzer umlegen. Dass er beim
+vertrauenswuerdigen Auth-Agenten liegt, aendert daran nichts: die Zusage war
+'in KEINEM Produzenten', nicht 'nicht im Face'.

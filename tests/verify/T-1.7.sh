@@ -262,12 +262,42 @@ chk "Produzent 'auth' existiert" \
 # auf `"face":` waere ausserdem an Anfuehrungszeichen zu umgehen -- genau das
 # ist beim Bau von T-2.2 passiert, und es ist der Grund fuer diese Fassung
 # (T-1.7.v3).
+#
+# T-1.7.v4: Seit T-2.7 darf das Face zusaetzlich `wahrnehmung_aus` senden --
+# den Wahrnehmungs-Kill-Switch aus dem Kontextmenue. Diese Erweiterung ist
+# eine bewusste Entscheidung, keine Aufweichung durch die Hintertuer: sie ist
+# EINSEITIG (es gibt kein Gegenstueck zum Einschalten, in KEINEM Produzenten)
+# und sie benennt kein Ziel selbst (der Unit-Name kommt aus der Konfiguration
+# des Hubs, nie aus der Nachricht -- das prueft T-2.7.sh am laufenden Hub).
+#
+# Geprueft wird hier eine OBERGRENZE, keine exakte Menge. Zwei Gruende:
+# das Gut-Muster stammt aus der Zeit vor T-2.2 und hat gar keinen
+# face-Eintrag, und die Sicherheitsfrage lautet ohnehin "waechst die Menge?",
+# nicht "steht genau das Erwartete drin". Die exakte Menge prueft T-2.7.sh.
+ERLAUBT_FUER_FACE="bubble_dismiss wahrnehmung_aus"
 face_menge="$(cd "$TARGET" && "$PY" -c '
 from daimon.common import ipc
 print(",".join(sorted(ipc.PRODUZENTEN.get("face", []))))' 2>/dev/null)"
 echo "  face darf senden: ${face_menge:-<nichts>}"
-chk "face darf hoechstens bubble_dismiss" \
-  "$([[ "$face_menge" == "bubble_dismiss" || -z "$face_menge" ]] && echo ja || echo nein)" ja
+ueber_der_grenze=""
+for t in ${face_menge//,/ }; do
+  case " $ERLAUBT_FUER_FACE " in *" $t "*) ;; *) ueber_der_grenze="$ueber_der_grenze $t";; esac
+done
+chk "face sendet nichts ausserhalb {bubble_dismiss, wahrnehmung_aus}" \
+  "${ueber_der_grenze:-<nichts>}" "<nichts>"
+
+# Die Einseitigkeit, und zwar fuer ALLE Produzenten. Das ist die eigentliche
+# Zusage hinter T-2.7: der schlimmste Fall eines uebernommenen Overlays ist,
+# dass Wahrnehmung AUSGEHT. Gaebe es irgendwo ein Gegenstueck, waere aus dem
+# Kill-Switch ein Schalter geworden -- und ein Schalter laesst sich auch
+# gegen den Nutzer umlegen.
+einschalt="$(cd "$TARGET" && "$PY" -c '
+from daimon.common import ipc
+verdaechtig = ("wahrnehmung_an", "wahrnehmung_ein", "wahrnehmung_start",
+               "perception_on", "unit_start", "unit_starten", "ears_an", "eyes_an")
+treffer = [f"{p}:{t}" for p, m in ipc.PRODUZENTEN.items() for t in m if t in verdaechtig]
+print(",".join(sorted(treffer)))' 2>/dev/null)"
+chk "kein Produzent darf Wahrnehmung EINSCHALTEN" "${einschalt:-<nichts>}" "<nichts>"
 
 auth="$(cd "$TARGET" && PYTHONDONTWRITEBYTECODE=1 timeout 60s "$PY" - 2>"$tmp/auth.err" <<'PYEOF'
 import sys

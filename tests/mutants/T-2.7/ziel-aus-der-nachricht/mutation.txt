@@ -1,0 +1,17 @@
+MUTANT: der Hub nimmt den Unit-Namen aus der Nachricht.
+
+`WAHRNEHMUNG_UNITS.get(ziel, ziel)` -- steht der Schluessel nicht in der
+Allowlist, gilt er selbst als Unit-Name. Alles andere ist korrekt: die
+Produzententabelle, der Diagnose-Vertrag, der Steuerbefehl, kein Popup, kein
+Einschaltweg. `ziel=ears` und `ziel=eyes` wirken genau wie zugesagt.
+
+Das ist der gefaehrlichste denkbare Fehler dieses Tasks und zugleich der
+unauffaelligste: ein Verifizierer, der nur prueft "nach ears_aus ist die
+ears-Attrappe aus", ist hier vollstaendig gruen. Das Face kann in dieser
+Fassung `daimon-hub.service`, `daimon-auth.service` oder jede andere Unit des
+Nutzers stoppen.
+
+Gefangen wird er von Abschnitt 5b des Verifizierers: eine Kontroll-Unit, die
+in keiner Allowlist steht, wird als `ziel` benannt und muss weiterlaufen --
+und zwar zwischen zwei Kanarienvoegeln, die belegen, dass der Kanal in
+demselben Lauf ueberhaupt funktioniert.

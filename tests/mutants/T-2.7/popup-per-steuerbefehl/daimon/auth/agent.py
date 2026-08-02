@@ -1,0 +1,513 @@
+#!/usr/bin/env python3
+"""T-1.7 Teil 2 — der Auth-Agent: GTK4-Bestaetigungsdialog und Push-to-Talk.
+
+LAEUFT NUR UNTER SYSTEM-PYTHON 3.14
+-----------------------------------
+PyGObject (`gi`) ist eine kompilierte Erweiterung und liegt nur im
+System-Python; das Projekt-venv ist auf 3.12 festgenagelt (T-1.2) und kann
+`gi` nicht importieren. Alles, was ohne GTK pruefbar sein muss -- der
+PTT-Umschaltautomat und die Vorschau -- liegt deshalb in `ptt.py` und
+`preview.py`, beide reines stdlib. Diese Datei hier ist der Prozess
+drumherum und wird von pytest bewusst nicht importiert.
+
+WATCHDOG: DAIMON_MAX_SECS
+-------------------------
+Wie beim Face (face/src/main.rs): nach DAIMON_MAX_SECS Sekunden hart
+beendet, Exit 3. Ein Dialog, der den Fokus greift und nicht mehr hergibt,
+hat auf dieser Maschine schon eine Sitzung gekostet. Vorgabe 90 s,
+`0` schaltet den Watchdog aus -- das ist ausschliesslich fuer den
+Produktivbetrieb unter systemd gedacht. Jeder manuelle Lauf setzt ihn
+ausdruecklich, z. B. DAIMON_MAX_SECS=20.
+
+DER NONCE-WEG IST EINE BENANNTE LUECKE
+--------------------------------------
+Beim Klick auf "Ausfuehren" soll eine `freigabe` mit Nonce und action_hash
+an den Hub gehen, die der Agent VOM HUB bekommen hat. Stand T-1.7 Teil 1
+gibt es dafuer keinen Weg: `FreigabeBuch.nonce_ausgeben` ist prozessintern,
+und auf dem auth-Socket liest der Hub nur -- er antwortet nie, und der Typ
+`nonce_anfrage` ist in `PRODUZENTEN` nicht freigegeben. `_nonce_anfragen`
+baut die Anfrage bewusst trotzdem: sie scheitert heute an der Typpruefung
+des Hubs (Verbindung wird abgebaut, keine Antwort) und liefert None. Damit
+ist die Luecke im Laufzeitverhalten sichtbar, nicht nur in einem Kommentar.
+Ohne Nonce wird KEINE freigabe gesendet -- der Dialog bleibt offen, und der
+Fehler steht im Journal. Erfundene Nonces oder selbst gerechnete Hashes
+kaemen einer Vollmacht gleich, die Design 2.4 gerade ausschliesst.
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import binascii
+import json
+import os
+import socket
+import sys
+import threading
+import time
+from pathlib import Path
+
+# Ohne PYTHONPATH lauffaehig machen: daimon/ liegt zwei Ebenen ueber dieser
+# Datei. Vor den daimon-Importen, nach den stdlib-Importen.
+_REPO = Path(__file__).resolve().parents[2]
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
+
+try:
+    import gi
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("Gdk", "4.0")
+    from gi.repository import Gdk, Gio, GLib, Gtk
+except (ImportError, ValueError) as exc:
+    print(f"PyGObject/GTK4 nicht verfuegbar ({exc}). Der Auth-Agent braucht "
+          "System-Python 3.14 mit python3-gi -- NICHT das Projekt-venv.",
+          file=sys.stderr)
+    sys.exit(1)
+
+from daimon.auth import preview
+from daimon.auth.ptt import PTTAutomat
+from daimon.common.logging import get_logger
+
+# kglobalaccel: Komponente und Aktion. Die actionId hat VIER Elemente
+# [componentUnique, componentFriendly, actionUnique, actionFriendly] -- mit
+# dreien registriert doRegister die Komponente nicht (auf dieser Maschine
+# nachgewiesen).
+KG_BUS = "org.kde.kglobalaccel"
+KG_AKTION = ["daimon-auth", "dAImon Auth", "ptt", "dAImon Push-to-Talk"]
+# Flags fuer setShortcut (kglobalacceld.h, enum SetShortcutFlag):
+# SetPresent=2 macht den Shortcut scharf, NoAutoloading=4 verhindert, dass
+# die gespeicherte kglobalaccelrc ihn beim naechsten Start ueberschreibt.
+# OHNE SetPresent bleibt die Komponente isActive=false und es feuert nichts.
+KG_FLAGS = 2 | 4
+
+# Qt-Keycodes: Modifier oben, Zeichen unten. Qt::Key_Space = 0x20,
+# Buchstaben und Ziffern sind ihre ASCII-Grossbuchstabenwerte.
+_QT_MOD = {"meta": 0x10000000, "alt": 0x08000000,
+           "ctrl": 0x04000000, "strg": 0x04000000, "shift": 0x02000000}
+_QT_TASTEN = {"space": 0x20, "tab": 0x01000001, "return": 0x01000004,
+              "enter": 0x01000005, "escape": 0x01000000}
+_QT_TASTEN.update({f"f{i}": 0x01000030 + i - 1 for i in range(1, 25)})
+
+MAX_ZEILE = 1 << 16  # Steuer- und Diagnosezeilen sind winzig; 64 KiB ist grosszuegig.
+
+
+def kuerzel_nach_qt(text: str) -> int:
+    """"Meta+Space" -> Qt-Keycode mit Modifier-Bits. ValueError bei
+    unbekannten Modifiern oder Tasten."""
+    teile = [t.strip() for t in text.split("+") if t.strip()]
+    if len(teile) < 2:
+        raise ValueError(f"Kuerzel {text!r}: Modifier+Taste erwartet")
+    mods = 0
+    for m in teile[:-1]:
+        bit = _QT_MOD.get(m.lower())
+        if bit is None:
+            raise ValueError(f"unbekannter Modifier {m!r}")
+        mods |= bit
+    taste = teile[-1]
+    key = _QT_TASTEN.get(taste.lower())
+    if key is None and len(taste) == 1 and taste.isprintable():
+        key = ord(taste.upper())
+    if key is None:
+        raise ValueError(f"unbekannte Taste {taste!r}")
+    return mods | key
+
+
+def _watchdog_starten() -> None:
+    """Muster aus face/src/main.rs: nach DAIMON_MAX_SECS hart beendet,
+    Exit 3. Vorgabe 90 s wie dort; 0 schaltet ab (nur unter systemd).
+    Ein Thread mit os._exit, weil ein haengender Main-Loop einen
+    GLib-Timer nicht mehr feuern lassen wuerde."""
+    roh = os.environ.get("DAIMON_MAX_SECS", "90")
+    try:
+        sekunden = int(roh)
+    except ValueError:
+        sekunden = 90
+    if sekunden <= 0:
+        return
+
+    def waechter() -> None:
+        time.sleep(sekunden)
+        print(f"WATCHDOG: {sekunden}s erreicht, Prozess wird hart beendet",
+              file=sys.stderr, flush=True)
+        os._exit(3)
+
+    threading.Thread(target=waechter, daemon=True).start()
+
+
+class AuthAgent:
+    def __init__(self, args: argparse.Namespace) -> None:
+        self.log = get_logger("daimon-auth")
+        self.hub_socket = args.hub_socket
+        self.automat = PTTAutomat(zeitlimit_s=args.zeitlimit, log=self.log)
+        self._bus: Gio.DBusConnection | None = None
+
+        # Diagnose-Zaehler. Die Diagnose zaehlt, sie verraet nicht:
+        # keine Nonce, kein action_hash, kein Zielpfad (Regel wie im Hub).
+        self.dialoge_gezeigt = 0
+        self.freigaben_gesendet = 0
+        self.marken_gesendet = 0
+        self.letzte_entscheidung: str | None = None
+
+        self._dialog_sichtbar = False
+        self._steuer_puffer: dict[int, bytes] = {}
+
+        self._fenster_bauen()
+        self._diag_sock = self._horche(args.diag_socket, self._diag_bedienen)
+        self._ctl_sock = self._horche(args.control_socket,
+                                      self._steuer_annehmen)
+        self._kglobalaccel_registrieren(args.shortcut)
+
+    # ------------------------------------------------------------------
+    # Fenster
+    # ------------------------------------------------------------------
+
+    def _fenster_bauen(self) -> None:
+        css = Gtk.CssProvider()
+        # Feste Groesse und Monospace: der Verifizierer laesst tesseract
+        # ueber den Screenshot laufen; proportionale Standardschrift macht
+        # daraus Raten. Der Hintergrund bleibt der des Themas -- deckend,
+        # kein set_opacity, kein RGBA-Spiel.
+        css.load_from_data(
+            b".vorschau { font-family: Monospace; font-size: 14px; }")
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(), css,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+        self.fenster = Gtk.Window(title="dAImon — Bestätigung")
+        self.fenster.set_default_size(560, -1)
+        self.fenster.connect("close-request", self._fenster_zu)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box.set_margin_top(16)
+        box.set_margin_bottom(16)
+        box.set_margin_start(16)
+        box.set_margin_end(16)
+        self.fenster.set_child(box)
+
+        # Gtk.Label, kein Zeichnen: der Text muss im AT-SPI-Baum lesbar
+        # sein. set_selectable(True) wird bewusst NICHT gesetzt -- es
+        # aendert die AT-SPI-Rolle. Der Accessible-Name beschreibt den
+        # Block; der eigentliche Text bleibt ueber das Text-Interface
+        # lesbar.
+        self.label = Gtk.Label(label="", halign=Gtk.Align.START)
+        self.label.add_css_class("vorschau")
+        self.label.update_property([Gtk.AccessibleProperty.LABEL],
+                                   ["Aktionsvorschau zur Bestätigung"])
+        box.append(self.label)
+
+        knoepfe = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        knoepfe.set_halign(Gtk.Align.END)
+        self.knopf_ausfuehren = Gtk.Button(label="Ausführen")
+        self.knopf_ausfuehren.connect("clicked", lambda _b: self._ausfuehren())
+        self.knopf_ablehnen = Gtk.Button(label="Ablehnen")
+        self.knopf_ablehnen.connect("clicked", lambda _b: self._ablehnen())
+        knoepfe.append(self.knopf_ausfuehren)
+        knoepfe.append(self.knopf_ablehnen)
+        box.append(knoepfe)
+
+    def _zeige_dialog(self, aktion: str, umkehr: str, ziel: str) -> bool:
+        """True = Dialog gezeigt, False = abgelehnt (unbekannte Schluessel).
+        Der Text ist GENAU das, was preview.vorschau liefert -- hier wird
+        nichts selbst zusammengesetzt oder nachformatiert."""
+        try:
+            text = preview.vorschau(aktion=aktion, ziel=ziel, umkehr=umkehr)
+        except preview.VorschauFehler as exc:
+            self.log.warn("Dialog-Anfrage abgelehnt", DAIMON_GRUND=str(exc)[:120])
+            return False
+        self.label.set_text(text)
+        self._dialog_sichtbar = True
+        self.dialoge_gezeigt += 1
+        self.fenster.present()
+        self.log.info("Bestaetigungsdialog gezeigt", DAIMON_TYP="dialog")
+        return True
+
+    def _verbergen(self) -> None:
+        self._dialog_sichtbar = False
+        self.fenster.set_visible(False)
+
+    def _fenster_zu(self, _fenster) -> bool:
+        """Fenster-X ist ein Schliessen OHNE Entscheidung -- wie
+        `schliessen` am Steuer-Socket. True: nicht zerstoeren, nur verbergen."""
+        self._verbergen()
+        return True
+
+    # ------------------------------------------------------------------
+    # Entscheidungen
+    # ------------------------------------------------------------------
+
+    def _ausfuehren(self) -> None:
+        if not self._dialog_sichtbar:
+            return
+        nonce_antwort = self._nonce_anfragen()
+        if nonce_antwort is None:
+            # Siehe Modulkopf: der Hub hat (Stand Teil 1) keinen Nonce-Weg
+            # ueber den Socket. Keine Nonce, keine freigabe -- und der
+            # Dialog BLEIBT offen, statt eine Entscheidung vorzutaeuschen.
+            self.log.error(
+                "Ausfuehren nicht moeglich: Hub hat keinen Nonce-Weg "
+                "(T-1.7 Teil 1). Es wurde KEINE freigabe gesendet.")
+            return
+        if self._an_hub("freigabe", {"nonce": nonce_antwort["nonce"],
+                                     "action_hash": nonce_antwort["action_hash"]}):
+            self.freigaben_gesendet += 1
+            self.letzte_entscheidung = "ausgefuehrt"
+            self._verbergen()
+
+    def _ablehnen(self) -> None:
+        if not self._dialog_sichtbar:
+            return
+        # Nichts an den Hub. Eine Ablehnung ist keine Freigabe und braucht
+        # keine Marke -- sie existiert nur hier, als Entscheidung.
+        self.letzte_entscheidung = "abgelehnt"
+        self._verbergen()
+        self.log.info("Aktion abgelehnt", DAIMON_TYP="dialog")
+
+    # ------------------------------------------------------------------
+    # Hub
+    # ------------------------------------------------------------------
+
+    def _an_hub(self, typ: str, payload: dict) -> bool:
+        if not self.hub_socket:
+            return False
+        zeile = (json.dumps({"v": 1, "type": typ, "payload": payload})
+                 .encode() + b"\n")
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as c:
+                c.settimeout(1.0)
+                c.connect(self.hub_socket)
+                c.sendall(zeile)
+            return True
+        except OSError as exc:
+            self.log.warn("Hub nicht erreicht", DAIMON_TYP=typ,
+                          DAIMON_GRUND=str(exc)[:120])
+            return False
+
+    def _nonce_anfragen(self) -> dict | None:
+        """Fragt beim Hub eine Nonce samt action_hash an. Liefert heute
+        immer None: der auth-Socket des Hubs ist reines Lesen, der Typ
+        `nonce_anfrage` ist nicht freigegeben, die Verbindung wird nach der
+        Typpruefung abgebaut. Die Anfrage geht TROTZDEM raus -- ein Weg,
+        den es im Code nicht gibt, ist unsichtbar; ein Weg, der scheitert,
+        steht im Journal des Hubs und hier.
+        """
+        if not self.hub_socket:
+            return None
+        zeile = (json.dumps({"v": 1, "type": "nonce_anfrage", "payload": {}})
+                 .encode() + b"\n")
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as c:
+                c.settimeout(1.0)
+                c.connect(self.hub_socket)
+                c.sendall(zeile)
+                roh = c.makefile("rb").readline(MAX_ZEILE)
+        except OSError as exc:
+            self.log.warn("Nonce-Anfrage gescheitert",
+                          DAIMON_GRUND=str(exc)[:120])
+            return None
+        if not roh:
+            # Der Hub hat ohne Antwort geschlossen -- der erwartete Stand
+            # von Teil 1.
+            return None
+        try:
+            daten = json.loads(roh)
+        except json.JSONDecodeError:
+            return None
+        nonce, action_hash = daten.get("nonce"), daten.get("action_hash")
+        if not nonce or not action_hash:
+            return None
+        # Beide Werte kommen aus der Antwort des Hubs -- der Agent erfindet
+        # weder die Nonce noch den Hash.
+        return {"nonce": nonce, "action_hash": action_hash}
+
+    # ------------------------------------------------------------------
+    # Push-to-Talk
+    # ------------------------------------------------------------------
+
+    def _ptt_ausloesen(self) -> None:
+        """Ein Ausloeser (Tastenkuerzel oder Steuer-Socket), eine
+        Umschaltung. Wird der Automat dabei AKTIV, geht ein intent_mark an
+        den Hub -- der Hub erzeugt daraus die Rundenmarke."""
+        aktiv = self.automat.umschalten()
+        if aktiv and self._an_hub("intent_mark", {}):
+            self.marken_gesendet += 1
+
+    def _kglobalaccel_registrieren(self, kuerzel: str) -> None:
+        """Meta+Space (Vorgabe) ueber org.kde.kglobalaccel. Scheitert die
+        Registrierung (keine Plasma-Sitzung, Name belegt, unbekannte
+        Taste), ist das EINE stderr-Zeile und sonst nichts: der
+        Steuer-Socket und der Dialog muessen auch ohne KDE pruefbar sein.
+        """
+        if not kuerzel:
+            return
+        try:
+            taste = kuerzel_nach_qt(kuerzel)
+            bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+
+            def ruf(methode: str, params: GLib.Variant,
+                    ziel: str = "/kglobalaccel",
+                    iface: str = "org.kde.KGlobalAccel"):
+                return bus.call_sync(KG_BUS, ziel, iface, methode, params,
+                                     None, Gio.DBusCallFlags.NONE, 3000, None)
+
+            ruf("doRegister", GLib.Variant("(as)", [KG_AKTION]))
+            gesetzt = ruf("setShortcut", GLib.Variant(
+                "(asaiu)", [KG_AKTION, [taste], KG_FLAGS])).unpack()[0]
+            if not gesetzt:
+                raise RuntimeError(f"{kuerzel!r} nicht gesetzt (belegt?)")
+            pfad = ruf("getComponent",
+                       GLib.Variant("(s)", [KG_AKTION[0]])).unpack()[0]
+            bus.signal_subscribe(
+                KG_BUS, "org.kde.kglobalaccel.Component",
+                "globalShortcutPressed", pfad, None,
+                Gio.DBusSignalFlags.NONE, lambda *a: self._ptt_ausloesen())
+            self._bus = bus  # haelt Verbindung und Subscription am Leben
+            self.log.info("Tastenkuerzel registriert",
+                          DAIMON_KUERZEL=kuerzel)
+        except Exception as exc:  # noqa: BLE001 -- genau HIER darf nichts sterben
+            print(f"kglobalaccel-Registrierung fehlgeschlagen ({exc}); "
+                  "Agent laeuft ohne Tastenkuerzel weiter", file=sys.stderr)
+
+    # ------------------------------------------------------------------
+    # Sockets: Diagnose (nur lesend) und Steuerung (getrennt, 0600)
+    # ------------------------------------------------------------------
+
+    def _horche(self, pfad: str, bediene) -> socket.socket:
+        p = Path(pfad)
+        if p.exists():
+            p.unlink()
+        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        srv.bind(str(p))
+        os.chmod(p, 0o600)  # nach dem Binden: bind() beachtet die umask
+        srv.listen(8)
+        srv.setblocking(False)
+        GLib.io_add_watch(srv.fileno(), GLib.IO_IN | GLib.IO_HUP,
+                          lambda _fd, _io: bediene() or True)
+        return srv
+
+    def _diagnose(self) -> dict:
+        return {"v": 1,
+                "ptt_aktiv": self.automat.ist_aktiv(),
+                "ptt_restsekunden": round(self.automat.restsekunden(), 1),
+                "dialog_sichtbar": self._dialog_sichtbar,
+                "dialoge_gezeigt": self.dialoge_gezeigt,
+                "freigaben_gesendet": self.freigaben_gesendet,
+                "marken_gesendet": self.marken_gesendet,
+                "letzte_entscheidung": self.letzte_entscheidung}
+
+    def _diag_bedienen(self) -> None:
+        try:
+            conn, _ = self._diag_sock.accept()
+            with conn:
+                conn.sendall(json.dumps(self._diagnose()).encode() + b"\n")
+        except OSError:
+            pass
+
+    def _steuer_annehmen(self) -> None:
+        try:
+            conn, _ = self._ctl_sock.accept()
+        except OSError:
+            return
+        conn.setblocking(False)
+        fd = conn.fileno()
+        self._steuer_puffer[fd] = b""
+        GLib.io_add_watch(fd, GLib.IO_IN | GLib.IO_HUP | GLib.IO_ERR,
+                          lambda wfd, io_: self._steuer_lesen(conn, wfd))
+
+    def _steuer_lesen(self, conn: socket.socket, fd: int) -> bool:
+        """Eine Zeile je Verbindung, Antwort ok\\n oder err\\n. False am
+        Ende: den io-watch abbauen."""
+        try:
+            stueck = conn.recv(MAX_ZEILE)
+        except BlockingIOError:
+            return True
+        except OSError:
+            self._steuer_weg(conn, fd)
+            return False
+        if not stueck:  # Gegenstelle weg, keine vollstaendige Zeile
+            self._steuer_weg(conn, fd)
+            return False
+        puffer = self._steuer_puffer.get(fd, b"") + stueck
+        if len(puffer) > MAX_ZEILE:
+            self._steuer_weg(conn, fd)
+            return False
+        if b"\n" not in puffer:
+            self._steuer_puffer[fd] = puffer
+            return True
+        zeile = puffer.split(b"\n", 1)[0].decode("utf-8", "replace").strip()
+        antwort = b"ok\n" if self._steuer_befehl(zeile) else b"err\n"
+        try:
+            conn.sendall(antwort)
+        except OSError:
+            pass
+        self._steuer_weg(conn, fd)
+        return False
+
+    def _steuer_weg(self, conn: socket.socket, fd: int) -> None:
+        self._steuer_puffer.pop(fd, None)
+        try:
+            conn.close()
+        except OSError:
+            pass
+
+    def _steuer_befehl(self, zeile: str) -> bool:
+        """True = ok. Unbekanntes, Halbes und falsche Schluessel: err."""
+        teile = zeile.split()
+        if teile == ["ptt"]:
+            self._ptt_ausloesen()
+            return True
+        if teile == ["schliessen"]:
+            self._verbergen()
+            return True
+        if teile == ["klick", "ausfuehren"]:
+            if not self._dialog_sichtbar:
+                return False
+            self._ausfuehren()
+            return True
+        if teile == ["klick", "ablehnen"]:
+            if not self._dialog_sichtbar:
+                return False
+            self._ablehnen()
+            return True
+        if len(teile) == 4 and teile[0] == "zeige":
+            # <ziel-b64>: base64-Standard, UTF-8. Bidi-Overrides und
+            # Nullbreitenzeichen MUESSEN diesen Weg unveraendert ueberleben
+            # -- die Escapes daraus sind die halbe Vorschau.
+            try:
+                ziel = base64.b64decode(teile[3], validate=True).decode("utf-8")
+            except (binascii.Error, ValueError, UnicodeDecodeError):
+                return False
+            return self._zeige_dialog(aktion=teile[1], umkehr=teile[2],
+                                      ziel=ziel)
+        return False
+
+
+def main() -> int:
+    _watchdog_starten()
+
+    ap = argparse.ArgumentParser(description="dAImon Auth-Agent "
+                                 "(Bestaetigungsdialog, Push-to-Talk)")
+    ap.add_argument("--hub-socket", default="",
+                    help="auth.sock des Hubs; leer = kein Hub (eingeschraenkt)")
+    ap.add_argument("--diag-socket", required=True,
+                    help="Unix-Socket 0600, eine Zeile JSON je Verbindung, NUR LESEND")
+    ap.add_argument("--control-socket", required=True,
+                    help="Unix-Socket 0600, eine Zeile je Verbindung, ok/err")
+    ap.add_argument("--shortcut", default="Meta+Space",
+                    help='kglobalaccel-Kuerzel; leer = keine Registrierung')
+    ap.add_argument("--zeitlimit", type=float, default=120.0,
+                    help="PTT-Zeitlimit in Sekunden (Rueckfall, weil "
+                         "kglobalaccel kein verlaessliches Loslassen liefert)")
+    args = ap.parse_args()
+
+    Gtk.init()
+    agent = AuthAgent(args)
+    agent.log.info("Auth-Agent laeuft", DAIMON_ACTION="start")
+    try:
+        GLib.MainLoop().run()
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

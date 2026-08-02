@@ -1,0 +1,23 @@
+MUTANT: der Steuerbefehl oeffnet das Popup.
+
+`menu ears_aus` setzt `menu_offen` auf true. Alles andere ist korrekt.
+
+Warum das ein Fehler ist: das Popup entsteht ausschliesslich aus einem echten
+Rechtsklick. Ein Steuerbefehl, der es aufziehen kann, ist ein Klickfaenger --
+er naehme ueber den Grab Tastatur und Zeiger an sich, ohne dass ein Mensch
+geklickt hat, und der naechste Klick des Nutzers landete auf einem Menue, das
+er nicht geoeffnet hat. Und der Steuer-Socket ist bewusst ein einfacher
+Testkanal ohne Peer-Pruefung.
+
+EHRLICHE EINSCHRAENKUNG: dieser Mutant setzt nur das Diagnose-Feld; er sendet
+kein echtes `get_popup` ueber die Wayland-Leitung. Ein echtes xdg_popup mit
+Grab in einem Mutantenbaum aufzuziehen, waere auf dieser Maschine
+leichtsinnig -- ein haengender Grab macht die Maus unbedienbar, am 27.07. real
+passiert. Damit ist die Mitschnitt-Pruefung des Verifizierers
+("kein get_popup im Protokoll") durch KEINEN Mutanten belegt; belegt ist nur
+die Diagnose-Pruefung ("menu_offen bleibt false"). Wer das schliessen will,
+braucht einen Mutanten mit echtem Popup und eine Maschine, auf der ein
+haengender Grab folgenlos bleibt.
+
+Gefangen von: Abschnitt 8b (menu_offen wird ueber 2 s abgetastet und muss
+durchgehend false sein).
