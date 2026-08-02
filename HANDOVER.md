@@ -12,9 +12,10 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 | **Gate P−1** | 8 von 9 grün. Rot nur `T--1.12` — Messung nicht gelaufen, korrekt so |
 | **Gate P0** | 11 von 11 grün |
 | **Gate P1** | **ROT.** `T-1.10` (Kalenderzeit) und `T-1.7` (Pixelprobe, **war schon vorher rot**) — siehe unten |
-| **Phase 2** | **T-2.1 bis T-2.5 stehen.** T-2.7 gebaut und geprüft, nicht eingefroren. Offen: T-2.6 (optional) |
+| **Gate P2** | **GRÜN.** `verify-frozen` 12, `T-2.4` 17, `T-2.5` 40, `T-1.5` 25 — Idle-CPU **0,000 %** |
+| **Phase 2** | **abgeschlossen.** T-2.1 bis T-2.5 und T-2.7 stehen und sind eingefroren. T-2.6 optional, entfällt |
 
-**Elf Verifizierer sind eingefroren**, 39 existieren insgesamt.
+**Zwölf Verifizierer sind eingefroren**, 40 existieren insgesamt.
 `pytest` grün mit 4 per `xfail(strict=True)` dokumentiert roten.
 `cargo test -p face` 74 von 74.
 
@@ -347,7 +348,7 @@ sieht — zwei Sanitizer in Python und Rust wären auseinandergedriftet.
   aus" ergab im Hub-Journal `ziel=ears unit=daimon-ears.service rc=5 "Unit not
   loaded"` — Allowlist nachgeschlagen, konfigurierter Name geholt, `systemctl`
   gerufen. Dass nichts passiert, liegt daran, dass `daimon-ears` erst in P3 entsteht.
-  Offen bleibt nur das Einfrieren (Gut-Muster + `meta.sh` + `freeze.sh`).
+  **Eingefroren am 02.08.**, Gut-Muster aus dem abgenommenen Stand.
 - **`remap_commit`** in `surface.rs` ist seit T-2.4 tot und bleibt als historische
   Dokumentation stehen.
 - **OCR ist kein Kriterium**, nur ein Hinweis: `/usr/share/tessdata` hat nur `afr`
