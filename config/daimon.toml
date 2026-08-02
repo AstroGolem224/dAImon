@@ -35,6 +35,18 @@ nachlauf_ms = 400
 [ears.ring]
 vorlauf_s = 1.25
 
+# T-3.4: die Rueckkopplungssperre. Solange das Pet spricht, geht nichts zum STT
+# -- auch nicht bei gedrueckter PTT-Taste. `nachlauf_s` deckt den Raumhall der
+# letzten Silbe ab, der das Mikrofon nach dem Ende der Wiedergabe erreicht; auf
+# 0 gezogen ist der Task entfernt, nicht eingestellt. `echo_schwelle` gilt fuer
+# die normierte Korrelation gegen den eingespeisten Ausgabepuffer: hoeher heisst
+# weniger Treffer, und ein verpasstes Echo ist die Schleife, die dieser
+# Abschnitt verhindern soll.
+[ears.interlock]
+nachlauf_s     = 0.5
+echo_fenster_s = 1.0
+echo_schwelle  = 0.7
+
 [face]
 poll_ms = 250
 
