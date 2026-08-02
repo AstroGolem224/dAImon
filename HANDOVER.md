@@ -16,6 +16,9 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 | **Phase 2** | **abgeschlossen.** T-2.1 bis T-2.5 und T-2.7 stehen und sind eingefroren. T-2.6 optional, entfällt |
 
 **Zwölf Verifizierer sind eingefroren**, 40 existieren insgesamt.
+**`FROZEN` deckt seit T-1.1.v2 auch die Harness ab** — 15 Einträge: 12 Verifizierer
+plus `pixelprobe.py`, `vollbildfenster.py`, `moodprobe.py`. `freeze.sh` **liest** die
+Abhängigkeiten aus dem Skript, statt eine Liste zu pflegen, die veraltet.
 `pytest` grün mit 4 per `xfail(strict=True)` dokumentiert roten.
 `cargo test -p face` 74 von 74.
 
@@ -159,6 +162,7 @@ mindestens einen Mutanten.
 | 9 | T-1.8-Verifizierer | Beobachtete nur den vom Prüfling **selbst geführten** Zähler |
 | 10 | T-2.3-Verifizierer | Nahm den *ersten* ausgebliebenen Klick als Treffer — ohne vorher angekommenen |
 | 11 | T-2.4-Verifizierer | Suchte `attach(nil` — wayland-rs schreibt `attach(<anonymous>@0` |
+| 14 | `FROZEN` selbst | Deckte nur `tests/verify/*.sh` ab. Die eigentliche Messung steht in `tests/harness/*.py` — dort die Toleranz hochzudrehen hätte einen eingefrorenen Verifizierer aufgeweicht, **ohne dass `verify-frozen` etwas merkt**. Behoben in T-1.1.v2 |
 | 13 | T-1.7-Pixelprobe | Schwelle >20 000 Pixel, begründet mit „das Fenster wird breiter" — **es hat feste Breite**. Nie nachgemessen, also seit Wochen rot, ohne dass es jemand sah: `meta.sh` überspringt im Fixture-Modus **alle Live-Prüfungen** (47 statt 90), der Mutationstest deckt nur die Hälfte des Verifizierers ab |
 | 12 | T-2.7-Verifizierer | Positivkontrolle „Hub aus dem geprüften Baum" verglich `<baum>/daimon` mit `<baum>` — zwei `dirname` statt drei. **Konnte nie grün werden**, also jeder Lauf rot, also **jede Mutante „erkannt", ohne dass ihre Mutation je gemessen wurde** |
 
