@@ -1,0 +1,17 @@
+Das Face zeichnet WEITERHIN RICHTIG -- es meldet es nur nicht.
+`commit_gezaehlt` laesst frames_rendered und last_render_ts auf 0.
+
+Gebaut fuer T-1.1.v2, und zwar isoliert: die Pixelpruefungen bleiben
+gruen (die Pixel stimmen ja), rot wird allein die neue Positivkontrolle
+'B: das Overlay hat vor der Messung gezeichnet'.
+
+Warum das ein Fehler ist und nicht bloss eine tote Statistik: die
+Pixelprobe wartet auf frames_rendered >= 1, bevor sie misst. Bleibt der
+Zaehler stehen, wartet sie 20 s und misst dann trotzdem -- und ob das
+Overlay bis dahin gezeichnet hat, entscheidet wieder die Systemlast.
+Genau diese Abhaengigkeit sollte v2 beseitigen. Ausserdem stuetzen sich
+T-2.4 und T-2.5 auf last_render_ts; ein toter Zaehler waere dort ein
+gruener Verifizierer ohne Aussage.
+
+Basis ist HEAD zum Zeitpunkt der Erzeugung, nicht ein zusammenkopierter
+Stand: ein Baum aus Dateien verschiedener Staende baut nicht.

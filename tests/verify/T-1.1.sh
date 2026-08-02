@@ -146,6 +146,11 @@ if [[ -n "${WAYLAND_DISPLAY:-}" && -x "$BIN" ]]; then
   chk "A: das Vollbildfenster deckt den Kontrollpunkt" \
     "$(wert A_vollbildfenster_deckt_die_kontrolle)" ja
   chk "Overlay startet" "$(wert overlay_startet)" ja
+  # T-1.1.v2: Bevor B etwas heisst, muss das Overlay ueberhaupt gezeichnet
+  # haben. Vorher stand hier ein `sleep 2` in der Harness -- damit mass B unter
+  # Last, ob das Overlay schnell genug war, und nicht, wo es liegt.
+  chk "B: das Overlay hat vor der Messung gezeichnet (Positivkontrolle)" \
+    "$(wert overlay_hat_gezeichnet)" ja
   chk "B: das Overlay liegt UEBER dem Vollbildfenster" \
     "$(wert B_overlay_liegt_ueber_dem_vollbildfenster)" ja
   chk "B: daneben bleibt es durchsichtig" \

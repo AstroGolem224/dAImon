@@ -28,5 +28,23 @@ if grep -q " $rel\$" "$FROZEN"; then
     exit 1
 fi
 printf '%s %s\n' "$(sha256sum "$REPO/$rel" | cut -d' ' -f1)" "$rel" >> "$FROZEN"
+
+# T-1.1.v2: Die Harness friert MIT ein.
+#
+# Bis hierher deckte FROZEN nur tests/verify/*.sh ab. T-1.1.sh und T-2.1.sh
+# delegieren die eigentliche Messung aber an tests/harness/*.py -- die
+# Pixelprobe, das Vollbildfenster, die Mood-Probe. Wer dort die Toleranz
+# hochdreht oder eine Pruefung ausbaut, weicht einen eingefrorenen Verifizierer
+# auf, ohne dass verify-frozen etwas merkt: der Hash der .sh bleibt gleich.
+#
+# Die Abhaengigkeiten werden aus dem Skript GELESEN, nicht gepflegt. Eine
+# Liste, die von Hand nachgezogen werden muss, ist beim naechsten neuen
+# Harness-Modul veraltet -- und veraltet heisst hier: ungeschuetzt.
+while read -r dep; do
+    [[ -n "$dep" && -f "$REPO/$dep" ]] || continue
+    grep -q " $dep\$" "$FROZEN" && continue
+    printf '%s %s\n' "$(sha256sum "$REPO/$dep" | cut -d' ' -f1)" "$dep" >> "$FROZEN"
+    echo "freeze: $dep mit eingefroren (Harness von $rel)."
+done < <(grep -oE 'tests/harness/[A-Za-z0-9_./-]+' "$REPO/$rel" | sort -u)
 sort -k2 -o "$FROZEN" "$FROZEN"
 echo "freeze: $rel eingefroren."

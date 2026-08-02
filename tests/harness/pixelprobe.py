@@ -29,7 +29,9 @@ Ausgabe: eine Zeile `name=ja|nein` je Pruefung, plus Messwerte als `#`-Zeilen.
 
 import json
 import os
+import json
 import random
+import socket
 import subprocess
 import sys
 import time
@@ -85,6 +87,57 @@ def schuss(name):
     return p
 
 
+def warte_auf_farbe(punkte, rgb, grenze_s, name):
+    """Schiesst wiederholt, bis ALLE `punkte` die Farbe zeigen -- oder bis
+    `grenze_s` um ist. Rueckgabe: (geschafft, letzter_schuss, versuche).
+
+    T-1.1.v2. Vorher stand hier `time.sleep(3)`, und das ist genau so lange
+    richtig, wie die Maschine nichts zu tun hat. Am 02.08.2026 lief parallel
+    ein cargo-Build; das Vollbildfenster war nach 3 s noch nicht gemappt, die
+    Sonde fotografierte den Desktop, und VIER Pruefungen wurden rot -- der
+    naechste Lauf war gruen. Ein Verifizierer, der von der Systemlast abhaengt,
+    wird irgendwann weggeklickt statt geglaubt.
+
+    Wichtig, damit das kein Selbstbetrug wird: gewartet wird nur auf die
+    VORAUSSETZUNG (das Testfenster steht), nie auf das Ergebnis der eigentlichen
+    Messung. Wo auf ein Ergebnis gewartet wird -- Phase C -- ist die Zeitgrenze
+    Teil der Zusage und steht in der Meldung.
+    """
+    ende = time.monotonic() + grenze_s
+    versuche = 0
+    while True:
+        versuche += 1
+        bild = schuss(name)
+        werte = [pixel(bild, punkt) for punkt in punkte]
+        if all(nah(w, rgb) for w in werte):
+            return True, bild, versuche
+        if time.monotonic() >= ende:
+            return False, bild, versuche
+        time.sleep(0.5)
+
+
+def warte_auf_frames(diag_pfad, grenze_s):
+    """Wartet, bis das Overlay MINDESTENS EINEN Puffer committet hat.
+
+    Der Socket zu existieren heisst nur, dass der Prozess lebt -- nicht, dass
+    er gezeichnet hat. Genau diese Verwechslung ist Fall 2 der Liste im
+    Handover ("Latenz statt Zustellung").
+    """
+    ende = time.monotonic() + grenze_s
+    while time.monotonic() < ende:
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as c:
+                c.settimeout(3)
+                c.connect(str(diag_pfad))
+                zeile = c.makefile("rb").readline().decode()
+            if json.loads(zeile).get("frames_rendered", 0) >= 1:
+                return True
+        except (OSError, ValueError):
+            pass
+        time.sleep(0.2)
+    return False
+
+
 def pixel(pfad, punkt):
     im = Image.open(pfad).convert("RGB")
     return im.getpixel(punkt)
@@ -105,10 +158,15 @@ def main():
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     face = None
     try:
-        time.sleep(3)
-        a = schuss("A")
+        # Voraussetzung, nicht Ergebnis: warten, bis das Vollbildfenster
+        # wirklich steht. 30 s sind grosszuegig -- unter Last hat es am
+        # 02.08. mehr als 3 s gebraucht, im Leerlauf steht es nach unter 1 s.
+        steht, a, versuche = warte_auf_farbe([SONDE, KONTROLLE], rgb, 30, "A")
         p_a, k_a = pixel(a, SONDE), pixel(a, KONTROLLE)
-        notiz(f"A Sonde={p_a} Kontrolle={k_a}")
+        notiz(f"A Sonde={p_a} Kontrolle={k_a} (Aufbau nach {versuche} Aufnahmen)")
+        if not steht:
+            notiz("A: das Vollbildfenster stand nach 30 s nicht -- alles "
+                  "Folgende waere eine Aussage ueber den Desktop")
         # Positivkontrolle des ganzen Aufbaus: das Vollbildfenster ist da und
         # deckt beide Punkte. Ohne das waere jede Aussage unten wertlos --
         # dann haette man den Desktop fotografiert.
@@ -129,7 +187,11 @@ def main():
                 break
             time.sleep(0.1)
         sag("overlay_startet", bereit)
-        time.sleep(2)
+        # Nicht schlafen, sondern auf einen tatsaechlich committeten Puffer
+        # warten. Danach ist die Messung unten eine Aussage ueber das, was das
+        # Overlay gezeichnet hat -- und nicht darueber, ob es schnell genug war.
+        gezeichnet = warte_auf_frames(TMP / "d.sock", 20)
+        sag("overlay_hat_gezeichnet", gezeichnet)
 
         b = schuss("B")
         p_b, k_b = pixel(b, SONDE), pixel(b, KONTROLLE)
@@ -143,10 +205,14 @@ def main():
         face.terminate()
         face.wait(timeout=10)
         face = None
-        time.sleep(2)
-        c = schuss("C")
+        # Hier wird auf ein ERGEBNIS gewartet, also ist die Grenze Teil der
+        # Zusage: nach dem Beenden ist die Vollbildfarbe binnen 10 s zurueck.
+        # Das ist strenger als das alte `sleep(2)` plus Einzelschuss -- dort
+        # entschied die Tagesform, ob der Compositor schon neu gezeichnet
+        # hatte.
+        zurueck, c, versuche_c = warte_auf_farbe([SONDE], rgb, 10, "C")
         p_c = pixel(c, SONDE)
-        notiz(f"C Sonde={p_c}")
+        notiz(f"C Sonde={p_c} (zurueck nach {versuche_c} Aufnahmen, Grenze 10 s)")
         # Es war wirklich das Overlay und nicht irgendetwas anderes auf dem
         # Schirm: nach dem Beenden ist die Vollbildfarbe zurueck.
         sag("C_nach_dem_beenden_ist_die_farbe_zurueck", nah(p_c, rgb))
