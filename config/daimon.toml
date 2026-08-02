@@ -14,6 +14,18 @@ state_ttl_s = 3600
 ears = "daimon-ears.service"
 eyes = "daimon-eyes.service"
 
+# T-3.2: die Hysterese ist ABSICHTLICH asymmetrisch. Einsatz bei 0,5, Ende erst,
+# wenn die Wahrscheinlichkeit `nachlauf_ms` lang unter `ende` bleibt -- und
+# dieser Nachlauf gehoert noch ins Segment. Deutsche Endsilben sind leise; ein
+# symmetrischer Schwellwert macht aus "…und dann ging er" ein "…und dann g".
+# `ende` gehoert unter `einsatz`, `nachlauf_ms` in 300--500. Wer das
+# unterschreitet, entfernt den Task, statt ihn einzustellen -- das Modul warnt
+# dann ins Journal.
+[ears.vad]
+einsatz     = 0.5
+ende        = 0.35
+nachlauf_ms = 400
+
 [face]
 poll_ms = 250
 

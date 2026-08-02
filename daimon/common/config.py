@@ -33,6 +33,12 @@ VORGABEN: dict[str, Any] = {
             "eyes": "daimon-eyes.service",
         },
     },
+    "ears": {
+        # T-3.2: asymmetrisch, und das ist der Punkt. `ende` < `einsatz` plus
+        # Nachlauf, sonst werden leise Endsilben abgeschnitten. Begruendung und
+        # Grenzen in daimon/ears/vad.py.
+        "vad": {"einsatz": 0.5, "ende": 0.35, "nachlauf_ms": 400},
+    },
     "face": {
         "poll_ms": 250,
         "palette": {"idle": "#3a2418", "active": "#ff6b1a", "alert": "#ffd24a"},
