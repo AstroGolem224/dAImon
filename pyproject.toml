@@ -27,6 +27,24 @@ dependencies = []
 # Begruendung aus.
 gpu = [
     "onnxruntime-gpu==1.27.0",
+    # T-3.8 laedt parakeet-tdt-0.6b-v3 ueber onnx-asr. Versionen aus dem
+    # Spike T-1.2 uebernommen, nicht neu aufgeloest: dort ist die
+    # Kombination gegen das System-CUDA gemessen worden.
+    "numpy==2.5.1",
+    "onnx==1.22.0",
+    "onnx-asr==0.12.0",
+]
+
+# Phase 3, Ohren. Getrennt von `gpu`, weil die Aufnahme ohne GPU laeuft und
+# ein Rechner ohne CUDA trotzdem zuhoeren koennen soll.
+audio = [
+    "sounddevice>=0.5",
+    "soundfile>=0.13",
+    # NICHT `webrtcvad`: das Original importiert beim Laden `pkg_resources`,
+    # das es in einem modernen venv nicht mehr gibt (ModuleNotFoundError, am
+    # 02.08. real getroffen). `webrtcvad-wheels` ist derselbe C-Code als
+    # gepflegtes Wheel, ohne den Altlast-Import.
+    "webrtcvad-wheels>=2.0.14",
 ]
 
 dev = [
