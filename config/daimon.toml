@@ -26,6 +26,15 @@ einsatz     = 0.5
 ende        = 0.35
 nachlauf_ms = 400
 
+# T-3.3: wieviel Audio VOR dem Ausloeser mitgegeben wird. Der Ring schneidet
+# staendig 20 s mit; hiervon haengt ab, wieviel davon beim Ausloesen an das STT
+# geht. Zu wenig frisst die erste Silbe, zu viel gibt dem STT Rauschen als
+# Satzanfang. Plan: 1,0--1,5 s. Ausserhalb warnt das Modul ins Journal.
+# Die 20 s des Rings sind bewusst KEINE Einstellung: sie sind Speicher, der
+# vorab alloziert und per mlock festgenagelt wird.
+[ears.ring]
+vorlauf_s = 1.25
+
 [face]
 poll_ms = 250
 

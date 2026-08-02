@@ -38,6 +38,10 @@ VORGABEN: dict[str, Any] = {
         # Nachlauf, sonst werden leise Endsilben abgeschnitten. Begruendung und
         # Grenzen in daimon/ears/vad.py.
         "vad": {"einsatz": 0.5, "ende": 0.35, "nachlauf_ms": 400},
+        # T-3.3: Vorlauf, der beim Ausloesen aus dem Ringpuffer mitgegeben
+        # wird. Plan: 1,0--1,5 s, Vorgabe in der Mitte. Die Ringgroesse
+        # selbst (20 s) ist keine Einstellung -- siehe daimon/ears/ring.py.
+        "ring": {"vorlauf_s": 1.25},
     },
     "face": {
         "poll_ms": 250,
