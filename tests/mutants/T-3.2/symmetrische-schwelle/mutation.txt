@@ -1,0 +1,26 @@
+MUTANT: symmetrischer Schwellwert, kein Nachlauf.
+
+Das Segment endet, sobald die Wahrscheinlichkeit unter `einsatz` faellt --
+dieselbe Schwelle in beide Richtungen, und ohne jede Wartezeit. `ende` und
+`nachlauf_ms` werden entgegengenommen und ignoriert.
+
+DAS IST GENAU DER FEHLER, DEN T-3.2 VERHINDERN SOLL. Er ist nicht exotisch,
+er ist die naheliegende Umsetzung: eine Schwelle, ein Vergleich, fertig. Und
+er ist im Betrieb kaum zu sehen -- Sprache wird erkannt, Segmente entstehen,
+alles wirkt richtig. Was fehlt, sind die leisen Endsilben: "...und dann GING
+er" wird zu "...und dann g". Der Schaden landet erst in der Transkription,
+zwei Bausteine spaeter, und sieht dort nach einem STT-Problem aus.
+
+Ein Verifizierer, der nur "200 ms ergibt eins, 800 ms ergibt zwei" prueft,
+faengt ihn NICHT vollstaendig: bei 800 ms liefert auch dieser Mutant zwei
+Segmente. Er faellt nur auf, wenn jemand ausdruecklich misst, dass ein
+kurzer Einbruch KEIN Segment beendet.
+
+Gefangen von:
+  * Abschnitt 3, "192 ms Pause ergeben EIN Segment" (er liefert zwei)
+  * Abschnitt 3, ASYMMETRIE 0,40: eine Delle unter dem Einsatz, aber ueber
+    dem Ende, beendet bei ihm ein Segment
+  * Abschnitt 3, ASYMMETRIE Wortende: die Rampe 0,60/0,45/0,30/... reisst
+    bei ihm das Wort auseinander
+  * Abschnitt 6: nachlauf_ms=300 und =500 liefern bei ihm dasselbe --
+    der Wert wirkt nicht

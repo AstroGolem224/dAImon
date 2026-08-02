@@ -1,0 +1,25 @@
+MUTANT: ein zu kurzer Chunk wird mit Nullen aufgefuellt, ein zu langer
+abgeschnitten -- lautlos.
+
+Die Hysterese ist hier vollstaendig korrekt. Kaputt ist nur die
+Modellanbindung, und zwar auf die freundlichste denkbare Weise: nichts
+fliegt, nichts wird geloggt, es laeuft einfach weiter.
+
+WARUM DAS EIN FEHLER IST, obwohl es "funktioniert": Silero arbeitet
+ausschliesslich in 512-Sample-Schritten und traegt internen Zustand ueber
+die Chunks. Wer auffuellt, schiebt dem Modell Stille unter, die nie
+aufgenommen wurde -- mitten in einem Wort. Vor allem aber: der Aufrufer
+erfaehrt nie, dass seine Blockgroesse nicht passt. Eine falsch verdrahtete
+Aufnahme (T-3.1 liefert 512; eine spaetere Quelle vielleicht 480) wuerde
+dauerhaft leicht falsche Wahrscheinlichkeiten liefern, und niemand haette
+einen Anhaltspunkt, wo zu suchen ist.
+
+Dieser Mutant zielt ausserdem auf den VERIFIZIERER: wer die Laengenpruefung
+per `grep -c 512` im Quelltext sucht, findet hier CHUNK_BYTES und ist gruen
+(HANDOVER.md, T-1.7.v3: ein Builder schrieb 'face' statt "face" und die
+eingefrorene Pruefung schwieg). Gemessen werden muss, WAS AM MODELL ANKOMMT.
+
+Gefangen von:
+  * Abschnitt 4, "ein kurzer/langer Chunk wird ABGEWIESEN" (er laesst durch)
+  * Abschnitt 4, "kein stilles Polstern": am Spion-Detektor kommt ein
+    Puffer an, der weder der gute noch der abweichende ist
