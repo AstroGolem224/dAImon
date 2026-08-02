@@ -446,15 +446,27 @@ chk "Auskunft veraendert nichts" "$(wert3 ptt_auskunft_veraendert_nichts)" ja
 chk "Audit nichtleer" "$(wert3 ptt_audit_nichtleer)" ja
 
 # --- Die GERENDERTE Region ----------------------------------------------------
-# Ab hier wird der echte Agent gestartet. Nur gegen das echte Repo: ein
-# Fixture ist ein Ersatzbaum ohne GTK-Prozess.
-if [[ "$TARGET" != "$REPO" ]]; then
-  echo "  INFO Fixture-Lauf: Fenster-, OCR- und Live-Pruefungen uebersprungen"
+# T-1.7.v5: Der Agent wird aus dem GEPRUEFTEN BAUM gestartet, nicht mehr
+# pauschal aus dem Repo.
+#
+# Vorher stand hier "nur gegen das echte Repo: ein Fixture ist ein Ersatzbaum
+# ohne GTK-Prozess". Das war falsch, und der Irrtum war teuer: ein Mutantenbaum
+# startet den Agenten sehr wohl, es fehlten genau drei Module (agent.py,
+# common/logging.py, common/config.py). Solange der Live-Teil uebersprungen
+# wurde, konnte meta.sh die Pixelprobe NIE anfassen -- 47 von 90 Pruefungen.
+# Der Mutationstest deckte die Haelfte des Verifizierers ab, und in dieser
+# Haelfte lief seit Wochen eine kaputte Schwelle mit.
+#
+# Baeume ohne eigenen agent.py (z.B. das Gut-Muster) ueberspringen den Teil
+# weiterhin -- sonst waeren sie aus dem falschen Grund rot.
+AGENT="$TARGET/daimon/auth/agent.py"
+if [[ ! -f "$AGENT" ]]; then
+  echo "  INFO Dieser Baum bringt keinen agent.py mit -- Fenster-, OCR- und"
+  echo "       Live-Pruefungen uebersprungen."
   exit $fail
 fi
 
-echo "  -- Der gerenderte Dialog"
-AGENT="$REPO/daimon/auth/agent.py"
+echo "  -- Der gerenderte Dialog (Agent aus: $AGENT)"
 SYSPY="/usr/bin/python3"
 chk "agent.py existiert" "$([[ -f "$AGENT" ]] && echo ja || echo nein)" ja
 chk "System-Python vorhanden" "$([[ -x "$SYSPY" ]] && echo ja || echo nein)" ja
@@ -521,9 +533,13 @@ import base64
 # U+202E dreht die Leserichtung, U+200B ist unsichtbar, das a ist kyrillisch.
 boese = "~/Bilder/urlа​ub.png‮ gnp.5952de_di/hss./"
 print(base64.b64encode(boese.encode()).decode())')"
-    a_key="$("$PY" -c 'import sys; sys.path.insert(0,"'"$REPO"'")
+    # Die Schluessel kommen aus dem GEPRUEFTEN Baum. Falle dabei: `python -c`
+    # setzt sys.path[0] auf das Arbeitsverzeichnis -- steht man im Repo, laedt
+    # man dessen preview.py und misst am Ziel vorbei. Deshalb `-P` und ein
+    # ausdruecklicher sys.path-Eintrag.
+    a_key="$("$PY" -P -c 'import sys; sys.path.insert(0,"'"$TARGET"'")
 from daimon.auth import preview; print(sorted(preview.AKTIONS_BESCHRIFTUNGEN)[0])')"
-    u_key="$("$PY" -c 'import sys; sys.path.insert(0,"'"$REPO"'")
+    u_key="$("$PY" -P -c 'import sys; sys.path.insert(0,"'"$TARGET"'")
 from daimon.auth import preview; print(sorted(preview.UMKEHR_BESCHRIFTUNGEN)[0])')"
 
     chk "unbekannter Aktionsschluessel wird abgewiesen" \
@@ -703,7 +719,11 @@ AKTIVEOF
 
       aufnehmen() {
         local ziel="$1" versuch
-        for versuch in 1 2 3 4 5; do
+        # Zehn Versuche, nicht fuenf: mit der Eichungs-Aufnahme aus v5 gibt es
+        # drei Aufnahmen statt zwei, und jede weitere Fokusuebergabe ist eine
+        # weitere Gelegenheit, dass eine Benachrichtigung dazwischenfaehrt.
+        # Am 02.08. real passiert -- ein Lauf rot, der naechste gruen.
+        for versuch in 1 2 3 4 5 6 7 8 9 10; do
           if [[ "$(aktiv_gehoert_agent)" == ja ]]; then
             timeout 60 spectacle -a -b -n -o "$tmp/$ziel.png" >/dev/null 2>&1 || return 1
             # Nach der Aufnahme noch einmal: der Fokus koennte waehrend des
@@ -753,8 +773,65 @@ import base64; print(base64.b64encode("~/Bilder/urlaub.png".encode()).decode())'
       unterschied="$(pixel_unterschied "$tmp/harmlos.png" "$tmp/boese_norm.png")"
       [[ "$unterschied" =~ ^[0-9]+$ ]] || unterschied=0
       echo "  Unterschied harmlos gegen verwechselbar: $unterschied"
+      # T-1.7.v5: Die Schwelle wird GEMESSEN, nicht angenommen.
+      #
+      # Vorher: "> rausch + 20000", begruendet mit "der escapte Pfad ist
+      # laenger, das Fenster wird breiter". Das Fenster hat feste Breite. Der
+      # Test war damit seit seiner Entstehung rot, ohne dass es auffiel --
+      # siehe der Kommentar am Kopf des Live-Teils.
+      #
+      # Am 02.08.2026 auf dieser Maschine gemessen, alle vier Werte am
+      # laufenden Dialog:
+      #
+      #   Rauschen (dieselbe Aufnahme zweimal)          0
+      #   KAPUTT: Homoglyph NICHT escapt                0   <- pixelgleich!
+      #   ein lateinisches Zeichen anders (a -> b)     12
+      #   RICHTIG: Homoglyph sichtbar escapt          183
+      #
+      # Der kaputte Fall ist PIXELGLEICH mit dem harmlosen. Genau das macht
+      # den Homoglyph-Angriff aus: das kyrillische a wird in dieser Schrift
+      # identisch gerendert. Eine Schwelle "irgendwas ueber dem Rauschen"
+      # waere also schon ausreichend -- aber sie waere wieder geraten.
+      #
+      # Stattdessen eine Groesse aus derselben Messung: wie stark aendert sich
+      # das Bild, wenn EIN lateinisches Zeichen ausgetauscht wird? Das ist die
+      # Einheit "ein Glyph". Der escapte Pfad muss ein Vielfaches davon
+      # abweichen (183 gegen 12), der nicht escapte liegt darunter (0).
+      # Der Faktor 3 laesst Luft fuer Schrift-, Skalierungs- und
+      # Themewechsel, ohne den kaputten Fall durchzulassen -- der ist 0.
+      #
+      # WAS DIESE PROBE NICHT LEISTET, damit sie nicht mehr behauptet als sie
+      # kann: der REINE Homoglyph ist pixelgleich (0). Ihn faengt nicht diese
+      # Zaehlung, sondern die AT-SPI-Pruefung "kein kyrillisches a im
+      # angezeigten Baum" weiter unten -- gemessen am Mutanten
+      # `vorschau-ohne-escaping`, der hier bei 258 landet (die Nutzlast
+      # enthaelt zusaetzlich Bidi- und Nullbreitenzeichen) und dort rot wird.
+      # Die Pixelzaehlung belegt "der Dialog zeigt sichtbar etwas anderes",
+      # die Textextraktion belegt "und zwar nichts Verwechselbares".
+      chk "verwechselbaren Pfad schliessen" "$(actl 'schliessen')" ok
+      sleep 0.6
+      einzel_b64="$("$PY" -c '
+import base64
+print(base64.b64encode("~/Bilder/urlbub.png".encode()).decode())')"
+      chk "Einzelzeichen-Kontrolle anzeigen" "$(actl "zeige $a_key $u_key $einzel_b64")" ok
+      sleep 2
+      aufnehmen einzel
+      chk "Aufnahme der Einzelzeichen-Kontrolle gelingt" "$?" 0
+      masse_e="$(magick identify -format '%wx%h' "$tmp/einzel.png" 2>/dev/null)"
+      magick "$tmp/einzel.png" -resize "${masse_h}!" "$tmp/einzel_norm.png" 2>/dev/null
+      einzelzeichen="$(pixel_unterschied "$tmp/harmlos.png" "$tmp/einzel_norm.png")"
+      [[ "$einzelzeichen" =~ ^[0-9]+$ ]] || einzelzeichen=0
+      echo "  EICHUNG: ein einzelnes Zeichen anders ergibt $einzelzeichen Pixel"
+      # Positivkontrolle der Eichung: sieht die Messkette ueberhaupt EIN
+      # geaendertes Zeichen? Ohne diese Zeile waere eine tote Messkette
+      # (immer 0) eine bestandene Eichung -- und danach bestuende jeder
+      # Pruefling, weil 0 > 3*0 nie gilt und die Pruefung nie gruen wuerde.
+      # Sie faellt dann wenigstens hier auf und nicht am Prueflings-Ergebnis.
+      chk "EICHUNG: ein einzelnes Zeichen ist ueberhaupt sichtbar" \
+        "$([[ "$einzelzeichen" -gt "$rausch" ]] && echo ja || echo nein)" ja
+      echo "  Schwelle: $unterschied muss > $(( 3 * einzelzeichen )) sein (3x ein Glyph)"
       chk "der verwechselbare Pfad sieht sichtbar anders aus" \
-        "$([[ "$unterschied" -gt $(( rausch + 20000 )) ]] && echo ja || echo nein)" ja
+        "$([[ "$unterschied" -gt $(( 3 * einzelzeichen )) && "$unterschied" -gt "$rausch" ]] && echo ja || echo nein)" ja
 
       # OCR nur als Hinweis, ausdruecklich nicht als Kriterium.
       sprachdaten="$(ls /usr/share/tessdata/*.traineddata 2>/dev/null \
