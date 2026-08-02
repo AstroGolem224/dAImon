@@ -1,0 +1,19 @@
+MUTANT: `stream.stop()` statt `stream.close()`.
+
+Alles andere stimmt: Geraet, Rate, Kanaele, dtype, Blockgroesse,
+PIPEWIRE_LATENCY vor dem Import, der Diagnose-Vertrag. `zustand()["offen"]`
+meldet nach dem Ausschalten sogar brav `false` -- der Selbstbericht luegt
+nicht einmal absichtlich, er weiss es nur nicht besser.
+
+Was bleibt, ist das Source-Output-Objekt. Der Strom ist pausiert, das Objekt
+lebt, und der Plasma-Indikator haengt daran. Genau das ist die
+Korrektheitsanforderung aus Design 7.4: ein Nutzer, der dem Indikator glaubt,
+muss ihm glauben koennen.
+
+Sichtbar ist der Fehler NUR von aussen:
+  pw-dump | jq -r '.[]|select(.info.props["media.class"]=="Stream/Input/Audio")
+                    |.info.props["application.name"]'
+Ein Verifizierer, der `zustand()` fragt, ist hier vollstaendig gruen.
+
+Gefangen von: Abschnitt 4 des Verifizierers ("kein Strom des Prueflings mehr
+in pw-dump", gemessen waehrend der Prozess noch lebt).

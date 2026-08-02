@@ -1,0 +1,35 @@
+MUTANT: `close()` passiert -- aber erst spaeter.
+
+`stop()` kehrt sofort zurueck, das eigentliche `close()` laeuft acht Sekunden
+spaeter in einem Hintergrund-Thread und zusaetzlich per `atexit` beim
+Prozessende.
+
+DIESER MUTANT ZIELT NICHT AUF DIE IMPLEMENTIERUNG, SONDERN AUF DIE
+MESSREIHENFOLGE DES VERIFIZIERERS. Er ist der Test dafuer, dass der
+Verifizierer im richtigen Moment misst:
+
+  * Ein Verifizierer, der nach `stop()` erst einmal grosszuegig schlaeft
+    (>8 s), sieht nichts mehr und meldet gruen.
+  * Ein Verifizierer, der ueberhaupt erst NACH dem Ende des Prueflings-
+    Prozesses misst, sieht ebenfalls nichts -- ein toter Prozess gibt alle
+    Objekte ab. Gegen `stop-statt-close` waere er damit ebenso blind, und das
+    ist der eigentliche Grund, warum dieser Mutant hier steht.
+  * Nur wer unmittelbar nach der RUECKKEHR von `stop()` misst und im selben
+    Atemzug belegt, dass der Prozess noch lebt, sieht den Unterschied.
+
+Ist das ueberhaupt ein Fehler? Ja. Die Zusage lautet "nach dem Ausschalten ist
+das Objekt weg", nicht "acht Sekunden nach dem Ausschalten". Wer den
+Kill-Switch drueckt, weil er nicht mehr abgehoert werden will, hat in diesen
+acht Sekunden ein offenes Mikrofon und einen Indikator, der eine andere
+Geschichte erzaehlt als das System.
+
+EHRLICHE EINSCHRAENKUNG: der Name stammt aus dem Auftrag ("der Verifizierer
+misst zu frueh"). Was hier gebaut ist, bestraft das Gegenteil -- zu SPAET
+oder zu weit hinten in der Reihenfolge zu messen. Ein Mutant, der einen zu
+FRUEH messenden Verifizierer gruen macht, ist nicht konstruierbar: die
+Zusage bezieht sich auf den Moment nach `stop()`, und vor diesem Moment gibt
+es keine Messung, die "scheinbar stimmt". Diese Abweichung vom Wortlaut des
+Auftrags ist bewusst und steht auch im Bericht.
+
+Gefangen von: Abschnitt 4 (erste Messung unmittelbar nach der Rueckkehr von
+stop(), Frist 2,0 s, und die Positivkontrolle "der Prozess lebt noch").
