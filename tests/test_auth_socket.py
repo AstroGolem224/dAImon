@@ -119,14 +119,35 @@ def test_freigabe_mit_falschem_hash_wird_abgewiesen(hub):
 # Face hat nur den engen Blasen-Meldeweg
 # ---------------------------------------------------------------------------
 
-def test_face_darf_nur_bubble_dismiss():
-    """T-1.7 bleibt bestehen: keine Marke und keine Freigabe vom Face."""
-    assert ipc.PRODUZENTEN["face"] == frozenset({"bubble_dismiss"})
+def test_face_darf_nur_melden_und_abschalten():
+    """T-1.7 bleibt bestehen: keine Marke und keine Freigabe vom Face.
+
+    T-2.7 nimmt `wahrnehmung_aus` dazu -- einseitig und mit Ziel aus einer
+    Allowlist im Hub. Die Zusage, die dieser Test haelt, ist deshalb nicht
+    mehr "genau ein Typ", sondern "genau diese zwei und nichts sonst".
+    """
+    assert ipc.PRODUZENTEN["face"] == frozenset({"bubble_dismiss",
+                                                 "wahrnehmung_aus"})
     ipc.pruefe_typ("face", "bubble_dismiss")
+    ipc.pruefe_typ("face", "wahrnehmung_aus")
     with pytest.raises(ipc.MessageTypeError):
         ipc.pruefe_typ("face", "intent_mark")
     with pytest.raises(ipc.MessageTypeError):
         ipc.pruefe_typ("face", "freigabe")
+
+
+def test_es_gibt_kein_einschalten_bei_keinem_produzenten():
+    """Der Punkt von T-2.7: das Recht waechst nur in Richtung AUS.
+
+    Kein Produzent -- auch nicht `auth` -- darf in P2 einen Typ senden, der
+    Wahrnehmung wieder einschaltet. Wer das aendert, faellt hier auf.
+    """
+    alle = set().union(*ipc.PRODUZENTEN.values())
+    assert "wahrnehmung_an" not in alle
+    assert not [typ for typ in alle if typ.endswith("_an")]
+    # Und `wahrnehmung_aus` ist auch nicht auf andere Produzenten gewandert.
+    assert [p for p, t in ipc.PRODUZENTEN.items()
+            if "wahrnehmung_aus" in t] == ["face"]
 
 
 def test_face_socket_wird_geoeffnet(tmp_path):

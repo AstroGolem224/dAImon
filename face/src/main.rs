@@ -5,6 +5,7 @@ mod control;
 mod diag;
 mod hub;
 mod input;
+mod menu;
 mod output;
 mod position;
 mod render;
@@ -40,7 +41,10 @@ use smithay_client_toolkit::{
         pointer::{PointerEvent, PointerEventKind, PointerHandler},
         Capability, SeatHandler, SeatState,
     },
-    shell::wlr_layer::{LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
+    shell::{
+        wlr_layer::{LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
+        xdg::popup::{Popup, PopupConfigure, PopupHandler},
+    },
     shm::{slot::SlotPool, Shm, ShmHandler},
     subcompositor::SubcompositorState,
 };
@@ -224,12 +228,18 @@ struct App {
     output_state: OutputState,
     seat_state: SeatState,
     pointer: Option<wl_pointer::WlPointer>,
+    /// T-2.7: fuer `xdg_popup.grab`. Ohne Seat gibt es kein Kontextmenue --
+    /// und ohne Zeiger ohnehin keinen Rechtsklick.
+    seat: Option<wl_seat::WlSeat>,
     shm: Shm,
     compositor: CompositorState,
     // T-2.5: fuer die Neuerzeugung der Layer-Surface nach Output-Removal.
     // Vorher lagen beide nur als lokale Variablen in `main`.
     subcompositor: SubcompositorState,
     layer_shell: LayerShell,
+    /// T-2.7: nur fuer das Kontextmenue-Popup. Es entsteht kein Toplevel und
+    /// keine zweite Rolle fuer die Layer-Surface.
+    xdg_shell: menu::PopupShell,
     qh: QueueHandle<App>,
     pool: SlotPool,
     atlas: SpriteAtlas,
@@ -244,6 +254,7 @@ struct App {
     render: RenderSteuerung,
     ton: Tonspieler,
     ziehen: Option<Ziehen>,
+    menu: menu::Menu,
     sprite_groesse: (i32, i32),
     output_groesse: (i32, i32),
     /// T-2.5: der Output, an den die Layer-Surface explizit gebunden ist.
@@ -599,6 +610,83 @@ impl App {
         }
     }
 
+    // -- T-2.7: Kontextmenue ------------------------------------------------
+
+    fn diagnose_menu_offen_setzen(&self, offen: bool) {
+        match self.diagnose.lock() {
+            Ok(mut zustand) => zustand.menu_offen = offen,
+            Err(vergiftet) => vergiftet.into_inner().menu_offen = offen,
+        }
+    }
+
+    /// `anker` liegt in Koordinaten der bildschirmfuellenden Layer-Surface --
+    /// dieselbe Bezugsflaeche, auf die sich die Fenstergeometrie des
+    /// xdg_positioner bezieht.
+    ///
+    /// `serial` stammt aus dem Rechtsklick. Es gibt keinen zweiten Aufrufer:
+    /// der Steuer-Socket erreicht diese Funktion nicht.
+    fn menu_oeffnen(&mut self, anker: (i32, i32), serial: u32) {
+        let Some(seat) = self.seat.clone() else {
+            eprintln!("Kein Seat; Kontextmenue nicht moeglich");
+            return;
+        };
+        let Self {
+            menu,
+            compositor,
+            xdg_shell,
+            overlay,
+            qh,
+            ..
+        } = self;
+        let Some(overlay) = overlay.as_ref() else {
+            return;
+        };
+        if let Err(fehler) = menu.oeffnen(
+            compositor,
+            xdg_shell,
+            overlay.layer(),
+            qh,
+            &seat,
+            serial,
+            anker,
+        ) {
+            eprintln!("Kontextmenue konnte nicht geoeffnet werden: {fehler}");
+        }
+    }
+
+    fn menu_schliessen(&mut self) {
+        if self.menu.schliessen() {
+            self.diagnose_menu_offen_setzen(false);
+        }
+    }
+
+    /// Der einzige Weg von einer Aktion zur Wirkung -- fuer den Klick im
+    /// Popup und fuer `menu ...` am Steuer-Socket. Zwei Wege waeren zwei
+    /// Verhalten, und geprueft wuerde nur eines.
+    fn menu_aktion_ausfuehren(&mut self, aktion: menu::Aktion) {
+        match aktion.ziel() {
+            // Das Face ruft NICHT selbst systemctl. Es meldet ein Ziel; der
+            // Hub schlaegt den Unit-Namen in seiner Allowlist nach und
+            // schaltet. Ein Overlay, das Units benennen darf, kann den Hub
+            // und den Auth-Agenten stoppen.
+            Some(ziel) => match self.hub.as_ref() {
+                Some(hub) => {
+                    if let Err(fehler) = hub.wahrnehmung_aus_melden(ziel) {
+                        eprintln!("{fehler}");
+                    }
+                }
+                None => eprintln!("Kein Hub-Meldeweg; {ziel} bleibt unveraendert"),
+            },
+            // Geordnet: die Hauptschleife laeuft aus, und erst dadurch
+            // raeumen Diagnose- und Steuer-Socket ihre Dateien ab.
+            None => self.beendet = true,
+        }
+        match self.diagnose.lock() {
+            Ok(mut zustand) => zustand.menu_aktion_gezaehlt(aktion.name()),
+            Err(vergiftet) => vergiftet.into_inner().menu_aktion_gezaehlt(aktion.name()),
+        }
+    }
+
     fn position_speichern(&self, position: (i32, i32)) {
         if let Err(fehler) = position::speichern(&self.positionsdatei, position) {
             eprintln!(
@@ -687,6 +775,8 @@ impl SeatHandler for App {
     ) {
         if capability == Capability::Pointer && self.pointer.is_none() {
             self.pointer = self.seat_state.get_pointer(qh, &seat).ok();
+            // Denselben Seat braucht `xdg_popup.grab`.
+            self.seat = Some(seat);
         }
     }
 
@@ -716,7 +806,9 @@ impl PointerHandler for App {
         events: &[PointerEvent],
     ) {
         const BTN_LEFT: u32 = 0x110;
+        const BTN_RIGHT: u32 = 0x111;
         for event in events {
+            let auf_menu = self.menu.ist_menu_surface(&event.surface);
             let auf_bubble = self
                 .overlay
                 .as_ref()
@@ -730,6 +822,42 @@ impl PointerHandler for App {
                 .as_ref()
                 .is_some_and(|overlay| overlay.ist_layer_surface(&event.surface));
             match event.kind {
+                // Klick im Menue. Ein deaktivierter Eintrag laesst das Menue
+                // offen -- er hat ja nichts getan.
+                PointerEventKind::Press {
+                    button: BTN_LEFT, ..
+                } if auf_menu => {
+                    if let Some(aktion) = menu::aktion_bei(event.position.0, event.position.1) {
+                        // Erst schliessen, dann handeln: bei "Beenden" laeuft
+                        // die Schleife sonst mit einem Popup im Zustand aus.
+                        self.menu_schliessen();
+                        self.menu_aktion_ausfuehren(aktion);
+                    }
+                }
+                // Rechtsklick auf das Pet. Das ist die EINZIGE Stelle, an der
+                // ein Popup mit Grab entsteht.
+                PointerEventKind::Press {
+                    button: BTN_RIGHT,
+                    serial,
+                    ..
+                } if auf_sprite || auf_pet_parent => {
+                    let sprite = self
+                        .overlay
+                        .as_ref()
+                        .map(OverlaySurface::sprite_position)
+                        .unwrap_or((0, 0));
+                    // Auf der Sprite-Subsurface sind die Koordinaten lokal,
+                    // auf der Elternsurface bereits Output-Koordinaten.
+                    let anker = if auf_sprite {
+                        (
+                            sprite.0 + event.position.0 as i32,
+                            sprite.1 + event.position.1 as i32,
+                        )
+                    } else {
+                        (event.position.0 as i32, event.position.1 as i32)
+                    };
+                    self.menu_oeffnen(anker, serial);
+                }
                 PointerEventKind::Press {
                     button: BTN_LEFT, ..
                 } if auf_bubble => self.bubble_schliessen(),
@@ -899,6 +1027,36 @@ impl LayerShellHandler for App {
     }
 }
 
+impl PopupHandler for App {
+    /// Erst nach dem configure darf ein Puffer an die Popup-Surface. Gemappt
+    /// ist sie ab genau diesem Commit -- deshalb steht `menu_offen` hier und
+    /// nicht schon beim Erzeugen.
+    fn configure(&mut self, _: &Connection, _: &QueueHandle<Self>, popup: &Popup, _: PopupConfigure) {
+        if !self.menu.ist_popup(popup) {
+            return;
+        }
+        let raster = menu::rendern(self.bubble_renderer.font());
+        let Self { menu, pool, .. } = self;
+        match menu.puffer_committen(pool, &raster) {
+            Ok(true) => self.diagnose_menu_offen_setzen(true),
+            Ok(false) => {}
+            Err(fehler) => {
+                eprintln!("Kontextmenue konnte nicht gezeichnet werden: {fehler}");
+                self.menu_schliessen();
+            }
+        }
+    }
+
+    /// Auto-Dismiss: der Compositor hat das Popup verworfen -- Klick daneben,
+    /// Escape, Fokusverlust. Wir zerstoeren es hier und halten insbesondere
+    /// keinen Grab.
+    fn done(&mut self, _: &Connection, _: &QueueHandle<Self>, popup: &Popup) {
+        if self.menu.ist_popup(popup) {
+            self.menu_schliessen();
+        }
+    }
+}
+
 impl ShmHandler for App {
     fn shm_state(&mut self) -> &mut Shm {
         &mut self.shm
@@ -959,6 +1117,9 @@ fn main() {
     let subcompositor = SubcompositorState::bind(compositor.wl_compositor().clone(), &globals, &qh)
         .expect("wl_subcompositor fehlt");
     let layer_shell = LayerShell::bind(&globals, &qh).expect("zwlr_layer_shell_v1 fehlt");
+    // T-2.7: nur fuer das Kontextmenue. `xdg_wm_base` bringt keinen
+    // GPU-Kontext mit -- die Zusage aus T-1.4 bleibt unberuehrt.
+    let xdg_shell = menu::PopupShell::binden(&globals, &qh).expect("xdg_wm_base fehlt");
     let shm = Shm::bind(&globals, &qh).expect("wl_shm fehlt");
     let pool = SlotPool::new(4, &shm).expect("wl_shm-SlotPool");
     let diagnose = Arc::new(Mutex::new(FaceState {
@@ -998,10 +1159,12 @@ fn main() {
         output_state: OutputState::new(&globals, &qh),
         seat_state: SeatState::new(&globals, &qh),
         pointer: None,
+        seat: None,
         shm,
         compositor,
         subcompositor,
         layer_shell,
+        xdg_shell,
         qh: qh.clone(),
         // Fuer den 1x1-ARGB-Puffer reichen vier Byte; SlotPool vergroessert
         // sich spaeter fuer Sprites selbststaendig.
@@ -1021,6 +1184,7 @@ fn main() {
         render: RenderSteuerung::neu("idle", Instant::now()),
         ton: Tonspieler::neu(ton_an),
         ziehen: None,
+        menu: menu::Menu::neu(),
         sprite_groesse: (0, 0),
         output_groesse: (0, 0),
         gebundener_output: None,
@@ -1112,6 +1276,16 @@ fn main() {
                             bubble: app.aktuelle_bubble.clone(),
                         };
                         app.hub_zustand_uebernehmen(&zustand);
+                    }
+                    // T-2.7: der Steuerbefehl loest die AKTION aus. Er
+                    // oeffnet kein Popup -- siehe `control.rs`.
+                    None if befehl.starts_with("menu:") => {
+                        if let Some(aktion) = befehl
+                            .strip_prefix("menu:")
+                            .and_then(menu::Aktion::aus_name)
+                        {
+                            app.menu_aktion_ausfuehren(aktion);
+                        }
                     }
                     None => match befehl.as_str() {
                         "sichtbar:true" => {

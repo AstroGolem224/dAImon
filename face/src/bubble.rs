@@ -44,6 +44,13 @@ impl BubbleRenderer {
         Ok(Self { font })
     }
 
+    /// T-2.7: das Kontextmenue rastert mit derselben eingebetteten Schrift.
+    /// Ein zweites `include_bytes!` haette die Datei ein zweites Mal ins
+    /// Binary gelegt.
+    pub fn font(&self) -> &Font {
+        &self.font
+    }
+
     pub fn rendern(&self, bubble: &Bubble) -> Raster {
         let text = if bubble.title.is_empty() {
             bubble.body.clone()
@@ -125,18 +132,18 @@ pub fn position_klemmen(
 
 /// ARGB8888 liegt auf Little-Endian als BGRA im Speicher. Jeder Farbkanal ist
 /// mit Alpha vormultipliziert, bevor der Pixel in einen wl_shm-Puffer kommt.
-fn premultipliziert(r: u8, g: u8, b: u8, a: u8) -> [u8; 4] {
+pub(crate) fn premultipliziert(r: u8, g: u8, b: u8, a: u8) -> [u8; 4] {
     let kanal = |wert: u8| ((u16::from(wert) * u16::from(a) + 127) / 255) as u8;
     [kanal(b), kanal(g), kanal(r), a]
 }
 
-fn glyph_pixel(graustufe: u8, text_alpha: u8) -> [u8; 4] {
+pub(crate) fn glyph_pixel(graustufe: u8, text_alpha: u8) -> [u8; 4] {
     let alpha = ((u16::from(graustufe) * u16::from(text_alpha) + 127) / 255) as u8;
     // Weisser Text: vormultiplizierte RGB-Kanaele entsprechen dem Alpha.
     [alpha, alpha, alpha, alpha]
 }
 
-fn ueberblenden(ziel: &mut [u8], quelle: [u8; 4]) {
+pub(crate) fn ueberblenden(ziel: &mut [u8], quelle: [u8; 4]) {
     let inv = 255 - u16::from(quelle[3]);
     for kanal in 0..3 {
         ziel[kanal] = (u16::from(quelle[kanal]) + (u16::from(ziel[kanal]) * inv + 127) / 255) as u8;

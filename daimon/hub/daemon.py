@@ -33,6 +33,7 @@ import json
 import os
 import secrets
 import socket
+import subprocess
 import time
 import threading
 from pathlib import Path
@@ -56,6 +57,16 @@ MAX_ZEILE = 1 << 20  # 1 MiB. Eine Hook-Nutzlast ist Kilobytes gross.
 # die Zustellverzoegerung; T-1.6 verlangt p95 < 300 ms, das ist reichlich Luft.
 PUSH_INTERVALL_S = 0.05
 PR_SET_DUMPABLE = 4
+
+# T-2.7: die einzigen Schluessel, die `wahrnehmung_aus` tragen darf. Der
+# Unit-NAME steht dahinter in der Konfiguration (`hub.wahrnehmung_units`),
+# nie in der Nachricht -- sonst koennte das Face den Hub selbst, den
+# Auth-Agenten oder jede beliebige Unit des Nutzers stoppen. Diese Menge ist
+# die zweite Haelfte derselben Grenze: sie deckelt, welche
+# Konfigurationseintraege ueberhaupt erreichbar sind.
+WAHRNEHMUNG_ZIELE = frozenset({"ears", "eyes"})
+# Ein haengendes `systemctl` darf den Produzenten-Thread nicht festhalten.
+SYSTEMCTL_TIMEOUT_S = 10.0
 
 
 def _dumpbarkeit_abschalten() -> None:
@@ -161,11 +172,54 @@ class Hub:
                     continue
                 if produzent == "face":
                     # `ipc.pruefe_typ` laesst hier ausschliesslich
-                    # bubble_dismiss durch. Das Face erhaelt insbesondere
-                    # keine Auth-Faehigkeit aus T-1.7 zurueck.
-                    self.state.clear_bubble()
+                    # bubble_dismiss und wahrnehmung_aus durch. Das Face
+                    # erhaelt insbesondere keine Auth-Faehigkeit aus T-1.7
+                    # zurueck -- und es gibt kein Einschalten.
+                    if event.type == "wahrnehmung_aus":
+                        self._wahrnehmung_aus((event.payload or {}).get("ziel"))
+                    else:
+                        self.state.clear_bubble()
                     continue
                 self.bus.publish(event)
+
+    def _wahrnehmung_aus(self, ziel: object) -> None:
+        """T-2.7: eine Wahrnehmungs-Unit ABschalten. Es gibt kein Gegenstueck.
+
+        Zwei Schluessel-Pruefungen, und beide sind Absicht:
+
+          1. `ziel` muss in WAHRNEHMUNG_ZIELE stehen -- eine im Code feste,
+             kurze Menge.
+          2. Der Unit-Name kommt aus `hub.wahrnehmung_units`, also aus der
+             Konfiguration des Nutzers, nie aus der Nachricht.
+
+        Damit ist der schlimmste Fall eines kompromittierten Overlays: Ohren
+        oder Augen gehen aus. Naehme der Hub den Namen aus der Nachricht,
+        waere der schlimmste Fall `systemctl --user stop daimon-auth` -- und
+        damit das Ende jeder Bestaetigungsschranke.
+        """
+        units = self.cfg.get("hub.wahrnehmung_units", {}) or {}
+        # `isinstance` vor dem Mengentest: eine Liste oder ein dict aus der
+        # Nutzlast waere nicht hashbar und wuerde `in` mit TypeError sprengen.
+        erlaubt = isinstance(ziel, str) and ziel in WAHRNEHMUNG_ZIELE
+        unit = units.get(ziel) if erlaubt else None
+        if not isinstance(unit, str) or not unit:
+            # Kein Weiterreichen des Werts ins Log ausser gekuerzt: er kommt
+            # von aussen und soll das Journal nicht fuellen.
+            self.log.warn("wahrnehmung_aus mit unbekanntem Ziel verworfen",
+                          DAIMON_ZIEL=str(ziel)[:40])
+            self.diag.verworfen("wahrnehmung_ziel")
+            return
+        try:
+            lauf = subprocess.run(
+                ["systemctl", "--user", "stop", unit],
+                capture_output=True, text=True, timeout=SYSTEMCTL_TIMEOUT_S)
+        except (OSError, subprocess.SubprocessError) as exc:
+            self.log.error("wahrnehmung_aus fehlgeschlagen", DAIMON_ZIEL=str(ziel),
+                           DAIMON_UNIT=unit, DAIMON_GRUND=str(exc)[:200])
+            return
+        self.log.info("wahrnehmung_aus", DAIMON_ACTION="stop", DAIMON_ZIEL=str(ziel),
+                      DAIMON_UNIT=unit, DAIMON_RC=lauf.returncode,
+                      DAIMON_GRUND=(lauf.stderr or "").strip()[:200])
 
     def _zaehle_abweisung(self, typ: str) -> None:
         """Diagnose-Zaehler fuer abgewiesene Anfragen. Nur zaehlen -- keine

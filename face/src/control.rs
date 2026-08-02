@@ -131,7 +131,22 @@ fn befehl_parsen(zeile: &str) -> Option<String> {
         _ => rumpf
             .strip_prefix("mood ")
             .filter(|name| MOODS.contains(name))
-            .map(|name| format!("mood:{name}")),
+            .map(|name| format!("mood:{name}"))
+            .or_else(|| {
+                // T-2.7: `menu <aktion>` loest die AKTION aus und oeffnet
+                // ausdruecklich NICHT das Popup. Ein Popup mit Grab nimmt
+                // Zeiger und Tastatur an sich; ein Steuerkanal, der das
+                // ausloesen koennte, waere ein Klickfaenger. Das Popup
+                // entsteht ausschliesslich aus einem echten Rechtsklick.
+                //
+                // Die gueltigen Namen kommen aus `menu::Aktion`, nicht aus
+                // einer zweiten Liste hier: eine Kopie waere genau die Art
+                // Tabelle, die spaeter auseinanderlaeuft.
+                rumpf
+                    .strip_prefix("menu ")
+                    .filter(|name| crate::menu::Aktion::aus_name(name).is_some())
+                    .map(|name| format!("menu:{name}"))
+            }),
     }
 }
 
@@ -195,6 +210,30 @@ mod tests {
             Some("sichtbar:false")
         );
         assert_eq!(befehl_parsen("sichtbar vielleicht\n"), None);
+    }
+
+    #[test]
+    fn menu_befehle_werden_erkannt_und_kein_einschalten_angenommen() {
+        assert_eq!(
+            befehl_parsen("menu ears_aus\n").as_deref(),
+            Some("menu:ears_aus")
+        );
+        assert_eq!(
+            befehl_parsen("menu eyes_aus\n").as_deref(),
+            Some("menu:eyes_aus")
+        );
+        assert_eq!(
+            befehl_parsen("menu beenden\n").as_deref(),
+            Some("menu:beenden")
+        );
+        // Es gibt kein Einschalten -- auch nicht ueber den Steuerkanal.
+        assert_eq!(befehl_parsen("menu ears_an\n"), None);
+        assert_eq!(befehl_parsen("menu eyes_an\n"), None);
+        assert_eq!(befehl_parsen("menu persona\n"), None);
+        // Und kein Befehl, der das Popup aufziehen koennte.
+        assert_eq!(befehl_parsen("menu oeffnen\n"), None);
+        assert_eq!(befehl_parsen("menu\n"), None);
+        assert_eq!(befehl_parsen("menu ears_aus"), None);
     }
 
     #[test]

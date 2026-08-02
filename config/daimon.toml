@@ -5,6 +5,15 @@
 [hub]
 state_ttl_s = 3600
 
+# T-2.7: Kontextmenue -> "Ohren aus" / "Augen aus". Das Face sendet nur den
+# Schluessel ("ears"/"eyes"); welche Unit gestoppt wird, steht ausschliesslich
+# hier. Ein Eintrag mehr ist eine Unit mehr, die ein Klick im Overlay stoppen
+# kann -- daimon-hub oder daimon-auth gehoeren hier nie hinein.
+# Es gibt kein Gegenstueck zum Einschalten.
+[hub.wahrnehmung_units]
+ears = "daimon-ears.service"
+eyes = "daimon-eyes.service"
+
 [face]
 poll_ms = 250
 

@@ -137,14 +137,33 @@ impl HubVerbindung {
         }
     }
 
-    /// Einziger Face->Hub-Typ. Eine neue Verbindung pro Nutzerklick haelt
-    /// keinen zusaetzlichen Idle-Poller oder langlebigen Schreibkanal offen.
+    /// Einer von zwei Face->Hub-Typen. Eine neue Verbindung pro Nutzerklick
+    /// haelt keinen zusaetzlichen Idle-Poller oder langlebigen Schreibkanal
+    /// offen.
     pub fn bubble_dismiss_melden(&self) -> Result<(), String> {
+        self.senden("{\"v\":1,\"type\":\"bubble_dismiss\",\"payload\":{}}\n")
+    }
+
+    /// T-2.7: Wahrnehmung abschalten. `ziel` ist ein **Schluessel**
+    /// (`"ears"`/`"eyes"`) aus `menu::Aktion::ziel`, nie ein Unit-Name --
+    /// welche Unit dahintersteht, entscheidet allein die Allowlist im Hub.
+    ///
+    /// Es gibt bewusst **kein Gegenstueck zum Einschalten**: ein Overlay, das
+    /// Wahrnehmung nur abschalten kann, ist fail-safe. Wer hier ein
+    /// `wahrnehmung_an` ergaenzt, gibt dem Face eine Faehigkeit, die T-1.7
+    /// ihm genommen hat.
+    pub fn wahrnehmung_aus_melden(&self, ziel: &str) -> Result<(), String> {
+        self.senden(&format!(
+            "{{\"v\":1,\"type\":\"wahrnehmung_aus\",\"payload\":{{\"ziel\":\"{ziel}\"}}}}\n"
+        ))
+    }
+
+    fn senden(&self, zeile: &str) -> Result<(), String> {
         let mut strom = UnixStream::connect(&self.melde_pfad)
             .map_err(|fehler| format!("Face-Meldeweg {}: {fehler}", self.melde_pfad.display()))?;
         strom
-            .write_all(b"{\"v\":1,\"type\":\"bubble_dismiss\",\"payload\":{}}\n")
-            .map_err(|fehler| format!("bubble_dismiss senden: {fehler}"))
+            .write_all(zeile.as_bytes())
+            .map_err(|fehler| format!("Face-Meldung senden: {fehler}"))
     }
 }
 

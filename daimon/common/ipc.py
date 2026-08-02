@@ -68,9 +68,34 @@ PRODUZENTEN: dict[str, frozenset[str]] = {
     "eyes": frozenset({"screen"}),
     "kwin": frozenset({"window"}),
     # T-1.7 bleibt die Grenze: Das Face darf weder `intent_mark` noch
-    # `freigabe` senden. T-2.2 oeffnet ausschliesslich den engen Meldeweg fuer
-    # eine vom Nutzer weggeklickte Blase; die Menge darf nicht wieder wachsen.
-    "face": frozenset({"bubble_dismiss"}),
+    # `freigabe` senden. T-2.2 oeffnete ausschliesslich den engen Meldeweg
+    # fuer eine vom Nutzer weggeklickte Blase.
+    #
+    # T-2.7 laesst diese Menge trotz des frueheren "darf nicht wieder
+    # wachsen" um genau einen Typ wachsen -- und zwar um den
+    # schwaechstmoeglichen, den es fuer ein Kontextmenue gibt. Warum das
+    # vertretbar ist, in drei Punkten:
+    #
+    #   1. EINSEITIG. `wahrnehmung_aus` kann nur abschalten. Ein Gegenstueck
+    #      zum Einschalten gibt es nicht, in keinem Produzenten. Einschalten
+    #      gehoert zum Auth-Agenten und existiert in P2 nicht.
+    #   2. FAIL-SAFE. Der schlimmste Missbrauch ist, dass Ohren oder Augen
+    #      ausgehen -- also weniger Wahrnehmung, nicht mehr. Das ist die
+    #      Richtung, in die ein Fehler laufen darf.
+    #   3. ZIEL AUS DER ALLOWLIST. Die Nutzlast traegt `{"ziel": "ears"|
+    #      "eyes"}`, einen SCHLUESSEL. Welche Unit dahintersteht, steht in
+    #      der Konfiguration des Hubs (`hub.wahrnehmung_units`), nie in der
+    #      Nachricht. Das ist die eigentliche Grenze: naehme der Hub den
+    #      Unit-Namen aus der Nachricht, koennte das Overlay den Hub selbst,
+    #      den Auth-Agenten oder jede beliebige Unit des Nutzers stoppen.
+    #
+    # Was dieser Eintrag ausdruecklich NICHT erlaubt: eine Freigabe zu
+    # erteilen, eine Rundenmarke zu erzeugen, eine Unit zu STARTEN oder
+    # ueberhaupt eine Unit zu BENENNEN. Wer hier `wahrnehmung_an` oder einen
+    # Typ mit freiem Unit-Namen ergaenzen will, hebt genau das auf, was T-1.7
+    # und T-2.7 zusammen halten -- und braucht dafuer eine eigene
+    # Entscheidung, keine Erweiterung dieser Zeile.
+    "face": frozenset({"bubble_dismiss", "wahrnehmung_aus"}),
     "auth": frozenset({"intent_mark", "freigabe"}),
 }
 

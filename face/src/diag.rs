@@ -47,6 +47,13 @@ pub struct FaceState {
     /// T-2.5: +1 je Neuerzeugung der Layer-Surface nach Output-Removal.
     /// Die Erstbindung zaehlt nicht mit.
     pub output_wechsel: u64,
+    /// T-2.7: das Kontextmenue-Popup ist gemappt.
+    pub menu_offen: bool,
+    /// T-2.7: +1 je tatsaechlich ausgeloester Menue-Aktion. Deaktivierte
+    /// Eintraege bewegen den Zaehler nicht -- sie loesen ja nichts aus.
+    pub menu_aktionen: u64,
+    /// T-2.7: "ears_aus" | "eyes_aus" | "beenden" | "" (noch keine).
+    pub letzte_menu_aktion: String,
 }
 
 impl FaceState {
@@ -58,7 +65,9 @@ impl FaceState {
                 "\"frames_rendered\":{},\"bubble_frames_rendered\":{},",
                 "\"toene_gespielt\":{},\"configure_empfangen\":{},",
                 "\"sprite_x\":{},\"sprite_y\":{},",
-                "\"output\":\"{}\",\"output_wechsel\":{}}}"
+                "\"output\":\"{}\",\"output_wechsel\":{},",
+                "\"menu_offen\":{},\"menu_aktionen\":{},",
+                "\"letzte_menu_aktion\":\"{}\"}}"
             ),
             self.rev,
             escape(&self.mood),
@@ -73,8 +82,21 @@ impl FaceState {
             self.sprite_x,
             self.sprite_y,
             escape(&self.output),
-            self.output_wechsel
+            self.output_wechsel,
+            self.menu_offen,
+            self.menu_aktionen,
+            escape(&self.letzte_menu_aktion)
         )
+    }
+
+    /// T-2.7: eine Aktion wurde ausgeloest -- egal ob ueber einen Klick im
+    /// Popup oder ueber den Steuer-Socket. Gezaehlt wird die AUSLOESUNG, nicht
+    /// der Erfolg der Zustellung: ob der Hub die Unit wirklich gestoppt hat,
+    /// misst der Verifizierer an `systemctl --user is-active`, und diese beiden
+    /// Groessen duerfen sich nicht gegenseitig bestaetigen.
+    pub fn menu_aktion_gezaehlt(&mut self, name: &str) {
+        self.menu_aktionen += 1;
+        self.letzte_menu_aktion = name.to_owned();
     }
 
     /// Nur Commits mit angehaengtem Buffer sind gezeichnete Frames. Ein
@@ -167,6 +189,9 @@ mod tests {
             sprite_y: 80,
             output: "HDMI-A-1".into(),
             output_wechsel: 2,
+            menu_offen: true,
+            menu_aktionen: 1,
+            letzte_menu_aktion: "ears_aus".into(),
         };
         let j = s.als_json();
         for feld in [
@@ -199,6 +224,25 @@ mod tests {
         s.output_wechsel = 3;
         assert!(s.als_json().contains("\"output\":\"HDMI-A-1\""));
         assert!(s.als_json().contains("\"output_wechsel\":3"));
+    }
+
+    /// T-2.7: der Verifizierer liest genau diese drei Schluessel zur Laufzeit.
+    /// Deshalb die vollstaendige Schreibweise samt Wert -- und `false`
+    /// ausdruecklich, weil `jq '.menu_offen // empty'` es wie `null`
+    /// behandelt und ein Test auf blosses Vorkommen das nicht faengt.
+    #[test]
+    fn menu_schluessel_stehen_wortwoertlich_im_json() {
+        let mut s = FaceState::default();
+        let j = s.als_json();
+        assert!(j.contains("\"menu_offen\":false"), "{j}");
+        assert!(j.contains("\"menu_aktionen\":0"), "{j}");
+        assert!(j.contains("\"letzte_menu_aktion\":\"\""), "{j}");
+        s.menu_offen = true;
+        s.menu_aktion_gezaehlt("beenden");
+        let j = s.als_json();
+        assert!(j.contains("\"menu_offen\":true"), "{j}");
+        assert!(j.contains("\"menu_aktionen\":1"), "{j}");
+        assert!(j.contains("\"letzte_menu_aktion\":\"beenden\""), "{j}");
     }
 
     #[test]

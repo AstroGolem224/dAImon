@@ -112,6 +112,67 @@ def test_bubble_dismiss_ueber_hookbridge_wird_abgewiesen(hub):
 
 
 # --------------------------------------------------------------------------
+# T-2.7: wahrnehmung_aus -- einseitig, und das Ziel kommt aus der Allowlist
+# --------------------------------------------------------------------------
+
+@pytest.fixture
+def systemctl_aufrufe(monkeypatch):
+    """Faengt `systemctl` ab. Ohne diese Attrappe wuerde der Test die echten
+    Units des Nutzers stoppen -- und `daimon-ears` gibt es erst in P3."""
+    aufrufe = []
+
+    def fake_run(argv, **kwargs):
+        aufrufe.append(list(argv))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    return aufrufe
+
+
+def test_wahrnehmung_aus_stoppt_die_konfigurierte_unit(hub, systemctl_aufrufe):
+    # Der Unit-Name kommt aus der Konfiguration. Der Test setzt ihn auf eine
+    # Attrappe -- genau das beweist, dass er nicht aus der Nachricht stammt.
+    hub.cfg.data["hub"]["wahrnehmung_units"]["ears"] = "attrappe-ohren.service"
+    sende(hub.runtime_dir, {"ziel": "ears"}, typ="wahrnehmung_aus",
+          produzent="face")
+    assert systemctl_aufrufe == [
+        ["systemctl", "--user", "stop", "attrappe-ohren.service"]]
+
+
+def test_ziel_ist_ein_schluessel_und_nie_ein_unit_name(hub, systemctl_aufrufe):
+    """Die zentrale Grenze von T-2.7.
+
+    Naehme der Hub den Namen aus der Nachricht, koennte das Overlay den Hub
+    selbst oder den Auth-Agenten stoppen. Positivkontrolle steht im Test
+    darueber: dort schaltet ein gueltiger Schluessel nachweislich.
+    """
+    for boeses_ziel in ("daimon-auth.service", "daimon-hub.service",
+                        "../../daimon-hub", "", None, {"unit": "x"}, ["x"]):
+        sende(hub.runtime_dir, {"ziel": boeses_ziel}, typ="wahrnehmung_aus",
+              produzent="face")
+    assert systemctl_aufrufe == []
+
+
+def test_wahrnehmung_aus_ueber_hookbridge_wird_abgewiesen(hub, systemctl_aufrufe):
+    sende(hub.runtime_dir, {"ziel": "ears"}, typ="wahrnehmung_aus")
+    assert systemctl_aufrufe == []
+
+
+def test_wahrnehmung_aus_loescht_die_blase_nicht(hub, systemctl_aufrufe):
+    """Zwei Typen auf demselben Socket duerfen sich nicht vermischen."""
+    sende(hub.runtime_dir, {
+        "hook_event_name": "Notification",
+        "session_id": "s1",
+        "notification_type": "permission_prompt",
+        "message": "bleibt",
+    })
+    sende(hub.runtime_dir, {"ziel": "eyes"}, typ="wahrnehmung_aus",
+          produzent="face")
+    assert hole_state(hub.runtime_dir)["bubble"] is not None
+    assert len(systemctl_aufrufe) == 1
+
+
+# --------------------------------------------------------------------------
 # rev
 # --------------------------------------------------------------------------
 

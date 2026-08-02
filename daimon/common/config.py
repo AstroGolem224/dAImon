@@ -23,6 +23,15 @@ VORGABEN: dict[str, Any] = {
     "hub": {
         "socket_dir": None,      # None -> $XDG_RUNTIME_DIR/daimon
         "state_ttl_s": 3600,
+        # T-2.7: die einzigen Units, die ueber `wahrnehmung_aus` gestoppt
+        # werden koennen. Die Nachricht traegt nur den Schluessel links --
+        # der Unit-Name rechts kommt ausschliesslich von hier. Sonst koennte
+        # das Overlay den Hub, den Auth-Agenten oder jede Nutzer-Unit
+        # stoppen. Ein Schluessel, den der Hub nicht kennt, wird verworfen.
+        "wahrnehmung_units": {
+            "ears": "daimon-ears.service",
+            "eyes": "daimon-eyes.service",
+        },
     },
     "face": {
         "poll_ms": 250,
