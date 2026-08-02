@@ -68,7 +68,14 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 
 **Zwei Entscheidungen, eine Handbewegung.**
 
-1. **`T-1.10` neu starten — das bisherige Messfenster ist unbrauchbar.**
+1. **`T-1.10` läuft seit dem 02.08. neu — frühestens ab dem 07.08. abnehmbar.**
+   Das alte Messfenster ist verworfen und liegt samt Begründung unter
+   `tests/evidence/verworfen/`. Stand jetzt: `days=1, crashes=0`, alle vier Units
+   laufen, Timer aktiv, alle fünf Minuten ein Datenpunkt.
+   **Nicht vergessen, wenn die fünf Tage voll sind:** `fehlalarme`, `ablenkungen`,
+   `verdict` und `docs/phase1-verdict.md` — das sind Urteile, keine Messwerte, und
+   der Verifizierer wertet `null` und `pending` ausdrücklich als rot.
+   Warum überhaupt neu:
    `tests/evidence/phase1-usage.json` sagt `crashes: 135` bei `days: 3` und
    `needs_input_events: 0`. Gemessen wurde ein System, das im Neustart-Karussell hing
    (Zähler 97, siehe `RuntimeDirectory` unten) und dreimal neu startete — nicht
