@@ -40,6 +40,15 @@ CapabilityBoundingSet=
 # Runtime-Verzeichnis unten.
 ProtectSystem=strict
 # Die drei Sockets (Hub-Anbindung, Diagnose, Steuerung) liegen hier.
+# %t/daimon muss EXISTIEREN, bevor systemd den Namespace baut -- sonst
+# stirbt die Unit mit 226/NAMESPACE, und zwar nach JEDEM Neustart, weil
+# /run/user/<uid> leer hochkommt. Real passiert am 02.08.: alle vier Units
+# im Restart-Karussell, Zaehler bei 97, und niemand hat es gemerkt, weil
+# ein totes Pet genauso aussieht wie ein ruhiges.
+# Preserve=yes, weil sonst das Stoppen EINER Unit das Verzeichnis loescht
+# und den anderen drei die Sockets unter den Fuessen wegzieht.
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
 ReadWritePaths=%t/daimon
 # Home nur lesen (Design 7.5, Zeile "auth"): ~/.config bleibt lesbar, aber
 # nichts im Home wird beschrieben. Schluesselmaterial ist zusaetzlich ganz

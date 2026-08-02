@@ -36,6 +36,15 @@ ProtectSystem=strict
 # laesst sie und ~/.config sichtbar, verhindert dort aber Schreibzugriffe.
 ProtectHome=read-only
 # Diagnose-, Steuer- und Hub-Sockets liegen im Sitzungs-Runtime-Verzeichnis.
+# %t/daimon muss EXISTIEREN, bevor systemd den Namespace baut -- sonst
+# stirbt die Unit mit 226/NAMESPACE, und zwar nach JEDEM Neustart, weil
+# /run/user/<uid> leer hochkommt. Real passiert am 02.08.: alle vier Units
+# im Restart-Karussell, Zaehler bei 97, und niemand hat es gemerkt, weil
+# ein totes Pet genauso aussieht wie ein ruhiges.
+# Preserve=yes, weil sonst das Stoppen EINER Unit das Verzeichnis loescht
+# und den anderen drei die Sockets unter den Fuessen wegzieht.
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
 ReadWritePaths=%t/daimon
 InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
 ProtectProc=invisible

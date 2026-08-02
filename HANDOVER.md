@@ -1,4 +1,4 @@
-# Übergabe — Stand 2026-07-31
+# Übergabe — Stand 2026-08-02
 
 Alles, was nicht aus dem Repo hervorgeht. Die vorige Fassung ist über zwölf Tasks
 gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
@@ -11,12 +11,41 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 |---|---|
 | **Gate P−1** | 8 von 9 grün. Rot nur `T--1.12` — Messung nicht gelaufen, korrekt so |
 | **Gate P0** | 11 von 11 grün |
-| **Gate P1** | **4 von 5 grün.** Rot nur `T-1.10` — 5 Arbeitstage Normalbetrieb, **Uhr läuft seit 31.07.** |
-| **Phase 2** | **T-2.1 bis T-2.4 stehen.** Offen: T-2.5, T-2.6 (optional), T-2.7 |
+| **Gate P1** | **ROT.** `T-1.10` (Kalenderzeit) und `T-1.7` (Pixelprobe, **war schon vorher rot**) — siehe unten |
+| **Phase 2** | **T-2.1 bis T-2.5 stehen.** T-2.7 gebaut und geprüft, nicht eingefroren. Offen: T-2.6 (optional) |
 
-**Zehn Verifizierer sind eingefroren**, 37 existieren insgesamt.
+**Elf Verifizierer sind eingefroren**, 39 existieren insgesamt.
 `pytest` grün mit 4 per `xfail(strict=True)` dokumentiert roten.
-`cargo test -p face` 62 von 62.
+`cargo test -p face` 74 von 74.
+
+> **`T-1.7.sh` ist rot, und das ist eine Entscheidung, kein Unfall.** T-2.7 gibt dem
+> Face das Recht, `wahrnehmung_aus` zu senden; der eingefrorene Verifizierer verlangt
+> `face darf hoechstens bubble_dismiss`. Das Einfrieren hat damit genau das getan,
+> wofür es da ist — die Aufweichung ist nicht stillschweigend passiert.
+> **Nächster Schritt: ein `T-1.7.v4`-Task**, der die Prüfung auf
+> `{bubble_dismiss, wahrnehmung_aus}` zieht und dabei enger macht (kein Produzent mit
+> `*_an`-Typ, Ziel nie aus der Nachricht), neue Mutanten, `meta.sh`, neu einfrieren.
+> Präzedenzfall ist `T-1.7.v3`. **Den eingefrorenen Verifizierer nicht von Hand
+> anfassen.** — **Erledigt am 02.08. als `T-1.7.v4`**: Obergrenze statt exakter Menge
+> (das Gut-Muster stammt aus der Zeit vor T-2.2 und hat gar keinen `face`-Eintrag),
+> plus die Einseitigkeit für **alle** Produzenten. Zwei neue Mutanten, beide isoliert.
+> `meta.sh`: 7 von 7 erkannt, neu eingefroren.
+
+> **`T-1.7.sh` ist trotzdem rot — an einer Stelle, die es schon vorher war.** Die
+> Pixelprobe „der verwechselbare Pfad sieht sichtbar anders aus" verlangt **>20 000**
+> abweichende Pixel und begründet das damit, der escapte Pfad sei länger, das Fenster
+> werde breiter. **Das Fenster hat feste Breite.** Gemessen: 664 Pixel bei einem
+> Rauschen von 0. Derselbe Wert in der **alten, eingefrorenen Fassung vor T-2.7** —
+> also kein Regress, sondern ein Befund, der nie aufgefallen ist.
+>
+> **Die Zusage selbst hält**: der Dialog zeigt `"~/Bilder/url\u0430ub.png"` gegen
+> `"~/Bilder/urlaub.png"`, beide Aufnahmen angesehen. Die API-Prüfung
+> (`pfad_saeubern` liefert Unterschiedliches, rein ASCII) ist grün.
+>
+> **Nächster Schritt `T-1.7.v5`:** die Schwelle gegen eine gemessene Grundlinie
+> kalibrieren statt gegen eine Annahme. Der Punkt der Probe ist, „escapt" von
+> „Homoglyph durchgelassen" zu unterscheiden — beides sind kleine Pixelmengen, die
+> Grenze muss dazwischen liegen und **gemessen** werden, nicht geraten.
 
 **Quelle der Planungsdokumente ist `/home/itiger013/Dokumente/UMBRA-Notes/DDs/dAImon/`,
 `docs/` ist die Kopie. Beide pflegen.**
@@ -25,15 +54,26 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 
 ## Was Matthias tun muss
 
-**Nichts Blockierendes.** Zwei Dinge, wenn es passt:
+**Zwei Entscheidungen, eine Handbewegung.**
 
-1. **Gate P1 kann am 04.08. schließen.** Der Timer läuft und sammelt.
+1. **`T-1.7.v5`**: die Pixelprobe kalibrieren (siehe oben). Danach ist Gate P1 nur
+   noch von `T-1.10` abhängig, und das ist Kalenderzeit.
+2. **Ein Rechtsklick aufs Pet.** Popup, Grab und Auto-Dismiss aus T-2.7 sind
+   **unbelegt**: `ydotool mousemove -a` landet reproduzierbar bei `(0,0)`, das erste
+   deckende Sprite-Pixel liegt bei `(91,76)`, es gibt also keine Stelle, an der ein
+   Zeiger bei `(0,0)` in die Input-Region fällt. Offene Frage: nimmt KWin den Grab
+   ohne `keyboard_interactivity=OnDemand` an, oder beantwortet es ihn sofort mit
+   `popup_done`? Dann klappt das Menü zu, sobald es aufgeht — fail-safe, aber kaputt.
+
+Dazu, wenn es passt:
+
+3. **Gate P1 kann am 04.08. schließen.** Der Timer läuft und sammelt.
    Vorher einzutragen — kein Programm kann das messen:
    * `fehlalarme` und `ablenkungen` in `tests/evidence/phase1-usage.json`
      (stehen auf `null`, und `null` heißt „noch niemand hat hingesehen")
    * `verdict` (steht auf `pending`, was der Verifizierer ausdrücklich als **rot**
      wertet) und `docs/phase1-verdict.md`
-2. **T−1.12** (NVIDIA-Sprachstack) ist weiterhin ungemessen. Werkzeug liegt unter
+4. **T−1.12** (NVIDIA-Sprachstack) ist weiterhin ungemessen. Werkzeug liegt unter
    `spikes/nvidia-voice/` samt `SPEC.md`. Nicht blockierend.
 
 ```bash
@@ -99,17 +139,72 @@ mindestens einen Mutanten.
 | 9 | T-1.8-Verifizierer | Beobachtete nur den vom Prüfling **selbst geführten** Zähler |
 | 10 | T-2.3-Verifizierer | Nahm den *ersten* ausgebliebenen Klick als Treffer — ohne vorher angekommenen |
 | 11 | T-2.4-Verifizierer | Suchte `attach(nil` — wayland-rs schreibt `attach(<anonymous>@0` |
+| 13 | T-1.7-Pixelprobe | Schwelle >20 000 Pixel, begründet mit „das Fenster wird breiter" — **es hat feste Breite**. Nie nachgemessen, also seit Wochen rot, ohne dass es jemand sah: `meta.sh` überspringt im Fixture-Modus **alle Live-Prüfungen** (47 statt 90), der Mutationstest deckt nur die Hälfte des Verifizierers ab |
+| 12 | T-2.7-Verifizierer | Positivkontrolle „Hub aus dem geprüften Baum" verglich `<baum>/daimon` mit `<baum>` — zwei `dirname` statt drei. **Konnte nie grün werden**, also jeder Lauf rot, also **jede Mutante „erkannt", ohne dass ihre Mutation je gemessen wurde** |
 
 Dazu zwei Fälle, in denen ein **Mutant** nichts bewies: einmal enthielt die
 Fixture-Kopie ein gebautes `target/` der *unmutierten* Quelle, einmal brach das
 Erzeugungsskript ab und der zweite Mutant blieb eine unveränderte Kopie. Beide
 fielen nur auf, weil *alle* Mutanten grün waren — und das kann nicht sein.
 
+### Angriffsnutzlasten gehören beobachtet, nicht ausgeführt
+
+**Am 02.08. hat ein Verifizierer dreimal den Desktop abgeräumt.** Alle Bildschirme
+schwarz, kein Zeiger, kein Terminal, nur noch Strg-Alt-Entf. Kein Absturz: im Journal
+steht ein geordneter Reboot mit `basic.target has 'stop' job queued`.
+
+Der Hergang: `T-2.7.sh` feuert 29 unerlaubte Ziele gegen den Hub, um zu beweisen, dass
+keins durchkommt. In der Liste steht `"*"`. Gegen die richtige Umsetzung ist das
+folgenlos — `ziel` wird in einer Allowlist nachgeschlagen. Gegen den Mutanten
+`ziel-aus-der-nachricht`, der genau diese Nachschlagung weglässt, wurde daraus
+`systemctl --user stop '*'`. **systemd versteht Globs.** Das stoppt jede Unit der
+Sitzung, `plasma-kwin_wayland` eingeschlossen.
+
+Ein Mutant ist dazu da, einem Angriff zu **gehorchen**. Also darf der Angriff nichts
+anrichten können. Die zweite, „gefährlichere" Liste war abgesichert — sie wurde nur
+gesendet, wenn die erste sauber blieb. Nur stand das Schlimmste in der ersten: ein Glob
+ist schlimmer als jeder einzelne Unit-Name, den man bewusst hinschreibt.
+
+**Die Lösung, und sie ist die Vorlage für jeden künftigen Angriffstest:** das Sperrfeuer
+läuft gegen einen eigenen Hub, in dessen `PATH` ein `systemctl`-Stub liegt, der seine
+Argumente protokolliert und nichts tut. Gemessen wird, was der Prüfling **tun wollte**.
+Das ist strenger als vorher, nicht schwächer — vorher war ein Treffer nur an einer
+tatsächlich gestoppten Unit zu sehen, jetzt an jedem einzelnen Aufruf. Und weil nichts
+mehr ausgeführt wird, stehen jetzt `plasma-kwin_wayland.service`, `basic.target` und
+`graphical-session.target` **ausdrücklich in der Angriffsliste**: was vorher zu
+gefährlich zum Prüfen war, ist jetzt der Beweis.
+
+Voraussetzung dafür: der Prüfling ruft `["systemctl", ...]` **ohne absoluten Pfad** auf.
+Ein zweites Netz prüft deshalb zusätzlich die echten Attrappen und den laufenden Hub —
+falls jemand am `PATH` vorbei aufruft.
+
 ---
 
 ## Fallen dieser Maschine
 
 Alles gemessen, nicht vermutet.
+
+**Das Repo und das laufende System driften auseinander — zweimal am selben Tag
+aufgefallen.** Beides ist kein Einzelfall, sondern fehlende Verdrahtung:
+
+* **Das Release-Binary wird von niemandem gebaut.** Die Units zeigen auf
+  `face/target/release/daimon-face`, jeder abgenommene Task landet aber in `debug`.
+  Am 02.08. lief das Pet auf einem Binary vom **30.07.**, also ohne T-2.3 (Ziehen),
+  T-2.4 und T-2.5 — drei fertige Tasks, die der Nutzer nie zu sehen bekam. Ein totes
+  oder veraltetes Overlay sieht aus wie ein ruhiges. **Nach jedem Face-Task:
+  `cargo build --release` und `systemctl --user restart daimon-face`.**
+* **Die installierten Units sind Kopien, keine Symlinks.** `~/.config/systemd/user/`
+  enthält Kopien vom 31.07.; Änderungen unter `config/systemd/` kommen dort **nicht**
+  an. Vor dem Ändern vergleichen, danach kopieren und `daemon-reload`.
+  `daimon-auth.service` ist gar nicht installiert — es laufen hub, hookbridge, face,
+  focus.
+
+**`ReadWritePaths=%t/daimon` tötet die Unit nach jedem Neustart**, weil
+`/run/user/<uid>` leer hochkommt und systemd den Namespace **vor** `ExecStart` baut:
+`226/NAMESPACE`. Am 02.08. standen alle vier Units bei Restart-Zähler 97, seit dem
+Reboot, unbemerkt. Behoben mit `RuntimeDirectory=daimon` **und**
+`RuntimeDirectoryPreserve=yes` in allen vier — ohne `Preserve` löscht das Stoppen
+*einer* Unit das Verzeichnis und zieht den anderen drei die Sockets weg.
 
 **Der Zeiger lässt sich nicht positionieren.** `ydotool mousemove -a` landet
 immer bei `(0,0)`, Exit 0, keine Meldung. Und **relative** Bewegungen laufen durch
@@ -237,8 +332,20 @@ sieht — zwei Sanitizer in Python und Rust wären auseinandergedriftet.
   Fähigkeit. Kommentar steht an der Tabelle in `ipc.py`. Wer den Ears-Agenten baut,
   entscheidet mit.
 - **T-1.10** braucht Kalenderzeit, siehe oben.
-- **T-2.5 bis T-2.7** stehen aus. T-2.6 (Wandern zwischen Monitoren) ist laut Plan
-  optional und darf entfallen, ohne die Phase zu blockieren.
+- **T-2.6** (Wandern zwischen Monitoren) ist laut Plan optional und darf entfallen.
+  Auf dieser Maschine ohnehin nicht belegbar — ein Monitor.
+- **T-2.5 ist nur zur Hälfte abgenommen.** Belegt: Bindung an ein benanntes
+  `wl_output`, Fallback ohne Abbruch, genau eine Instanz, DPMS-Zyklus überlebt.
+  **Unbelegt: Kriterium 2** (Neuerzeugung nach echtem Output-Removal) **und die
+  Auswahl nach dem Namen** aus Kriterium 3 — bei einem Monitor sind „der erste" und
+  „der gewünschte" derselbe Name. Belegt durch
+  `tests/blindstellen/T-2.5-wunsch-ignoriert`: eine Umsetzung, die
+  `DAIMON_FACE_OUTPUT` wegwirft, besteht den Verifizierer mit Exit 0. Der Baum liegt
+  **absichtlich nicht** unter `tests/mutants/`, weil `meta.sh` dort Erkennung verlangt
+  und das Einfrieren sonst scheiterte — und wer ihn deswegen gelöscht hätte, hätte die
+  Blindstelle mitentfernt.
+- **T-2.7 ist gebaut, geprüft, nicht eingefroren.** 90 Prüfungen grün, drei Mutanten
+  erkannt. Offen: der Popup-Nachweis (Rechtsklick, siehe oben) und `T-1.7.v4`.
 - **`remap_commit`** in `surface.rs` ist seit T-2.4 tot und bleibt als historische
   Dokumentation stehen.
 - **OCR ist kein Kriterium**, nur ein Hinweis: `/usr/share/tessdata` hat nur `afr`
