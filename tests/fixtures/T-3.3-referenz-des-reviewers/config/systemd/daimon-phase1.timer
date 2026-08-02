@@ -1,0 +1,17 @@
+# Fuenf Minuten liefern in einem achtstuendigen Arbeitstag rund 96 CPU-
+# Intervalle. Das ist genug fuer ein belastbares p95; zugleich faellt der
+# kurze passive Socket-/proc-Lesezugriff gegenueber 300 Sekunden Messzeit
+# kaum ins Gewicht und steuert keinen gemessenen Dienst.
+
+[Unit]
+Description=dAImon Phase-1-Alltagsmessung alle fuenf Minuten
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=15s
+Persistent=true
+Unit=daimon-phase1.service
+
+[Install]
+WantedBy=timers.target

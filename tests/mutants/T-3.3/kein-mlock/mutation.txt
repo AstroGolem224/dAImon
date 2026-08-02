@@ -1,0 +1,19 @@
+MUTANT: kein `mlock()`. Das Feld `gesperrt` steht trotzdem auf True.
+
+Der Ring funktioniert vollstaendig: richtige Groesse, richtiger Vorlauf,
+sauberes Nullen beim Verwerfen. Fehlt nur die Sperre gegen den Swap -- und
+damit landen bis zu 20 Sekunden Mikrofon irgendwann in `/swapfile`, wo sie
+einen Neustart ueberleben.
+
+DIESER MUTANT ZIELT AUF DEN VERIFIZIERER. Er ist gruen bei jeder Pruefung,
+die glaubt, was der Prueflung ueber sich selbst sagt (`ring.gesperrt`), und
+bei jeder, die `grep mlock` im Quelltext macht (`_libc` und der Import
+stehen weiter drin, der Aufruf nicht). HANDOVER.md, T-1.7.v3: ein Builder
+schrieb 'face' statt "face" und die eingefrorene Pruefung schwieg.
+
+Der einzige belastbare Nachweis steht im Kernel: `VmLck` in
+`/proc/<pid>/status`. Bei ihm bleibt der Wert dort, wo er war.
+
+Gefangen von:
+  * Abschnitt 4, "VmLck steigt beim Erzeugen des Rings um mindestens die
+    Ringgroesse" -- bei ihm steigt es um 0 kB

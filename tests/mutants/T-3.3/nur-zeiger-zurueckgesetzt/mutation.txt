@@ -1,0 +1,23 @@
+MUTANT: `verwerfen()` setzt Schreibzeiger und Fuellstand auf null --
+und laesst die Aufnahme byteweise stehen.
+
+Von aussen ist das nicht zu unterscheiden: der Ring meldet sich als leer,
+`ausloesen()` liefert nichts mehr, jeder Zaehler sagt null. Die letzten 20
+Sekunden Mikrofon liegen trotzdem vollstaendig im Speicher -- adressierbar
+ueber einen Core-Dump, einen Debugger, `/proc/<pid>/mem`, oder schlicht
+ueber den naechsten Chunk, der nur einen Teil davon ueberschreibt.
+
+DAS IST DIE NAHELIEGENDE UMSETZUNG. `self._schreib = 0` ist das, was man
+schreibt, wenn man "verwerfen" als Buchhaltung versteht statt als Loeschung.
+Und es ist genau der Fall, gegen den die Zusage formuliert ist: "Fehltreffer
+hinterlassen NICHTS".
+
+Gefangen von:
+  * Abschnitt 3, "nach dem Verwerfen kommt das Muster in den Bytes des
+    Puffers NICHT mehr vor" -- er hat es noch 80 000-mal drin
+  * Abschnitt 3, dasselbe fuer den nur teilweise gefuellten Ring
+  * Abschnitt 3, "der Puffer ist byteweise genullt"
+
+NICHT gefangen von einer Pruefung, die den Fuellstand abfragt oder
+`ausloesen()` nach dem Verwerfen aufruft -- beides ist bei ihm korrekt leer.
+Genau deshalb misst der Verifizierer die BYTES.
