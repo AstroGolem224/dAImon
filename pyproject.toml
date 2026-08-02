@@ -40,11 +40,13 @@ gpu = [
 audio = [
     "sounddevice>=0.5",
     "soundfile>=0.13",
-    # NICHT `webrtcvad`: das Original importiert beim Laden `pkg_resources`,
-    # das es in einem modernen venv nicht mehr gibt (ModuleNotFoundError, am
-    # 02.08. real getroffen). `webrtcvad-wheels` ist derselbe C-Code als
-    # gepflegtes Wheel, ohne den Altlast-Import.
-    "webrtcvad-wheels>=2.0.14",
+    # T-3.2 schreibt pysilero-vad vor, nicht webrtcvad. Der Unterschied ist
+    # nicht Geschmack: Silero will exakt 512-Sample-Chunks bei 16 kHz -- genau
+    # die Blockgroesse aus T-3.1 -- und liefert eine Wahrscheinlichkeit statt
+    # eines Ja/Nein, worauf die Hysterese aus T-3.2 ueberhaupt erst aufsetzen
+    # kann. (webrtcvad war hier kurz drin, weil ich es installiert habe, bevor
+    # ich in den Plan gesehen habe. Wieder raus, ungenutzt.)
+    "pysilero-vad>=3.4.0",
 ]
 
 dev = [
