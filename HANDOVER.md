@@ -11,7 +11,7 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 |---|---|
 | **Gate P−1** | 8 von 9 grün. Rot nur `T--1.12` — Messung nicht gelaufen, korrekt so |
 | **Gate P0** | 11 von 11 grün |
-| **Gate P1** | **ROT.** `T-1.10` (Kalenderzeit) und `T-1.7` (Pixelprobe, **war schon vorher rot**) — siehe unten |
+| **Gate P1** | **ROT nur noch wegen `T-1.10`** — und dessen Messfenster ist unbrauchbar, siehe unten. `T-1.7` seit v5 grün (95 Prüfungen) |
 | **Gate P2** | **GRÜN.** `verify-frozen` 12, `T-2.4` 17, `T-2.5` 40, `T-1.5` 25 — Idle-CPU **0,000 %** |
 | **Phase 2** | **abgeschlossen.** T-2.1 bis T-2.5 und T-2.7 stehen und sind eingefroren. T-2.6 optional, entfällt |
 
@@ -43,10 +43,21 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 > `"~/Bilder/urlaub.png"`, beide Aufnahmen angesehen. Die API-Prüfung
 > (`pfad_saeubern` liefert Unterschiedliches, rein ASCII) ist grün.
 >
-> **Nächster Schritt `T-1.7.v5`:** die Schwelle gegen eine gemessene Grundlinie
-> kalibrieren statt gegen eine Annahme. Der Punkt der Probe ist, „escapt" von
-> „Homoglyph durchgelassen" zu unterscheiden — beides sind kleine Pixelmengen, die
-> Grenze muss dazwischen liegen und **gemessen** werden, nicht geraten.
+> **Erledigt als `T-1.7.v5` am 02.08.** Die Schwelle ist jetzt ein Verhältnis, keine
+> Zahl: der Verifizierer rendert eine dritte Kontrolle (ein einziges ausgetauschtes
+> lateinisches Zeichen) und misst daran die Einheit „ein Glyph" — 12 Pixel. Der
+> escapte Pfad muss ein Vielfaches abweichen (183). Gemessen wurde auch der kaputte
+> Fall, indem der Agent aus dem Mutantenbaum lief: **0 Pixel, pixelgleich.**
+>
+> **Der größere Fund dabei:** der Live-Teil stieg bei Fixture-Läufen aus („ein Fixture
+> ist ein Ersatzbaum ohne GTK-Prozess") — das ist falsch, es fehlten drei Module.
+> `meta.sh` erreichte deshalb **nie** die 43 Live-Prüfungen. Jetzt startet der
+> Verifizierer den Agenten **aus dem geprüften Baum**, und `vorschau-ohne-escaping`
+> hat `agent.py` + `common/logging.py` + `common/config.py` dazubekommen: 15 rote
+> Prüfungen statt 11, vier davon aus dem gerenderten Dialog.
+>
+> **Prüf das bei jedem Verifizierer mit Fenster- oder Hardwareanteil.** In Phase 3
+> (Mikrofon, GPU) und Phase 5 (ScreenCast, OCR) hat derselbe Aufbau dieselbe Lücke.
 
 **Quelle der Planungsdokumente ist `/home/itiger013/Dokumente/UMBRA-Notes/DDs/dAImon/`,
 `docs/` ist die Kopie. Beide pflegen.**
@@ -57,8 +68,16 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 
 **Zwei Entscheidungen, eine Handbewegung.**
 
-1. **`T-1.7.v5`**: die Pixelprobe kalibrieren (siehe oben). Danach ist Gate P1 nur
-   noch von `T-1.10` abhängig, und das ist Kalenderzeit.
+1. **`T-1.10` neu starten — das bisherige Messfenster ist unbrauchbar.**
+   `tests/evidence/phase1-usage.json` sagt `crashes: 135` bei `days: 3` und
+   `needs_input_events: 0`. Gemessen wurde ein System, das im Neustart-Karussell hing
+   (Zähler 97, siehe `RuntimeDirectory` unten) und dreimal neu startete — nicht
+   Normalbetrieb. Seit dem 02.08. laufen die Units stabil; ab da kann die Uhr
+   ehrlich laufen. Danach von Hand einzutragen: `fehlalarme`, `ablenkungen`,
+   `verdict` und `docs/phase1-verdict.md`.
+   **Und:** `needs_input_events: 0` heißt, das Pet hat in drei Tagen keine einzige
+   Rückfrage gesehen. Ohne die ist „stört nicht" keine Aussage — die Messung braucht
+   echte Sitzungen, nicht nur Laufzeit.
 Dazu, wenn es passt:
 
 2. **Gate P1 kann am 04.08. schließen.** Der Timer läuft und sammelt.
