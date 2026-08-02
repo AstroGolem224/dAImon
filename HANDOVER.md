@@ -58,22 +58,15 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 
 1. **`T-1.7.v5`**: die Pixelprobe kalibrieren (siehe oben). Danach ist Gate P1 nur
    noch von `T-1.10` abhängig, und das ist Kalenderzeit.
-2. **Ein Rechtsklick aufs Pet.** Popup, Grab und Auto-Dismiss aus T-2.7 sind
-   **unbelegt**: `ydotool mousemove -a` landet reproduzierbar bei `(0,0)`, das erste
-   deckende Sprite-Pixel liegt bei `(91,76)`, es gibt also keine Stelle, an der ein
-   Zeiger bei `(0,0)` in die Input-Region fällt. Offene Frage: nimmt KWin den Grab
-   ohne `keyboard_interactivity=OnDemand` an, oder beantwortet es ihn sofort mit
-   `popup_done`? Dann klappt das Menü zu, sobald es aufgeht — fail-safe, aber kaputt.
-
 Dazu, wenn es passt:
 
-3. **Gate P1 kann am 04.08. schließen.** Der Timer läuft und sammelt.
+2. **Gate P1 kann am 04.08. schließen.** Der Timer läuft und sammelt.
    Vorher einzutragen — kein Programm kann das messen:
    * `fehlalarme` und `ablenkungen` in `tests/evidence/phase1-usage.json`
      (stehen auf `null`, und `null` heißt „noch niemand hat hingesehen")
    * `verdict` (steht auf `pending`, was der Verifizierer ausdrücklich als **rot**
      wertet) und `docs/phase1-verdict.md`
-4. **T−1.12** (NVIDIA-Sprachstack) ist weiterhin ungemessen. Werkzeug liegt unter
+3. **T−1.12** (NVIDIA-Sprachstack) ist weiterhin ungemessen. Werkzeug liegt unter
    `spikes/nvidia-voice/` samt `SPEC.md`. Nicht blockierend.
 
 ```bash
@@ -344,8 +337,17 @@ sieht — zwei Sanitizer in Python und Rust wären auseinandergedriftet.
   **absichtlich nicht** unter `tests/mutants/`, weil `meta.sh` dort Erkennung verlangt
   und das Einfrieren sonst scheiterte — und wer ihn deswegen gelöscht hätte, hätte die
   Blindstelle mitentfernt.
-- **T-2.7 ist gebaut, geprüft, nicht eingefroren.** 90 Prüfungen grün, drei Mutanten
-  erkannt. Offen: der Popup-Nachweis (Rechtsklick, siehe oben) und `T-1.7.v4`.
+- **T-2.7 ist gebaut und geprüft**, 90 Prüfungen grün, drei Mutanten über je drei
+  Läufe stabil erkannt. **Der Popup-Nachweis steht** (02.08., von Hand): Menü öffnet
+  sich per Rechtsklick und **bleibt offen** — KWin nimmt den Grab ohne
+  `keyboard_interactivity=OnDemand` an, die Sorge des Builders war unbegründet.
+  `menu_offen=true` in 26 Messungen über 7,0 s, danach von selbst zurück auf `false`
+  (Auto-Dismiss). Die sechs Einträge stimmen samt Ausgrauung.
+  **Und die echte Kette ist belegt, nicht nur die Attrappe:** ein Klick auf „Ohren
+  aus" ergab im Hub-Journal `ziel=ears unit=daimon-ears.service rc=5 "Unit not
+  loaded"` — Allowlist nachgeschlagen, konfigurierter Name geholt, `systemctl`
+  gerufen. Dass nichts passiert, liegt daran, dass `daimon-ears` erst in P3 entsteht.
+  Offen bleibt nur das Einfrieren (Gut-Muster + `meta.sh` + `freeze.sh`).
 - **`remap_commit`** in `surface.rs` ist seit T-2.4 tot und bleibt als historische
   Dokumentation stehen.
 - **OCR ist kein Kriterium**, nur ein Hinweis: `/usr/share/tessdata` hat nur `afr`
