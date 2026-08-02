@@ -13,9 +13,10 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 | **Gate P0** | 11 von 11 grün |
 | **Gate P1** | **ROT nur noch wegen `T-1.10`** — und dessen Messfenster ist unbrauchbar, siehe unten. `T-1.7` seit v5 grün (95 Prüfungen) |
 | **Gate P2** | **GRÜN.** `verify-frozen` 12, `T-2.4` 17, `T-2.5` 40, `T-1.5` 25 — Idle-CPU **0,000 %** |
+| **Phase 3** | **Block 1 (Ohren) steht:** T-3.1 bis T-3.4, alle vier eingefroren. Offen: T-3.7–3.9, 3.10–3.13b, 3.14–3.15 |
 | **Phase 2** | **abgeschlossen.** T-2.1 bis T-2.5 und T-2.7 stehen und sind eingefroren. T-2.6 optional, entfällt |
 
-**Zwölf Verifizierer sind eingefroren**, 40 existieren insgesamt.
+**Neunzehn Einträge in `FROZEN`**: 16 Verifizierer + 3 Harness-Dateien.
 **`FROZEN` deckt seit T-1.1.v2 auch die Harness ab** — 15 Einträge: 12 Verifizierer
 plus `pixelprobe.py`, `vollbildfenster.py`, `moodprobe.py`. `freeze.sh` **liest** die
 Abhängigkeiten aus dem Skript, statt eine Liste zu pflegen, die veraltet.
@@ -207,6 +208,16 @@ falls jemand am `PATH` vorbei aufruft.
 ## Fallen dieser Maschine
 
 Alles gemessen, nicht vermutet.
+
+**`mmap.mmap(-1, n)` nimmt in CPython `MAP_SHARED`** — und ein *shared* anonymes Mapping
+ist unter Linux tmpfs-gestützt: `rw-s`, echte Inode, Name `/dev/zero (deleted)`. Ein
+Puffer mit Mikrofonmaterial hätte damit ein Rückschreibziel, **ohne dass je ein `write()`
+im `strace` auftaucht**. `flags=mmap.MAP_PRIVATE` erzwingen (T-3.3).
+
+**`tests/test_hub_push.py::test_hub_weg_schliesst_die_verbindung` flackert.** Einmal rot
+mit `ConnectionError` unter Last (parallele Verifiziererläufe), danach dreimal in Folge
+grün. Er wartet mit `settimeout(5.0)` auf ein EOF nach `hub.stop()`; unter Last reicht
+das offenbar nicht immer. Bekannt, nicht behoben.
 
 **Das Repo und das laufende System driften auseinander — zweimal am selben Tag
 aufgefallen.** Beides ist kein Einzelfall, sondern fehlende Verdrahtung:
