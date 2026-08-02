@@ -1,0 +1,20 @@
+MUTANT: `referenz()` nimmt weiter an, `_ist_echo()` vergleicht nichts.
+
+Die Schnittstelle ist vollstaendig da: der Ausgabepuffer wird entgegen-
+genommen, gespeichert, das Verfallsfenster wird gepflegt, `diagnose()` zaehlt
+die Referenzen brav mit. Nur verglichen wird nichts -- also geht auch das
+eigene Satzende durch, sobald der Nachlauf vorbei ist.
+
+DIESER MUTANT ZIELT AUF DEN VERIFIZIERER. Er ist gruen bei jeder Pruefung,
+die nur schaut, ob eine Referenz ANGENOMMEN wird (sie wird), oder ob das
+Diagnosebild sie kennt (es kennt sie). Und er ist gruen bei einem
+Vertragssucher, der `referenz` danach auswaehlt, ob hinterher etwas
+verworfen wird -- deshalb waehlt der Sucher hier ausdruecklich nach ANNAHME.
+
+Gefangen von:
+  * Abschnitt 4, "MIT eingespeister Referenz wird der Echo-Chunk VERWORFEN"
+
+NICHT gefangen von der Gegenrichtung im selben Abschnitt ("fremdes Material
+wird nicht verworfen") -- die ist bei ihm korrekt gruen, und das ist der
+Punkt: erst beide Richtungen zusammen trennen "verwirft das Richtige" von
+"verwirft alles" und von "verwirft nichts".

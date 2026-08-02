@@ -1,0 +1,25 @@
+MUTANT: `durchlassen()` gibt bei gedruecktem PTT sofort True zurueck.
+
+Die Begruendung, die man dazu schreiben wuerde, klingt vernuenftig: der
+Nutzer haelt die Taste, also will er sprechen, also darf man ihn nicht
+abschneiden. Sie ist genau falsch herum. Unter Plan C ist das der Kern des
+Tasks: der Nutzer HAELT die Taste, waehrend das Pet antwortet -- und die
+Antwort des Pets landet als seine Aeusserung im STT.
+
+DIESER MUTANT ZIELT AUF REGEL 9. `gesperrt()` ist unveraendert, `diagnose()`
+meldet weiter `gesperrt: true`, `grund: "wiedergabe"` und eine Frist in
+`bis`. Jeder Verifizierer, der den Sperrzustand am Diagnosebild misst -- oder
+dessen Vertragssucher den Entscheider `gesperrt` statt `durchlassen`
+waehlt --, ist bei ihm vollstaendig gruen, waehrend das Pet sich selbst
+zuhoert. Genau deshalb bevorzugt der Sucher einen Entscheider, DER EINEN
+CHUNK SIEHT, und genau deshalb ist die Diagnose in Abschnitt 5 nur Beleg.
+
+Gefangen von:
+  * Abschnitt 3, "waehrend der Wiedergabe wird bei GEDRUECKTEM PTT nichts
+    durchgelassen"
+  * Abschnitt 3, "erneutes Druecken oeffnet die laufende Sperre nicht"
+
+NICHT gefangen von der Positivkontrolle daneben ("ohne Wiedergabe und mit
+gedruecktem PTT geht es durch") -- die ist bei ihm korrekt gruen. Und nicht
+von den uebrigen Abschnitten: die messen alle mit LOSGELASSENER Taste, damit
+dieser Mutant genau an einer Stelle faellt und nicht ueberall.

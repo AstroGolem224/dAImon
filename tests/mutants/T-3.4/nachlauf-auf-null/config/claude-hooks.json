@@ -1,0 +1,97 @@
+{
+  "_kommentar": "Erzeugt fuer T-0.11. Nach ~/.claude/settings.json unter 'hooks' einfuegen; __RUNTIME_DIR__ und __TOKEN__ setzt der Installer ein. Das Kommando liest stdin ZUERST vollstaendig in eine Temporaerdatei und koppelt erst dann per setsid ab. Der kuerzere Weg -- curl --data-binary @- direkt im Hintergrund -- ist zwar schneller (0,7 gegen 1,4 ms), stellt aber NICHTS zu: gemessen 0 von 10 Nutzlasten, weil der abgekoppelte curl gegen den Aufrufer rennt, der stdin schliesst. Wer hier vereinfacht, misst bitte die Zustellung mit, nicht nur die Zeit.",
+  "_grenze": "Spike T-1.6: eine haengende Bridge kostet blockierend 1004 ms je Ereignis. Bei PreToolUse an jedem Werkzeugaufruf ist das untragbar. Grenze: 200 ms.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=$(mktemp); jq -c --argjson p \"$PPID\" '.pid = $p' > \"$d\"; setsid sh -c 'curl -s -m 5 -X POST -H \"Content-Type: application/json\" -H \"Authorization: Bearer __TOKEN__\" --data-binary @\"$1\" http://127.0.0.1:8787/hook >/dev/null 2>&1; rm -f \"$1\"' _ \"$d\" </dev/null >/dev/null 2>&1 &"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=$(mktemp); jq -c --argjson p \"$PPID\" '.pid = $p' > \"$d\"; setsid sh -c 'curl -s -m 5 -X POST -H \"Content-Type: application/json\" -H \"Authorization: Bearer __TOKEN__\" --data-binary @\"$1\" http://127.0.0.1:8787/hook >/dev/null 2>&1; rm -f \"$1\"' _ \"$d\" </dev/null >/dev/null 2>&1 &"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=$(mktemp); jq -c --argjson p \"$PPID\" '.pid = $p' > \"$d\"; setsid sh -c 'curl -s -m 5 -X POST -H \"Content-Type: application/json\" -H \"Authorization: Bearer __TOKEN__\" --data-binary @\"$1\" http://127.0.0.1:8787/hook >/dev/null 2>&1; rm -f \"$1\"' _ \"$d\" </dev/null >/dev/null 2>&1 &"
+          }
+        ],
+        "matcher": ".*"
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=$(mktemp); jq -c --argjson p \"$PPID\" '.pid = $p' > \"$d\"; setsid sh -c 'curl -s -m 5 -X POST -H \"Content-Type: application/json\" -H \"Authorization: Bearer __TOKEN__\" --data-binary @\"$1\" http://127.0.0.1:8787/hook >/dev/null 2>&1; rm -f \"$1\"' _ \"$d\" </dev/null >/dev/null 2>&1 &"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=$(mktemp); jq -c --argjson p \"$PPID\" '.pid = $p' > \"$d\"; setsid sh -c 'curl -s -m 5 -X POST -H \"Content-Type: application/json\" -H \"Authorization: Bearer __TOKEN__\" --data-binary @\"$1\" http://127.0.0.1:8787/hook >/dev/null 2>&1; rm -f \"$1\"' _ \"$d\" </dev/null >/dev/null 2>&1 &"
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=$(mktemp); jq -c --argjson p \"$PPID\" '.pid = $p' > \"$d\"; setsid sh -c 'curl -s -m 5 -X POST -H \"Content-Type: application/json\" -H \"Authorization: Bearer __TOKEN__\" --data-binary @\"$1\" http://127.0.0.1:8787/hook >/dev/null 2>&1; rm -f \"$1\"' _ \"$d\" </dev/null >/dev/null 2>&1 &"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=$(mktemp); jq -c --argjson p \"$PPID\" '.pid = $p' > \"$d\"; setsid sh -c 'curl -s -m 5 -X POST -H \"Content-Type: application/json\" -H \"Authorization: Bearer __TOKEN__\" --data-binary @\"$1\" http://127.0.0.1:8787/hook >/dev/null 2>&1; rm -f \"$1\"' _ \"$d\" </dev/null >/dev/null 2>&1 &"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=$(mktemp); jq -c --argjson p \"$PPID\" '.pid = $p' > \"$d\"; setsid sh -c 'curl -s -m 5 -X POST -H \"Content-Type: application/json\" -H \"Authorization: Bearer __TOKEN__\" --data-binary @\"$1\" http://127.0.0.1:8787/hook >/dev/null 2>&1; rm -f \"$1\"' _ \"$d\" </dev/null >/dev/null 2>&1 &"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=$(mktemp); jq -c --argjson p \"$PPID\" '.pid = $p' > \"$d\"; setsid sh -c 'curl -s -m 5 -X POST -H \"Content-Type: application/json\" -H \"Authorization: Bearer __TOKEN__\" --data-binary @\"$1\" http://127.0.0.1:8787/hook >/dev/null 2>&1; rm -f \"$1\"' _ \"$d\" </dev/null >/dev/null 2>&1 &"
+          }
+        ]
+      }
+    ]
+  }
+}

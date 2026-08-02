@@ -1,0 +1,24 @@
+MUTANT: kein Nachlauf. `wiedergabe_endet()` setzt die Frist auf JETZT.
+
+Alles andere stimmt: waehrend der Wiedergabe wird gesperrt, PTT oeffnet
+nichts, die Echo-Referenz wirkt, die Diagnose ist ehrlich. Fehlt nur die
+halbe Sekunde danach -- und genau in ihr erreicht der Raumhall der letzten
+Silbe das Mikrofon. Das Pet hoert sein eigenes Satzende und haelt es fuer
+eine Nutzeraeusserung.
+
+DIESER MUTANT ZIELT AUF DEN VERIFIZIERER. Er ist gruen bei jeder Pruefung,
+die nur "waehrend der Wiedergabe ist gesperrt" misst -- also bei der
+naheliegenden. Und er ist gruen bei jedem `grep 500`: NACHLAUF_MS steht
+unveraendert im Modul, der Konstruktor rechnet es brav in Sekunden um, nur
+benutzt wird es nicht mehr.
+
+Gefangen von:
+  * Abschnitt 2, "unmittelbar nach dem Ende ist gesperrt" -- bei ihm nicht
+  * Abschnitt 2, "die gemessene Grenze liegt bei 500 ms (400..700)"
+  * Abschnitt 2, "400 ms nach dem Ende ist noch gesperrt"
+
+NICHT gefangen von Abschnitt 3 (dort laeuft die Wiedergabe noch), nicht von
+Abschnitt 4 (dort ist der Nachlauf ohnehin abgewartet), nicht von 5, 6 oder
+7 -- die messen ausdruecklich in Zustaenden, in denen der Nachlauf keine
+Rolle spielt. Abschnitt 6 (b) meldet sich ausdruecklich als NICHT GEMESSEN,
+statt mitzufaerben.
