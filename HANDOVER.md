@@ -13,7 +13,7 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 | **Gate P0** | 11 von 11 grün — **aber `T-0.12` war davon ein hohles Grün**, siehe unten. Seit T-0.12.v2 belegt |
 | **Gate P1** | **ROT nur noch wegen `T-1.10`** — und dessen Messfenster ist unbrauchbar, siehe unten. `T-1.7` seit v5 grün (95 Prüfungen) |
 | **Gate P2** | **GRÜN** (02.08.): `T-2.4` 17, `T-2.5` 40, `T-1.5` 25 — Idle-CPU **0,000 %**. `verify-frozen` zählte damals 12, heute 20 |
-| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2 angefangen:** T-0.12.v2 eingefroren, T-3.7 gebaut aber **nicht committet**. Offen: T-3.8, T-3.9, 3.10–3.13b, 3.14–3.15 |
+| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2:** T-0.12.v2 eingefroren, **T-3.7 committet und live belegt** (03.08., `tests/evidence/T-3.7-live.json` — mit Vorbehalt, siehe unten). Offen: T-3.8, T-3.9, 3.10–3.13b, 3.14–3.15 |
 | **Phase 2** | **abgeschlossen.** T-2.1 bis T-2.5 und T-2.7 stehen und sind eingefroren. T-2.6 optional, entfällt |
 
 **Zwanzig Einträge in `FROZEN`**: 17 Verifizierer + 3 Harness-Dateien.
@@ -63,6 +63,23 @@ Skript, statt eine Liste zu pflegen, die veraltet.
 > **Prüf das bei jedem Verifizierer mit Fenster- oder Hardwareanteil.** In Phase 3
 > (Mikrofon, GPU) und Phase 5 (ScreenCast, OCR) hat derselbe Aufbau dieselbe Lücke.
 
+> **Der Rollenwächter lief seit Wochen gar nicht.** `.claude/settings.json` war
+> **kaputtes JSON** — die Quotes um `$CLAUDE_PROJECT_DIR` waren nicht escapt, seit
+> Commit `21c9a78`. Claude Code lädt eine unparsbare Settings-Datei stillschweigend
+> nicht, also feuerte der `PreToolUse`-Hook nie: `touch tests/evidence/.probe` ohne
+> gesetztes `DAIMON_ROLE` ging durch, obwohl `roles.toml` „unknown darf nichts
+> schreiben" sagt. Am 03.08. repariert. **Derselbe Fall wie Nummer 15**: der
+> Mechanismus war tot, und niemand hat es gemerkt, weil niemand geprüft hat, dass er
+> überhaupt anspringt. Die zweite Linie (`.githooks/pre-commit`) lief die ganze Zeit.
+> **Neu in `tests/test_rollen.py`**: eine Prüfung, dass `settings.json` parsbar ist,
+> auf `role_guard.py` zeigt, und dass der Hook einen Schreibversuch ohne Rolle
+> ablehnt.
+>
+> **Praktische Folge für die nächste Sitzung:** `DAIMON_ROLE` muss jetzt in der
+> **Umgebung von Claude Code selbst** stehen (nicht als Präfix im Bash-Aufruf — der
+> Hook ist ein eigener Prozess und sieht das Präfix nicht). Ohne Variable ist jedes
+> Schreiben im Repo blockiert.
+
 **Quelle der Planungsdokumente ist `/home/itiger013/Dokumente/UMBRA-Notes/DDs/dAImon/`,
 `docs/` ist die Kopie. Beide pflegen.**
 
@@ -74,7 +91,7 @@ Skript, statt eine Liste zu pflegen, die veraltet.
 
 1. **`T-1.10` läuft seit dem 02.08. neu — frühestens ab dem 07.08. abnehmbar.**
    Das alte Messfenster ist verworfen und liegt samt Begründung unter
-   `tests/evidence/verworfen/`. Stand jetzt: `days=1, crashes=0`, alle vier Units
+   `tests/evidence/verworfen/`. Stand 03.08.: `days=2, crashes=0`, `idle_cpu_p95=0,216 %`, alle vier Units
    laufen, Timer aktiv, alle fünf Minuten ein Datenpunkt.
    **Nicht vergessen, wenn die fünf Tage voll sind:** `fehlalarme`, `ablenkungen`,
    `verdict` und `docs/phase1-verdict.md` — das sind Urteile, keine Messwerte, und
@@ -94,7 +111,7 @@ Skript, statt eine Liste zu pflegen, die veraltet.
    genau dieser Empfehlung. Ich lege Sätze und ein Aufnahmeskript bereit, du liest sie
    einmal vor (~5 Minuten). Entschieden am 03.08.: **deine Stimme, dein Mikrofon, dein
    Raum** — Piper-Synthese kommt zusätzlich als Regressionstest, nicht stattdessen.
-3. **`piper` installieren**, sonst bleibt T-3.9 blockiert:
+3. **`piper` installieren — das ist der nächste Task.** T-3.7 ist durch, T-3.9 (TTS) ist als nächstes dran und hängt allein hieran:
    ```bash
    sudo pacman -S --needed piper-tts
    ```
@@ -171,6 +188,7 @@ mindestens einen Mutanten.
 | 14 | `FROZEN` selbst | Deckte nur `tests/verify/*.sh` ab. Die eigentliche Messung steht in `tests/harness/*.py` — dort die Toleranz hochzudrehen hätte einen eingefrorenen Verifizierer aufgeweicht, **ohne dass `verify-frozen` etwas merkt**. Behoben in T-1.1.v2 |
 | 13 | T-1.7-Pixelprobe | Schwelle >20 000 Pixel, begründet mit „das Fenster wird breiter" — **es hat feste Breite**. Nie nachgemessen, also seit Wochen rot, ohne dass es jemand sah: `meta.sh` überspringt im Fixture-Modus **alle Live-Prüfungen** (47 statt 90), der Mutationstest deckt nur die Hälfte des Verifizierers ab |
 | 12 | T-2.7-Verifizierer | Positivkontrolle „Hub aus dem geprüften Baum" verglich `<baum>/daimon` mit `<baum>` — zwei `dirname` statt drei. **Konnte nie grün werden**, also jeder Lauf rot, also **jede Mutante „erkannt", ohne dass ihre Mutation je gemessen wurde** |
+| 16 | `.claude/settings.json` | Der `PreToolUse`-Rollenwächter war **verdrahtet und lief nie**: unescapte Quotes machten die Settings-Datei zu kaputtem JSON, und Claude Code lädt eine unparsbare Datei stillschweigend nicht. Gemessen wurde „der Hook steht in der Konfiguration", nicht „der Hook lehnt ab". Seit Commit `21c9a78`. Behoben am 03.08., plus `tests/test_rollen.py`, das den Hook aufruft und eine Ablehnung verlangt |
 
 Dazu zwei Fälle, in denen ein **Mutant** nichts bewies: einmal enthielt die
 Fixture-Kopie ein gebautes `target/` der *unmutierten* Quelle, einmal brach das
