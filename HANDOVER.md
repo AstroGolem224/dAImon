@@ -13,10 +13,10 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 | **Gate P0** | 11 von 11 grün — **aber `T-0.12` war davon ein hohles Grün**, siehe unten. Seit T-0.12.v2 belegt |
 | **Gate P1** | **ROT nur noch wegen `T-1.10`** — und dessen Messfenster ist unbrauchbar, siehe unten. `T-1.7` seit v5 grün (95 Prüfungen) |
 | **Gate P2** | **GRÜN** (02.08.): `T-2.4` 17, `T-2.5` 40, `T-1.5` 25 — Idle-CPU **0,000 %**. `verify-frozen` zählte damals 12, heute 20 |
-| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2:** T-0.12.v2 eingefroren, **T-3.7** committet und live belegt, **T-3.9 fertig samt Prüfstand** (211 Prüfungen 0 rot, 5 von 5 Mutanten erkannt) — **aber NICHT eingefroren**, siehe unten. Offen: T-3.8, 3.10–3.13b, 3.14–3.15 |
+| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2:** T-0.12.v2 eingefroren, **T-3.7** committet und live belegt, **T-3.9 fertig und EINGEFROREN** (211 Prüfungen 0 rot, 5 von 5 Mutanten, Reboot-Messung bestanden). Offen: T-3.8, 3.10–3.13b, 3.14–3.15 |
 | **Phase 2** | **abgeschlossen.** T-2.1 bis T-2.5 und T-2.7 stehen und sind eingefroren. T-2.6 optional, entfällt |
 
-**Zwanzig Einträge in `FROZEN`**: 17 Verifizierer + 3 Harness-Dateien.
+**Einundzwanzig Einträge in `FROZEN`**: 18 Verifizierer + 3 Harness-Dateien. `T-3.9` kam am 03.08. dazu, nachdem der Wanduhrzweig der Abkühlung gemessen war.
 **`FROZEN` deckt seit T-1.1.v2 auch die Harness ab** — `pixelprobe.py`,
 `vollbildfenster.py`, `moodprobe.py`. `freeze.sh` **liest** die Abhängigkeiten aus dem
 Skript, statt eine Liste zu pflegen, die veraltet.
@@ -139,28 +139,12 @@ Skript, statt eine Liste zu pflegen, die veraltet.
    `spikes/nvidia-voice/models/` und ist CC0. **Lehre: ein Installationsbefehl in diesem
    Dokument ist eine Behauptung wie jede andere — dieser war nie ausgeführt worden.**
 
-3. **Nach dem nächsten Neustart, ein Befehl — daran hängt das Einfrieren von
-   T-3.9.** Phase `vor` ist am 03.08. gelaufen und liegt bereit; sie hat eine
-   Abkühlung mit **24 Stunden** Frist vermerkt, damit es nicht darauf ankommt,
-   wann du neu startest:
-
-   ```bash
-   python3 spikes/tts-abkuehlung/reboot_check.py nach
-   ```
-
-   Geprüft wird der einzige Zweig der Abkühlung, den niemand gemessen hat: bei
-   **anderer Boot-ID** entscheidet die **Wanduhr**, denn eine gespeicherte
-   monotone Zahl ist nach einem Boot bedeutungslos. Der Lauf verlangt vier Dinge
-   gleichzeitig — die lange Frist hält, die **kurze ist frei** (ohne diese
-   Positivkontrolle wäre „immer noch gesperrt" auch das Ergebnis eines kaputten
-   Lesers), die Boot-ID hat sich wirklich geändert, und die Restzeit passt zur
-   Wanduhr. Exit 1 nennt, was davon fehlt.
-
-   **Erst danach einfrieren:**
-
-   ```bash
-   tests/verify/freeze.sh T-3.9
-   ```
+3. ~~**Reboot-Test für T-3.9**~~ — **erledigt am 03.08., bestanden.** 239,8 s
+   Ausfallzeit, erwartete Restfrist 86160,2 s, gemeldet **86160,221 s**; Boot-ID
+   gewechselt, die Ablage trägt noch die alte (also wirklich der Wanduhrzweig),
+   und die Positivkontrolle mit der kurzen Frist ist frei. Danach eingefroren:
+   `FROZEN` 20 → 21, `verify-frozen` bestätigt. Protokoll unter
+   `spikes/tts-abkuehlung/runs/`.
 
 Dazu, wenn es passt:
 
@@ -323,6 +307,16 @@ aufgetreten. Richtig ist `wert is True`.
 ist unter Linux tmpfs-gestützt: `rw-s`, echte Inode, Name `/dev/zero (deleted)`. Ein
 Puffer mit Mikrofonmaterial hätte damit ein Rückschreibziel, **ohne dass je ein `write()`
 im `strace` auftaucht**. `flags=mmap.MAP_PRIVATE` erzwingen (T-3.3).
+
+**Eine gestrippte Umgebung ändert lautlos, WAS gemessen wird.** Der erste
+Einfrierversuch von T-3.9 scheiterte am Gut-Muster, und zwar an genau zwei
+Prüfungen: Bidi und Nullbreite. Der Steuerzeichenfall lief durch. Ursache war
+nicht der Prüfling und nicht der Prüfstand, sondern der Aufrufer — ein Wrapper,
+der `env` auf `DAIMON_ROLE`, `PATH` und `HOME` reduzierte. **Ohne `LANG` läuft
+bash in der C-Locale, und dann erzeugt `$'\u202e'` kein Bidi-Zeichen mehr**: der
+Angriffstext war keiner. BEL ist reines ASCII und blieb deshalb grün — die
+Fehlersignatur zeigte also genau auf die Nicht-ASCII-Fälle. Wer einen
+Verifizierer aus einem Skript startet, gibt die vollständige Umgebung mit.
 
 **`SystemCallFilter=~@resources` tötet jeden PipeWire-Client.** Der TTS-Dienst starb mit
 `status=31/SYS`, und zwar **beide** Prozesse (`pw-cat` und der Python-Prozess, SIGSYS in
@@ -504,28 +498,12 @@ sieht — zwei Sanitizer in Python und Rust wären auseinandergedriftet.
   nur ein API-Kontingent erteilt. Heute wirkungslos, aber es *behauptet* eine
   Fähigkeit. Kommentar steht an der Tabelle in `ipc.py`. Wer den Ears-Agenten baut,
   entscheidet mit.
-- **T-3.9 ist NICHT eingefroren, und das ist eine Entscheidung.** Der Prüfstand
-  ist grün (211/0) und belegt (5 von 5 Mutanten), aber vor `tests/verify/freeze.sh T-3.9`
-  gehören zwei Punkte gelesen, die codex ausdrücklich als *verschobene Zusagen*
-  benannt hat: (a) **eine Unterbrechung umgeht die Abkühlung** — wörtlich eine
-  Ausnahme von Kriterium 8, nötig um es mit Kriterium 4 zu vereinbaren, steht
-  samt Gegenprobe in Design §8.3; (b) **der Wanduhrzweig der Abkühlung** ist nur
-  in Unittests belegt. Wer einfriert, friert beides mit ein.
-- **Die Abkühlung entscheidet nach Boot-ID, und der Wanduhrzweig ist ungemessen.**
-  Gleiche Boot-ID → monotone Zeit (Uhrstellen wirkungslos), andere → Wanduhr
-  (damit die Frist einen Neustart überlebt). Der zweite Zweig hat nie einen
-  echten Reboot gesehen. **Der Test liegt bereit und Phase `vor` ist gelaufen**
-  (`spikes/tts-abkuehlung/reboot_check.py`, 24-Stunden-Frist vermerkt am 03.08.
-  18:34). Nach dem Neustart `… reboot_check.py nach`, und **erst dann**
-  einfrieren — siehe *Was Matthias tun muss*, Punkt 3.
-
-  Zwei eigene Fehler beim Bau dieses Tests, beide beim ersten Lauf aufgefallen und
-  beide lehrreich: (a) ohne `gesprochen` bleibt `voice.tts_active` stehen, und
-  dann gilt jede weitere Anfrage als **Unterbrechung** — die darf die Abkühlung
-  seit heute umgehen, also messe der Aufbau genau nichts (`rest_s` war 86 399 und
-  die Anfrage trotzdem frei). (b) Gewartet wurde auf die **Existenz** des
-  Socketpfades statt auf ein erfolgreiches `connect`; ein liegengebliebener
-  Socket aus dem Vorlauf ist existent und trotzdem tot.
+- **T-3.9 ist eingefroren, mit zwei ausdrücklich mitgefrorenen Zusagen.** (a) Eine
+  **Unterbrechung umgeht die Abkühlung** — wörtlich eine Ausnahme von Kriterium 8,
+  nötig um es mit Kriterium 4 zu vereinbaren, steht samt Gegenprobe in Design §8.3
+  und in der Akzeptanzliste. (b) Der **Ersatzsatz** umgeht sie ebenfalls und
+  vermerkt keine. Wer eine der beiden ändern will, braucht einen `T-3.9.v2`-Task:
+  der Prüfstand prüft sie, und `tests/verify/freeze.sh` lässt sie nicht anfassen.
 - **T-3.9 erfüllt Kriterium 8 nur zur Hälfte.** „Meldet Start und Ende an die
   Rückkopplungssperre" ist heute nicht voll verdrahtbar: `Sperre.wiedergabe_an/aus` sind
   In-Prozess-Methoden, und **kein Prozess hält eine `Sperre`** — der Ohren-Dienst existiert
