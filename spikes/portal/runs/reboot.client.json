@@ -1,0 +1,29 @@
+{
+  "case": "reboot",
+  "trace": "runs/reboot.dbus.log",
+  "token_input": "aktueller gespeicherter Token",
+  "started_at": "2026-08-03T12:28:31+0200",
+  "status": "success",
+  "token_replaced_after_start": true,
+  "portal_requests": [
+    {
+      "method": "CreateSession",
+      "request_path": "/org/freedesktop/portal/desktop/request/1_112/createsession_85eee101f9184c4aafb2cd97db46ff9d",
+      "elapsed_seconds": 0.006481,
+      "response": 0
+    },
+    {
+      "method": "SelectSources",
+      "request_path": "/org/freedesktop/portal/desktop/request/1_112/selectsources_3947a6274f6f49f1a579625a4c27d5b0",
+      "elapsed_seconds": 0.004279,
+      "response": 0
+    },
+    {
+      "method": "Start",
+      "request_path": "/org/freedesktop/portal/desktop/request/1_112/start_4b987d79131347949ab59930afa3cead",
+      "elapsed_seconds": 0.017184,
+      "response": 0
+    }
+  ],
+  "finished_at": "2026-08-03T12:28:31+0200"
+}

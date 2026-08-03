@@ -1,0 +1,145 @@
+# dbus-monitor segment=1 monotonic=162.365617
+signal time=1785752911.461574 sender=org.freedesktop.DBus -> destination=:1.111 serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameAcquired
+   string ":1.111"
+signal time=1785752911.461601 sender=org.freedesktop.DBus -> destination=:1.111 serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameLost
+   string ":1.111"
+method call time=1785752911.711462 sender=:1.112 -> destination=:1.51 serial=3 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.DBus.Introspectable; member=Introspect
+method call time=1785752911.712217 sender=:1.112 -> destination=:1.51 serial=5 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.ScreenCast; member=CreateSession
+   array [
+      dict entry(
+         string "session_handle_token"
+         variant             string "session_f69c89c472564aecbbc1ee04437a99db"
+      )
+      dict entry(
+         string "handle_token"
+         variant             string "createsession_85eee101f9184c4aafb2cd97db46ff9d"
+      )
+   ]
+method call time=1785752911.712798 sender=:1.51 -> destination=:1.60 serial=398 path=/org/freedesktop/portal/desktop/session/1_112/session_f69c89c472564aecbbc1ee04437a99db; interface=org.freedesktop.DBus.Properties; member=GetAll
+   string "org.freedesktop.impl.portal.Session"
+method call time=1785752911.712891 sender=:1.51 -> destination=:1.60 serial=399 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.ScreenCast; member=CreateSession
+   object path "/org/freedesktop/portal/desktop/request/1_112/createsession_85eee101f9184c4aafb2cd97db46ff9d"
+   object path "/org/freedesktop/portal/desktop/session/1_112/session_f69c89c472564aecbbc1ee04437a99db"
+   string "com.anthropic.Claude"
+   array [
+   ]
+signal time=1785752911.717906 sender=:1.51 -> destination=:1.112 serial=401 path=/org/freedesktop/portal/desktop/request/1_112/createsession_85eee101f9184c4aafb2cd97db46ff9d; interface=org.freedesktop.portal.Request; member=Response
+   uint32 0
+   array [
+      dict entry(
+         string "session_handle"
+         variant             string "/org/freedesktop/portal/desktop/session/1_112/session_f69c89c472564aecbbc1ee04437a99db"
+      )
+   ]
+method call time=1785752911.718132 sender=:1.112 -> destination=:1.51 serial=8 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.ScreenCast; member=SelectSources
+   object path "/org/freedesktop/portal/desktop/session/1_112/session_f69c89c472564aecbbc1ee04437a99db"
+   array [
+      dict entry(
+         string "types"
+         variant             uint32 1
+      )
+      dict entry(
+         string "multiple"
+         variant             boolean false
+      )
+      dict entry(
+         string "persist_mode"
+         variant             uint32 2
+      )
+      dict entry(
+         string "restore_token"
+         variant             string "sgNPzU9vX6xqRrl6MARySw"
+      )
+      dict entry(
+         string "handle_token"
+         variant             string "selectsources_3947a6274f6f49f1a579625a4c27d5b0"
+      )
+   ]
+method call time=1785752911.722127 sender=:1.51 -> destination=:1.60 serial=408 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.ScreenCast; member=SelectSources
+   object path "/org/freedesktop/portal/desktop/request/1_112/selectsources_3947a6274f6f49f1a579625a4c27d5b0"
+   object path "/org/freedesktop/portal/desktop/session/1_112/session_f69c89c472564aecbbc1ee04437a99db"
+   string "com.anthropic.Claude"
+   array [
+      dict entry(
+         string "types"
+         variant             uint32 1
+      )
+      dict entry(
+         string "multiple"
+         variant             boolean false
+      )
+      dict entry(
+         string "restore_data"
+         variant             struct {
+               string "KDE"
+               uint32 1
+               variant                   array of bytes [
+                     00 00 00 03 00 00 00 0e 00 6f 00 75 00 74 00 70 00 75 00
+                     74 00 73 00 00 00 09 00 00 00 00 01 00 00 00 0a 00 00 00
+                     00 0e 00 56 00 69 00 72 00 74 00 75 00 61 00 6c 00 00 00
+                     0c 00 72 00 65 00 67 00 69 00 6f 00 6e 00 00 00 13 00 00
+                     00 00 00 00 00 00 00 ff ff ff ff ff ff ff ff 00 00 00 0e
+                     00 77 00 69 00 6e 00 64 00 6f 00 77 00 73 00 01 00 00 00
+                     00 00 00 19 51 4c 69 73 74 3c 57 69 6e 64 6f 77 52 65 73
+                     74 6f 72 65 49 6e 66 6f 3e 00 00 00 00 00
+                  ]
+            }
+      )
+      dict entry(
+         string "persist_mode"
+         variant             uint32 2
+      )
+   ]
+signal time=1785752911.722261 sender=:1.51 -> destination=:1.112 serial=410 path=/org/freedesktop/portal/desktop/request/1_112/selectsources_3947a6274f6f49f1a579625a4c27d5b0; interface=org.freedesktop.portal.Request; member=Response
+   uint32 0
+   array [
+   ]
+method call time=1785752911.722419 sender=:1.112 -> destination=:1.51 serial=11 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.portal.ScreenCast; member=Start
+   object path "/org/freedesktop/portal/desktop/session/1_112/session_f69c89c472564aecbbc1ee04437a99db"
+   string ""
+   array [
+      dict entry(
+         string "handle_token"
+         variant             string "start_4b987d79131347949ab59930afa3cead"
+      )
+   ]
+method call time=1785752911.722624 sender=:1.51 -> destination=:1.60 serial=415 path=/org/freedesktop/portal/desktop; interface=org.freedesktop.impl.portal.ScreenCast; member=Start
+   object path "/org/freedesktop/portal/desktop/request/1_112/start_4b987d79131347949ab59930afa3cead"
+   object path "/org/freedesktop/portal/desktop/session/1_112/session_f69c89c472564aecbbc1ee04437a99db"
+   string "com.anthropic.Claude"
+   string ""
+   array [
+   ]
+signal time=1785752911.739424 sender=:1.51 -> destination=:1.112 serial=418 path=/org/freedesktop/portal/desktop/request/1_112/start_4b987d79131347949ab59930afa3cead; interface=org.freedesktop.portal.Request; member=Response
+   uint32 0
+   array [
+      dict entry(
+         string "streams"
+         variant             array [
+               struct {
+                  uint32 86
+                  array [
+                     dict entry(
+                        string "size"
+                        variant                            struct {
+                              int32 1920
+                              int32 1080
+                           }
+                     )
+                     dict entry(
+                        string "source_type"
+                        variant                            uint32 4
+                     )
+                  ]
+               }
+            ]
+      )
+      dict entry(
+         string "restore_token"
+         variant             string "sgNPzU9vX6xqRrl6MARySw"
+      )
+   ]
+method call time=1785752911.739945 sender=:1.112 -> destination=:1.51 serial=14 path=/org/freedesktop/portal/desktop/session/1_112/session_f69c89c472564aecbbc1ee04437a99db; interface=org.freedesktop.DBus.Introspectable; member=Introspect
+method call time=1785752911.740190 sender=:1.112 -> destination=:1.51 serial=15 path=/org/freedesktop/portal/desktop/session/1_112/session_f69c89c472564aecbbc1ee04437a99db; interface=org.freedesktop.portal.Session; member=Close
+method call time=1785752911.743444 sender=:1.51 -> destination=:1.60 serial=422 path=/org/freedesktop/portal/desktop/session/1_112/session_f69c89c472564aecbbc1ee04437a99db; interface=org.freedesktop.impl.portal.Session; member=Close
+signal time=1785752911.743544 sender=:1.60 -> destination=(null destination) serial=216 path=/org/freedesktop/portal/desktop/session/1_112/session_f69c89c472564aecbbc1ee04437a99db; interface=org.freedesktop.impl.portal.Session; member=Closed
