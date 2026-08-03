@@ -1,0 +1,3 @@
+MUTANT: cuda-provider
+
+Der Dienst behauptet zur Laufzeit provider=cuda. Kriterium 1 muss die feste CPU-Zusage fangen.

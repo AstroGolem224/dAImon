@@ -1,0 +1,3 @@
+MUTANT: stille-halluziniert
+
+Eine leere Erkennung wird durch erfundenen Text ersetzt. Kriterium 7 muss ihn bei Aufnahme 21 fangen.

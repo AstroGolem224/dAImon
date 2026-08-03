@@ -1,0 +1,12 @@
+[Unit]
+Description=dAImon STT-Socket
+
+[Socket]
+ListenStream=%t/daimon/stt.sock
+SocketMode=0600
+Accept=no
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+
+[Install]
+WantedBy=sockets.target

@@ -1,0 +1,3 @@
+MUTANT: format-egal
+
+8-bit und Stereo werden stillschweigend verarbeitet. Kriterium 13 muss weiterhin format_falsch verlangen.

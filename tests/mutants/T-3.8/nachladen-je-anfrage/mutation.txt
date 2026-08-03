@@ -1,0 +1,3 @@
+MUTANT: nachladen-je-anfrage
+
+Das Modell wird unmittelbar vor jeder Erkennung erneut geladen. Kriterium 9 muss den Wanduhr-Anteil fangen.

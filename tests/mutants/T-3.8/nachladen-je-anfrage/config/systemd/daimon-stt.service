@@ -1,0 +1,25 @@
+[Unit]
+Description=dAImon STT-Dienst (sherpa-onnx auf der CPU)
+Requires=daimon-stt.socket
+After=daimon-stt.socket
+
+[Service]
+Type=simple
+ExecStart=%h/Dokumente/Github/dAImon/.venv/bin/python -B -P %h/Dokumente/Github/dAImon/daimon/gpu/stt.py
+Restart=on-failure
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+PrivateDevices=yes
+MemoryDenyWriteExecute=yes
+LimitCORE=0
+UMask=0077
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+RestrictAddressFamilies=AF_UNIX
+# ~@resources wird nicht gesperrt: sherpa-onnx setzt und sperrt Thread-Ressourcen.
+SystemCallFilter=~@clock @cpu-emulation @debug @keyring @module @mount @obsolete @privileged @raw-io @reboot @swap

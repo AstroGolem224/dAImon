@@ -1,0 +1,3 @@
+MUTANT: text-geschoent
+
+Der rohe Modelltext wird grossgeschrieben und mit Punkt versehen. Der direkte Modell-Orakelvergleich muss die Nachbearbeitung fangen.

@@ -1,0 +1,7 @@
+GUT-MUSTER fuer tests/verify/T-3.8.sh.
+
+Diese minimale Referenz wurde vom Reviewer blind aus dem festgeschriebenen
+Protokoll und der Akzeptanzliste in T-3.8-STT-Plan.md geschrieben. Sie ist kein
+Abbild der parallel entstehenden Builder-Implementierung. Sie beweist, dass der
+Verifizierer gruen werden kann. Nach der Abnahme soll sie wie die anderen
+Gut-Muster aus dem abgenommenen Stand erneuert werden.
