@@ -1,0 +1,33 @@
+{
+  "task": "T-3.9",
+  "kriterium": "TTFA p95 < 200 ms, Anfrage bis erstes Sample",
+  "baum": "/home/itiger013/Dokumente/Github/dAImon/tests/mutants/T-3.9/unterbrechung-wartet",
+  "zeit": "2026-08-03T18:04:58+02:00",
+  "anzahl": 20,
+  "rohwerte_ms": [
+    284.5,
+    332.6,
+    337.8,
+    344.5,
+    355.2,
+    357.5,
+    358.9,
+    364.5,
+    367.2,
+    375.7,
+    379.9,
+    395.4,
+    404.6,
+    415.1,
+    434.8,
+    435.2,
+    445.1,
+    453.4,
+    454.8,
+    468.0
+  ],
+  "p50_ms": 375.7,
+  "p95_ms": 454.8,
+  "max_ms": 468.0,
+  "min_ms": 284.5
+}

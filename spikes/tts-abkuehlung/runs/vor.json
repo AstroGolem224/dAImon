@@ -1,0 +1,24 @@
+{
+  "phase": "vor",
+  "zeit": "2026-08-03T18:34:01+0200",
+  "wanduhr_s": 1785774841.362675,
+  "boot_id": "cd74b2dd-8b16-496b-a54d-e4ec09f94896",
+  "lange_frist_s": 86400.0,
+  "kurze_frist_s": 5.0,
+  "ungefragt_gesperrt": true,
+  "ungefragt_rest_s": 86399.993,
+  "rueckfrage_gesperrt": true,
+  "rueckfrage_rest_s": 4.993,
+  "ablage": {
+    "bis_mono": {
+      "rueckfrage": 22097.26111031,
+      "ungefragt": 108492.246762211
+    },
+    "bis_wand": {
+      "rueckfrage": 1785774846.3554566,
+      "ungefragt": 1785861241.3411086
+    },
+    "boot": "cd74b2dd-8b16-496b-a54d-e4ec09f94896",
+    "v": 2
+  }
+}

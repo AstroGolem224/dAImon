@@ -139,6 +139,29 @@ Skript, statt eine Liste zu pflegen, die veraltet.
    `spikes/nvidia-voice/models/` und ist CC0. **Lehre: ein Installationsbefehl in diesem
    Dokument ist eine Behauptung wie jede andere — dieser war nie ausgeführt worden.**
 
+3. **Nach dem nächsten Neustart, ein Befehl — daran hängt das Einfrieren von
+   T-3.9.** Phase `vor` ist am 03.08. gelaufen und liegt bereit; sie hat eine
+   Abkühlung mit **24 Stunden** Frist vermerkt, damit es nicht darauf ankommt,
+   wann du neu startest:
+
+   ```bash
+   python3 spikes/tts-abkuehlung/reboot_check.py nach
+   ```
+
+   Geprüft wird der einzige Zweig der Abkühlung, den niemand gemessen hat: bei
+   **anderer Boot-ID** entscheidet die **Wanduhr**, denn eine gespeicherte
+   monotone Zahl ist nach einem Boot bedeutungslos. Der Lauf verlangt vier Dinge
+   gleichzeitig — die lange Frist hält, die **kurze ist frei** (ohne diese
+   Positivkontrolle wäre „immer noch gesperrt" auch das Ergebnis eines kaputten
+   Lesers), die Boot-ID hat sich wirklich geändert, und die Restzeit passt zur
+   Wanduhr. Exit 1 nennt, was davon fehlt.
+
+   **Erst danach einfrieren:**
+
+   ```bash
+   tests/verify/freeze.sh T-3.9
+   ```
+
 Dazu, wenn es passt:
 
 4. **T−1.12** (NVIDIA-Sprachstack) ist weiterhin ungemessen. Werkzeug liegt unter
@@ -491,9 +514,18 @@ sieht — zwei Sanitizer in Python und Rust wären auseinandergedriftet.
 - **Die Abkühlung entscheidet nach Boot-ID, und der Wanduhrzweig ist ungemessen.**
   Gleiche Boot-ID → monotone Zeit (Uhrstellen wirkungslos), andere → Wanduhr
   (damit die Frist einen Neustart überlebt). Der zweite Zweig hat nie einen
-  echten Reboot gesehen — er ist der Kandidat für die nächste Messung, und die
-  ist billig: eine Äußerung vor dem Reboot, danach nachsehen, ob die Frist noch
-  gilt.
+  echten Reboot gesehen. **Der Test liegt bereit und Phase `vor` ist gelaufen**
+  (`spikes/tts-abkuehlung/reboot_check.py`, 24-Stunden-Frist vermerkt am 03.08.
+  18:34). Nach dem Neustart `… reboot_check.py nach`, und **erst dann**
+  einfrieren — siehe *Was Matthias tun muss*, Punkt 3.
+
+  Zwei eigene Fehler beim Bau dieses Tests, beide beim ersten Lauf aufgefallen und
+  beide lehrreich: (a) ohne `gesprochen` bleibt `voice.tts_active` stehen, und
+  dann gilt jede weitere Anfrage als **Unterbrechung** — die darf die Abkühlung
+  seit heute umgehen, also messe der Aufbau genau nichts (`rest_s` war 86 399 und
+  die Anfrage trotzdem frei). (b) Gewartet wurde auf die **Existenz** des
+  Socketpfades statt auf ein erfolgreiches `connect`; ein liegengebliebener
+  Socket aus dem Vorlauf ist existent und trotzdem tot.
 - **T-3.9 erfüllt Kriterium 8 nur zur Hälfte.** „Meldet Start und Ende an die
   Rückkopplungssperre" ist heute nicht voll verdrahtbar: `Sperre.wiedergabe_an/aus` sind
   In-Prozess-Methoden, und **kein Prozess hält eine `Sperre`** — der Ohren-Dienst existiert
