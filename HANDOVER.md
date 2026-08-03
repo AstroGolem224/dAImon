@@ -13,7 +13,7 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 | **Gate P0** | 11 von 11 grün — **aber `T-0.12` war davon ein hohles Grün**, siehe unten. Seit T-0.12.v2 belegt |
 | **Gate P1** | **ROT nur noch wegen `T-1.10`** — und dessen Messfenster ist unbrauchbar, siehe unten. `T-1.7` seit v5 grün (95 Prüfungen) |
 | **Gate P2** | **GRÜN** (02.08.): `T-2.4` 17, `T-2.5` 40, `T-1.5` 25 — Idle-CPU **0,000 %**. `verify-frozen` zählte damals 12, heute 20 |
-| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2:** T-0.12.v2 eingefroren, **T-3.7 und T-3.9** committet und live belegt (03.08., `tests/evidence/T-3.7-live.json` und `T-3.9-tts.json` — beide mit Vorbehalt, siehe unten). Offen: T-3.8, 3.10–3.13b, 3.14–3.15 |
+| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2:** T-0.12.v2 eingefroren, **T-3.7** committet und live belegt, **T-3.9 fertig samt Prüfstand** (211 Prüfungen 0 rot, 5 von 5 Mutanten erkannt) — **aber NICHT eingefroren**, siehe unten. Offen: T-3.8, 3.10–3.13b, 3.14–3.15 |
 | **Phase 2** | **abgeschlossen.** T-2.1 bis T-2.5 und T-2.7 stehen und sind eingefroren. T-2.6 optional, entfällt |
 
 **Zwanzig Einträge in `FROZEN`**: 17 Verifizierer + 3 Harness-Dateien.
@@ -218,6 +218,8 @@ mindestens einen Mutanten.
 | 17 | T-3.9, TTFA-Stempel | Gemessen wurde **nach** dem vollständigen `write()` des ersten Segments in die Wiedergabe-Pipe. Eine Pipe hat 64 KiB, ein Segment 96 KB, und `pw-cat` liest in Echtzeit — das `write()` blockiert also 1014 ms im Median. Damit war die gemessene „Latenz“ die **Abspieldauer**. Selbst geschrieben, selbst gefunden, am selben Tag. Jetzt: ein pipe-großes Stück schreiben, stempeln, dann der Rest |
 | 18 | T-3.9, stille Ausgabe | Bei unerreichbarer Wiedergabe (`pw-cat` sofort tot, falsches `XDG_RUNTIME_DIR`) meldete der Dienst `gesprochen: true` mit `ttfa_ms: null`. Eine Selbstauskunft ohne Messung, Fall 9 in Reinform. Aufgefallen nur, weil der eigene Messaufbau PipeWire verlor. Jetzt `grund: ausgabe_weg` |
 | 19 | `voice.tts_active` | Stand seit Beginn im Zustandsschnappschuss und hatte **keinen Setter** — behauptete also wochenlang „es spricht nichts“, ohne dass das gemessen wurde. Ein Feld, das nur gelesen werden kann, ist eine Zusage ohne Messpunkt. Setter kam mit T-3.9 |
+| 20 | T-3.9, synchrone Antwort | `sprich()` gab erst zurück, wenn die Äußerung **fertig gesprochen** war. Damit war „unterbrechbar" (Kriterium 4) praktisch unerreichbar, und weil die Abkühlung am Ende vermerkt wurde, war die Folgeäußerung garantiert eine Absage — die Unterbrechung war also gar nicht prüfbar, ohne die Abkühlung abzuschalten. Gefunden vom fremden Prüfstand, nicht von meinen eigenen Tests: die hatten den synchronen Vertrag mitkodiert |
+| 21 | T-3.9, Abkühlung dreimal falsch | Erst am **Ende** vermerkt (zwei schnelle Anfragen liefen beide durch), dann bei der **Freigabe** (ein Probelauf schaltete das Pet für die ganze Frist stumm und würgte die Entdeckungsphase des Prüfstands ab), schließlich bei **`beginnt`**. Drei Versuche, jeder einzeln gemessen — und die richtige Antwort war keiner der beiden naheliegenden |
 
 Dazu zwei Fälle, in denen ein **Mutant** nichts bewies: einmal enthielt die
 Fixture-Kopie ein gebautes `target/` der *unmutierten* Quelle, einmal brach das
@@ -479,6 +481,19 @@ sieht — zwei Sanitizer in Python und Rust wären auseinandergedriftet.
   nur ein API-Kontingent erteilt. Heute wirkungslos, aber es *behauptet* eine
   Fähigkeit. Kommentar steht an der Tabelle in `ipc.py`. Wer den Ears-Agenten baut,
   entscheidet mit.
+- **T-3.9 ist NICHT eingefroren, und das ist eine Entscheidung.** Der Prüfstand
+  ist grün (211/0) und belegt (5 von 5 Mutanten), aber vor `tests/verify/freeze.sh T-3.9`
+  gehören zwei Punkte gelesen, die codex ausdrücklich als *verschobene Zusagen*
+  benannt hat: (a) **eine Unterbrechung umgeht die Abkühlung** — wörtlich eine
+  Ausnahme von Kriterium 8, nötig um es mit Kriterium 4 zu vereinbaren, steht
+  samt Gegenprobe in Design §8.3; (b) **der Wanduhrzweig der Abkühlung** ist nur
+  in Unittests belegt. Wer einfriert, friert beides mit ein.
+- **Die Abkühlung entscheidet nach Boot-ID, und der Wanduhrzweig ist ungemessen.**
+  Gleiche Boot-ID → monotone Zeit (Uhrstellen wirkungslos), andere → Wanduhr
+  (damit die Frist einen Neustart überlebt). Der zweite Zweig hat nie einen
+  echten Reboot gesehen — er ist der Kandidat für die nächste Messung, und die
+  ist billig: eine Äußerung vor dem Reboot, danach nachsehen, ob die Frist noch
+  gilt.
 - **T-3.9 erfüllt Kriterium 8 nur zur Hälfte.** „Meldet Start und Ende an die
   Rückkopplungssperre" ist heute nicht voll verdrahtbar: `Sperre.wiedergabe_an/aus` sind
   In-Prozess-Methoden, und **kein Prozess hält eine `Sperre`** — der Ohren-Dienst existiert
