@@ -1,0 +1,33 @@
+{
+  "task": "T-3.9",
+  "kriterium": "TTFA p95 < 200 ms, Anfrage bis erstes Sample",
+  "baum": "/home/itiger013/Dokumente/Github/dAImon",
+  "zeit": "2026-08-03T18:00:37+02:00",
+  "anzahl": 20,
+  "rohwerte_ms": [
+    36.1,
+    36.7,
+    39.1,
+    39.5,
+    39.6,
+    39.7,
+    39.8,
+    39.8,
+    40.0,
+    40.4,
+    40.6,
+    40.7,
+    41.4,
+    42.1,
+    43.4,
+    44.0,
+    44.8,
+    53.7,
+    54.0,
+    54.8
+  ],
+  "p50_ms": 40.4,
+  "p95_ms": 54.0,
+  "max_ms": 54.8,
+  "min_ms": 36.1
+}

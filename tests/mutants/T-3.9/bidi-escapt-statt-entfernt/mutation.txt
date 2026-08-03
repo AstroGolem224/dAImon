@@ -1,0 +1,13 @@
+MUTANT: Steuerzeichen werden ESCAPT statt ENTFERNT.
+
+Der Validator benutzt die Behandlung von `wert_saeubern` (der
+Bubble-Sanitizer aus T-1.7): aus einem Bidi-Override wird die
+Zeichenkette `\u202E`. Fuer die Anzeige ist das richtig und dort
+eingefroren; vorgelesen ist es Unsinn -- Design §8.3 verlangt fuer die
+Stimme: Steuerzeichen, Bidi-Overrides und Nullbreitenzeichen werden
+ENTFERNT.
+
+Gefangen von: den Steuerzeichen-Pruefungen (Kriterien 6 und 12) -- der
+freigegebene Text darf weder das Steuerzeichen noch eine Escape-Folge
+enthalten, und er muss KUERZER sein als die Eingabe. Bei ihm ist er
+laenger und enthaelt `\u202E` wörtlich.

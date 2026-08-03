@@ -1,0 +1,40 @@
+# dAImon GPU-Worker (T-3.7), Socket-Seite. EIN Socket je Modelltyp, EINE
+# Template-Unit: `daimon-gpu@stt.socket` horcht auf %t/daimon/gpu-stt.sock.
+#
+# Der Socket ueberlebt das Prozessende des Workers -- genau das macht
+# "beendet sich selbst nach Leerlauf" ueberhaupt tragbar. Ohne
+# Socket-Aktivierung waere ein beendeter Worker ein weggefallener Dienst;
+# mit ihr ist er ein Dienst, der beim naechsten Wort wiederkommt.
+#
+# Installation: systemctl --user link <dieser Pfad>
+#               systemctl --user enable --now daimon-gpu@stt.socket
+# Der Worker selbst wird NIE von Hand gestartet.
+
+[Unit]
+Description=dAImon GPU-Worker Socket (%i)
+PartOf=graphical-session.target
+
+[Socket]
+ListenStream=%t/daimon/gpu-%i.sock
+# 0600: derselbe Nutzer, sonst niemand. Design 1.3 -- das ist ein Wegweiser,
+# keine Authentifizierung, aber ein weltschreibbarer Socket waere eine
+# Einladung, ueber die niemand entschieden hat.
+SocketMode=0600
+# Accept=no: der Worker bekommt den HORCHENDEN Socket (fd 3) und nimmt selbst
+# an. Mit Accept=yes gaebe es einen Prozess je Verbindung -- also einen
+# Modellladevorgang je Verbindung, was genau das Gegenteil dieses Tasks waere.
+Accept=no
+# Der Socket wird beim Stoppen entfernt, damit kein toter Pfad im tmpfs
+# stehenbleibt, an dem sich ein Client festverbindet.
+RemoveOnStop=yes
+
+# %t/daimon muss EXISTIEREN, bevor systemd den Namespace baut. Ohne das stirbt
+# die Unit nach JEDEM Neustart mit 226/NAMESPACE, weil /run/user/<uid> leer
+# hochkommt -- am 02.08. real passiert, alle vier Units bei Restart-Zaehler 97.
+# Preserve=yes, weil sonst das Stoppen EINER Unit das Verzeichnis loescht und
+# den anderen die Sockets unter den Fuessen wegzieht.
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+
+[Install]
+WantedBy=sockets.target

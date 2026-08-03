@@ -1,0 +1,85 @@
+# Mitgelieferte Vorgaben. Nach $XDG_CONFIG_HOME/daimon/daimon.toml kopieren und
+# dort anpassen -- die Vorgaben in daimon/common/config.py bleiben der Rueckfall,
+# eine Teilangabe ersetzt also nicht den ganzen Abschnitt.
+
+[hub]
+state_ttl_s = 3600
+
+# T-2.7: Kontextmenue -> "Ohren aus" / "Augen aus". Das Face sendet nur den
+# Schluessel ("ears"/"eyes"); welche Unit gestoppt wird, steht ausschliesslich
+# hier. Ein Eintrag mehr ist eine Unit mehr, die ein Klick im Overlay stoppen
+# kann -- daimon-hub oder daimon-auth gehoeren hier nie hinein.
+# Es gibt kein Gegenstueck zum Einschalten.
+[hub.wahrnehmung_units]
+ears = "daimon-ears.service"
+eyes = "daimon-eyes.service"
+
+# T-3.2: die Hysterese ist ABSICHTLICH asymmetrisch. Einsatz bei 0,5, Ende erst,
+# wenn die Wahrscheinlichkeit `nachlauf_ms` lang unter `ende` bleibt -- und
+# dieser Nachlauf gehoert noch ins Segment. Deutsche Endsilben sind leise; ein
+# symmetrischer Schwellwert macht aus "…und dann ging er" ein "…und dann g".
+# `ende` gehoert unter `einsatz`, `nachlauf_ms` in 300--500. Wer das
+# unterschreitet, entfernt den Task, statt ihn einzustellen -- das Modul warnt
+# dann ins Journal.
+[ears.vad]
+einsatz     = 0.5
+ende        = 0.35
+nachlauf_ms = 400
+
+# T-3.3: wieviel Audio VOR dem Ausloeser mitgegeben wird. Der Ring schneidet
+# staendig 20 s mit; hiervon haengt ab, wieviel davon beim Ausloesen an das STT
+# geht. Zu wenig frisst die erste Silbe, zu viel gibt dem STT Rauschen als
+# Satzanfang. Plan: 1,0--1,5 s. Ausserhalb warnt das Modul ins Journal.
+# Die 20 s des Rings sind bewusst KEINE Einstellung: sie sind Speicher, der
+# vorab alloziert und per mlock festgenagelt wird.
+[ears.ring]
+vorlauf_s = 1.25
+
+# T-3.4: die Rueckkopplungssperre. Solange das Pet spricht, geht nichts zum STT
+# -- auch nicht bei gedrueckter PTT-Taste. `nachlauf_s` deckt den Raumhall der
+# letzten Silbe ab, der das Mikrofon nach dem Ende der Wiedergabe erreicht; auf
+# 0 gezogen ist der Task entfernt, nicht eingestellt. `echo_schwelle` gilt fuer
+# die normierte Korrelation gegen den eingespeisten Ausgabepuffer: hoeher heisst
+# weniger Treffer, und ein verpasstes Echo ist die Schleife, die dieser
+# Abschnitt verhindern soll.
+[ears.interlock]
+nachlauf_s     = 0.5
+echo_fenster_s = 1.0
+echo_schwelle  = 0.7
+
+# T-3.7: das GPU-Gate. Die Ladesperre liegt im Hub, weil ein Worker nur sich
+# selbst kennt -- zwei gleichzeitig ladende Worker belegen beide ihr volles
+# VRAM, nachdem beide Pruefungen gruen waren.
+# `sperrfrist_s`: danach VERFAELLT die Sperre von selbst. Fail-safe ist hier
+#   oeffnen: der Schaden einer verlorenen Sperre ist eine gleichzeitige Ladung,
+#   der Schaden einer ewigen Sperre ist ein totes Sprachsystem. Wer die Frist
+#   auf 0 zieht, hat die Serialisierung abgeschaltet, nicht eingestellt.
+# `reserve_mib`: soviel VRAM bleibt nach dem Laden frei. Der naechste, der
+#   nachfordert, ist sonst der Compositor.
+# `idle_s`: Leerlauf bis zum PROZESSENDE des Workers -- nicht bis zum Entladen.
+# `ladedauer_s`: der Platzhalter-Ladevorgang aus T-3.7; T-3.8 ersetzt ihn.
+# `modelle.<name>`: vermuteter VRAM-Bedarf in MiB. Vermutet, nicht gemessen --
+#   der Platzhalter alloziert nichts. 2600 ist parakeet-tdt-0.6b-v3 (2,4 GB)
+#   mit Luft.
+[gpu]
+sperrfrist_s = 120.0
+reserve_mib  = 1024
+idle_s       = 60.0
+ladedauer_s  = 0.5
+
+[gpu.modelle]
+stt = 2600
+
+[face]
+poll_ms = 250
+
+[face.palette]
+idle   = "#3a2418"
+active = "#ff6b1a"
+alert  = "#ffd24a"
+
+[persona]
+name = "Ember"
+
+[logging]
+identifier = "daimon"

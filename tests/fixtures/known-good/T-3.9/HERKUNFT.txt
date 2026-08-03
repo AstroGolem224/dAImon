@@ -1,0 +1,17 @@
+GUT-MUSTER fuer tests/verify/T-3.9.sh -- die Referenz des REVIEWERS.
+
+Dieser Baum ist die minimal korrekte Umsetzung von T-3.9, geschrieben vom
+Reviewer, blind gegen dieselbe Akzeptanzliste wie die echte Implementierung
+(Validator im Hub auf tts.sock, persistierte Abkuehlung, Unterbrechung per
+kill, Steuerzeichen entfernt, ungefragt nur aus kuratierten Vorlagen,
+sherpa-onnx VITS auf der CPU, pw-cat ohne absoluten Pfad).
+
+Er beweist, dass der Verifizierer gruen werden KANN (Fall 12 in
+HANDOVER.md: ein Verifizierer, der nie gruen wird, meldet jeden Mutanten
+als "erkannt", ohne dessen Mutation je gemessen zu haben).
+
+SOBALD DIE ECHTE IMPLEMENTIERUNG ABGENOMMEN IST, gehoert dieses Gut-Muster
+aus dem abgenommenen Stand erneuert (Vorgehen wie bei T-2.7). Bis dahin ist
+er der Liefergegenstand des Reviewers. Erzeugt von
+tests/mutants/T-3.9/erzeugen.sh -- nicht von Hand editieren, sondern dort
+aendern und neu erzeugen.

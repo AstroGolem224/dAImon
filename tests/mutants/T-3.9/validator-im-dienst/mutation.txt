@@ -1,0 +1,16 @@
+MUTANT: die Pruefung passiert im TTS-DIENST statt im Hub.
+
+Der Hub gibt fuer JEDEN Text eine Marke aus, ohne ihn zu pruefen; der
+Dienst prueft selbst. Damit ist der Validator umgehbar: ein anderer
+Produzent, der eine Marke bekommt (oder die Pruefung im Dienst anders
+auslegt), schiebt ungeprueften Text an die Ausgabe -- genau der Satz aus
+Design §8.3, der die Lage des Validators begruendet.
+
+Sichtbar wird das daran, dass der HUB fuer einen Angriffstext `ok: true`
+plus Marke meldet. Die Zusage "ein Text ohne Hub-Freigabe wird nicht
+gesprochen" haelt er aeusserlich noch -- die Marke ist ja weiterhin
+noetig. Gebrochen ist: die Freigabe bedeutet nichts mehr.
+
+Gefangen von: den Hub-Pruefungen der zehn Angriffstexte (Kriterien 6 und
+12) -- der Hub muss jeden einzelnen selbst ablehnen, mit dem Grund der
+verletzten Regel, nicht mit einer Marke.

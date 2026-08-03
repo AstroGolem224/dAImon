@@ -1,0 +1,61 @@
+# dAImon TTS-Dienst (T-3.9): sherpa-onnx VITS auf der CPU, 0 VRAM.
+#
+# Gestartet ausschliesslich ueber daimon-tts.socket. KEIN Leerlauf-Exit --
+# anders als der GPU-Worker gibt dieser Prozess kein VRAM frei; das Modell
+# im Speicher IST das TTFA-Kriterium (p95 < 200 ms).
+#
+# Haertung nach Design 7.5, uebernommen aus daimon-gpu@.service -- mit den
+# zwei Direktiven, die dort fehlen MUSSTEN und hier tragen (unten).
+
+[Unit]
+Description=dAImon TTS-Dienst (sherpa-onnx VITS, CPU)
+# Ohne den Socket gibt es keinen Deskriptor zum Erben. Requires statt Wants:
+# ein Dienst ohne Socket waere gestartet und unerreichbar.
+Requires=daimon-tts.socket
+After=daimon-tts.socket daimon-hub.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+# Projekt-venv, nicht System-Python (T-1.2 hat den Interpreter festgenagelt).
+ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
+    -m daimon.face.tts --hub-socket %t/daimon/tts.sock
+
+# Kein Modell im RAM beim Anmelden: aktiviert wird der Socket, nicht der
+# Dienst. on-failure, weil ein verlorener Dienst ohne Neustart eine stille
+# Stimme waere; der Leerlauf-Exit des GPU-Workers hat hier kein Gegenstueck.
+Restart=on-failure
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+# read-only reicht: die Stimme wird GELESEN. Wer die Stimme nach
+# ~/.local/share/daimon/voices/ verlegt (T-3.10), aendert daran nichts.
+ProtectHome=read-only
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+LimitCORE=0
+UMask=0077
+# Der Dienst spricht mit dem Hub, mit seinem Aufrufer und ueber pw-cat mit
+# PipeWire -- alles Unix-Sockets. Er laedt NICHTS herunter.
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @obsolete @mount @swap @reboot @module
+TimeoutStopSec=10
+
+# PrivateDevices=yes traegt hier -- anders als beim GPU-Worker. pw-cat
+# braucht den PipeWire-SOCKET, keinen Geraeteknoten; /dev/null und die
+# ueblichen Pseudogeraete bleiben auch mit PrivateDevices erreichbar.
+PrivateDevices=yes
+# MemoryDenyWriteExecute=yes traegt hier: ohne CUDA-JIT braucht nichts W+X.
+# (Beim GPU-Worker fehlt die Direktive genau dafuer.)
+MemoryDenyWriteExecute=yes
+
+# Kein [Install]: dieser Dienst wird nie direkt aktiviert, sondern
+# ausschliesslich vom Socket gestartet.
