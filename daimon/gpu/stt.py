@@ -57,6 +57,14 @@ import time
 import wave
 from pathlib import Path
 
+# numpy hier und NICHT faul in `wav_lesen`: ein Import beim ersten Aufruf
+# kostet rund 115 ms, und die liegen AUSSERHALB des gemessenen Fensters -- die
+# Selbstauskunft `latenz_ms` haette die erste Anfrage also zu guenstig gemeldet.
+# Gefunden hat das die Wanduhr-Gegenprobe des Pruefstands: 226 ms Wanduhr gegen
+# 111 ms Selbstauskunft bei der ersten Aeusserung, 0,6 ms Differenz bei allen
+# folgenden. Genau dafuer gibt es zwei Uhren.
+import numpy as np
+
 from daimon.common.config import Config, load as load_config
 from daimon.common.logging import Logger, get_logger
 
@@ -114,7 +122,6 @@ def wav_lesen(pfad: str) -> tuple[object, int, float]:
     ein Fehler: was dann durchlaufen wuerde, waere halbes Signal oder Rauschen,
     und das Ergebnis waere eine WER, die niemand deuten kann.
     """
-    import numpy as np
     try:
         with wave.open(pfad, "rb") as w:
             breite, kanaele = w.getsampwidth(), w.getnchannels()
@@ -289,11 +296,16 @@ def bediene(erkenner: Erkenner, conn: socket.socket) -> None:
             roh = conn.makefile("rb").readline(MAX_ZEILE)
             anfrage = json.loads(roh)
         except (OSError, json.JSONDecodeError, ValueError):
+            # Jede Absage traegt eine `meldung`. Ein Grund ohne Detail zwingt
+            # den Aufrufer zum Raten, und beim Protokollfehler ist das Detail
+            # das Einzige, was ihn weiterbringt.
             _antworte(conn, {"v": 1, "ok": False, "grund": "unlesbar",
+                             "meldung": "keine lesbare JSON-Zeile",
                              **erkenner.kennung()})
             return
         if not isinstance(anfrage, dict):
             _antworte(conn, {"v": 1, "ok": False, "grund": "unlesbar",
+                             "meldung": "JSON ist kein Objekt",
                              **erkenner.kennung()})
             return
         art = anfrage.get("art")
