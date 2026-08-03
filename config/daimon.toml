@@ -78,8 +78,33 @@ idle   = "#3a2418"
 active = "#ff6b1a"
 alert  = "#ffd24a"
 
+# T-3.9: die Stimme. sherpa-onnx VITS auf der CPU, 0 VRAM.
+# `threads`: der Kalibrierknopf. Gemessen am 03.08. ueber die ganze Kette
+#   (Anfrage bis erste Samples beim Wiedergabeprozess), 20 Aeusserungen, p95:
+#   2 Threads 316 ms -- VERFEHLT, 4 Threads 187 ms, 8 Threads 148 ms.
+#   Acht ist die Vorgabe: vier erfuellt das Kriterium nur mit 13 ms Marge, und
+#   die ist beim naechsten Hintergrund-Build weg. Weniger Kerne: Wert senken.
+# `modell_dir`: liegt heute im Spike-Verzeichnis von T-1.12. Gehoert nach
+#   ~/.local/share/daimon/voices/, sobald T-3.10 die Persona-Dateien anlegt.
+# `freigabefrist_s`: wie lange eine Sprechfreigabe des Hubs gilt. Faengt einen
+#   gestorbenen Sprecher ab, schneidet keine langsame Wiedergabe ab.
+# `abkuehlung`: Design 8.4, je Kanal, persistiert unter $XDG_STATE_HOME/daimon.
+[tts]
+modell_dir      = "spikes/nvidia-voice/models/vits-piper-de_DE-thorsten-high"
+threads         = 8
+freigabefrist_s = 30.0
+
+[tts.abkuehlung]
+ungefragt  = 20.0
+reaktion   = 10.0
+rueckfrage = 3.0
+
 [persona]
 name = "Ember"
+# Stimme aus der Persona (Design 10.1). Bis T-3.10 den Persona-Lader baut,
+# steht sie hier -- thorsten und kerstin sind CC0, pavoque scheidet aus
+# (CC-BY-NC-SA). Geprueft wird zur Laufzeit die MODEL_CARD, nicht dieser Name.
+voice = "de_DE-thorsten-high"
 
 [logging]
 identifier = "daimon"

@@ -30,14 +30,13 @@ Requests wird je als Zustand uebernommen.
 from __future__ import annotations
 
 import json
-import os
 import secrets
-import tempfile
 import threading
 import time
 from pathlib import Path
 from typing import Any, Callable
 
+from daimon.common.atomar import schreibe_atomar
 from daimon.hub.marks import MarkenFehler
 
 _FORMAT_VERSION = 1
@@ -94,35 +93,14 @@ class Ticketbuch:
         }
 
     def _schreiben(self) -> None:
-        """Atomar: temporaere Datei im selben Verzeichnis, flush, fsync,
-        os.replace. Danach fsync aufs Verzeichnis, damit auch der Name
-        ankommt."""
+        """Atomar. Die fsync-Folge steht seit T-3.9 in
+        `daimon/common/atomar.py` -- sie hatte mit der Abkuehlung einen zweiten
+        Aufrufer, und zwei Kopien einer fsync-Folge driften auseinander."""
         nutzlast = json.dumps(
             {"v": _FORMAT_VERSION, "tickets": self._tickets},
             sort_keys=True,
         ).encode("utf-8")
-        verzeichnis = self._pfad.parent
-        verzeichnis.mkdir(parents=True, exist_ok=True)
-        fd, tmp_name = tempfile.mkstemp(dir=verzeichnis,
-                                        prefix=self._pfad.name + ".",
-                                        suffix=".tmp")
-        try:
-            with os.fdopen(fd, "wb") as fh:
-                fh.write(nutzlast)
-                fh.flush()
-                os.fsync(fh.fileno())
-            os.replace(tmp_name, self._pfad)
-        except BaseException:
-            try:
-                os.unlink(tmp_name)
-            except OSError:
-                pass
-            raise
-        dir_fd = os.open(verzeichnis, os.O_RDONLY)
-        try:
-            os.fsync(dir_fd)
-        finally:
-            os.close(dir_fd)
+        schreibe_atomar(self._pfad, nutzlast)
 
     # -- Audit ----------------------------------------------------------------
 

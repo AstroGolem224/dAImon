@@ -1099,7 +1099,7 @@ Manifest `pet.json`: `id` (Regex `^[a-z0-9][a-z0-9_-]{0,63}$`), `displayName`, `
 
 | Stufe | Engine | Latenz | VRAM | Wofür |
 |---|---|---|---|---|
-| **Schnell (Vorgabe)** | sherpa-onnx VITS mit `de_DE-thorsten-high`, CPU | ~40 ms TTFA | **0** | Bestätigungen, Status, kurze Antworten |
+| **Schnell (Vorgabe)** | sherpa-onnx VITS mit `de_DE-thorsten-high`, CPU | **132 ms TTFA (p95)** [V] | **0** | Bestätigungen, Status, kurze Antworten |
 | **Charakter (auf Abruf)** | Kartoffelbox-v0.1 (Chatterbox DE, MIT) | <300 ms TTFB **[U]** | 8–16 GB | längere Antworten |
 | **Charakter, Kandidat** | NVIDIA Magpie-TTS Multilingual 357M, NeMo | **[U]** | ~3 GB **[U]** | dito — wird in **T−1.12** gegen die Vorgabe gemessen |
 
@@ -1149,6 +1149,18 @@ Die schnelle Stufe läuft auf der CPU und stört Blender oder Spiele nicht. Mitt
 Vermieden: XTTS-v2 (CPML; Coqui existiert nicht mehr und könnte gar keine Lizenz erteilen), F5-TTS-Gewichte (CC-BY-NC).
 
 Jede TTS-Ausgabe setzt die Rückkopplungssperre aus §4.3.
+
+> **Der TTFA-Wert war zu optimistisch, korrigiert am 2026-08-03 [V].** Die Tabelle nannte
+> „~40 ms". Gemessen über 20 Äußerungen der ganzen Kette (Anfrage bis zu den ersten Samples
+> beim Wiedergabeprozess), 8 Threads, 24 Kerne: **p95 132 ms**, Median 77 ms, Maximum 144 ms.
+> Die 40 ms gelten für ein einzelnes Wort („Fertig." = 33 ms), nicht für einen Satz.
+>
+> Zwei Dinge hängen daran, und beide sind Implementierungsentscheidungen in T-3.9, keine
+> Feineinstellung: **sherpa-VITS synthetisiert satzweise** — sein Callback feuert einmal je
+> Satz, mit dem ganzen Satz. Ohne Segmentierung an den Satzzeichen wächst der TTFA also mit
+> der Textlänge, und „erstes Sample" ist dasselbe wie „letztes Sample". Und die **Threadzahl
+> entscheidet über das Kriterium**: 2 Threads ergeben p95 316 ms und verfehlen es, 4 ergeben
+> 187 ms, 8 ergeben 132 ms. Rohwerte in `tests/evidence/T-3.9-tts.json`.
 
 ### 8.3 Was das Pet sagen darf
 

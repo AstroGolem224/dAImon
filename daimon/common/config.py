@@ -57,11 +57,28 @@ VORGABEN: dict[str, Any] = {
         "ladedauer_s": 0.5,
         "modelle": {"stt": 2600},
     },
+    # T-3.9: die Stimme. `threads` ist der Kalibrierknopf. Gemessen ueber die
+    # ganze Kette, 20 Aeusserungen: 2 Threads p95 316 ms (verfehlt das
+    # Kriterium), 4 Threads p95 187 ms, 8 Threads p95 148 ms. Acht ist die
+    # Vorgabe, weil 13 ms Marge beim naechsten Hintergrund-Build weg sind.
+    # Weniger Kerne im Rechner: Wert nach unten.
+    # `freigabefrist_s` ist die Gueltigkeit einer Sprechfreigabe im Hub, nicht
+    # die Wiedergabedauer. `abkuehlung` ist Design §8.4, persistiert.
+    "tts": {
+        "modell_dir": "spikes/nvidia-voice/models/vits-piper-de_DE-thorsten-high",
+        "threads": 8,
+        "freigabefrist_s": 30.0,
+        "abkuehlung": {"ungefragt": 20.0, "reaktion": 10.0, "rueckfrage": 3.0},
+    },
     "face": {
         "poll_ms": 250,
         "palette": {"idle": "#3a2418", "active": "#ff6b1a", "alert": "#ffd24a"},
     },
-    "persona": {"name": "Ember"},
+    # `voice` gehoert eigentlich in die Persona-Datei (Design §10.1), und T-3.10
+    # baut deren Lader. Bis dahin steht die Stimme hier -- gelesen, nicht im
+    # Code verdrahtet, damit T-3.10 nur die Quelle austauscht und nicht den
+    # Aufrufer.
+    "persona": {"name": "Ember", "voice": "de_DE-thorsten-high"},
     "logging": {"identifier": "daimon"},
 }
 

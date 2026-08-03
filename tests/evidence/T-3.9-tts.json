@@ -1,0 +1,198 @@
+{
+  "task": "T-3.9",
+  "was": "Live-Nachweis am laufenden System: installierte Units, echtes PipeWire, echtes nvidia-smi, systemd-Socket-Aktivierung. Keine Stubs.",
+  "erfuellt": {
+    "1_engine_und_provider": "sherpa-onnx-vits, provider=cpu, zur Laufzeit gemeldet",
+    "2_stimmlizenz": "CC0, aus der MODEL_CARD gelesen -- nicht aus einer Namensliste",
+    "3_stimme_aus_der_konfiguration": "persona.voice, Vorgabe de_DE-thorsten-high",
+    "4_unterbrechbar": "1,35 ms; pw-cat-Prozesse 1 -> 0; die alte Aeusserung meldet gesprochen=false",
+    "6_validator_im_hub": "der Dienst spricht nur den Text der Hub-Freigabe; ohne Marke passiert nichts",
+    "7_ersatzsatz": "bei Regelverletzung wird 'Die Antwort steht auf dem Bildschirm.' gesprochen",
+    "8_abkuehlung": "live gegriffen, rest_s 19,965 nach der ersten ungefragten Aeusserung",
+    "9_meldung": "voice.tts_active im Hub-Zustand, an und aus -- Teilerfuellung, siehe Vorbehalte",
+    "10_null_vram": "0 GPU-Bibliotheken, 0 GPU-Deskriptoren, eigene PID nicht in nvidia-smi compute-apps",
+    "11_ttfa": "p95 132 ms, Median 77 ms, Maximum 144 ms ueber 20 Laeufe (Kriterium < 200 ms)",
+    "12_angriffstexte": "keiner der zehn wurde gesprochen; Positivkontrolle spricht",
+    "haertung": "systemd-analyze --user security: 3.4 OK (die vier Bestandsunits liegen bei 3.6)"
+  },
+  "vorbehalte": [
+    "Kriterium 9 ist eine TEILERFUELLUNG. Der Dienst meldet Anfang und Ende an den Hub (`voice.tts_active`), nicht an eine `Sperre`-Instanz -- es gibt keinen Prozess, der eine haelt, der Ohren-Dienst existiert noch nicht. Was fehlt: die ECHO-REFERENZ. `interlock.echo_referenz()` erwartet das ausgegebene Signal (16 kHz mono int16); uebertragen wird es nicht, weil es niemanden gibt, der es annimmt. Ohne sie kann die Sperre Echo nur ueber die Zeit erkennen, nicht ueber das Signal.",
+    "Der Fall `bidi` in Schritt 6 wurde LIVE NICHT GEMESSEN: er fiel in die Abkuehlung, die der Ersatzsatz des vorigen Falls ausgeloest hatte (`grund: abkuehlung`). Belegt ist er nur im Unittest (`test_unsichtbare_zeichen_werden_entfernt_nicht_escapt`). Der Hinweis im Messskript, Bidi sei eine Saeuberung und keine Ablehnung, ist richtig -- aber er erklaert nicht diese Zeile, und das stand vorher falsch da.",
+    "Der Fall `codeblock` wird als `mehrzeilig` abgelehnt, nicht als `code`. Beide Regeln sind verletzt; die Mehrzeiligkeit wird zuerst geprueft, weil ihre Anzeige in T-3.14 eine andere ist. Kein Fehler, aber die Zuordnung Fall->Grund ist nicht eins zu eins.",
+    "Der Ersatzsatz unterliegt selbst der Abkuehlung. Zehn Angriffstexte in Folge ergeben deshalb EINEN gesprochenen Ersatz und neun stille Ablehnungen. Das ist gewollt (ein Pet, das zehnmal 'steht auf dem Bildschirm' sagt, ist schlimmer als eines, das schweigt), aber es heisst: `ersatz_gesprochen: false` in den Zeilen 2 bis 10 ist die Abkuehlung und kein Fehlschlag.",
+    "`systemd-analyze` meldet 3.4 statt der 3.6 der anderen Units, weil hier zusaetzlich `MemoryDenyWriteExecute=yes` und `PrivateDevices=yes` gesetzt sind. `~@resources` fehlt dagegen im Systemcall-Filter, und das ist gemessen: mit dem Filter stirbt der Dienst mit `status=31/SYS` (SIGSYS in coredumpctl, beide Prozesse), weil ein PipeWire-Client Echtzeitprioritaet setzt und `mlock` ruft.",
+    "Die TTFA-Laeufe liefen gegen einen ZWEITEN Dienst mit `tts.abkuehlung = 0` in einer eigenen Konfiguration -- sonst waeren 20 Laeufe 200 Sekunden Wanduhr. Abgeschaltet wurde die Abkuehlung ueber die KONFIGURATION, nicht ueber einen Codeschalter; ihre Fristen sind in Schritt 5 live und in den Unittests geprueft."
+  ],
+  "gemessen_am": "2026-08-03T12:56:45+0200",
+  "loadavg": "1.76",
+  "schritte": {
+    "1_socket_aktivierung": {
+      "dienst_vor_der_verbindung": "inactive",
+      "dienst_nach_der_verbindung": "active",
+      "antwort": {
+        "v": 1,
+        "ok": true,
+        "gesprochen": true,
+        "ttfa_ms": 114.34,
+        "segmente": 1,
+        "text": "Ich bin da, wenn du was brauchst.",
+        "kanal": "ungefragt"
+      },
+      "erste_anfrage_gesamt_ms": 2200.69,
+      "main_pid": "17329"
+    },
+    "2_zustand": {
+      "v": 1,
+      "ok": true,
+      "engine": "sherpa-onnx-vits",
+      "modell": "de_DE-thorsten-high",
+      "provider": "cpu",
+      "lizenz": "CC0",
+      "threads": 8,
+      "samplerate": 22050,
+      "geladen": true,
+      "ladezeit_ms": 456.96,
+      "warmlauf_ms": 49.78,
+      "gesprochen": 1,
+      "abgebrochen": 0,
+      "pid": 17329
+    },
+    "3_kein_vram": {
+      "gpu_bibliotheken": [],
+      "gpu_deskriptoren": [],
+      "compute_apps": "1981, 242 MiB",
+      "eigene_pid_in_compute_apps": false
+    },
+    "4_haertung": {
+      "exposure": "3.4 OK",
+      "rc": 0
+    },
+    "5_abkuehlung": {
+      "zweite_ungefragte_aeusserung": {
+        "v": 1,
+        "ok": false,
+        "grund": "abkuehlung",
+        "ersatz": "",
+        "rest_s": 19.965
+      },
+      "erwartet": "abkuehlung mit rest_s > 0"
+    },
+    "6_angriffe": {
+      "faelle": [
+        {
+          "fall": "pfad",
+          "ok": false,
+          "grund": "pfad",
+          "ersatz_gesprochen": true
+        },
+        {
+          "fall": "url",
+          "ok": false,
+          "grund": "url",
+          "ersatz_gesprochen": false
+        },
+        {
+          "fall": "geheimnis",
+          "ok": false,
+          "grund": "geheimnis",
+          "ersatz_gesprochen": false
+        },
+        {
+          "fall": "geheimnis2",
+          "ok": false,
+          "grund": "geheimnis",
+          "ersatz_gesprochen": false
+        },
+        {
+          "fall": "code",
+          "ok": false,
+          "grund": "code",
+          "ersatz_gesprochen": false
+        },
+        {
+          "fall": "codeblock",
+          "ok": false,
+          "grund": "mehrzeilig",
+          "ersatz_gesprochen": false
+        },
+        {
+          "fall": "mehrzeilig",
+          "ok": false,
+          "grund": "mehrzeilig",
+          "ersatz_gesprochen": false
+        },
+        {
+          "fall": "lang",
+          "ok": false,
+          "grund": "zu_lang",
+          "ersatz_gesprochen": false
+        },
+        {
+          "fall": "bidi",
+          "ok": false,
+          "grund": "abkuehlung",
+          "ersatz_gesprochen": null
+        },
+        {
+          "fall": "mailto",
+          "ok": false,
+          "grund": "url",
+          "ersatz_gesprochen": false
+        }
+      ],
+      "keiner_gesprochen": true,
+      "hinweis": "Der Bidi-Fall ist KEINE Ablehnung, sondern eine Saeuberung: die unsichtbaren Zeichen werden entfernt und der Rest gesprochen. Steht hier, damit die Zeile nicht als Fehlschlag gelesen wird."
+    },
+    "7_ttfa": {
+      "n": 20,
+      "ttfa_ms": [
+        114.4,
+        71.71,
+        119.49,
+        39.63,
+        76.42,
+        120.61,
+        82.36,
+        67.13,
+        105.45,
+        40.5,
+        78.33,
+        144.0,
+        69.55,
+        71.62,
+        99.15,
+        44.45,
+        96.07,
+        132.13,
+        69.69,
+        73.94
+      ],
+      "median_ms": 77.375,
+      "p95_ms": 132.13,
+      "max_ms": 144.0,
+      "min_ms": 39.63,
+      "kriterium_p95_unter_200ms": true,
+      "gemessen": "Anfrage an den Dienst bis zu den ersten Samples beim Wiedergabeprozess -- nicht bis zum Ende der Synthese und nicht bis zum Ende der Wiedergabe."
+    },
+    "8_unterbrechung": {
+      "pw_cat_prozesse_vorher": "1",
+      "pw_cat_prozesse_nachher": "0",
+      "abbruch_ms": 1.35,
+      "unter_100ms": true,
+      "erste_aeusserung": {
+        "v": 1,
+        "ok": true,
+        "gesprochen": false,
+        "ttfa_ms": 64.71,
+        "segmente": 4,
+        "text": "Ein langer Satz, der in mehreren Segmenten entsteht, damit es etwas zu unterbrechen gibt, und der lange genug dauert.",
+        "kanal": "reaktion"
+      },
+      "antwort_auf_still": {
+        "v": 1,
+        "ok": true,
+        "still": true
+      }
+    }
+  }
+}

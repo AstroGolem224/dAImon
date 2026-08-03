@@ -46,6 +46,8 @@ from daimon.common.logging import Logger, get_logger
 from daimon.common.protocol import Event, ProtocolError
 from daimon.hub.bus import Bus, mood_of, projekt_aus_cwd
 from daimon.hub.diag import Diagnose
+from daimon.hub import sprechtext
+from daimon.hub.abkuehlung import Abkuehlung
 from daimon.hub.marks import FreigabeBuch, MarkenBuch, MarkenFehler
 from daimon.hub.state import HubState
 
@@ -53,6 +55,7 @@ STATE_SOCKET = "state.sock"
 DIAG_SOCKET = "diag.sock"
 EVENTS_SOCKET = "events.sock"
 GPU_SOCKET = "gpu.sock"
+TTS_SOCKET = "tts.sock"
 MAX_ZEILE = 1 << 20  # 1 MiB. Eine Hook-Nutzlast ist Kilobytes gross.
 
 # Wie oft der Push-Endpunkt nachsieht, ob sich `rev` bewegt hat. 50 ms deckelt
@@ -90,6 +93,15 @@ GPU_RESERVE_MIB = 1024
 # verbindet und schweigt, darf den Horcher nicht festhalten.
 GPU_LESE_TIMEOUT_S = 5.0
 
+# T-3.9: Frist einer Sprechfreigabe. Sie deckt Synthese plus Wiedergabe eines
+# Satzes ab (gemessen: 100--300 ms Synthese, unter 4 s Audio) und ist bewusst
+# grosszuegig -- sie soll einen gestorbenen Sprecher abfangen, nicht eine
+# langsame Wiedergabe abschneiden. Nach Ablauf wird die Freigabe verworfen; ein
+# `gesprochen` danach vermerkt KEINE Abkuehlung, weil niemand mehr weiss, ob
+# wirklich gesprochen wurde.
+TTS_FRIST_S = 30.0
+TTS_ABKUEHLUNG_DATEI = "tts-abkuehlung.json"
+
 
 def _dumpbarkeit_abschalten() -> None:
     """Design 7.5: keine ptrace-/Core-Dump-Freigabe fuer den Hub.
@@ -125,6 +137,18 @@ class Hub:
         self._gpu_sperre: tuple[str, float] | None = None
         self.gpu_frist_s = float(self.cfg.get("gpu.sperrfrist_s", GPU_FRIST_S))
         self.gpu_reserve_mib = int(self.cfg.get("gpu.reserve_mib", GPU_RESERVE_MIB))
+        # T-3.9: der Sprechtext-Torwaechter. Validator und Abkuehlung liegen
+        # HIER, weil eine Pruefung im sprechenden Dienst umgehbar ist, sobald
+        # ein anderer Produzent Text an die Ausgabe schicken kann (Design §8.3).
+        # Die Freigabe ist eine Marke mit Frist -- dasselbe Muster wie die
+        # GPU-Ladesperre, aus demselben Grund: der Halter gibt zurueck, was er
+        # bekommen hat, und ein gestorbener Sprecher blockiert nichts dauerhaft.
+        self._tts_lock = threading.Lock()
+        self._tts_freigaben: dict[str, tuple[str, float]] = {}   # Marke: (Kanal, Ablauf)
+        self.tts_frist_s = float(self.cfg.get("tts.freigabefrist_s", TTS_FRIST_S))
+        self.abkuehlung = Abkuehlung(
+            Path(self.cfg.state_dir) / TTS_ABKUEHLUNG_DATEI,
+            cfg=self.cfg, log=self.log)
         self._server: list[socket.socket] = []
         self._threads: list[threading.Thread] = []
         self._stop = threading.Event()
@@ -385,6 +409,105 @@ class Hub:
                 return {"v": 1, "ok": True}
             return {"v": 1, "ok": False, "grund": "fremde_sperre"}
 
+    # -- Sprechfreigabe (T-3.9) --------------------------------------------
+
+    def tts_anfrage(self, anfrage: object) -> dict:
+        """Der Torwaechter der Stimme: Validator, Abkuehlung, Freigabe.
+
+        Drei Arten:
+
+        * `freigabe` -- Text oder Vorlage rein, sprechbarer Text plus Marke
+          raus. Ohne Marke spricht der Dienst nicht; das ist der Grund, warum
+          ein Direktzugriff auf den TTS-Socket nichts erreicht.
+        * `beginnt` -- der Sprecher hat angefangen. Setzt `voice.tts_active`.
+        * `gesprochen` -- fertig. Loescht `tts_active` UND vermerkt die
+          Abkuehlung. Vermerkt wird am **Ende**, nicht am Anfang: die Frist
+          zaehlt ab dem letzten Ton, sonst laufen 20 s Abkuehlung waehrend
+          eines 4 s langen Satzes schon zur Haelfte ab.
+
+        Die Reihenfolge in `freigabe` ist Absicht: **erst Validator, dann
+        Abkuehlung**. Ein Text, der die Regeln verletzt, soll `code` oder
+        `geheimnis` heissen und nicht `abkuehlung` -- sonst verschwindet ein
+        Injektionsversuch hinter einer Frist, und im Journal steht nur, dass es
+        zu schnell war.
+        """
+        if not isinstance(anfrage, dict):
+            return {"v": 1, "ok": False, "grund": "unlesbar"}
+        art = anfrage.get("art")
+        if art == "beginnt":
+            return self._tts_beginnt(anfrage.get("marke"))
+        if art == "gesprochen":
+            return self._tts_gesprochen(anfrage.get("marke"))
+        if art != "freigabe":
+            return {"v": 1, "ok": False, "grund": "unbekannte_art"}
+
+        kanal = str(anfrage.get("kanal", ""))
+        if "anlass" in anfrage:
+            urteil = sprechtext.aus_vorlage(
+                anfrage.get("anlass"), anfrage.get("werte"),
+                markierung=str(anfrage.get("markierung", "trusted")))
+        else:
+            urteil = sprechtext.pruefe(anfrage.get("text"), kanal=kanal)
+        if not urteil.ok:
+            self.diag.verworfen(f"tts_{urteil.grund}")
+            self.log.warn("Sprechtext abgelehnt", DAIMON_ACTION="tts_abgelehnt",
+                          DAIMON_KANAL=kanal[:20], DAIMON_GRUND=urteil.grund)
+            # Der abgelehnte Text kommt NICHT ins Journal. Er ist genau das
+            # Material, das nicht weitergegeben werden soll -- ein Logeintrag
+            # waere eine Ausgabe an einer Stelle, die niemand als Ausgabe liest.
+            return urteil.als_dict()
+
+        darf, rest_s = self.abkuehlung.darf(kanal)
+        if not darf:
+            self.diag.verworfen("tts_abkuehlung")
+            return {"v": 1, "ok": False, "grund": "abkuehlung",
+                    "rest_s": rest_s, "ersatz": ""}
+
+        marke = secrets.token_hex(16)
+        with self._tts_lock:
+            jetzt = time.monotonic()
+            # Abgelaufene Freigaben wegraeumen -- sonst waechst das Buch mit
+            # jedem gestorbenen Sprecher.
+            self._tts_freigaben = {m: v for m, v in self._tts_freigaben.items()
+                                   if v[1] > jetzt}
+            self._tts_freigaben[marke] = (kanal, jetzt + self.tts_frist_s)
+        self.log.info("Sprechfreigabe erteilt", DAIMON_ACTION="tts_freigabe",
+                      DAIMON_KANAL=kanal[:20],
+                      DAIMON_ZEICHEN=len(urteil.text))
+        return {"v": 1, "ok": True, "text": urteil.text, "marke": marke,
+                "kanal": kanal, "frist_s": self.tts_frist_s}
+
+    def _tts_freigabe_holen(self, marke: object, *, entfernen: bool) -> str | None:
+        """Kanal zur Marke, oder None. Nur der Halter -- eine fremde oder
+        abgelaufene Marke bewegt nichts."""
+        with self._tts_lock:
+            eintrag = self._tts_freigaben.get(marke) if isinstance(marke, str) else None
+            if eintrag is None or eintrag[1] <= time.monotonic():
+                return None
+            if entfernen:
+                del self._tts_freigaben[marke]
+            return eintrag[0]
+
+    def _tts_beginnt(self, marke: object) -> dict:
+        kanal = self._tts_freigabe_holen(marke, entfernen=False)
+        if kanal is None:
+            return {"v": 1, "ok": False, "grund": "fremde_marke"}
+        self.state.set_voice(tts_active=True)
+        return {"v": 1, "ok": True, "kanal": kanal}
+
+    def _tts_gesprochen(self, marke: object) -> dict:
+        kanal = self._tts_freigabe_holen(marke, entfernen=True)
+        self.state.set_voice(tts_active=False)
+        if kanal is None:
+            # `tts_active` wird trotzdem geloescht: ein Sprecher, dessen Marke
+            # verfallen ist, spricht sicher nicht mehr, und ein haengendes
+            # `true` waere fuer die Rueckkopplungssperre schlimmer als eine
+            # verlorene Abkuehlung.
+            return {"v": 1, "ok": False, "grund": "fremde_marke"}
+        ablauf = self.abkuehlung.vermerke(kanal)
+        return {"v": 1, "ok": True, "kanal": kanal,
+                "abkuehlung_bis": round(ablauf, 3)}
+
     # -- State-Socket ------------------------------------------------------
 
     def _horche_einfach(self, dateiname: str, liefere, *,
@@ -495,6 +618,11 @@ class Hub:
             self._threads.append(t)
         t = threading.Thread(target=self._horche_einfach,
                              args=(GPU_SOCKET, self.gpu_anfrage),
+                             kwargs={"liest": True}, daemon=True)
+        t.start()
+        self._threads.append(t)
+        t = threading.Thread(target=self._horche_einfach,
+                             args=(TTS_SOCKET, self.tts_anfrage),
                              kwargs={"liest": True}, daemon=True)
         t.start()
         self._threads.append(t)
