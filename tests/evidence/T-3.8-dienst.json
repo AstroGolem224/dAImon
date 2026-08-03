@@ -1,0 +1,227 @@
+{
+  "was": "T-3.8 durch den DIENST (socket-aktiviert), nicht in-process",
+  "modell": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+  "provider": "cpu",
+  "threads": 8,
+  "ladezeit_ms": 809.65,
+  "anfragen": 23,
+  "wer_de": 0.0517,
+  "wer_en": 0.0,
+  "latenz_median_ms": 119.85,
+  "latenz_p95_ms": 146.64,
+  "wanduhr_median_ms": 120.5,
+  "median_folgeanfragen_ms": 123.14,
+  "auf_stille": "",
+  "ergebnisse": [
+    {
+      "id": "01",
+      "sprache": "de",
+      "fehler": 1,
+      "woerter": 6,
+      "latenz_ms": 86.95,
+      "wand_ms": 87.5,
+      "audio_s": 4.22,
+      "text": "Der Bild ist durch, zwei Warnungen."
+    },
+    {
+      "id": "02",
+      "sprache": "de",
+      "fehler": 1,
+      "woerter": 13,
+      "latenz_ms": 126.43,
+      "wand_ms": 127.0,
+      "audio_s": 6.55,
+      "text": "Kannst mal nachsehen, warum die Tests seit dem letzten Commit rot sind."
+    },
+    {
+      "id": "03",
+      "sprache": "de",
+      "fehler": 1,
+      "woerter": 9,
+      "latenz_ms": 132.28,
+      "wand_ms": 132.9,
+      "audio_s": 5.12,
+      "text": "Ich hätte eine Zusammenfassung der Änderungen im Branch."
+    },
+    {
+      "id": "04",
+      "sprache": "de",
+      "fehler": 0,
+      "woerter": 10,
+      "latenz_ms": 145.59,
+      "wand_ms": 146.2,
+      "audio_s": 6.87,
+      "text": "Die Schnittstelle zwischen Hub und Overlay spricht ausschließlich über Sockets."
+    },
+    {
+      "id": "05",
+      "sprache": "de",
+      "fehler": 2,
+      "woerter": 13,
+      "latenz_ms": 127.84,
+      "wand_ms": 128.5,
+      "audio_s": 6.55,
+      "text": "Um 18.30 Uhr läuft die Messung ab, dann brauche ich das Urteil."
+    },
+    {
+      "id": "06",
+      "sprache": "de",
+      "fehler": 0,
+      "woerter": 6,
+      "latenz_ms": 79.92,
+      "wand_ms": 80.5,
+      "audio_s": 3.82,
+      "text": "Mach die Ohren aus, ich telefoniere."
+    },
+    {
+      "id": "07",
+      "sprache": "de",
+      "fehler": 0,
+      "woerter": 6,
+      "latenz_ms": 119.85,
+      "wand_ms": 120.5,
+      "audio_s": 5.93,
+      "text": "Der Rückkopplungssperrennachlauf beträgt eine halbe Sekunde."
+    },
+    {
+      "id": "08",
+      "sprache": "de",
+      "fehler": 0,
+      "woerter": 12,
+      "latenz_ms": 128.87,
+      "wand_ms": 129.4,
+      "audio_s": 6.7,
+      "text": "Wieso ist der Speicher der Grafikkarte nach dem Prozessende immer noch belegt?"
+    },
+    {
+      "id": "09",
+      "sprache": "de",
+      "fehler": 2,
+      "woerter": 8,
+      "latenz_ms": 99.26,
+      "wand_ms": 99.9,
+      "audio_s": 4.71,
+      "text": "Schreibt es bitte in die Übergabe mit Begründung."
+    },
+    {
+      "id": "10",
+      "sprache": "de",
+      "fehler": 0,
+      "woerter": 9,
+      "latenz_ms": 109.06,
+      "wand_ms": 109.6,
+      "audio_s": 4.97,
+      "text": "12 von 19 Prüfungen sind grün, 7 stehen aus."
+    },
+    {
+      "id": "11",
+      "sprache": "de",
+      "fehler": 1,
+      "woerter": 8,
+      "latenz_ms": 102.9,
+      "wand_ms": 103.7,
+      "audio_s": 5.25,
+      "text": "Der Verifizierer Mist die Latenz, nicht die Zustellung."
+    },
+    {
+      "id": "12",
+      "sprache": "de",
+      "fehler": 0,
+      "woerter": 12,
+      "latenz_ms": 146.64,
+      "wand_ms": 148.0,
+      "audio_s": 6.46,
+      "text": "Kannst du das Modell laden oder hält gerade ein Spiel die Grafikkarte?"
+    },
+    {
+      "id": "13",
+      "sprache": "de",
+      "fehler": 1,
+      "woerter": 14,
+      "latenz_ms": 147.45,
+      "wand_ms": 148.1,
+      "audio_s": 7.98,
+      "text": "In Rust ist es ein Borrow-Checker-Fehler. In Python fällt es erst zur Laufzeit auf."
+    },
+    {
+      "id": "14",
+      "sprache": "de",
+      "fehler": 0,
+      "woerter": 8,
+      "latenz_ms": 129.98,
+      "wand_ms": 130.5,
+      "audio_s": 5.2,
+      "text": "Bitte nichts vorlesen, was auf dem Bildschirm steht."
+    },
+    {
+      "id": "15",
+      "sprache": "de",
+      "fehler": 0,
+      "woerter": 11,
+      "latenz_ms": 145.63,
+      "wand_ms": 146.3,
+      "audio_s": 7.29,
+      "text": "Die Abkühlung greift je nach Anlass. 20 Sekunden für ungefragte Äußerungen."
+    },
+    {
+      "id": "16",
+      "sprache": "de",
+      "fehler": 0,
+      "woerter": 12,
+      "latenz_ms": 115.35,
+      "wand_ms": 115.9,
+      "audio_s": 5.63,
+      "text": "Häng dich nicht weiter an dem Zwischenstand auf. Der Messwert kommt morgen."
+    },
+    {
+      "id": "17",
+      "sprache": "de",
+      "fehler": 0,
+      "woerter": 10,
+      "latenz_ms": 132.94,
+      "wand_ms": 133.6,
+      "audio_s": 6.57,
+      "text": "Sechs Sitzungen gleichzeitig und jede will ihren eigenen Zustand haben."
+    },
+    {
+      "id": "18",
+      "sprache": "de",
+      "fehler": 0,
+      "woerter": 7,
+      "latenz_ms": 111.85,
+      "wand_ms": 112.5,
+      "audio_s": 5.74,
+      "text": "Das Overlay soll durchsichtig werden, nicht verschwinden."
+    },
+    {
+      "id": "19",
+      "sprache": "en",
+      "fehler": 0,
+      "woerter": 10,
+      "latenz_ms": 111.09,
+      "wand_ms": 111.7,
+      "audio_s": 5.33,
+      "text": "The build finished with two warnings and one skipped test."
+    },
+    {
+      "id": "20",
+      "sprache": "en",
+      "fehler": 0,
+      "woerter": 13,
+      "latenz_ms": 118.43,
+      "wand_ms": 119.1,
+      "audio_s": 6.38,
+      "text": "Please summarize the changes on this branch before I open a pull request."
+    },
+    {
+      "id": "21",
+      "sprache": "stille",
+      "fehler": 0,
+      "woerter": 0,
+      "latenz_ms": 76.8,
+      "wand_ms": 77.6,
+      "audio_s": 3.3,
+      "text": ""
+    }
+  ]
+}

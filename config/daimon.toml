@@ -57,10 +57,12 @@ echo_schwelle  = 0.7
 # `reserve_mib`: soviel VRAM bleibt nach dem Laden frei. Der naechste, der
 #   nachfordert, ist sonst der Compositor.
 # `idle_s`: Leerlauf bis zum PROZESSENDE des Workers -- nicht bis zum Entladen.
-# `ladedauer_s`: der Platzhalter-Ladevorgang aus T-3.7; T-3.8 ersetzt ihn.
-# `modelle.<name>`: vermuteter VRAM-Bedarf in MiB. Vermutet, nicht gemessen --
-#   der Platzhalter alloziert nichts. 2600 ist parakeet-tdt-0.6b-v3 (2,4 GB)
-#   mit Luft.
+# `ladedauer_s`: der Platzhalter-Ladevorgang aus T-3.7.
+# `modelle.<name>`: vermuteter VRAM-Bedarf in MiB, fuer das Ladegatter.
+#   DER EINTRAG `stt` IST SEIT T-3.8 UNBENUTZT: der Erkenner laeuft auf der CPU
+#   (siehe [stt] unten) und fragt das Gatter nicht. Er bleibt als Beispiel
+#   stehen, damit der erste echte GPU-Verbraucher eine Vorlage hat -- geloescht
+#   waere er eine Frage mehr beim naechsten Modell.
 [gpu]
 sperrfrist_s = 120.0
 reserve_mib  = 1024
@@ -77,6 +79,18 @@ poll_ms = 250
 idle   = "#3a2418"
 active = "#ff6b1a"
 alert  = "#ffd24a"
+
+# T-3.8: der Erkenner. sherpa-onnx mit parakeet-tdt-0.6b-v3 auf der CPU, 0 VRAM.
+# Gemessen am 03.08. gegen 21 eigene Aufnahmen, 8 Threads: WER 5,17 % deutsch,
+# 0,0 % englisch, Latenz Median 117 ms, p95 152 ms, Modell laden 843 ms.
+# `modell_dir`: die Gewichte sind 665 MB und liegen NICHT im Repo. Holen mit
+#   spikes/stt-referenz/modell_holen.sh. Fehlen sie, sagt der Dienst
+#   `modell_fehlt` -- er laedt nichts aus dem Netz.
+# `threads`: Kalibrierknopf. Weniger Kerne im Rechner: Wert senken.
+# Es gibt bewusst KEINEN `provider`-Schluessel -- siehe daimon/gpu/stt.py.
+[stt]
+modell_dir = "spikes/stt-referenz/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
+threads    = 8
 
 # T-3.9: die Stimme. sherpa-onnx VITS auf der CPU, 0 VRAM.
 # `threads`: der Kalibrierknopf. Gemessen am 03.08. ueber die ganze Kette

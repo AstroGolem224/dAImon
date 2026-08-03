@@ -57,6 +57,19 @@ VORGABEN: dict[str, Any] = {
         "ladedauer_s": 0.5,
         "modelle": {"stt": 2600},
     },
+    # T-3.8: der Erkenner. `threads` ist der Kalibrierknopf -- gemessen auf
+    # dieser Maschine mit 8 Threads: WER 5,17 % (deutsch, eigene Aufnahmen),
+    # Latenz Median 117 ms, p95 152 ms, Modell laden 843 ms. Der Pfad zeigt
+    # heute ins Spike-Verzeichnis; die Gewichte (665 MB) liegen nicht im Repo
+    # und werden mit spikes/stt-referenz/modell_holen.sh geholt.
+    # KEIN `provider`-Schluessel: "cpu" steht im Code. Ein Konfigurationswert
+    # waere ein Schalter, mit dem sich ein CUDA-Provider einschalten laesst, und
+    # dann waere die 0-VRAM-Zusage keine Zusage mehr.
+    "stt": {
+        "modell_dir": ("spikes/stt-referenz/models/"
+                       "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"),
+        "threads": 8,
+    },
     # T-3.9: die Stimme. `threads` ist der Kalibrierknopf. Gemessen ueber die
     # ganze Kette, 20 Aeusserungen: 2 Threads p95 316 ms (verfehlt das
     # Kriterium), 4 Threads p95 187 ms, 8 Threads p95 148 ms. Acht ist die
