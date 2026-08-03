@@ -13,7 +13,7 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 | **Gate P0** | 11 von 11 grün — **aber `T-0.12` war davon ein hohles Grün**, siehe unten. Seit T-0.12.v2 belegt |
 | **Gate P1** | **ROT nur noch wegen `T-1.10`** — und dessen Messfenster ist unbrauchbar, siehe unten. `T-1.7` seit v5 grün (95 Prüfungen) |
 | **Gate P2** | **GRÜN** (02.08.): `T-2.4` 17, `T-2.5` 40, `T-1.5` 25 — Idle-CPU **0,000 %**. `verify-frozen` zählte damals 12, heute 20 |
-| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2:** T-0.12.v2 eingefroren, **T-3.7 committet und live belegt** (03.08., `tests/evidence/T-3.7-live.json` — mit Vorbehalt, siehe unten). Offen: T-3.8, T-3.9, 3.10–3.13b, 3.14–3.15 |
+| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2:** T-0.12.v2 eingefroren, **T-3.7 und T-3.9** committet und live belegt (03.08., `tests/evidence/T-3.7-live.json` und `T-3.9-tts.json` — beide mit Vorbehalt, siehe unten). Offen: T-3.8, 3.10–3.13b, 3.14–3.15 |
 | **Phase 2** | **abgeschlossen.** T-2.1 bis T-2.5 und T-2.7 stehen und sind eingefroren. T-2.6 optional, entfällt |
 
 **Zwanzig Einträge in `FROZEN`**: 17 Verifizierer + 3 Harness-Dateien.
@@ -80,6 +80,26 @@ Skript, statt eine Liste zu pflegen, die veraltet.
 > Hook ist ein eigener Prozess und sieht das Präfix nicht). Ohne Variable ist jedes
 > Schreiben im Repo blockiert.
 
+> **T-3.9 steht, aber die Reviewer-Seite ist NICHT blind entstanden.** Der Verifizierer
+> `tests/verify/T-3.9.sh` wird von kimi gebaut — der Auftrag ging jedoch erst raus, als die
+> Implementierung bereits **committet** war, und kimi hat sie gelesen: in seiner Planung
+> stehen wörtlich meine Anker aus `daemon.py` und `state.py`. Für die **Mutanten** ist das
+> nötig, die leiten sich aus dem abgenommenen Stand ab. Für den **Verifizierer** war es
+> untersagt. Damit ist für T-3.9 nicht auszuschließen, dass die Prüfung um die
+> Implementierung herum gebaut wurde statt um die Zusage.
+>
+> Entschieden am 03.08.: kimi läuft weiter, der Verlust steht hier. **Präzedenzfall ist
+> T-1.7 Teil 2** („Für T-1.7 Teil 2 hat der Builder den bereits geschriebenen Verifizierer
+> gelesen"), nur mit vertauschten Rollen — und die Ursache ist dieselbe: der Auftrag
+> untersagte das Ändern, nicht das Lesen.
+>
+> **Was das für einen künftigen `T-3.9.v2`-Task heißt:** es braucht einen Verifizierer von
+> einem Agenten, der `daimon/face/tts.py`, `daimon/hub/sprechtext.py` und
+> `daimon/hub/abkuehlung.py` **nie gesehen hat** — ein Gegenlesen des vorhandenen reicht
+> nicht. Ein Verifizierer, der die Implementierung kennt, prüft, was sie tut, und nicht,
+> was sie versprochen hat. Wer den Auftrag schreibt: **Lesen ausdrücklich verbieten**, nicht
+> nur Schreiben.
+
 **Quelle der Planungsdokumente ist `/home/itiger013/Dokumente/UMBRA-Notes/DDs/dAImon/`,
 `docs/` ist die Kopie. Beide pflegen.**
 
@@ -91,7 +111,7 @@ Skript, statt eine Liste zu pflegen, die veraltet.
 
 1. **`T-1.10` läuft seit dem 02.08. neu — frühestens ab dem 07.08. abnehmbar.**
    Das alte Messfenster ist verworfen und liegt samt Begründung unter
-   `tests/evidence/verworfen/`. Stand 03.08.: `days=2, crashes=0`, `idle_cpu_p95=0,216 %`, alle vier Units
+   `tests/evidence/verworfen/`. Stand 03.08. nachmittags: `days=2, crashes=0`, `idle_cpu_p95=0,216 %`, alle vier Units
    laufen, Timer aktiv, alle fünf Minuten ein Datenpunkt.
    **Nicht vergessen, wenn die fünf Tage voll sind:** `fehlalarme`, `ablenkungen`,
    `verdict` und `docs/phase1-verdict.md` — das sind Urteile, keine Messwerte, und
@@ -111,20 +131,26 @@ Skript, statt eine Liste zu pflegen, die veraltet.
    genau dieser Empfehlung. Ich lege Sätze und ein Aufnahmeskript bereit, du liest sie
    einmal vor (~5 Minuten). Entschieden am 03.08.: **deine Stimme, dein Mikrofon, dein
    Raum** — Piper-Synthese kommt zusätzlich als Regressionstest, nicht stattdessen.
-3. **`piper` installieren — das ist der nächste Task.** T-3.7 ist durch, T-3.9 (TTS) ist als nächstes dran und hängt allein hieran:
-   ```bash
-   sudo pacman -S --needed piper-tts
-   ```
+3. ~~**`piper` installieren**~~ — **der Eintrag war doppelt falsch. Erledigt am 03.08.,
+   und zwar ohne dich.** `piper-tts` gibt es in den Arch-Repos nicht (`extra/piper` ist
+   eine Maus-Konfigurations-GUI), und Design §8.2 schließt Piper **als Bibliothek**
+   ausdrücklich aus (GPL-3.0, R18/α). Gebraucht wurde `sherpa-onnx` (Apache-2.0, liegt
+   jetzt im venv); die Stimme `de_DE-thorsten-high` lag schon unter
+   `spikes/nvidia-voice/models/` und ist CC0. **Lehre: ein Installationsbefehl in diesem
+   Dokument ist eine Behauptung wie jede andere — dieser war nie ausgeführt worden.**
 
 Dazu, wenn es passt:
 
 4. **T−1.12** (NVIDIA-Sprachstack) ist weiterhin ungemessen. Werkzeug liegt unter
    `spikes/nvidia-voice/` samt `SPEC.md`. Nicht blockierend.
 
-```bash
-# T−1.4, Reboot-Teil — nach dem nächsten regulären Neustart, ein Befehl:
-timeout --foreground --signal=TERM --kill-after=5s 130s python3 spikes/portal/reboot_check.py
-```
+**T−1.4, Reboot-Teil: erledigt am 03.08.** nach dem Neustart — `reboot_prompted=false`,
+der `restore_token` hält über einen echten Reboot ohne Dialog. Protokoll unter
+`spikes/portal/runs/`. Dabei nebenbei belegt, was vorher unbelegt war: **alle vier Units
+stehen nach dem Reboot bei `NRestarts=0`**, der `RuntimeDirectory`/`Preserve`-Fix hält also
+über einen echten Neustart. (Und ein Fehler von mir: der Check lief zuerst unter dem
+venv-Python und starb an `No module named 'dbus'`. Er braucht System-Python — so, wie es
+weiter unten auch steht.)
 
 ---
 
@@ -189,6 +215,9 @@ mindestens einen Mutanten.
 | 13 | T-1.7-Pixelprobe | Schwelle >20 000 Pixel, begründet mit „das Fenster wird breiter" — **es hat feste Breite**. Nie nachgemessen, also seit Wochen rot, ohne dass es jemand sah: `meta.sh` überspringt im Fixture-Modus **alle Live-Prüfungen** (47 statt 90), der Mutationstest deckt nur die Hälfte des Verifizierers ab |
 | 12 | T-2.7-Verifizierer | Positivkontrolle „Hub aus dem geprüften Baum" verglich `<baum>/daimon` mit `<baum>` — zwei `dirname` statt drei. **Konnte nie grün werden**, also jeder Lauf rot, also **jede Mutante „erkannt", ohne dass ihre Mutation je gemessen wurde** |
 | 16 | `.claude/settings.json` | Der `PreToolUse`-Rollenwächter war **verdrahtet und lief nie**: unescapte Quotes machten die Settings-Datei zu kaputtem JSON, und Claude Code lädt eine unparsbare Datei stillschweigend nicht. Gemessen wurde „der Hook steht in der Konfiguration", nicht „der Hook lehnt ab". Seit Commit `21c9a78`. Behoben am 03.08., plus `tests/test_rollen.py`, das den Hook aufruft und eine Ablehnung verlangt |
+| 17 | T-3.9, TTFA-Stempel | Gemessen wurde **nach** dem vollständigen `write()` des ersten Segments in die Wiedergabe-Pipe. Eine Pipe hat 64 KiB, ein Segment 96 KB, und `pw-cat` liest in Echtzeit — das `write()` blockiert also 1014 ms im Median. Damit war die gemessene „Latenz“ die **Abspieldauer**. Selbst geschrieben, selbst gefunden, am selben Tag. Jetzt: ein pipe-großes Stück schreiben, stempeln, dann der Rest |
+| 18 | T-3.9, stille Ausgabe | Bei unerreichbarer Wiedergabe (`pw-cat` sofort tot, falsches `XDG_RUNTIME_DIR`) meldete der Dienst `gesprochen: true` mit `ttfa_ms: null`. Eine Selbstauskunft ohne Messung, Fall 9 in Reinform. Aufgefallen nur, weil der eigene Messaufbau PipeWire verlor. Jetzt `grund: ausgabe_weg` |
+| 19 | `voice.tts_active` | Stand seit Beginn im Zustandsschnappschuss und hatte **keinen Setter** — behauptete also wochenlang „es spricht nichts“, ohne dass das gemessen wurde. Ein Feld, das nur gelesen werden kann, ist eine Zusage ohne Messpunkt. Setter kam mit T-3.9 |
 
 Dazu zwei Fälle, in denen ein **Mutant** nichts bewies: einmal enthielt die
 Fixture-Kopie ein gebautes `target/` der *unmutierten* Quelle, einmal brach das
@@ -269,6 +298,34 @@ aufgetreten. Richtig ist `wert is True`.
 ist unter Linux tmpfs-gestützt: `rw-s`, echte Inode, Name `/dev/zero (deleted)`. Ein
 Puffer mit Mikrofonmaterial hätte damit ein Rückschreibziel, **ohne dass je ein `write()`
 im `strace` auftaucht**. `flags=mmap.MAP_PRIVATE` erzwingen (T-3.3).
+
+**`SystemCallFilter=~@resources` tötet jeden PipeWire-Client.** Der TTS-Dienst starb mit
+`status=31/SYS`, und zwar **beide** Prozesse (`pw-cat` und der Python-Prozess, SIGSYS in
+`coredumpctl`) — ein PipeWire-Client setzt Echtzeitpriorität und ruft `mlock`, beides liegt
+in `@resources`. Das Modell lädt vorher noch sauber, es stirbt erst bei der ersten
+Äußerung: „lädt“ ist hier also kein Beweis für „läuft“. `MemoryDenyWriteExecute=yes` und
+`PrivateDevices=yes` halten dagegen beide (onnxruntime auf der CPU braucht kein W+X, und
+PipeWire wird über seinen Socket erreicht, nicht über `/dev/snd`).
+
+**Eine Pipe hat 64 KiB, und `pw-cat` liest in Echtzeit.** Wer ein ganzes Audiosegment mit
+einem `write()` hineinschreibt, blockiert bis zur halben Wiedergabe — gemessen 1014 ms im
+Median für 96 KB. Und wer danach die Latenz stempelt, misst die Abspieldauer. Dazu: `stdin`
+des Wiedergabeprozesses darf beim Abbruch **nicht** von einem zweiten Thread geschlossen
+werden. `BufferedWriter` hat ein eigenes Lock, `close()` flusht, und der Abbruch wartet dann
+auf genau den Schreiber, den er beenden soll (gemessen 4002 ms statt < 100 ms). Nur `kill()`
+— der Schreiber bekommt EPIPE und räumt selbst auf.
+
+**sherpa-onnx VITS synthetisiert satzweise, nicht chunkweise.** Der Callback feuert **einmal
+je Satz**, mit dem ganzen Satz — „erstes Sample“ ist bei einer Äußerung ohne Satzzeichen
+also dasselbe wie „letztes Sample“, und die Latenz wächst mit der Textlänge. Deshalb wird an
+den Satzzeichen segmentiert. Und die Threadzahl entscheidet über das Kriterium: p95 316 ms
+bei 2 Threads, 187 ms bei 4, 132 ms bei 8. Die erste Synthese in einem Prozess kostet
+ausserdem ein Mehrfaches der folgenden (534 gegen 126 ms) — dafür gibt es den Warmlauf.
+
+**`PIPEWIRE_RUNTIME_DIR` folgt nicht `XDG_RUNTIME_DIR`.** Ein Testaufbau, der
+`XDG_RUNTIME_DIR` umbiegt (eigene Sockets im Temp-Verzeichnis), nimmt `pw-cat` damit den
+PipeWire-Socket weg. Es stirbt sofort, und ohne Prüfung sieht das aus wie eine gelungene
+Wiedergabe. `PIPEWIRE_RUNTIME_DIR=/run/user/<uid>` mitgeben.
 
 **`tests/test_hub_push.py::test_hub_weg_schliesst_die_verbindung` flackert.** Einmal rot
 mit `ConnectionError` unter Last (parallele Verifiziererläufe), danach dreimal in Folge
@@ -422,6 +479,13 @@ sieht — zwei Sanitizer in Python und Rust wären auseinandergedriftet.
   nur ein API-Kontingent erteilt. Heute wirkungslos, aber es *behauptet* eine
   Fähigkeit. Kommentar steht an der Tabelle in `ipc.py`. Wer den Ears-Agenten baut,
   entscheidet mit.
+- **T-3.9 erfüllt Kriterium 8 nur zur Hälfte.** „Meldet Start und Ende an die
+  Rückkopplungssperre" ist heute nicht voll verdrahtbar: `Sperre.wiedergabe_an/aus` sind
+  In-Prozess-Methoden, und **kein Prozess hält eine `Sperre`** — der Ohren-Dienst existiert
+  nicht. Der TTS-Dienst meldet deshalb an den Hub (`voice.tts_active`). **Was fehlt, ist die
+  Echo-Referenz**: `interlock.echo_referenz()` will das ausgegebene Signal (16 kHz mono
+  int16), und über ein Zustandsfeld geht kein Audio. Ohne sie erkennt die Sperre Echo nur
+  über die Zeit, nicht über das Signal. Wer den Ohren-Dienst baut, schließt das.
 - **T-1.10** braucht Kalenderzeit, siehe oben.
 - **T-2.6** (Wandern zwischen Monitoren) ist laut Plan optional und darf entfallen.
   Auf dieser Maschine ohnehin nicht belegbar — ein Monitor.
