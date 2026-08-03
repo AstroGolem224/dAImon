@@ -458,10 +458,36 @@ class Hub:
             return urteil.als_dict()
 
         darf, rest_s = self.abkuehlung.darf(kanal)
-        if not darf:
+
+        # Zwei Faelle duerfen die Abkuehlung umgehen, und beide sind
+        # Entscheidungen, nicht Bequemlichkeiten:
+        #
+        # UNTERBRECHUNG. Solange wirklich gesprochen wird, ist die naechste
+        # Aeusserung eine Korrektur und kein zweites Geschwaetz -- ein Pet, das
+        # seinen eigenen laufenden Satz nicht abbrechen kann, ist genau das
+        # Aergernis, das die Abkuehlung verhindern soll. Die Gegenprobe: nach
+        # dem Ende der unterbrechenden Aeusserung greift die Frist wieder, denn
+        # `gesprochen` setzt sie neu. Eine Kette von Unterbrechungen ist damit
+        # kein Umweg, sondern ein einziger, immer wieder abgebrochener Satz.
+        #
+        # ERSATZSATZ. Er ist die Antwort auf eine abgelehnte Aeusserung
+        # (Design §8.3: "sagt das Pet, dass die Antwort auf dem Bildschirm
+        # steht"). Unterliegt er der Abkuehlung, dann sagt das Pet es beim
+        # ersten Mal und schweigt danach -- und Schweigen ist von einem
+        # abgestuerzten Dienst nicht zu unterscheiden. Am 03.08. gemessen: von
+        # zehn Angriffstexten wurde genau einer beantwortet.
+        #
+        # ponytail: der Ersatzsatz hat KEINE eigene Frist. Obergrenze: er ist
+        # anfragegetrieben, ein flutender Client flutet also sich selbst. Sobald
+        # ein echter Produzent (Mind) das tut, gehoert hier eine eigene, kurze
+        # Frist hin -- und die haette dann nichts mit `abkuehlung` zu tun.
+        spricht_noch = bool(self.state.snapshot()["voice"].get("tts_active"))
+        ist_ersatz = anfrage.get("anlass") == sprechtext.ERSATZ_VORLAGE
+        if not darf and not (spricht_noch or ist_ersatz):
             self.diag.verworfen("tts_abkuehlung")
             return {"v": 1, "ok": False, "grund": "abkuehlung",
                     "rest_s": rest_s, "ersatz": ""}
+        unterbrechung = (not darf) and spricht_noch and not ist_ersatz
 
         marke = secrets.token_hex(16)
         with self._tts_lock:
@@ -470,29 +496,41 @@ class Hub:
             # jedem gestorbenen Sprecher.
             self._tts_freigaben = {m: v for m, v in self._tts_freigaben.items()
                                    if v[1] > jetzt}
-            self._tts_freigaben[marke] = (kanal, jetzt + self.tts_frist_s)
+            self._tts_freigaben[marke] = (kanal, jetzt + self.tts_frist_s,
+                                          ist_ersatz)
         self.log.info("Sprechfreigabe erteilt", DAIMON_ACTION="tts_freigabe",
                       DAIMON_KANAL=kanal[:20],
                       DAIMON_ZEICHEN=len(urteil.text))
         return {"v": 1, "ok": True, "text": urteil.text, "marke": marke,
-                "kanal": kanal, "frist_s": self.tts_frist_s}
+                "kanal": kanal, "frist_s": self.tts_frist_s,
+                # Sichtbar machen, wenn eine Abkuehlung umgangen wurde. Eine
+                # stille Umgehung waere eine Zusage, die im Protokoll fehlt.
+                "unterbrechung": unterbrechung, "ersatz_freigabe": ist_ersatz,
+                "rest_s": rest_s}
 
-    def _tts_freigabe_holen(self, marke: object, *, entfernen: bool) -> str | None:
-        """Kanal zur Marke, oder None. Nur der Halter -- eine fremde oder
-        abgelaufene Marke bewegt nichts."""
+    def _tts_freigabe_holen(self, marke: object, *,
+                            entfernen: bool) -> tuple[str, bool] | None:
+        """`(Kanal, ist_ersatz)` zur Marke, oder None. Nur der Halter -- eine
+        fremde oder abgelaufene Marke bewegt nichts."""
         with self._tts_lock:
             eintrag = self._tts_freigaben.get(marke) if isinstance(marke, str) else None
             if eintrag is None or eintrag[1] <= time.monotonic():
                 return None
             if entfernen:
                 del self._tts_freigaben[marke]
-            return eintrag[0]
+            return (eintrag[0], eintrag[2])
 
     def _tts_beginnt(self, marke: object) -> dict:
-        kanal = self._tts_freigabe_holen(marke, entfernen=False)
-        if kanal is None:
+        eintrag = self._tts_freigabe_holen(marke, entfernen=False)
+        if eintrag is None:
             return {"v": 1, "ok": False, "grund": "fremde_marke"}
+        kanal, ist_ersatz = eintrag
         self.state.set_voice(tts_active=True)
+        if ist_ersatz:
+            # Der Ersatzsatz vermerkt KEINE Abkuehlung: er ist die Antwort auf
+            # eine Ablehnung und darf die naechste echte Aeusserung nicht
+            # blockieren. Siehe die Begruendung in `tts_anfrage`.
+            return {"v": 1, "ok": True, "kanal": kanal, "ersatz": True}
         # Die Abkuehlung faengt HIER an, nicht erst beim `gesprochen` und nicht
         # schon bei der Freigabe.
         #
@@ -518,16 +556,21 @@ class Hub:
         return {"v": 1, "ok": True, "kanal": kanal}
 
     def _tts_gesprochen(self, marke: object) -> dict:
-        kanal = self._tts_freigabe_holen(marke, entfernen=True)
+        eintrag = self._tts_freigabe_holen(marke, entfernen=True)
         self.state.set_voice(tts_active=False)
-        if kanal is None:
+        if eintrag is None:
             # `tts_active` wird trotzdem geloescht: ein Sprecher, dessen Marke
             # verfallen ist, spricht sicher nicht mehr, und ein haengendes
             # `true` waere fuer die Rueckkopplungssperre schlimmer als eine
             # verlorene Abkuehlung.
             return {"v": 1, "ok": False, "grund": "fremde_marke"}
-        # Neu setzen: die Frist zaehlt ab dem letzten Ton, nicht ab der
-        # Freigabe (dort wurde sie nur reserviert, siehe `tts_anfrage`).
+        kanal, ist_ersatz = eintrag
+        if ist_ersatz:
+            return {"v": 1, "ok": True, "kanal": kanal, "ersatz": True}
+        # Neu setzen: die Frist zaehlt ab dem LETZTEN TON, nicht ab dem Beginn
+        # (dort wurde sie schon einmal gesetzt, siehe `_tts_beginnt`). Das ist
+        # zugleich die Gegenprobe zur Unterbrechungs-Umgehung: eine Kette von
+        # Unterbrechungen verlaengert die Frist, statt sie zu umgehen.
         ablauf = self.abkuehlung.vermerke(kanal)
         return {"v": 1, "ok": True, "kanal": kanal,
                 "abkuehlung_bis": round(ablauf, 3)}
