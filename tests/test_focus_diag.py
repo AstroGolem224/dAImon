@@ -110,6 +110,103 @@ def test_script_meldet_ueber_calldbus():
     assert "de.daimon.Focus" in quelle
 
 
+def calldbus_argumente(quelle: str) -> list[int]:
+    """Zahl der Argumente je `callDBus(`-Aufruf, Klammern mitgezaehlt."""
+    ergebnis = []
+    text = ohne_kommentare(quelle)
+    for start in [i for i in range(len(text)) if text.startswith("callDBus(", i)]:
+        tiefe, kommas = 0, 0
+        for zeichen in text[start + len("callDBus"):]:
+            if zeichen in "([{":
+                tiefe += 1
+            elif zeichen in ")]}":
+                tiefe -= 1
+                if tiefe == 0:
+                    break
+            elif zeichen == "," and tiefe == 1:
+                kommas += 1
+        ergebnis.append(kommas + 1)
+    return ergebnis
+
+
+def test_calldbus_bleibt_unter_der_kwin_grenze():
+    """KWin kappt bei 13 Argumenten und protokolliert nur "Too many arguments,
+    ignoring 2" -- die Meldung erreicht den Hub dann nie. Gemessen am 03.08.:
+    elf Einzelwerte ergaben 15 Argumente, `Zustand()` blieb (false, -1.0)."""
+    argumente = calldbus_argumente(SCRIPT.read_text())
+    assert argumente, "kein callDBus gefunden"
+    assert max(argumente) <= 13, argumente
+
+
+def test_script_schickt_einen_json_string():
+    """Ein neues Feld verlaengert damit den String statt der Argumentliste --
+    die Grenze ist strukturell nicht mehr erreichbar."""
+    assert "JSON.stringify" in ohne_kommentare(SCRIPT.read_text())
+
+
+# --------------------------------------------------------------------------
+# T-0.12.v2 — der Empfaenger ueberlebt einen kaputten Watcher
+# --------------------------------------------------------------------------
+
+def nutzlast(**kw) -> str:
+    daten = dict(kind="activated", uuid="u1", caption="Titel", cls="konsole",
+                 desktop="org.kde.konsole", fullscreen=False, pid=4711,
+                 x=0, y=0, breite=1920, hoehe=1080)
+    daten.update(kw)
+    return json.dumps(daten)
+
+
+def test_json_nutzlast_wird_ausgepackt():
+    ev = FocusReceiver().handle_json(nutzlast(fullscreen=True))
+    assert ev is not None
+    assert ev.uuid == "u1" and ev.pid == 4711 and ev.fullscreen is True
+    assert ev.geometrie == (0, 0, 1920, 1080)
+
+
+def test_unbekannte_felder_werden_ignoriert():
+    """Der Watcher laeuft im Compositor und wird nicht mit dem Hub zusammen
+    ausgeliefert -- eine neuere Fassung darf Felder mitbringen."""
+    ev = FocusReceiver().handle_json(nutzlast(neues_feld=[1, 2, 3]))
+    assert ev is not None and ev.uuid == "u1"
+
+
+def test_fehlende_felder_bekommen_vorgaben():
+    ev = FocusReceiver().handle_json('{"kind": "activated"}')
+    assert ev is not None
+    assert ev.uuid == "" and ev.pid == 0 and ev.geometrie == (0, 0, 0, 0)
+    assert ev.fullscreen is False
+
+
+@pytest.mark.parametrize("muell", [
+    "", "{", "nicht mal json", "[1, 2, 3]", "null", '"nur ein string"', "17",
+])
+def test_kaputte_nutzlast_wird_verworfen_und_gezaehlt(muell):
+    """Ein Watcher, der Muell schickt, darf den Hub nicht umbringen -- und
+    "es kommt nichts" muss von "es kommt Muell" unterscheidbar bleiben."""
+    rx = FocusReceiver()
+    assert rx.handle_json(muell) is None
+    assert rx.verworfen == 1
+    assert rx.letztes is None
+    assert rx.zustand() == (False, -1.0)
+
+
+def test_falsche_feldtypen_werfen_nicht():
+    ev = FocusReceiver().handle_json(json.dumps(
+        {"kind": 7, "uuid": None, "caption": {"a": 1}, "pid": "viele",
+         "x": True, "breite": 3.9, "fullscreen": "ja"}))
+    assert ev is not None
+    assert ev.kind == "unbekannt" and ev.uuid == "" and ev.pid == 0
+    assert ev.geometrie == (0, 0, 3, 0)
+    # `bool("ja")` waere True: ein Watcher mit falschem Feldtyp koennte damit
+    # Vollbild behaupten, und das GPU-Gate haengt daran.
+    assert ev.fullscreen is False
+
+
+def test_signatur_ist_ein_einziger_string():
+    from daimon.hub.focus import DBUS_SIGNATUR
+    assert DBUS_SIGNATUR == "s"
+
+
 def test_script_verdrahtet_bereits_offene_fenster():
     """Ohne das bliebe nach einem kwin --replace praktisch der ganze Desktop
     stumm -- alle Fenster waeren aelter als der Watcher."""

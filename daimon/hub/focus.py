@@ -24,6 +24,7 @@ Absatz erzeugen nichts. Das ist der Befund aus Spike T-1.9.
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from dataclasses import dataclass, field
@@ -35,9 +36,49 @@ SERVICE = "de.daimon.Focus"
 PATH = "/Focus"
 IFACE = "de.daimon.Focus"
 
-# Signatur von Event(): kind, uuid, caption, cls, desktop, fullscreen,
-# pid, x, y, breite, hoehe
-DBUS_SIGNATUR = "sssssbiiiii"
+# Signatur von Event(): EIN JSON-String mit allen Feldern.
+#
+# Vorher standen hier elf Einzelwerte ("sssssbiiiii"). Gemessen am 03.08.:
+# `callDBus(SERVICE, PATH, IFACE, "Event", <11 Werte>)` sind 15 Argumente,
+# **KWin kappt bei 13** ("Too many arguments, ignoring 2"). Es kamen neun Werte
+# gegen eine Signatur mit elf -- die Meldung erreichte den Hub nie, und
+# `Zustand()` blieb ueber einen ganzen Versuch bei `(false, -1.0)`.
+#
+# Ein JSON-String macht daraus fuenf Argumente. Wer stattdessen die Felder auf
+# neun kuerzt, verschiebt die Grenze nur; so ist sie strukturell nicht mehr
+# erreichbar, weil ein neues Feld den String verlaengert und nicht die
+# Argumentliste.
+DBUS_SIGNATUR = "s"
+
+# T-3.7: `Zustand()` -> (fullscreen, alter_s). Der Watcher meldet nur bei
+# Aenderungen; wer fragt, braucht deshalb ein Alter dazu. **alter_s < 0 heisst
+# "noch nichts gesehen"** -- und das ist etwas anderes als "kein Vollbild".
+# Ohne diese Unterscheidung waere ein frisch gestarteter Fokus-Dienst nicht von
+# einem Desktop ohne Vollbildfenster zu unterscheiden, und das GPU-Gate haette
+# eine Aussage bekommen, die niemand belegt hat.
+ZUSTAND_SIGNATUR = "bd"
+
+
+def _text(wert: Any, vorgabe: str = "") -> str:
+    """Fehlt das Feld oder ist es keine Zeichenkette, gilt die Vorgabe."""
+    return wert if isinstance(wert, str) else vorgabe
+
+
+def _flag(wert: Any) -> bool:
+    """Nur ein echtes `true`/`false` gilt. `bool("nein")` waere `True` -- ein
+    Watcher mit falschem Feldtyp koennte damit Vollbild behaupten, und das
+    GPU-Gate haengt daran."""
+    return wert is True
+
+
+def _zahl(wert: Any) -> int:
+    """Ganzzahl oder 0. `bool` ist in Python ein `int` -- hier unerwuenscht."""
+    if isinstance(wert, bool) or not isinstance(wert, (int, float)):
+        return 0
+    try:
+        return int(wert)
+    except (ValueError, OverflowError):
+        return 0
 
 
 @dataclass(frozen=True)
@@ -71,6 +112,7 @@ class FocusReceiver:
         self._lock = threading.Lock()
         self._letztes: FocusEvent | None = None
         self._zaehler: dict[str, int] = {}
+        self._verworfen = 0
         self._on_event = on_event
 
     def handle(self, kind: str, uuid: str, caption: str, cls: str,
@@ -95,6 +137,41 @@ class FocusReceiver:
                 pass
         return ev
 
+    def handle_json(self, nutzlast: Any) -> FocusEvent | None:
+        """Nimmt die Nutzlast des Watchers als JSON-Objekt entgegen.
+
+        **Defensiv, absichtlich.** Der Absender laeuft im Compositor und wird
+        nicht mit diesem Modul zusammen ausgeliefert -- eine aeltere, neuere
+        oder schlicht kaputte Fassung darf den Empfaenger nicht umbringen:
+        unbekannte Felder werden ignoriert, fehlende auf Vorgaben gesetzt,
+        unbrauchbares JSON verworfen **und gezaehlt**. Verworfen zu zaehlen ist
+        der Unterschied zwischen "es kommt nichts" und "es kommt Muell" -- ohne
+        den Zaehler sind beide Faelle Stille.
+        """
+        try:
+            daten = json.loads(nutzlast)
+        except Exception:  # noqa: BLE001 - Nutzlast ist fremder Inhalt
+            daten = None
+        if not isinstance(daten, dict):
+            with self._lock:
+                self._verworfen += 1
+            return None
+        return self.handle(
+            kind=_text(daten.get("kind"), "unbekannt"),
+            uuid=_text(daten.get("uuid")), caption=_text(daten.get("caption")),
+            cls=_text(daten.get("cls")), desktop=_text(daten.get("desktop")),
+            fullscreen=_flag(daten.get("fullscreen")),
+            pid=_zahl(daten.get("pid")),
+            x=_zahl(daten.get("x")), y=_zahl(daten.get("y")),
+            breite=_zahl(daten.get("breite")), hoehe=_zahl(daten.get("hoehe")),
+        )
+
+    @property
+    def verworfen(self) -> int:
+        """Wie oft eine Nutzlast unbrauchbar war."""
+        with self._lock:
+            return self._verworfen
+
     @property
     def letztes(self) -> FocusEvent | None:
         with self._lock:
@@ -103,6 +180,18 @@ class FocusReceiver:
     def zaehler(self) -> dict[str, int]:
         with self._lock:
             return dict(self._zaehler)
+
+    def zustand(self) -> tuple[bool, float]:
+        """(fullscreen, Alter der Meldung in Sekunden) fuer das GPU-Gate.
+
+        Alter < 0 heisst "noch keine Meldung gesehen". Dann `False`
+        zurueckzugeben waere eine Behauptung -- siehe ZUSTAND_SIGNATUR.
+        """
+        with self._lock:
+            ev = self._letztes
+            if ev is None:
+                return (False, -1.0)
+            return (bool(ev.fullscreen), max(0.0, time.time() - ev.ts))
 
     # -- DBus --------------------------------------------------------------
 
@@ -118,10 +207,15 @@ class FocusReceiver:
         class Objekt(dbus.service.Object):
             @dbus.service.method(IFACE, in_signature=DBUS_SIGNATUR,
                                  out_signature="")
-            def Event(self, kind, uuid, caption, cls, desktop,
-                      fullscreen, pid, x, y, breite, hoehe):
-                empfaenger.handle(kind, uuid, caption, cls, desktop,
-                                  fullscreen, pid, x, y, breite, hoehe)
+            def Event(self, nutzlast):
+                empfaenger.handle_json(str(nutzlast))
+
+            @dbus.service.method(IFACE, in_signature="",
+                                 out_signature=ZUSTAND_SIGNATUR)
+            def Zustand(self):
+                # T-3.7: der Fragende ist das GPU-Gate. Es fragt genau eine
+                # Sache -- liegt gerade ein Vollbildfenster vorn.
+                return empfaenger.zustand()
 
         DBusGMainLoop(set_as_default=True)
         bus = dbus.SessionBus()

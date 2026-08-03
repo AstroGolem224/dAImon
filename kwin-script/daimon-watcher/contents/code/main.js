@@ -19,25 +19,30 @@ var SERVICE = "de.daimon.Focus";
 var PATH = "/Focus";
 var IFACE = "de.daimon.Focus";
 
+// Die Nutzlast ist EIN JSON-String, nicht elf Einzelwerte. Grund, gemessen:
+// KWin kappt callDBus bei 13 Argumenten ("Too many arguments, ignoring 2") --
+// die frueheren 15 Argumente kamen als 9 an, die Signatur passte nie, und die
+// Meldung erreichte den Hub nie. Ein neues Feld verlaengert jetzt den String
+// statt der Argumentliste; die Grenze ist strukturell nicht mehr erreichbar.
 function melde(kind, w) {
-    var uuid = "", caption = "", cls = "", desktop = "";
-    var full = false, x = 0, y = 0, breite = 0, hoehe = 0, pid = 0;
+    var d = {
+        kind: String(kind), uuid: "", caption: "", cls: "", desktop: "",
+        fullscreen: false, pid: 0, x: 0, y: 0, breite: 0, hoehe: 0
+    };
     if (w) {
-        uuid    = String(w.internalId || "");
-        caption = String(w.caption || "");
-        cls     = String(w.resourceClass || "");
-        desktop = String(w.desktopFileName || "");
-        full    = !!w.fullScreen;
-        pid     = Number(w.pid || 0);
+        d.uuid       = String(w.internalId || "");
+        d.caption    = String(w.caption || "");
+        d.cls        = String(w.resourceClass || "");
+        d.desktop    = String(w.desktopFileName || "");
+        d.fullscreen = !!w.fullScreen;
+        d.pid        = Number(w.pid || 0);
         // frameGeometry ist die Anreicherung, die das VRAM-Gate braucht:
         // ein Vollbildfenster auf dem Ausgabegeraet des Overlays heisst,
         // dass das Overlay verdeckt sein koennte.
         var g = w.frameGeometry;
-        if (g) { x = g.x; y = g.y; breite = g.width; hoehe = g.height; }
+        if (g) { d.x = g.x; d.y = g.y; d.breite = g.width; d.hoehe = g.height; }
     }
-    callDBus(SERVICE, PATH, IFACE, "Event",
-             String(kind), uuid, caption, cls, desktop,
-             full, pid, x, y, breite, hoehe);
+    callDBus(SERVICE, PATH, IFACE, "Event", JSON.stringify(d));
 }
 
 var verdrahtet = {};
