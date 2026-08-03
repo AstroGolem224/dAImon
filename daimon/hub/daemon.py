@@ -493,6 +493,28 @@ class Hub:
         if kanal is None:
             return {"v": 1, "ok": False, "grund": "fremde_marke"}
         self.state.set_voice(tts_active=True)
+        # Die Abkuehlung faengt HIER an, nicht erst beim `gesprochen` und nicht
+        # schon bei der Freigabe.
+        #
+        # Beim `gesprochen` allein war sie fuer schnelle Aufrufer wirkungslos:
+        # zwei Anfragen hintereinander liefen BEIDE durch, weil die Wiedergabe
+        # der ersten noch lief und deshalb nichts vermerkt war -- die zweite
+        # unterbrach die erste. Am 03.08. gemessen, zwei `rueckfrage`-Saetze.
+        #
+        # Bei der FREIGABE war sie zu frueh: eine Freigabe, die nie gesprochen
+        # wird -- ein Probelauf, ein toter Dienst, eine fehlende Stimme --
+        # haette das Pet fuer die ganze Frist stummgeschaltet. Beim Gegenlesen
+        # ist genau das passiert und hat die Entdeckungsphase des Verifizierers
+        # abgewuergt.
+        #
+        # `beginnt` heisst: es sind Samples beim Wiedergabeprozess. Das
+        # Restrisiko ist das Fenster zwischen Freigabe und erstem Sample, also
+        # der TTFA (gemessen 40--150 ms). Wer in diesem Fenster zweimal
+        # anfragt, bekommt zweimal frei -- und die zweite Aeusserung
+        # unterbricht die erste, was bei 100 ms Abstand ohnehin die richtige
+        # Antwort ist. Beim `gesprochen` wird die Frist neu gesetzt, damit sie
+        # ab dem LETZTEN TON zaehlt.
+        self.abkuehlung.vermerke(kanal)
         return {"v": 1, "ok": True, "kanal": kanal}
 
     def _tts_gesprochen(self, marke: object) -> dict:
@@ -504,6 +526,8 @@ class Hub:
             # `true` waere fuer die Rueckkopplungssperre schlimmer als eine
             # verlorene Abkuehlung.
             return {"v": 1, "ok": False, "grund": "fremde_marke"}
+        # Neu setzen: die Frist zaehlt ab dem letzten Ton, nicht ab der
+        # Freigabe (dort wurde sie nur reserviert, siehe `tts_anfrage`).
         ablauf = self.abkuehlung.vermerke(kanal)
         return {"v": 1, "ok": True, "kanal": kanal,
                 "abkuehlung_bis": round(ablauf, 3)}

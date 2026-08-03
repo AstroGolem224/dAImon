@@ -115,6 +115,82 @@ class StimmFehler(RuntimeError):
     """Modell fehlt, Lizenz unbekannt, Modell nicht ladbar."""
 
 
+def stimmverzeichnis(modell_dir: str, stimme: str) -> str:
+    """Das Verzeichnis der Stimme, ohne die Gewichte zu verlangen.
+
+    Getrennt von `stimme_aufloesen()`, damit die LIZENZ vor den Gewichten
+    geprueft werden kann: eine unfreie Stimme wird abgelehnt, auch wenn ihre
+    Dateien fehlen oder anders heissen. Sonst heisst die Absage `stimme_fehlt`
+    und der Lizenzbefund verschwindet hinter einem Dateiproblem.
+    """
+    kandidaten = [
+        modell_dir if os.path.exists(os.path.join(modell_dir, f"{stimme}.onnx"))
+        else "",
+        os.path.join(modell_dir, stimme),
+        os.path.join(modell_dir, f"vits-piper-{stimme}"),
+    ]
+    for k in kandidaten:
+        if k and os.path.isdir(k):
+            return k
+    raise StimmFehler(
+        f"kein Verzeichnis fuer Stimme {stimme!r} unter {modell_dir!r}. "
+        f"Geprueft: {'; '.join(k for k in kandidaten if k)}")
+
+
+def stimme_aufloesen(modell_dir: str, stimme: str) -> tuple[str, str]:
+    """`(stimmverzeichnis, onnx_pfad)` aus Basisverzeichnis und Stimmnamen.
+
+    Design §10.1 nennt **beides**: `voice = "de_DE-thorsten-high"` (also den
+    Namen der Gewichtsdatei) und ein Sammelverzeichnis
+    `~/.local/share/daimon/voices/`. Ob `tts.modell_dir` demnach *das*
+    Stimmverzeichnis ist oder eines *mit Stimmverzeichnissen darin*, steht
+    nirgends -- und beim Gegenlesen am 03.08. hatten Builder und Reviewer
+    genau darueber verschiedene Annahmen: der eine legte `modell_dir` auf die
+    Stimme, der andere auf die Sammlung, mit `voice` als Verzeichnisnamen.
+
+    Beide Lesarten sind vertretbar, also wird keine erzwungen. Gesucht wird in
+    dieser Reihenfolge, und die Fehlermeldung nennt jeden geprueften Pfad --
+    eine Suche, die nur "nicht gefunden" sagt, zwingt zum Raten:
+
+      1. `<basis>/<stimme>.onnx`            -- basis IST das Stimmverzeichnis
+      2. `<basis>/<stimme>/<stimme>.onnx`   -- Sammlung, Verzeichnis wie Stimme
+      3. `<basis>/vits-piper-<stimme>/<stimme>.onnx`  -- die sherpa-Benennung
+      4. `<basis>/<stimme>/` mit genau EINER `.onnx` -- `voice` ist der
+         Verzeichnisname (`vits-piper-de_DE-thorsten-high`)
+
+    Genau eine `.onnx` in Fall 4, nicht die erste von mehreren: bei zwei
+    Dateien waere die Wahl geraten, und eine geratene Stimme ist eine, deren
+    Lizenz man nicht geprueft hat.
+    """
+    versucht: list[str] = []
+
+    def nimm(verzeichnis: str, onnx: str) -> tuple[str, str] | None:
+        versucht.append(onnx)
+        return (verzeichnis, onnx) if os.path.exists(onnx) else None
+
+    kandidaten = [
+        nimm(modell_dir, os.path.join(modell_dir, f"{stimme}.onnx")),
+        nimm(os.path.join(modell_dir, stimme),
+             os.path.join(modell_dir, stimme, f"{stimme}.onnx")),
+        nimm(os.path.join(modell_dir, f"vits-piper-{stimme}"),
+             os.path.join(modell_dir, f"vits-piper-{stimme}", f"{stimme}.onnx")),
+    ]
+    for treffer in kandidaten:
+        if treffer:
+            return treffer
+
+    unter = os.path.join(modell_dir, stimme)
+    if os.path.isdir(unter):
+        onnx = sorted(f for f in os.listdir(unter) if f.endswith(".onnx"))
+        if len(onnx) == 1:
+            return (unter, os.path.join(unter, onnx[0]))
+        versucht.append(f"{unter}/*.onnx ({len(onnx)} gefunden, gebraucht: 1)")
+
+    raise StimmFehler(
+        f"Stimme {stimme!r} nicht gefunden unter {modell_dir!r}. Geprueft: "
+        + "; ".join(versucht))
+
+
 def stimmlizenz(modell_dir: str) -> str:
     """Die Lizenz der Stimmgewichte aus ihrer MODEL_CARD.
 
@@ -213,7 +289,35 @@ class Sprecher:
         self.stimme = stimme
         self.threads = int(threads)
         self.log = log or get_logger("daimon-tts")
-        self.lizenz = lizenz_pruefen(modell_dir)   # vor dem Laden, nicht danach
+        # Erst die Stimme finden, dann ihre Lizenz pruefen -- und beides VOR
+        # dem Laden. Eine Lizenz, die nach dem Laden geprueft wird, ist eine
+        # Lizenz, die man schon benutzt hat.
+        #
+        # Scheitert eines von beiden, wird NICHT geworfen. Ein socket-
+        # aktivierter Dienst, der beim Start stirbt, hinterlaesst dem Aufrufer
+        # eine geschlossene Verbindung ohne Grund -- und eine tote Unit ist von
+        # einer stummen nicht zu unterscheiden. Stattdessen laeuft der Dienst
+        # an und sagt jeder Anfrage ehrlich ab (`stimme_unerlaubt`,
+        # `stimme_fehlt`). Befund aus dem Gegenlesen am 03.08.
+        self.stimm_dir, self.onnx, self.lizenz = "", "", ""
+        self.absage: str = ""
+        self.absage_meldung: str = ""
+        try:
+            # Reihenfolge: erst das Verzeichnis, dann die LIZENZ, dann die
+            # Gewichte. Eine unfreie Stimme muss abgelehnt werden, auch wenn
+            # ihre Gewichte fehlen oder anders heissen -- sonst heisst die
+            # Absage `stimme_fehlt`, und der Lizenzbefund verschwindet hinter
+            # einem Dateiproblem. Am 03.08. beim Gegenlesen aufgefallen: der
+            # Pruefstand baut eine pavoque-Karte in ein Verzeichnis mit
+            # thorsten-Gewichten, und genau dieser Fall trennt "Lizenz geprueft"
+            # von "Dateien gefunden".
+            self.stimm_dir = stimmverzeichnis(modell_dir, stimme)
+            self.lizenz = lizenz_pruefen(self.stimm_dir)
+            _, self.onnx = stimme_aufloesen(modell_dir, stimme)
+        except StimmFehler as exc:
+            self.absage = ("stimme_unerlaubt" if "nicht erlaubt" in str(exc)
+                           else "stimme_fehlt")
+            self.absage_meldung = str(exc)[:300]
         self._lock = threading.Lock()
         self._gen = 0
         self._wiedergabe: subprocess.Popen | None = None
@@ -231,11 +335,18 @@ class Sprecher:
         """Einmal, beim Start. Nicht bei der ersten Anfrage: die Ladezeit
         wuerde sonst in den TTFA der ersten Aeusserung wandern, und genau die
         erste ist die, bei der jemand hinhoert."""
+        if self.absage:
+            self.log.warn("Stimme nicht verwendbar -- der Dienst laeuft und "
+                          "sagt ab", DAIMON_ACTION="tts_absage",
+                          DAIMON_GRUND=self.absage,
+                          DAIMON_STIMME=self.stimme,
+                          DAIMON_MELDUNG=self.absage_meldung[:120])
+            return
         import sherpa_onnx
         t0 = time.monotonic()
-        modell = os.path.join(self.modell_dir, f"{self.stimme}.onnx")
-        tokens = os.path.join(self.modell_dir, "tokens.txt")
-        daten = os.path.join(self.modell_dir, "espeak-ng-data")
+        modell = self.onnx
+        tokens = os.path.join(self.stimm_dir, "tokens.txt")
+        daten = os.path.join(self.stimm_dir, "espeak-ng-data")
         for p in (modell, tokens, daten):
             if not os.path.exists(p):
                 raise StimmFehler(f"Stimme unvollstaendig, fehlt: {p}")
@@ -310,6 +421,14 @@ class Sprecher:
         darf nichts entstehen, was danach noch versehentlich ausgegeben werden
         koennte.
         """
+        if self.absage:
+            # Vor dem Hub, weil eine Freigabe fuer eine Stimme, die es nicht
+            # gibt, nur eine Abkuehlung verbrauchen wuerde.
+            return {"v": 1, "ok": False, "grund": self.absage,
+                    "gesprochen": False, "meldung": self.absage_meldung,
+                    "stimme": self.stimme, "engine": "sherpa-onnx-vits",
+                    "provider": "cpu"}
+
         anfrage: dict = {"v": 1, "art": "freigabe", "kanal": kanal}
         if anlass is not None:
             anfrage["anlass"] = anlass
@@ -324,7 +443,7 @@ class Sprecher:
                           DAIMON_GRUND=grund, DAIMON_KANAL=kanal[:20])
             antwort = {"v": 1, "ok": False, "grund": grund,
                        "ersatz": frei.get("ersatz", ""),
-                       "rest_s": frei.get("rest_s")}
+                       "rest_s": frei.get("rest_s"), **self.kennung()}
             # Design §8.3: verletzt eine Antwort eine Regel, "sagt das Pet,
             # dass die Antwort auf dem Bildschirm steht". Es schweigt also
             # nicht -- Schweigen waere von einem abgestuerzten Dienst nicht zu
@@ -351,10 +470,18 @@ class Sprecher:
         return self._ausgeben(satz, kanal=kanal, marke=marke)
 
     def _ausgeben(self, satz: str, *, kanal: str, marke: str) -> dict:
+        """Erstes Segment im Vordergrund, Rest im Hintergrund.
+
+        Die Antwort geht raus, sobald die ersten Samples beim
+        Wiedergabeprozess sind -- nicht am Ende der Wiedergabe. Wer bis zum
+        Ende wartet, kann nicht unterbrechen (Kriterium 4), und weil die
+        Abkuehlung am Ende vermerkt wird, waere die naechste Aeusserung
+        garantiert eine Absage. Beides ist am 03.08. beim Gegenlesen
+        aufgefallen.
+        """
         gen = self.abbrechen()          # eine neue Aeusserung bricht die alte ab
         stuecke = segmente(satz)
         t0 = time.monotonic()
-        ttfa_ms: float | None = None
         p = subprocess.Popen(
             # OHNE absoluten Pfad -- siehe Modulkopf.
             ["pw-cat", "--playback", "--raw", "--format=s16",
@@ -364,95 +491,144 @@ class Sprecher:
         with self._lock:
             if gen != self._gen:        # schon wieder abgebrochen
                 p.kill()
-                return {"v": 1, "ok": False, "grund": "abgebrochen"}
+                return {"v": 1, "ok": False, "grund": "abgebrochen",
+                        **self.kennung()}
             self._wiedergabe = p
 
-        hub_gemeldet = False
-        try:
-            for stueck in stuecke:
-                if gen != self._gen:
-                    break
-                audio = self._tts.generate(stueck, sid=0, speed=1.0)
-                if gen != self._gen:
-                    break
-                pcm = als_pcm(audio.samples)
-                try:
-                    # ERST ein Stueck, das in die Pipe passt, DANN stempeln,
-                    # dann der Rest. Ein `write()` des ganzen Segments
-                    # blockiert, sobald es groesser als der Pipe-Puffer ist
-                    # (64 KiB), weil `pw-cat` in Echtzeit liest -- gemessen
-                    # 1014 ms im Median fuer 96 KB. Wer nach dem vollen Schreiben
-                    # stempelt, misst die Abspieldauer und nennt sie Latenz.
-                    # Genau dieser Fehler ist hier am 03.08. passiert.
-                    p.stdin.write(pcm[:PIPE_STUECK])
-                    p.stdin.flush()
-                    if ttfa_ms is None:
-                        # Jetzt sind Samples beim Wiedergabeprozess -- nicht in
-                        # unserem Puffer, nicht in einer Warteschlange.
-                        ttfa_ms = round((time.monotonic() - t0) * 1000, 2)
-                    if len(pcm) > PIPE_STUECK:
-                        p.stdin.write(pcm[PIPE_STUECK:])
-                        p.stdin.flush()
-                except (OSError, ValueError):
-                    break               # Wiedergabe weg (Abbruch oder Fehler)
-                if ttfa_ms is not None and not hub_gemeldet:
+        stand: dict = {"ttfa_ms": None, "gesprochen": None, "segmente": 0}
+
+        def schreibe(stueck: str) -> bool:
+            """Ein Segment synthetisieren und ausgeben. False heisst: Schluss."""
+            if gen != self._gen:
+                return False
+            audio = self._tts.generate(stueck, sid=0, speed=1.0)
+            if gen != self._gen:
+                return False
+            pcm = als_pcm(audio.samples)
+            try:
+                # ERST ein Stueck, das in die Pipe passt, DANN stempeln, dann
+                # der Rest. Ein `write()` des ganzen Segments blockiert, sobald
+                # es groesser als der Pipe-Puffer ist (64 KiB), weil `pw-cat`
+                # in Echtzeit liest -- gemessen 1014 ms im Median fuer 96 KB.
+                # Wer nach dem vollen Schreiben stempelt, misst die
+                # Abspieldauer und nennt sie Latenz. Genau dieser Fehler ist
+                # hier am 03.08. passiert.
+                p.stdin.write(pcm[:PIPE_STUECK])
+                p.stdin.flush()
+                if stand["ttfa_ms"] is None:
+                    # Jetzt sind Samples beim Wiedergabeprozess -- nicht in
+                    # unserem Puffer, nicht in einer Warteschlange.
+                    stand["ttfa_ms"] = round((time.monotonic() - t0) * 1000, 2)
                     # Erst jetzt "ich spreche" melden: vorher war noch kein Ton
                     # unterwegs, und eine Sperre, die zu frueh zugeht, sperrt
                     # das Mikrofon fuer eine Stille.
                     hub_anfrage(self.hub_socket,
                                 {"v": 1, "art": "beginnt", "marke": marke})
-                    hub_gemeldet = True
-        finally:
-            try:
-                if p.stdin is not None:
-                    p.stdin.close()
-            except OSError:
-                pass
-            if gen == self._gen:
-                p.wait(timeout=60)
-                with self._lock:
-                    if self._wiedergabe is p:
-                        self._wiedergabe = None
-            if hub_gemeldet:
-                # Auch nach einem Abbruch: sonst bleibt `tts_active` stehen und
-                # die Rueckkopplungssperre haelt das Mikrofon fuer immer zu.
-                hub_anfrage(self.hub_socket,
-                            {"v": 1, "art": "gesprochen", "marke": marke})
+                if len(pcm) > PIPE_STUECK:
+                    p.stdin.write(pcm[PIPE_STUECK:])
+                    p.stdin.flush()
+            except (OSError, ValueError):
+                return False            # Wiedergabe weg (Abbruch oder Fehler)
+            stand["segmente"] += 1
+            return True
 
-        if ttfa_ms is None:
+        weiter = schreibe(stuecke[0]) if stuecke else False
+
+        def rest() -> None:
+            """Der Hintergrundteil: restliche Segmente, dann aufraeumen."""
+            try:
+                if weiter:
+                    for stueck in stuecke[1:]:
+                        if not schreibe(stueck):
+                            break
+            finally:
+                try:
+                    if p.stdin is not None:
+                        p.stdin.close()
+                except OSError:
+                    pass
+                if gen == self._gen:
+                    try:
+                        p.wait(timeout=120)
+                    except subprocess.TimeoutExpired:
+                        p.kill()
+                    with self._lock:
+                        if self._wiedergabe is p:
+                            self._wiedergabe = None
+                stand["gesprochen"] = gen == self._gen and stand["ttfa_ms"] is not None
+                if stand["ttfa_ms"] is not None:
+                    # Auch nach einem Abbruch: sonst bleibt `tts_active` stehen
+                    # und die Rueckkopplungssperre haelt das Mikrofon fuer immer
+                    # zu. Vermerkt wird die Abkuehlung damit am ENDE der
+                    # Aeusserung, nicht am Anfang.
+                    hub_anfrage(self.hub_socket,
+                                {"v": 1, "art": "gesprochen", "marke": marke})
+                if stand["gesprochen"]:
+                    self.gesprochen += 1
+                self.log.info("Gesprochen" if stand["gesprochen"] else "Abgebrochen",
+                              DAIMON_ACTION="tts_sprich",
+                              DAIMON_KANAL=kanal[:20],
+                              DAIMON_TTFA_MS=stand["ttfa_ms"],
+                              DAIMON_SEGMENTE=stand["segmente"],
+                              DAIMON_ZEICHEN=len(satz))
+
+        if stand["ttfa_ms"] is None:
             # Kein einziges Sample ist beim Wiedergabeprozess angekommen. Das
             # ist KEIN Erfolg, auch wenn nichts abgebrochen wurde: `pw-cat`
             # kann sofort gestorben sein (kein PipeWire erreichbar, falsches
             # XDG_RUNTIME_DIR, Geraet weg). Am 03.08. genau so aufgetreten --
             # der Dienst meldete `gesprochen: true` mit `ttfa_ms: null`, und
-            # das ist die Sorte Selbstauskunft, die in dieser Fehlerliste
-            # unter Nummer 9 steht.
+            # das ist die Sorte Selbstauskunft, die in der Fehlerliste des
+            # HANDOVER unter Nummer 9 steht.
+            rest()
             self.log.warn("Nichts ausgegeben -- Wiedergabe nicht erreichbar",
                           DAIMON_ACTION="tts_stumm", DAIMON_KANAL=kanal[:20],
                           DAIMON_RC=p.returncode)
             return {"v": 1, "ok": False, "grund": "ausgabe_weg",
                     "gesprochen": False, "ttfa_ms": None,
-                    "wiedergabe_rc": p.returncode}
+                    "wiedergabe_rc": p.returncode, **self.kennung()}
 
-        vollstaendig = gen == self._gen
-        self.gesprochen += 1 if vollstaendig else 0
-        self.log.info("Gesprochen" if vollstaendig else "Abgebrochen",
-                      DAIMON_ACTION="tts_sprich", DAIMON_KANAL=kanal[:20],
-                      DAIMON_TTFA_MS=ttfa_ms, DAIMON_SEGMENTE=len(stuecke),
-                      DAIMON_ZEICHEN=len(satz))
-        return {"v": 1, "ok": True, "gesprochen": vollstaendig,
-                "ttfa_ms": ttfa_ms, "segmente": len(stuecke),
-                "text": satz, "kanal": kanal}
+        self._rest_thread = threading.Thread(target=rest, daemon=True)
+        self._rest_thread.start()
+        # KEIN `join`, auch nicht kurz. Ein Warten von 250 ms "damit
+        # `gesprochen` in der Antwort steht" hat die Antwortzeit von 40 ms auf
+        # 291 ms gehoben -- und damit die Zusage "eine neue Aeusserung
+        # unterbricht binnen 100 ms" unmessbar gemacht, weil jede Messung von
+        # aussen erst nach der Antwort anfangen kann. `gesprochen: null` heisst
+        # "laeuft noch"; wer das Ende braucht, fragt `zustand` (`spricht`).
+
+        # engine/modell/provider stehen in JEDER Antwort, nicht nur in
+        # `zustand`: Kriterium 1 ("sherpa-onnx VITS, CPU, nicht piper1-gpl")
+        # ist sonst nur am Quelltext belegbar, und eine `grep`-Pruefung ist an
+        # der Schreibweise zu umgehen (T-1.7.v3).
+        return {"v": 1, "ok": True, "gesprochen": stand["gesprochen"],
+                "ttfa_ms": stand["ttfa_ms"], "segmente": len(stuecke),
+                "text": satz, "kanal": kanal, **self.kennung()}
+
+    def kennung(self) -> dict:
+        """Was zur Laufzeit belegt, WAS hier spricht. Kriterium 1 und 2.
+
+        `provider` ist fest "cpu", weil es das im Code auch ist -- ein
+        Konfigurationswert waere ein Schalter, mit dem sich ein CUDA-Provider
+        einschalten liesse, und dann waere die 0-VRAM-Zusage keine.
+        """
+        return {"engine": "sherpa-onnx-vits", "modell": self.stimme,
+                "provider": "cpu", "lizenz": self.lizenz or "unbekannt"}
 
     def zustand(self) -> dict:
         return {
-            "v": 1, "ok": True, "engine": "sherpa-onnx-vits",
-            "modell": self.stimme, "provider": "cpu",
-            "lizenz": self.lizenz, "threads": self.threads,
+            "v": 1, "ok": True, **self.kennung(),
+            "threads": self.threads,
+            "stimm_dir": self.stimm_dir,
             "samplerate": self.samplerate, "geladen": self.geladen,
             "ladezeit_ms": self.ladezeit_ms,
             "warmlauf_ms": self.warmlauf_ms, "gesprochen": self.gesprochen,
             "abgebrochen": self.abgebrochen, "pid": os.getpid(),
+            # Leer heisst: die Stimme ist in Ordnung. Ein Feld, das nur bei
+            # Fehlern existiert, wird beim Auswerten vergessen.
+            "absage": self.absage, "absage_meldung": self.absage_meldung,
+            "spricht": self._wiedergabe is not None
+                       and self._wiedergabe.poll() is None,
         }
 
 

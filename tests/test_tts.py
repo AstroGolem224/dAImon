@@ -63,6 +63,24 @@ def pw_cat_stub(bin_dir: Path, protokoll: Path, *, verzoegerung: float = 0.0) ->
     p.chmod(0o755)
 
 
+def warte_auf_ausgabe(prot: Path, *, bytes_mindestens: int = 1,
+                      timeout_s: float = 30.0) -> list[str]:
+    """Auf die `bytes`-Zeile des Stubs warten.
+
+    Seit die Wiedergabe asynchron laeuft, ist die Antwort des Sprechers da,
+    BEVOR der Stub fertig gelesen hat. Ein Test, der sofort nach der Antwort
+    das Protokoll liest, misst deshalb einen Zwischenstand -- und wuerde
+    zufaellig gruen oder rot.
+    """
+    ende = time.monotonic() + timeout_s
+    while time.monotonic() < ende:
+        zeilen = prot.read_text().splitlines() if prot.exists() else []
+        if len([z for z in zeilen if z.startswith("bytes ")]) >= bytes_mindestens:
+            return zeilen
+        time.sleep(0.05)
+    return prot.read_text().splitlines() if prot.exists() else []
+
+
 @pytest.fixture
 def hub(tmp_path):
     """Ein eigener Hub mit eigenem Runtime- und Zustandsverzeichnis."""
@@ -396,8 +414,12 @@ def test_es_kommt_wirklich_audio_an_der_ausgabe_an(sprecher_umgebung,
                    modell_dir=str(MODELL), threads=4, log=stiller_logger())
     s.laden()
     a = s.sprich(kanal="reaktion", text="Der Build ist durch, zwei Warnungen.")
-    assert a["ok"] and a["gesprochen"]
-    zeilen = prot.read_text().splitlines()
+    assert a["ok"]
+    # Kriterium 1, zur Laufzeit statt am Quelltext: eine `grep`-Pruefung ist
+    # an der Schreibweise zu umgehen (T-1.7.v3).
+    assert a["engine"] == "sherpa-onnx-vits" and a["provider"] == "cpu"
+    assert a["modell"] == "de_DE-thorsten-high" and "CC0" in a["lizenz"]
+    zeilen = warte_auf_ausgabe(prot)
     # Gemessen am Stub, nicht an der Selbstauskunft des Sprechers.
     assert any(z.startswith("start ") for z in zeilen)
     bytes_zeilen = [z for z in zeilen if z.startswith("bytes ")]
@@ -418,10 +440,35 @@ def test_ein_angriffstext_erreicht_die_ausgabe_nicht_und_der_ersatz_schon(
     s.laden()
     a = s.sprich(kanal="reaktion", text="api_key = sk-123 in ~/x/secrets.env")
     assert not a["ok"] and a["grund"] == "geheimnis"
+    warte_auf_ausgabe(prot)   # der Ersatzsatz laeuft im Hintergrund
     # Kriterium 7: das Pet sagt, dass die Antwort am Bildschirm steht.
     assert a["ersatz_gesprochen"] is True
     # Und der Angriffstext selbst ist nirgends durch die Ausgabe gegangen.
     assert "sk-123" not in prot.read_text()
+
+
+def test_die_antwort_kommt_vor_dem_ende_der_wiedergabe(sprecher_umgebung,
+                                                      hub_ohne_abkuehlung):
+    """Die Zusage, die aus dem Gegenlesen kam.
+
+    Der Sprecher antwortet, sobald die ersten Samples draussen sind, und spielt
+    im Hintergrund weiter. Vorher blockierte er bis zum letzten Ton -- damit
+    konnte ein Aufrufer nicht unterbrechen, und weil die Abkuehlung am Ende
+    vermerkt wird, war die naechste Aeusserung garantiert eine Absage.
+    """
+    b, prot = sprecher_umgebung
+    pw_cat_stub(b, prot, verzoegerung=3.0)   # der Stub haelt die Wiedergabe auf
+    s = T.Sprecher(hub_socket=str(hub_ohne_abkuehlung.runtime_dir / TTS_SOCKET),
+                   modell_dir=str(MODELL), threads=4, log=stiller_logger())
+    s.laden()
+    t0 = time.monotonic()
+    a = s.sprich(kanal="reaktion",
+                 text="Ein langer Satz, der in mehreren Segmenten entsteht, "
+                      "damit die Wiedergabe eine Weile dauert.")
+    dauer_s = time.monotonic() - t0
+    assert a["ok"] and a["ttfa_ms"] is not None
+    assert dauer_s < 2.0, f"Antwort erst nach {dauer_s:.2f}s -- blockiert"
+    assert s.zustand()["spricht"] is True
 
 
 def test_eine_neue_aeusserung_bricht_die_laufende_ab(sprecher_umgebung,
@@ -432,25 +479,24 @@ def test_eine_neue_aeusserung_bricht_die_laufende_ab(sprecher_umgebung,
     s = T.Sprecher(hub_socket=str(hub_ohne_abkuehlung.runtime_dir / TTS_SOCKET),
                    modell_dir=str(MODELL), threads=4, log=stiller_logger())
     s.laden()
-    import threading
-    ergebnis: dict = {}
+    erste = s.sprich(
+        kanal="reaktion",
+        text="Ein langer Satz, der in mehreren Segmenten entsteht, "
+             "damit es etwas zu unterbrechen gibt.")
+    assert erste["ok"]
+    assert s.zustand()["spricht"] is True, "es gibt nichts zu unterbrechen"
 
-    def lang():
-        ergebnis["a"] = s.sprich(
-            kanal="reaktion",
-            text="Ein langer Satz, der in mehreren Segmenten entsteht, "
-                 "damit es etwas zu unterbrechen gibt.")
-
-    t = threading.Thread(target=lang)
-    t.start()
-    time.sleep(1.0)
     t0 = time.monotonic()
-    s.abbrechen()
+    zweite = s.sprich(kanal="reaktion", text="Kurz.")
     dauer_ms = (time.monotonic() - t0) * 1000
-    t.join(20)
-    assert dauer_ms < 100.0, f"Abbruch dauerte {dauer_ms:.1f} ms"
-    assert s.abgebrochen >= 1
-    assert ergebnis["a"].get("gesprochen") is False
+
+    # Die Zusage: die neue Aeusserung wartet nicht auf die alte.
+    assert zweite["ok"], zweite
+    assert dauer_ms < 1000.0, f"die zweite Aeusserung wartete {dauer_ms:.0f} ms"
+    assert s.abgebrochen >= 1, "die alte Wiedergabe wurde nicht abgebrochen"
+    # Und sie ist wirklich gelaufen: zwei pw-cat-Aufrufe, kein Schweigen.
+    zeilen = warte_auf_ausgabe(prot, bytes_mindestens=1)
+    assert len([z for z in zeilen if z.startswith("start ")]) == 2, zeilen
 
 
 def test_dienst_startet_ueber_den_socket_und_spricht(tmp_path, sprecher_umgebung,
@@ -479,7 +525,8 @@ def test_dienst_startet_ueber_den_socket_und_spricht(tmp_path, sprecher_umgebung
         antwort = json.loads(c.makefile("rb").readline())
         c.close()
         assert antwort["ok"] and antwort["ttfa_ms"] is not None
-        assert int([z for z in prot.read_text().splitlines()
+        zeilen = warte_auf_ausgabe(prot)
+        assert int([z for z in zeilen
                     if z.startswith("bytes ")][0].split()[1]) > 10000
     finally:
         p.kill()
