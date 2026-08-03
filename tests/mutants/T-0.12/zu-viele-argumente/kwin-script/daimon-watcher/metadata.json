@@ -1,0 +1,13 @@
+{
+  "KPlugin": {
+    "Id": "daimon-watcher",
+    "Name": "dAImon Focus Watcher",
+    "Description": "Meldet Fensterwechsel und Vollbildzustand an den dAImon-Hub. Rein lesend.",
+    "Version": "1.0",
+    "License": "MIT",
+    "EnabledByDefault": false
+  },
+  "X-Plasma-API": "javascript",
+  "X-Plasma-MainScript": "code/main.js",
+  "KPackageStructure": "KWin/Script"
+}

@@ -1,0 +1,29 @@
+MUTANT: `callDBus` bekommt elf Einzelwerte statt eines JSON-Strings.
+
+DAS IST DER FEHLER, DER AM 03.08. REAL WAR. Mit den vier festen Argumenten
+(Dienst, Pfad, Schnittstelle, Methode) sind elf Werte 15 Argumente; KWin
+kappt bei 13 und protokolliert "Too many arguments, ignoring 2". Beim Hub
+kommen neun Werte an gegen eine Signatur mit elf -- die Meldung erreicht ihn
+NIE. `Zustand()` bleibt bei (false, -1.0), auch mit einem echten
+Vollbildfenster auf dem Schirm.
+
+DIESER MUTANT ZIELT AUF DEN ALTEN VERIFIZIERER. Der hat geprueft, dass ein
+verschachtelter kwin_wayland mit aktiviertem Script nicht STIRBT, und
+ausdruecklich toleriert, dass der Ladevorgang nicht einmal im Protokoll
+steht. Gegen ihn ist dieser Mutant vollstaendig gruen: das Script ist
+syntaktisch fehlerfrei, es laedt, es laeuft, es benutzt windowActivated,
+captionChanged, callDBus und frameGeometry, es ruft nichts Schreibendes auf,
+und der Compositor ueberlebt. Es kommt nur nichts an.
+
+Gefangen von:
+  * Abschnitt 5, "nach dem Fokuswechsel ist das Alter ZURUECKGESETZT"
+  * Abschnitt 6, "bei echtem Vollbild meldet Zustand() true"
+  * Abschnitt 6, "an BEIDEN Zeitpunkten ist eine frische Meldung angekommen"
+  * Abschnitt 7, "im Messfenster des Prueflings steht 'Too many arguments'
+    NICHT" -- und zwar mit der Positivkontrolle daneben, die zeigt, dass der
+    Verifizierer diese Zeile ueberhaupt sehen wuerde.
+
+NICHT gefangen von den Positivkontrollen in 5 und 6 (die Referenzsonde sieht
+den Fokuswechsel und das Vollbildfenster einwandfrei) -- und das ist der
+Punkt: erst dadurch ist "es kam nichts an" von "es gab gar keinen Reiz" zu
+unterscheiden.

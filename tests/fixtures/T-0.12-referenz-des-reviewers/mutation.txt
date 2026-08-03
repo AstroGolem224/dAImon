@@ -1,0 +1,16 @@
+KEIN MUTANT, KEIN GUT-MUSTER, KEIN LIEFERGEGENSTAND.
+
+Dieser Baum ist die minimal korrekte Umsetzung des Fokus-Watchers,
+geschrieben vom Reviewer, blind gegen dieselbe Akzeptanzliste wie die echte
+Implementierung. Er hat genau einen Zweck: zu zeigen, dass
+tests/verify/T-0.12.sh gruen werden KANN. Ein Verifizierer, der das nicht
+kann, meldet jeden Mutanten als "erkannt", ohne dessen Mutation je gemessen
+zu haben -- das ist Fall 12 in HANDOVER.md und war bei T-2.7 real.
+
+Er liegt bewusst NICHT unter tests/fixtures/known-good/: das Gut-Muster fuer
+meta.sh entsteht erst aus dem abgenommenen Stand der echten Implementierung.
+
+OFFENGELEGT: der Feldname `fullscreen` stammt nicht aus dem Quelltext des
+Hubs, sondern aus einer schwarzkastigen Messung am laufenden Dienst (Event
+mit Kandidatennamen schicken, Zustand() ablesen). Der Baum schickt mehrere
+Schreibweisen, damit die Gegenprobe nicht an einer Namenswahl haengt.

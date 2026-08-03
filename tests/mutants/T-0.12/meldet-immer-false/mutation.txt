@@ -1,0 +1,23 @@
+MUTANT: der Vollbildzustand wird behauptet statt gelesen.
+
+Das Script meldet vollstaendig und puenktlich: jeder Fokuswechsel erreicht
+den Hub, das Alter faellt, Titel, Klasse und Geometrie stimmen. Nur der
+Vollbildzustand ist eine Konstante -- immer `false`.
+
+DIESER MUTANT ZIELT AUF DIE BEQUEME FASSUNG DER POSITIVKONTROLLE. Ein
+Verifizierer, der sich mit "irgendetwas kam an" zufriedengibt -- Alter >= 0,
+Alter faellt --, ist bei ihm vollstaendig gruen. Ebenso einer, der Vollbild
+nur in EINER Richtung prueft, naemlich in der falschen: "nach dem Schliessen
+ist es wieder false" besteht er muehelos, weil er nie etwas anderes sagt.
+(Sein Spiegelbild, ein Watcher mit `fullscreen: true`, bestuende die
+Gegenrichtung ebenso muehelos. Deshalb prueft Abschnitt 6 beide.)
+
+Gefangen von:
+  * Abschnitt 6, "bei echtem Vollbild meldet Zustand() true"
+
+NICHT gefangen von Abschnitt 5 (dort kommt die Meldung korrekt an), nicht
+von der Gegenrichtung in Abschnitt 6, nicht von Abschnitt 7 (fuenf
+Argumente, kein "Too many arguments") und nicht von den Positivkontrollen
+der Referenzsonde. Er faellt an genau einer Stelle -- und dass er sonst
+ueberall gruen ist, ist der Beleg, dass die uebrigen Pruefungen den
+Vollbildzustand tatsaechlich nicht mitmessen.
