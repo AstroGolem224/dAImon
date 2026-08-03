@@ -8,8 +8,10 @@
     "warum": "16 kHz mono ist das Eingabeformat der ONNX-STT-Modelle und dasselbe, in dem der Ringpuffer aus T-3.3 mitschneidet. Wer in 48 kHz aufnimmt und resampelt, misst zusaetzlich den Resampler."
   },
   "normalisierung": {
-    "regel": "Vor dem WER-Vergleich beide Seiten: Kleinschreibung, Satzzeichen weg, Mehrfach-Leerraum zu einem, Umlaute BLEIBEN (kein ae/oe/ue), Zahlen stehen in den Referenztexten ausgeschrieben.",
-    "warum_zahlen_ausgeschrieben": "Ein Modell, das 'achtzehn' als '18' schreibt, ist nicht schlechter -- es waere aber in jeder Wortfehlerrate ein Fehler. Zahlen als Wort im Referenztext nehmen diese Unsicherheit heraus, statt sie in eine Sonderregel zu verschieben."
+    "regel": "Vor dem WER-Vergleich beide Seiten gleich: NFC, Kleinschreibung, Bindestriche GESCHLOSSEN (nicht zu Leerraum), restliche Satzzeichen zu Leerraum, Mehrfach-Leerraum zu einem, Umlaute BLEIBEN (kein ae/oe/ue), Zahlwoerter auf Ziffern.",
+    "warum_bindestrich_geschlossen": "Deutsche Komposita sind ein Wort. Ob 'Rueckkopplungssperren-Nachlauf' oder 'Rueckkopplungssperrennachlauf' geschrieben wird, ist Stil und keine Erkennungsleistung -- wer den Bindestrich zu Leerraum macht, zaehlt aus einem Wort zwei. Gemessen am 03.08.: kostete 2 Fehler in den Saetzen 07 und 13, also 1,0 Prozentpunkte.",
+    "warum_zahlwoerter_auf_ziffern": "Das Modell schreibt '20', die Referenz sagt 'zwanzig'. Ohne die Abbildung misst die WER Rechtschreibung statt Erkennung -- gemessen: 16,0 auf 14,3 Prozent im synthetischen Lauf, und kein einziger dieser 'Fehler' war ein missverstandenes Wort.",
+    "warum_umlaute_bleiben": "Ein Modell, das 'Aenderung' statt 'Änderung' schreibt, hat das Wort verstanden, aber nicht die deutsche Rechtschreibung. Dieser Unterschied soll sichtbar bleiben, statt in der Normalisierung zu verschwinden."
   },
   "auswahl": {
     "warum_diese_saetze": "Drei Anforderungen gleichzeitig: (1) deutsche Lautschwierigkeiten, an denen Modelle real scheitern -- ch/sch, sz, Umlaute, Konsonantenhaeufungen, Komposita; (2) das Vokabular, das dieses Pet WIRKLICH hoert: Build, Commit, Test, Branch, Rust, Python -- englische Lehnwoerter in deutschen Saetzen sind der haeufigste Fall und der schwerste; (3) Laengen von zwei bis zwoelf Sekunden, weil das Kriterium eine 5-Sekunden-Aeusserung nennt und ein Modell mit der Laenge anders faellt.",
