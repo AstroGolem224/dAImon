@@ -13,10 +13,10 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 | **Gate P0** | 11 von 11 grün — **aber `T-0.12` war davon ein hohles Grün**, siehe unten. Seit T-0.12.v2 belegt |
 | **Gate P1** | **ROT nur noch wegen `T-1.10`** — und dessen Messfenster ist unbrauchbar, siehe unten. `T-1.7` seit v5 grün (95 Prüfungen) |
 | **Gate P2** | **GRÜN** (02.08.): `T-2.4` 17, `T-2.5` 40, `T-1.5` 25 — Idle-CPU **0,000 %**. `verify-frozen` zählte damals 12, heute 20 |
-| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2:** T-0.12.v2 eingefroren, **T-3.7** committet und live belegt, **T-3.9 fertig und EINGEFROREN** (211 Prüfungen 0 rot, 5 von 5 Mutanten, Reboot-Messung bestanden). Offen: T-3.8, 3.10–3.13b, 3.14–3.15 |
+| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2:** T-0.12.v2 eingefroren, **T-3.7** committet und live belegt, **T-3.9 und T-3.8 fertig und EINGEFROREN** — T-3.9 mit 211 Prüfungen, T-3.8 mit 177, beide 0 rot und je 5 von 5 Mutanten. Offen: 3.10–3.13b, 3.14–3.15 |
 | **Phase 2** | **abgeschlossen.** T-2.1 bis T-2.5 und T-2.7 stehen und sind eingefroren. T-2.6 optional, entfällt |
 
-**Einundzwanzig Einträge in `FROZEN`**: 18 Verifizierer + 3 Harness-Dateien. `T-3.9` kam am 03.08. dazu, nachdem der Wanduhrzweig der Abkühlung gemessen war.
+**Zweiundzwanzig Einträge in `FROZEN`**: 19 Verifizierer + 3 Harness-Dateien. `T-3.9` und `T-3.8` kamen am 03.08. dazu.
 **`FROZEN` deckt seit T-1.1.v2 auch die Harness ab** — `pixelprobe.py`,
 `vollbildfenster.py`, `moodprobe.py`. `freeze.sh` **liest** die Abhängigkeiten aus dem
 Skript, statt eine Liste zu pflegen, die veraltet.
@@ -99,6 +99,29 @@ Skript, statt eine Liste zu pflegen, die veraltet.
 > nicht. Ein Verifizierer, der die Implementierung kennt, prüft, was sie tut, und nicht,
 > was sie versprochen hat. Wer den Auftrag schreibt: **Lesen ausdrücklich verbieten**, nicht
 > nur Schreiben.
+
+> **T-3.8 ist der erste echte Blindtreffer dieses Projekts: 174 von 177 beim
+> ersten Lauf.** Zum Vergleich T-3.9 am selben Tag: 17 rot. Der Unterschied war
+> nicht mehr Sorgfalt, sondern **zwei Verfahrensänderungen**, und beide gehören in
+> jeden künftigen `.v`-Task:
+>
+> 1. **Der Reviewer-Auftrag ging ZUERST raus.** Die Implementierung existierte
+>    nicht, als der Prüfstand entstand — es gab also nichts zu lesen. Bei T-3.9
+>    war der Code schon committet, und damit war nicht auszuschließen, dass die
+>    Prüfung um ihn herum gebaut wurde.
+> 2. **Das Protokoll stand im PLAN, nicht im Code.** Socketpfad, `art`-Werte,
+>    Feldnamen, Absagegründe, Konfigurationsschlüssel — alles vorher festgelegt
+>    und für beide Seiten bindend (`§2` des Plandokuments). Bei T-3.9 musste der
+>    Prüfstand das Protokoll **entdecken** und brauchte Kandidatenlisten. **Blind
+>    heißt nicht raten.** Wer den nächsten Auftrag schreibt: erst den Vertrag,
+>    dann die zwei Aufträge.
+>
+> Die drei roten waren: zwei echte Defekte von mir (siehe Fälle 22 und 23 unten)
+> und eine **Lücke in meinem eigenen Plan** — `§2` sagte nicht, was `modell` bei
+> fehlendem Modellverzeichnis heißt. Der Prüfstand verlangte den kanonischen
+> Namen, mein Dienst meldete den konfigurierten. Das konnte keine Implementierung
+> erfüllen; präzisiert ist es jetzt im Plandokument, und der Prüfstand vergleicht
+> gegen den konfigurierten Namen.
 
 **Quelle der Planungsdokumente ist `/home/itiger013/Dokumente/UMBRA-Notes/DDs/dAImon/`,
 `docs/` ist die Kopie. Beide pflegen.**
@@ -227,6 +250,9 @@ mindestens einen Mutanten.
 | 19 | `voice.tts_active` | Stand seit Beginn im Zustandsschnappschuss und hatte **keinen Setter** — behauptete also wochenlang „es spricht nichts“, ohne dass das gemessen wurde. Ein Feld, das nur gelesen werden kann, ist eine Zusage ohne Messpunkt. Setter kam mit T-3.9 |
 | 20 | T-3.9, synchrone Antwort | `sprich()` gab erst zurück, wenn die Äußerung **fertig gesprochen** war. Damit war „unterbrechbar" (Kriterium 4) praktisch unerreichbar, und weil die Abkühlung am Ende vermerkt wurde, war die Folgeäußerung garantiert eine Absage — die Unterbrechung war also gar nicht prüfbar, ohne die Abkühlung abzuschalten. Gefunden vom fremden Prüfstand, nicht von meinen eigenen Tests: die hatten den synchronen Vertrag mitkodiert |
 | 21 | T-3.9, Abkühlung dreimal falsch | Erst am **Ende** vermerkt (zwei schnelle Anfragen liefen beide durch), dann bei der **Freigabe** (ein Probelauf schaltete das Pet für die ganze Frist stumm und würgte die Entdeckungsphase des Prüfstands ab), schließlich bei **`beginnt`**. Drei Versuche, jeder einzeln gemessen — und die richtige Antwort war keiner der beiden naheliegenden |
+| 22 | T-3.8, fauler Import | Die **erste** Anfrage log über ihre eigene Latenz: `import numpy` stand faul in `wav_lesen()` und wurde beim ersten Aufruf bezahlt — **außerhalb** des gemessenen Fensters. Selbstauskunft 110,8 ms, Wanduhr des Aufrufers 226,6 ms; bei allen 20 folgenden Anfragen 0,6 ms Differenz. **Meine eigenen Tests konnten das nicht sehen — sie lesen dieselbe Selbstauskunft.** Gefunden hat es die Wanduhr-Gegenprobe des fremden Prüfstands |
+| 23 | T-3.8, Wartezeit an der Sperre | Dieselbe Wurzel wie 22, andere Stelle: die Zeit an der `threading.Lock` lag außerhalb von `latenz_ms`. Eine zweite gleichzeitige Anfrage meldete nur ihre Rechenzeit, obwohl der Aufrufer zusätzlich gewartet hatte. Jetzt getrennt gemeldet: `wartezeit_ms`, `latenz_ms`, `gesamt_ms` |
+| 24 | T-3.8, Fehler ohne Antwort | Eine leere oder abgeschnittene WAV-Datei lässt `wave.open` mit **`EOFError`** scheitern, nicht mit `wave.Error`. Gefangen wurde nur letzteres → der Bedienthread starb und der Aufrufer bekam **gar keine** Antwort. Das ist die schlechteste aller Absagen: von einem hängenden Dienst nicht zu unterscheiden. Dazu ein Nachzug: `f"{exc or type(exc).__name__}"` ist falsch, weil ein Ausnahmeobjekt immer truthy ist und `EOFError()` einen leeren Text hat |
 
 Dazu zwei Fälle, in denen ein **Mutant** nichts bewies: einmal enthielt die
 Fixture-Kopie ein gebautes `target/` der *unmutierten* Quelle, einmal brach das
@@ -317,6 +343,21 @@ bash in der C-Locale, und dann erzeugt `$'\u202e'` kein Bidi-Zeichen mehr**: der
 Angriffstext war keiner. BEL ist reines ASCII und blieb deshalb grün — die
 Fehlersignatur zeigte also genau auf die Nicht-ASCII-Fälle. Wer einen
 Verifizierer aus einem Skript startet, gibt die vollständige Umgebung mit.
+
+**`~@resources` tötet auch onnxruntime — und zwar NACH dem Laden.** Beim STT
+(T-3.8) steht „Modell geladen" im Journal, dann `status=31/SYS`: onnxruntime
+heftet seine Rechenthreads an Kerne (`sched_setaffinity`/`sched_setattr` liegen in
+`@resources`). **„Lädt" ist hier kein Beweis für „läuft".** Damit ist derselbe
+Filter zweimal an zwei verschiedenen Bibliotheken aufgefallen — beim TTS wegen
+PipeWire, beim STT wegen onnxruntime. Wer eine neue Unit härtet, lässt
+`@resources` weg und schreibt den Grund hinein.
+
+**Das Projekt-venv trug 365 MB Altlast.** `onnxruntime-gpu`, `onnx-asr` und `onnx`
+lagen dort aus der Zeit von T−1.2, obwohl **beide** Spikes ihr eigenes `venv-a`
+bauen und `T--1.2.sh` genau dort sucht. Entfernt: 517 → 152 MB. Der Fund kam vom
+Prüfstand, nicht von mir — er wollte belegen, dass der Dienst-Interpreter
+CPU-rein ist, und fand das Gegenteil. Wer eine Abhängigkeit für einen Spike
+installiert, installiert sie ins Spike-venv.
 
 **`SystemCallFilter=~@resources` tötet jeden PipeWire-Client.** Der TTS-Dienst starb mit
 `status=31/SYS`, und zwar **beide** Prozesse (`pw-cat` und der Python-Prozess, SIGSYS in
@@ -498,6 +539,21 @@ sieht — zwei Sanitizer in Python und Rust wären auseinandergedriftet.
   nur ein API-Kontingent erteilt. Heute wirkungslos, aber es *behauptet* eine
   Fähigkeit. Kommentar steht an der Tabelle in `ipc.py`. Wer den Ears-Agenten baut,
   entscheidet mit.
+- **T-3.8 ist eingefroren, und die WER-Grundlinie gilt für EINE Stimme.**
+  5,17 % deutsch, 0,0 % englisch — gemessen an 21 Aufnahmen, eigenes Mikrofon,
+  ruhiger Raum, Nahbesprechung, vorgelesene Sätze. `herkunft.json` nennt die vier
+  Dinge, die damit **nicht** belegt sind: fremde Stimmen, Nebengeräusche,
+  Entfernung, Spontansprache (mit Äh und Abbruch). Wer den Ohren-Dienst baut,
+  wird genau dort andere Zahlen sehen — und sollte die Grundlinie dann erweitern
+  statt die Schwelle zu senken.
+  Mitgefroren sind außerdem: der Betriebsbereich **8–48 kHz** für die Samplerate
+  (darunter und darüber `format_falsch`), und dass `modell` den **konfigurierten**
+  Verzeichnisnamen meldet und nicht einen fest verdrahteten.
+- **Das STT-Modell liegt noch im Spike-Verzeichnis**, wie die TTS-Stimme.
+  `spikes/stt-referenz/models/…` (665 MB, nicht im Repo, `modell_holen.sh` holt
+  es). Beides gehört nach `~/.local/share/daimon/`, sobald **T-3.10** den
+  Persona-Lader baut — dann kommt auch `persona.voice` aus der Persona-Datei
+  statt aus `daimon.toml`.
 - **T-3.9 ist eingefroren, mit zwei ausdrücklich mitgefrorenen Zusagen.** (a) Eine
   **Unterbrechung umgeht die Abkühlung** — wörtlich eine Ausnahme von Kriterium 8,
   nötig um es mit Kriterium 4 zu vereinbaren, steht samt Gegenprobe in Design §8.3
