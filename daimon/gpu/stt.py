@@ -93,6 +93,13 @@ DATEIEN = ("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx",
 GRUENDE = frozenset({"unlesbar", "unbekannte_art", "datei_fehlt",
                      "format_falsch", "modell_fehlt"})
 
+# Betriebsbereich der Samplerate. sherpa resampelt selbst, deshalb ist eine
+# abweichende Rate kein Fehler -- aber "jede Rate" war zu weit: ein syntaktisch
+# gueltiges WAV mit 1 Hz oder 10 MHz waere durchgelaufen und haette eine Zusage
+# ergeben, die nichts bedeutet. 8 kHz ist Telefonqualitaet, 48 kHz die uebliche
+# Obergrenze am Schreibtisch. Befund von codex beim Gegenlesen.
+RATE_MIN, RATE_MAX = 8000, 48000
+
 
 def modell_pruefen(modell_dir: str) -> str:
     """Fehlt eine der vier Dateien, sagt die Meldung WELCHE."""
@@ -130,9 +137,22 @@ def wav_lesen(pfad: str) -> tuple[object, int, float]:
                 raise WavFehler(
                     f"erwartet 16 bit mono, ist {breite * 8} bit / "
                     f"{kanaele} Kanal")
+            if not RATE_MIN <= rate <= RATE_MAX:
+                raise WavFehler(
+                    f"Samplerate {rate} Hz liegt ausserhalb von "
+                    f"{RATE_MIN}..{RATE_MAX} Hz")
             rohdaten = w.readframes(rahmen)
-    except wave.Error as exc:
-        raise WavFehler(f"kein lesbares WAV: {exc}") from exc
+    # EOFError gehoert dazu: eine 0-Byte- oder abgeschnittene Datei laesst
+    # `wave.open` mit EOFError scheitern, nicht mit `wave.Error`. Ohne diesen
+    # Fang starb der Bedienthread und der Aufrufer bekam gar keine Antwort --
+    # also die schlechteste aller Absagen. Befund von codex beim Gegenlesen,
+    # nachgestellt mit 0 und 4 Byte.
+    except (wave.Error, EOFError) as exc:
+        # `str(exc)` und nicht `exc`: ein Ausnahmeobjekt ist immer truthy,
+        # und `EOFError()` hat einen LEEREN Text -- die Meldung haette dann
+        # nur "kein lesbares WAV: " gesagt.
+        raise WavFehler(
+            f"kein lesbares WAV: {str(exc) or type(exc).__name__}") from exc
     samples = np.frombuffer(rohdaten, dtype="<i2").astype("float32") / 32768.0
     return (samples, rate, len(samples) / rate if rate else 0.0)
 
@@ -173,7 +193,38 @@ class Erkenner:
             return
         import sherpa_onnx
         t0 = time.monotonic()
-        self._erkenner = sherpa_onnx.OfflineRecognizer.from_transducer(
+        try:
+            self._erkenner = self._bauen(sherpa_onnx)
+        except Exception as exc:      # noqa: BLE001 -- siehe Begruendung
+            # Der VIERTE Modellfall, und er ist der einzige, den man nicht
+            # vorher sehen kann: die vier Dateien sind da, sind nichtleer, und
+            # trotzdem unbrauchbar -- abgeschnitten, beschaedigt, aus einer
+            # anderen Modellfamilie. `from_transducer` wirft dann, und ohne
+            # diesen Fang stirbt der Dienst beim Start: der Aufrufer bekaeme
+            # eine geschlossene Verbindung ohne Grund.
+            #
+            # Absichtlich `Exception` und nicht eine Liste: was eine
+            # C++-Bindung wirft, ist nicht Teil ihrer Zusage, und eine zu enge
+            # Liste laesst genau den unbekannten Fall durch, um den es hier
+            # geht. Eine ONNX-Vorvalidierung waere die Alternative -- also
+            # doppelte und schwaechere Logik als der echte Ladevorgang.
+            self.absage = f"Modell nicht ladbar: {str(exc)[:300]}"
+            self.log.error("Modell nicht ladbar -- der Dienst laeuft und sagt ab",
+                           DAIMON_ACTION="stt_absage",
+                           DAIMON_GRUND="modell_fehlt",
+                           DAIMON_MELDUNG=str(exc)[:150])
+            return
+        self.ladezeit_ms = round((time.monotonic() - t0) * 1000, 2)
+        self.geladen = True
+        self.log.info("Modell geladen", DAIMON_ACTION="stt_laden",
+                      DAIMON_MODELL=os.path.basename(self.modell_dir),
+                      DAIMON_LADEZEIT_MS=self.ladezeit_ms,
+                      DAIMON_THREADS=self.threads)
+
+    def _bauen(self, sherpa_onnx):
+        """Der eigentliche Ladevorgang -- getrennt, damit `laden()` den Fehler
+        in eine Absage verwandeln kann, statt ihn nach oben durchzulassen."""
+        return sherpa_onnx.OfflineRecognizer.from_transducer(
             encoder=os.path.join(self.modell_dir, "encoder.int8.onnx"),
             decoder=os.path.join(self.modell_dir, "decoder.int8.onnx"),
             joiner=os.path.join(self.modell_dir, "joiner.int8.onnx"),
@@ -186,12 +237,6 @@ class Erkenner:
             provider="cpu",
             model_type="nemo_transducer",
         )
-        self.ladezeit_ms = round((time.monotonic() - t0) * 1000, 2)
-        self.geladen = True
-        self.log.info("Modell geladen", DAIMON_ACTION="stt_laden",
-                      DAIMON_MODELL=os.path.basename(self.modell_dir),
-                      DAIMON_LADEZEIT_MS=self.ladezeit_ms,
-                      DAIMON_THREADS=self.threads)
 
     # -- Erkennen ----------------------------------------------------------
 
@@ -225,8 +270,16 @@ class Erkenner:
         # Stroeme, aber die Latenzzusage gilt fuer den sequentiellen Fall. Die
         # Sperre macht die Messung ehrlich, statt zwei Anfragen um dieselben
         # acht Threads streiten zu lassen.
+        # Die Wartezeit auf die Sperre wird MITGEMESSEN und getrennt gemeldet.
+        # Vorher lag sie ausserhalb: eine zweite gleichzeitige Anfrage meldete
+        # nur ihre Rechenzeit, obwohl der Aufrufer zusaetzlich gewartet hatte --
+        # dieselbe Sorte Messfehler wie der faule numpy-Import, und derselbe
+        # Grund, warum eine Selbstauskunft ohne Gegenuhr nichts belegt. Befund
+        # von codex beim Gegenlesen.
+        t_warten = time.monotonic()
         with self._lock:
             t0 = time.monotonic()
+            wartezeit_ms = round((t0 - t_warten) * 1000, 2)
             strom = self._erkenner.create_stream()
             strom.accept_waveform(rate, samples)
             self._erkenner.decode_stream(strom)
@@ -237,10 +290,16 @@ class Erkenner:
         text = strom.result.text.strip()
         self.log.info("Transkribiert", DAIMON_ACTION="stt_text",
                       DAIMON_LATENZ_MS=latenz_ms,
+                      DAIMON_WARTEZEIT_MS=wartezeit_ms,
                       DAIMON_AUDIO_S=round(dauer_s, 2),
                       DAIMON_ZEICHEN=len(text), DAIMON_RATE=rate)
         return {"v": 1, "ok": True, "text": text,
                 "audio_s": round(dauer_s, 2), "latenz_ms": latenz_ms,
+                # `wartezeit_ms` ist die Zeit an der Sperre, `gesamt_ms` die
+                # Summe. Der Aufrufer soll den Unterschied sehen koennen, statt
+                # ihn in seiner Wanduhr zu suchen.
+                "wartezeit_ms": wartezeit_ms,
+                "gesamt_ms": round(wartezeit_ms + latenz_ms, 2),
                 "rate": rate, **self.kennung()}
 
     def zustand(self) -> dict:
