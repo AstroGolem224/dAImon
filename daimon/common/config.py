@@ -43,6 +43,20 @@ VORGABEN: dict[str, Any] = {
         # selbst (20 s) ist keine Einstellung -- siehe daimon/ears/ring.py.
         "ring": {"vorlauf_s": 1.25},
     },
+    # T-3.7: das GPU-Gate. `sperrfrist_s` ist die Frist, nach der eine
+    # Ladesperre von selbst verfaellt -- sie faengt einen beim Laden
+    # gestorbenen Worker ab und darf deshalb nicht knapp am Kaltstart liegen.
+    # `reserve_mib` bleibt nach dem Laden frei; ohne Reserve gaebe die Pruefung
+    # genau dann gruen, wenn danach nichts mehr uebrig ist. `ladedauer_s` ist
+    # der Platzhalter-Ladevorgang und faellt mit T-3.8 weg.
+    # `modelle.<name>` ist der VERMUTETE Bedarf in MiB, keine Messung.
+    "gpu": {
+        "sperrfrist_s": 120.0,
+        "reserve_mib": 1024,
+        "idle_s": 60.0,
+        "ladedauer_s": 0.5,
+        "modelle": {"stt": 2600},
+    },
     "face": {
         "poll_ms": 250,
         "palette": {"idle": "#3a2418", "active": "#ff6b1a", "alert": "#ffd24a"},

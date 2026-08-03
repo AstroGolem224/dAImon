@@ -1,0 +1,122 @@
+{
+  "task": "T-3.7",
+  "was": "Live-Nachweis am laufenden System: installierte Units, laufender Hub, echtes nvidia-smi, echtes busctl. Keine Stubs.",
+  "vorbehalte": [
+    "Die VRAM-Rueckgabe ist HIER NICHT BELEGT. Der Platzhalter alloziert nichts (`time.sleep`), also messen 30320 MiB vorher und 30310 MiB nachher dieselbe unbelastete Karte. Die +-50-MiB-Zusage aus dem Plan wird erst mit T-3.8 pruefbar, wenn wirklich ein Modell laedt. Was hier belegt ist: der Hub liest eine echte Zahl (30320 MiB, keine Attrappe) und rechnet die Reserve dagegen.",
+    "Die Absage `fullscreen` ist live nicht ausgeloest -- dafuer muesste ein Vollbildfenster vorn liegen. Belegt ist, dass der Hub eine echte, lesbare Antwort vom Fokus-Dienst bekommt (`fullscreen_bekannt: true`), nicht die stille Nachsicht bei totem Dienst.",
+    "Die Absage `vram` ist live nicht ausgeloest -- dafuer muesste die Karte vollgelaufen sein. Nur in den Unittests belegt (Stub-nvidia-smi).",
+    "T-3.7.v (der Verifizierer) ist nach Anhang E zurueckgestellt. Diese Datei ist eine Messung, KEIN Messmittel: sie prueft nichts selbst, sie schreibt auf, was gemessen wurde."
+  ],
+  "gemessen_am": "2026-08-03T10:55:03+0200",
+  "schritte": {
+    "0_ausgangslage": {
+      "vram_frei_mib": {
+        "median": 30320,
+        "min": 30320,
+        "max": 30320,
+        "n": 5
+      },
+      "worker_aktiv": "inactive",
+      "socket_aktiv": "inactive",
+      "hub_aktiv": "active",
+      "focus_aktiv": "active",
+      "worker_socket_existiert": false
+    },
+    "1_serialisierung": {
+      "antworten": [
+        {
+          "nr": 1,
+          "antwort": {
+            "v": 1,
+            "ok": true,
+            "sperre": "a6db33d4670b8763812107aafb2ddf99",
+            "frist_s": 120.0,
+            "frei_mib": 30320,
+            "noetig_mib": 100,
+            "reserve_mib": 1024,
+            "fullscreen_bekannt": true
+          },
+          "dauer_ms": 23.004
+        },
+        {
+          "nr": 2,
+          "antwort": {
+            "v": 1,
+            "ok": false,
+            "grund": "lade_sperre",
+            "rest_s": 119.977
+          },
+          "dauer_ms": 22.972
+        }
+      ],
+      "genau_einer_gruen": true,
+      "grund_des_zweiten": "lade_sperre",
+      "freigabe": {
+        "v": 1,
+        "ok": true
+      },
+      "fremde_marke": {
+        "v": 1,
+        "ok": false,
+        "grund": "fremde_sperre"
+      }
+    },
+    "2_socket_aktivierung": {
+      "dienst_vor_der_verbindung": "inactive",
+      "dienst_nach_der_verbindung": "active",
+      "antwort": {
+        "v": 1,
+        "ok": true,
+        "modell": "stt",
+        "geladen": true,
+        "kaltstart_ms": 570.0,
+        "vram_mib": 2600,
+        "leerlauf_s": 60.0,
+        "anfragen": 1,
+        "pid": 271763
+      },
+      "kaltstart_vom_client_gemessen_ms": 569.36,
+      "main_pid": "271763",
+      "vram_frei_mib_waehrend": {
+        "median": 30324,
+        "min": 30324,
+        "max": 30324,
+        "n": 3
+      }
+    },
+    "3_leerlauf": {
+      "leerlauf_s_konfiguriert": 60.0,
+      "prozess_weg_nach_s": 60.2,
+      "dienst_zustand": "inactive",
+      "letzter_exitcode": "0",
+      "socket_lebt_weiter": "active",
+      "vram_frei_mib_danach": {
+        "median": 30310,
+        "min": 30306,
+        "max": 30310,
+        "n": 5
+      }
+    },
+    "4_wiederkommen": {
+      "antwort": {
+        "v": 1,
+        "ok": true,
+        "modell": "stt",
+        "geladen": true,
+        "kaltstart_ms": 570.0,
+        "vram_mib": 2600,
+        "leerlauf_s": 60.0,
+        "anfragen": 1,
+        "pid": 272030
+      },
+      "dauer_ms": 568.396,
+      "dienst": "active",
+      "neue_pid": "272030"
+    },
+    "5_fokus": {
+      "busctl_rc": 0,
+      "busctl_stdout": "{\"type\":\"bd\",\"data\":[false,1.669837450981140136719e+01]}",
+      "hinweis": "Die Absage 'fullscreen' ist live NICHT ausgeloest -- dafuer muesste ein Vollbildfenster vorn liegen. Belegt ist hier nur, dass der Hub eine echte, lesbare Antwort vom Fokus-Dienst bekommt; die Absage selbst haengt an den Unittests."
+    }
+  }
+}

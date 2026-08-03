@@ -40,6 +40,7 @@ from pathlib import Path
 
 from daimon.auth.preview import wert_saeubern
 from daimon.common import ipc
+from daimon.gpu import worker as gpu
 from daimon.common.config import Config, load as load_config
 from daimon.common.logging import Logger, get_logger
 from daimon.common.protocol import Event, ProtocolError
@@ -51,6 +52,7 @@ from daimon.hub.state import HubState
 STATE_SOCKET = "state.sock"
 DIAG_SOCKET = "diag.sock"
 EVENTS_SOCKET = "events.sock"
+GPU_SOCKET = "gpu.sock"
 MAX_ZEILE = 1 << 20  # 1 MiB. Eine Hook-Nutzlast ist Kilobytes gross.
 
 # Wie oft der Push-Endpunkt nachsieht, ob sich `rev` bewegt hat. 50 ms deckelt
@@ -67,6 +69,26 @@ PR_SET_DUMPABLE = 4
 WAHRNEHMUNG_ZIELE = frozenset({"ears", "eyes"})
 # Ein haengendes `systemctl` darf den Produzenten-Thread nicht festhalten.
 SYSTEMCTL_TIMEOUT_S = 10.0
+
+# T-3.7: die drei Absagegruende des GPU-Gates. Maschinenlesbar getrennt, nie
+# ein gemeinsames `error: true` -- T-3.14 macht daraus Overlay-Zustaende, und
+# "zu wenig VRAM" braucht dort eine andere Anzeige als "der Nutzer spielt".
+GPU_GRUENDE = frozenset({"vram", "fullscreen", "lade_sperre"})
+# Frist, nach der eine Ladesperre VON SELBST verfaellt. Fail-safe ist hier
+# oeffnen, nicht sperren: ein beim Laden gestorbener Worker darf nicht jeden
+# weiteren Ladevorgang dauerhaft blockieren. Der Schaden einer verlorenen
+# Sperre ist eine gleichzeitige Ladung; der Schaden einer ewigen Sperre ist ein
+# totes Sprachsystem. 120 s ist grosszuegig gegen den gemessenen Kaltstart aus
+# T−1.2 (293--419 ms fuer whisper-base) -- die Frist soll ein HAENGEN abfangen,
+# nicht ein langsames Laden abschneiden.
+GPU_FRIST_S = 120.0
+# Soviel VRAM bleibt nach dem Laden frei. Ohne Reserve gaebe die Pruefung genau
+# dann gruen, wenn danach nichts mehr uebrig ist -- und der naechste, der
+# nachfordert, ist der Compositor.
+GPU_RESERVE_MIB = 1024
+# Der GPU-Endpunkt liest, anders als state.sock und diag.sock. Ein Client, der
+# verbindet und schweigt, darf den Horcher nicht festhalten.
+GPU_LESE_TIMEOUT_S = 5.0
 
 
 def _dumpbarkeit_abschalten() -> None:
@@ -95,6 +117,14 @@ class Hub:
         # bestaetigt wird hier.
         self.marken = MarkenBuch(log=self.log)
         self.freigaben = FreigabeBuch(log=self.log)
+        # T-3.7: die Ladesperre. Hoechstens ein Ladevorgang gleichzeitig, und
+        # zwar HIER, weil ein Worker nur sich selbst kennt. `_gpu_sperre` ist
+        # (Marke, Ablauf in monotoner Zeit) -- monoton, weil eine
+        # NTP-Korrektur keine Sperre aufheben und keine erzeugen darf.
+        self._gpu_lock = threading.Lock()
+        self._gpu_sperre: tuple[str, float] | None = None
+        self.gpu_frist_s = float(self.cfg.get("gpu.sperrfrist_s", GPU_FRIST_S))
+        self.gpu_reserve_mib = int(self.cfg.get("gpu.reserve_mib", GPU_RESERVE_MIB))
         self._server: list[socket.socket] = []
         self._threads: list[threading.Thread] = []
         self._stop = threading.Event()
@@ -281,11 +311,93 @@ class Hub:
             t.start()
             self._threads.append(t)
 
+    # -- GPU-Ladesperre (T-3.7) --------------------------------------------
+
+    def gpu_anfrage(self, anfrage: object) -> dict:
+        """Der ganze Torwaechter: Sperre, Fullscreen, VRAM -- in dieser Folge.
+
+        Warum alle drei hier und nicht im Worker: die VRAM-Pruefung ist nur
+        etwas wert, wenn sie UNTER der Sperre laeuft. Prueft ein Worker sein
+        VRAM, bevor er die Sperre hat, ist die Zahl veraltet, sobald sie gilt
+        -- der andere Ladevorgang belegt sein VRAM ja gerade waehrend man
+        wartet. Genau dieser Fall ist der Grund, warum die Sperre im Hub liegt.
+
+        Die Reihenfolge ist nach Kosten und nach Aussagekraft sortiert: die
+        Sperre ist lokal und kostet nichts, `busctl` kostet einen Rundlauf,
+        `nvidia-smi` einen Prozessstart. Und ein Ladevorgang, der ohnehin an
+        der Sperre scheitert, soll nicht zwei Unterprozesse kosten.
+        """
+        if not isinstance(anfrage, dict):
+            return {"v": 1, "ok": False, "grund": "unlesbar"}
+        art = anfrage.get("art")
+        if art == "fertig":
+            return self._gpu_freigeben(anfrage.get("sperre"))
+        if art != "laden":
+            return {"v": 1, "ok": False, "grund": "unbekannte_art"}
+
+        noetig = anfrage.get("vram_mib", 0)
+        noetig = int(noetig) if isinstance(noetig, int) else 0
+        with self._gpu_lock:
+            jetzt = time.monotonic()
+            if self._gpu_sperre is not None:
+                _, ablauf = self._gpu_sperre
+                if jetzt < ablauf:
+                    self.diag.verworfen("gpu_lade_sperre")
+                    return {"v": 1, "ok": False, "grund": "lade_sperre",
+                            "rest_s": round(ablauf - jetzt, 3)}
+                # Frist um: oeffnen. Nicht schweigend -- eine verfallene
+                # Sperre heisst, dass ein Worker beim Laden gestorben ist.
+                self.log.warn("GPU-Ladesperre verfallen -- geoeffnet",
+                              DAIMON_FRIST_S=self.gpu_frist_s)
+                self.diag.verworfen("gpu_sperre_verfallen")
+                self._gpu_sperre = None
+
+            voll = gpu.fullscreen_aktiv()
+            if voll is True:
+                self.diag.verworfen("gpu_fullscreen")
+                return {"v": 1, "ok": False, "grund": "fullscreen"}
+
+            frei = gpu.vram_frei_mib()
+            if frei is None or frei - noetig < self.gpu_reserve_mib:
+                self.diag.verworfen("gpu_vram")
+                return {"v": 1, "ok": False, "grund": "vram",
+                        "frei_mib": frei, "noetig_mib": noetig,
+                        "reserve_mib": self.gpu_reserve_mib}
+
+            marke = secrets.token_hex(16)
+            self._gpu_sperre = (marke, jetzt + self.gpu_frist_s)
+            self.log.info("GPU-Ladesperre erteilt", DAIMON_ACTION="gpu_laden",
+                          DAIMON_MODELL=str(anfrage.get("modell", "?"))[:40],
+                          DAIMON_FREI_MIB=frei, DAIMON_NOETIG_MIB=noetig)
+            return {"v": 1, "ok": True, "sperre": marke,
+                    "frist_s": self.gpu_frist_s, "frei_mib": frei,
+                    "noetig_mib": noetig, "reserve_mib": self.gpu_reserve_mib,
+                    # Sichtbar machen, dass bei totem Fokus-Dienst nachgesehen
+                    # wurde und die Antwort trotzdem gruen ist.
+                    "fullscreen_bekannt": voll is not None}
+
+    def _gpu_freigeben(self, marke: object) -> dict:
+        """Nur der Halter gibt frei. Sonst raeumt ein verspaeteter `fertig`-
+        Ruf eines toten Workers die Sperre des naechsten weg."""
+        with self._gpu_lock:
+            if self._gpu_sperre is not None and self._gpu_sperre[0] == marke:
+                self._gpu_sperre = None
+                return {"v": 1, "ok": True}
+            return {"v": 1, "ok": False, "grund": "fremde_sperre"}
+
     # -- State-Socket ------------------------------------------------------
 
-    def _horche_einfach(self, dateiname: str, liefere) -> None:
+    def _horche_einfach(self, dateiname: str, liefere, *,
+                        liest: bool = False) -> None:
         """Ein Socket, eine Zeile JSON, fertig. Fuer State und Diagnose --
-        beide sind lesend und brauchen kein Protokoll."""
+        beide sind lesend und brauchen kein Protokoll.
+
+        `liest=True` fuer den GPU-Endpunkt: eine Zeile rein, eine raus. Er ist
+        AUSDRUECKLICH kein Produzent (kein `ipc.PRODUZENTEN`-Eintrag, kein
+        Bus-Ereignis, keine Zustandsaenderung ausser der Ladesperre). Ein
+        Produzentensocket haette ihm eine Rolle im Ereignisprotokoll gegeben,
+        die er nicht braucht.
+        """
         pfad = self.runtime_dir / dateiname
         if pfad.exists():
             pfad.unlink()
@@ -304,7 +416,16 @@ class Hub:
                 break
             with conn:
                 try:
-                    conn.sendall(json.dumps(liefere()).encode() + b"\n")
+                    if liest:
+                        conn.settimeout(GPU_LESE_TIMEOUT_S)
+                        roh = conn.makefile("rb").readline(MAX_ZEILE)
+                        try:
+                            antwort = liefere(json.loads(roh))
+                        except (json.JSONDecodeError, ValueError):
+                            antwort = {"v": 1, "ok": False, "grund": "unlesbar"}
+                    else:
+                        antwort = liefere()
+                    conn.sendall(json.dumps(antwort).encode() + b"\n")
                 except OSError:
                     pass
 
@@ -372,6 +493,11 @@ class Hub:
                                  args=(datei, liefere), daemon=True)
             t.start()
             self._threads.append(t)
+        t = threading.Thread(target=self._horche_einfach,
+                             args=(GPU_SOCKET, self.gpu_anfrage),
+                             kwargs={"liest": True}, daemon=True)
+        t.start()
+        self._threads.append(t)
         t = threading.Thread(target=self._horche_push, daemon=True)
         t.start()
         self._threads.append(t)

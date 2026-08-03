@@ -47,6 +47,29 @@ nachlauf_s     = 0.5
 echo_fenster_s = 1.0
 echo_schwelle  = 0.7
 
+# T-3.7: das GPU-Gate. Die Ladesperre liegt im Hub, weil ein Worker nur sich
+# selbst kennt -- zwei gleichzeitig ladende Worker belegen beide ihr volles
+# VRAM, nachdem beide Pruefungen gruen waren.
+# `sperrfrist_s`: danach VERFAELLT die Sperre von selbst. Fail-safe ist hier
+#   oeffnen: der Schaden einer verlorenen Sperre ist eine gleichzeitige Ladung,
+#   der Schaden einer ewigen Sperre ist ein totes Sprachsystem. Wer die Frist
+#   auf 0 zieht, hat die Serialisierung abgeschaltet, nicht eingestellt.
+# `reserve_mib`: soviel VRAM bleibt nach dem Laden frei. Der naechste, der
+#   nachfordert, ist sonst der Compositor.
+# `idle_s`: Leerlauf bis zum PROZESSENDE des Workers -- nicht bis zum Entladen.
+# `ladedauer_s`: der Platzhalter-Ladevorgang aus T-3.7; T-3.8 ersetzt ihn.
+# `modelle.<name>`: vermuteter VRAM-Bedarf in MiB. Vermutet, nicht gemessen --
+#   der Platzhalter alloziert nichts. 2600 ist parakeet-tdt-0.6b-v3 (2,4 GB)
+#   mit Luft.
+[gpu]
+sperrfrist_s = 120.0
+reserve_mib  = 1024
+idle_s       = 60.0
+ladedauer_s  = 0.5
+
+[gpu.modelle]
+stt = 2600
+
 [face]
 poll_ms = 250
 
