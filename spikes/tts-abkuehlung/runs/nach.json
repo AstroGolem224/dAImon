@@ -1,0 +1,46 @@
+{
+  "phase": "nach",
+  "zeit": "2026-08-03T18:38:01+0200",
+  "ausfall_s": 239.8,
+  "boot_id_vor": "cd74b2dd-8b16-496b-a54d-e4ec09f94896",
+  "boot_id_nach": "9ab3b5a8-f2c1-40f7-ab19-d30c49e9de51",
+  "neuer_boot": true,
+  "ungefragt_antwort": {
+    "v": 1,
+    "ok": false,
+    "grund": "abkuehlung",
+    "rest_s": 86160.221,
+    "ersatz": ""
+  },
+  "rueckfrage_antwort": {
+    "v": 1,
+    "ok": true,
+    "text": "Tests laufen gruen.",
+    "marke": "daf1ad9552bd47b7b2ac19e4d561070e",
+    "kanal": "rueckfrage",
+    "frist_s": 30.0,
+    "unterbrechung": false,
+    "ersatz_freigabe": false,
+    "rest_s": 0.0
+  },
+  "erwarteter_rest_s": 86160.2,
+  "rest_passt_zur_wanduhr": true,
+  "ablage": {
+    "bis_mono": {
+      "rueckfrage": 22097.26111031,
+      "ungefragt": 108492.246762211
+    },
+    "bis_wand": {
+      "rueckfrage": 1785774846.3554566,
+      "ungefragt": 1785861241.3411086
+    },
+    "boot": "cd74b2dd-8b16-496b-a54d-e4ec09f94896",
+    "v": 2
+  },
+  "zusagen": {
+    "die_lange_frist_haelt_ueber_den_reboot": true,
+    "POSITIVKONTROLLE_kurze_frist_ist_frei": true,
+    "der_wanduhrzweig_wurde_wirklich_genommen": true,
+    "der_rest_stammt_aus_der_wanduhr": true
+  }
+}
