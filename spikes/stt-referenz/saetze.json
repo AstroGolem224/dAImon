@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "zweck": "Referenzaufnahmen fuer T-3.8 (STT). Sie legen die deutsche WER-Grundlinie fest, die T-1.2 offengelassen hat ('Keine belastbare WER ohne Satzreferenz') -- und sie sind das Pruefmaterial des Verifizierers.",
+  "aufnahme": {
+    "rate": 16000,
+    "kanaele": 1,
+    "format": "s16",
+    "warum": "16 kHz mono ist das Eingabeformat der ONNX-STT-Modelle und dasselbe, in dem der Ringpuffer aus T-3.3 mitschneidet. Wer in 48 kHz aufnimmt und resampelt, misst zusaetzlich den Resampler."
+  },
+  "normalisierung": {
+    "regel": "Vor dem WER-Vergleich beide Seiten: Kleinschreibung, Satzzeichen weg, Mehrfach-Leerraum zu einem, Umlaute BLEIBEN (kein ae/oe/ue), Zahlen stehen in den Referenztexten ausgeschrieben.",
+    "warum_zahlen_ausgeschrieben": "Ein Modell, das 'achtzehn' als '18' schreibt, ist nicht schlechter -- es waere aber in jeder Wortfehlerrate ein Fehler. Zahlen als Wort im Referenztext nehmen diese Unsicherheit heraus, statt sie in eine Sonderregel zu verschieben."
+  },
+  "auswahl": {
+    "warum_diese_saetze": "Drei Anforderungen gleichzeitig: (1) deutsche Lautschwierigkeiten, an denen Modelle real scheitern -- ch/sch, sz, Umlaute, Konsonantenhaeufungen, Komposita; (2) das Vokabular, das dieses Pet WIRKLICH hoert: Build, Commit, Test, Branch, Rust, Python -- englische Lehnwoerter in deutschen Saetzen sind der haeufigste Fall und der schwerste; (3) Laengen von zwei bis zwoelf Sekunden, weil das Kriterium eine 5-Sekunden-Aeusserung nennt und ein Modell mit der Laenge anders faellt.",
+    "zwei_englische": "Kriterium 'Deutsch und Englisch'. Zwei reine englische Saetze, damit die englische Seite nicht nur aus Lehnwoertern besteht.",
+    "stille": "Eine Aufnahme ohne Sprache. Sie ist die Positivkontrolle gegen Halluzination: whisper erfindet auf Stille gern Text ('Untertitel von...'), und ein STT, das auf Stille etwas ausgibt, ist im Betrieb schlimmer als eines, das schweigt."
+  },
+  "saetze": [
+    {"id": "01", "sprache": "de", "text": "Der Build ist durch, zwei Warnungen.", "prueft": "kurz, Lehnwort Build"},
+    {"id": "02", "sprache": "de", "text": "Kannst du mal nachsehen, warum die Tests seit dem letzten Commit rot sind?", "prueft": "Frage, mittellang, Commit"},
+    {"id": "03", "sprache": "de", "text": "Ich hätte gern eine Zusammenfassung der Änderungen im Branch.", "prueft": "Umlaute ä, Branch"},
+    {"id": "04", "sprache": "de", "text": "Die Schnittstelle zwischen Hub und Overlay spricht ausschließlich über Sockets.", "prueft": "sch dreifach, ß, Fachwort"},
+    {"id": "05", "sprache": "de", "text": "Um achtzehn Uhr dreißig läuft die Messung ab, dann brauche ich das Urteil.", "prueft": "Zahlen als Wort, ß"},
+    {"id": "06", "sprache": "de", "text": "Mach die Ohren aus, ich telefoniere.", "prueft": "sehr kurz, Befehl, echter Anwendungsfall"},
+    {"id": "07", "sprache": "de", "text": "Der Rückkopplungssperren-Nachlauf beträgt eine halbe Sekunde.", "prueft": "Kompositum, ü, Fachwort"},
+    {"id": "08", "sprache": "de", "text": "Wieso ist der Speicher der Grafikkarte nach dem Prozessende immer noch belegt?", "prueft": "lang, Frage, Komposita"},
+    {"id": "09", "sprache": "de", "text": "Schreib das bitte in die Übergabe, mit Begründung.", "prueft": "Ü am Wortanfang"},
+    {"id": "10", "sprache": "de", "text": "Zwölf von neunzehn Prüfungen sind grün, sieben stehen aus.", "prueft": "Zahlwörter, ö, ü"},
+    {"id": "11", "sprache": "de", "text": "Der Verifizierer misst die Latenz, nicht die Zustellung.", "prueft": "z-Haeufung, Projektbegriff"},
+    {"id": "12", "sprache": "de", "text": "Kannst du das Modell laden, oder hält gerade ein Spiel die Grafikkarte?", "prueft": "mittellang, ae und ue"},
+    {"id": "13", "sprache": "de", "text": "In Rust ist das ein Borrow-Checker-Fehler, in Python fällt es erst zur Laufzeit auf.", "prueft": "zwei Sprachen im Satz, Bindestrichbegriff"},
+    {"id": "14", "sprache": "de", "text": "Bitte nichts vorlesen, was auf dem Bildschirm steht.", "prueft": "kurz, Verneinung"},
+    {"id": "15", "sprache": "de", "text": "Die Abkühlung greift je Anlass, zwanzig Sekunden für ungefragte Äußerungen.", "prueft": "Äu, ü, Zahlwort, Fachbegriff"},
+    {"id": "16", "sprache": "de", "text": "Häng dich nicht an dem Zwischenstand auf, der Messwert kommt morgen.", "prueft": "ä, umgangssprachlich"},
+    {"id": "17", "sprache": "de", "text": "Sechs Sitzungen gleichzeitig, und jede will ihren eigenen Zustand haben.", "prueft": "ch, z, lang"},
+    {"id": "18", "sprache": "de", "text": "Das Overlay soll durchsichtig werden, nicht verschwinden.", "prueft": "durch/ver-Praefixe, Fachwort"},
+    {"id": "19", "sprache": "en", "text": "The build finished with two warnings and one skipped test.", "prueft": "englisch, kurz"},
+    {"id": "20", "sprache": "en", "text": "Please summarize the changes on this branch before I open a pull request.", "prueft": "englisch, mittellang"},
+    {"id": "21", "sprache": "stille", "text": "", "prueft": "Positivkontrolle gegen Halluzination: hier darf NICHTS erkannt werden. Etwa drei Sekunden Raumstille, nicht sprechen, nicht huesteln."}
+  ]
+}
