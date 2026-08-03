@@ -474,10 +474,14 @@ class Sprecher:
 
         Die Antwort geht raus, sobald die ersten Samples beim
         Wiedergabeprozess sind -- nicht am Ende der Wiedergabe. Wer bis zum
-        Ende wartet, kann nicht unterbrechen (Kriterium 4), und weil die
-        Abkuehlung am Ende vermerkt wird, waere die naechste Aeusserung
-        garantiert eine Absage. Beides ist am 03.08. beim Gegenlesen
-        aufgefallen.
+        Ende wartet, kann nicht unterbrechen (Kriterium 4). Am 03.08. beim
+        Gegenlesen aufgefallen.
+
+        Zur Abkuehlung: sie wird im Hub bei `beginnt` vermerkt und bei
+        `gesprochen` NEU gesetzt -- die Frist zaehlt damit ab dem letzten Ton,
+        greift aber schon ab dem ersten. Nur am Ende zu vermerken war der erste
+        Versuch und liess zwei schnelle Anfragen beide durch; die Begruendung
+        steht in `daimon/hub/daemon.py`.
         """
         gen = self.abbrechen()          # eine neue Aeusserung bricht die alte ab
         stuecke = segmente(satz)
@@ -559,8 +563,9 @@ class Sprecher:
                 if stand["ttfa_ms"] is not None:
                     # Auch nach einem Abbruch: sonst bleibt `tts_active` stehen
                     # und die Rueckkopplungssperre haelt das Mikrofon fuer immer
-                    # zu. Vermerkt wird die Abkuehlung damit am ENDE der
-                    # Aeusserung, nicht am Anfang.
+                    # zu. Der Hub setzt die Abkuehlungsfrist hier NEU, damit sie
+                    # ab dem letzten Ton zaehlt -- vermerkt hat er sie schon bei
+                    # `beginnt`.
                     hub_anfrage(self.hub_socket,
                                 {"v": 1, "art": "gesprochen", "marke": marke})
                 if stand["gesprochen"]:

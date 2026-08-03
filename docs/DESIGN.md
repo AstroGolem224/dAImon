@@ -1181,6 +1181,41 @@ Zwei Kanäle mit verschiedenen Regeln.
 
 Verletzt eine Antwort eine Regel, sagt das Pet, dass die Antwort auf dem Bildschirm steht, statt sie vorzulesen. **Der Validator sitzt im Hub**, nicht im Face — sonst wäre er umgehbar, sobald ein anderer Produzent Text an die Ausgabe schickt.
 
+> **Nachtrag vom 2026-08-03, nach dem Gegenlesen: zwei Ausnahmen von der
+> Abkühlung, beide gemessen und beide vom Prüfstand bewacht.** Kriterium 8
+> („Abkühlung je Anlass, persistiert") widersprach isoliert gelesen dem
+> Kriterium 4 („unterbrechbar"), und das ist eine Lücke der Akzeptanzliste,
+> nicht der Umsetzung.
+>
+> 1. **Eine Unterbrechung umgeht die Abkühlung.** Solange wirklich gesprochen
+>    wird (`voice.tts_active`), ist die nächste Äußerung eine Korrektur und kein
+>    zweites Geschwätz — ein Pet, das seinen eigenen laufenden Satz nicht
+>    abbrechen kann, ist genau das Ärgernis, das die Abkühlung verhindern soll.
+>    **Gegenprobe, im Verifizierer verankert:** nach dem Ende der unterbrechenden
+>    Äußerung greift die Frist wieder (`gesprochen` setzt sie ab dem letzten Ton
+>    neu). Eine Kette von Unterbrechungen ist damit ein einziger, immer wieder
+>    abgebrochener Satz — kein Umweg für zwei Äußerungen in Folge.
+> 2. **Der Ersatzsatz umgeht die Abkühlung und vermerkt keine.** Er ist die
+>    Antwort auf eine abgelehnte Äußerung (§8.3: „sagt das Pet, dass die Antwort
+>    auf dem Bildschirm steht"). Unterliegt er der Frist, sagt das Pet es beim
+>    ersten Mal und schweigt danach — gemessen: von zehn Angriffstexten wurde
+>    genau einer beantwortet. Schweigen ist von einem abgestürzten Dienst nicht
+>    zu unterscheiden, und damit wäre die Zusage aus §8.3 aufgehoben.
+>
+> **Die Frist beginnt bei `beginnt`, nicht bei `gesprochen`** — sonst laufen zwei
+> schnell aufeinanderfolgende Anfragen beide durch, weil die erste noch spricht
+> und daher nichts vermerkt ist. Und nicht bei der Freigabe: ein Probelauf, der
+> nie ausgesprochen wird, hätte das Pet für die ganze Frist stummgeschaltet.
+> Das Restfenster ist der TTFA (gemessen 40–150 ms); wer darin zweimal anfragt,
+> bekommt zweimal frei — und bei 100 ms Abstand ist Unterbrechen ohnehin die
+> richtige Antwort.
+>
+> **Offen, ausdrücklich unverifiziert:** die Abkühlung nimmt bei gleicher
+> Boot-ID die monotone Zeit und über einen Neustart hinweg die Wanduhr
+> (`/proc/sys/kernel/random/boot_id` steht in der Ablage). Der Wanduhrzweig ist
+> nur in Unittests belegt — über einen echten Reboot hat ihn niemand gemessen.
+
+
 Die Regelmenge ist von `openpets` übernommen (`packages/agent-events`, MIT, 23 Zeilen) und nach Python portiert.
 
 ### 8.4 Zustände
