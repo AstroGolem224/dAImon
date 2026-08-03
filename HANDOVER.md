@@ -1,4 +1,4 @@
-# Übergabe — Stand 2026-08-02
+# Übergabe — Stand 2026-08-03
 
 Alles, was nicht aus dem Repo hervorgeht. Die vorige Fassung ist über zwölf Tasks
 gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
@@ -10,16 +10,16 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 | | |
 |---|---|
 | **Gate P−1** | 8 von 9 grün. Rot nur `T--1.12` — Messung nicht gelaufen, korrekt so |
-| **Gate P0** | 11 von 11 grün |
+| **Gate P0** | 11 von 11 grün — **aber `T-0.12` war davon ein hohles Grün**, siehe unten. Seit T-0.12.v2 belegt |
 | **Gate P1** | **ROT nur noch wegen `T-1.10`** — und dessen Messfenster ist unbrauchbar, siehe unten. `T-1.7` seit v5 grün (95 Prüfungen) |
-| **Gate P2** | **GRÜN.** `verify-frozen` 12, `T-2.4` 17, `T-2.5` 40, `T-1.5` 25 — Idle-CPU **0,000 %** |
-| **Phase 3** | **Block 1 (Ohren) steht:** T-3.1 bis T-3.4, alle vier eingefroren. Offen: T-3.7–3.9, 3.10–3.13b, 3.14–3.15 |
+| **Gate P2** | **GRÜN** (02.08.): `T-2.4` 17, `T-2.5` 40, `T-1.5` 25 — Idle-CPU **0,000 %**. `verify-frozen` zählte damals 12, heute 20 |
+| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2 angefangen:** T-0.12.v2 eingefroren, T-3.7 gebaut aber **nicht committet**. Offen: T-3.8, T-3.9, 3.10–3.13b, 3.14–3.15 |
 | **Phase 2** | **abgeschlossen.** T-2.1 bis T-2.5 und T-2.7 stehen und sind eingefroren. T-2.6 optional, entfällt |
 
-**Neunzehn Einträge in `FROZEN`**: 16 Verifizierer + 3 Harness-Dateien.
-**`FROZEN` deckt seit T-1.1.v2 auch die Harness ab** — 15 Einträge: 12 Verifizierer
-plus `pixelprobe.py`, `vollbildfenster.py`, `moodprobe.py`. `freeze.sh` **liest** die
-Abhängigkeiten aus dem Skript, statt eine Liste zu pflegen, die veraltet.
+**Zwanzig Einträge in `FROZEN`**: 17 Verifizierer + 3 Harness-Dateien.
+**`FROZEN` deckt seit T-1.1.v2 auch die Harness ab** — `pixelprobe.py`,
+`vollbildfenster.py`, `moodprobe.py`. `freeze.sh` **liest** die Abhängigkeiten aus dem
+Skript, statt eine Liste zu pflegen, die veraltet.
 `pytest` grün mit 4 per `xfail(strict=True)` dokumentiert roten.
 `cargo test -p face` 74 von 74.
 
@@ -84,20 +84,24 @@ Abhängigkeiten aus dem Skript, statt eine Liste zu pflegen, die veraltet.
    `needs_input_events: 0`. Gemessen wurde ein System, das im Neustart-Karussell hing
    (Zähler 97, siehe `RuntimeDirectory` unten) und dreimal neu startete — nicht
    Normalbetrieb. Seit dem 02.08. laufen die Units stabil; ab da kann die Uhr
-   ehrlich laufen. Danach von Hand einzutragen: `fehlalarme`, `ablenkungen`,
-   `verdict` und `docs/phase1-verdict.md`.
+   ehrlich laufen.
    **Und:** `needs_input_events: 0` heißt, das Pet hat in drei Tagen keine einzige
    Rückfrage gesehen. Ohne die ist „stört nicht" keine Aussage — die Messung braucht
    echte Sitzungen, nicht nur Laufzeit.
+2. **20 deutsche Sätze einsprechen — T-3.8 hängt daran.** Es gibt auf dieser Maschine
+   **keine deutsche Referenzaufnahme mit Text**: `spikes/wakeword/samples/probe.wav`
+   enthält 16 Wiederholungen von „Embershard" ohne Satzreferenz, und T−1.2 endet mit
+   genau dieser Empfehlung. Ich lege Sätze und ein Aufnahmeskript bereit, du liest sie
+   einmal vor (~5 Minuten). Entschieden am 03.08.: **deine Stimme, dein Mikrofon, dein
+   Raum** — Piper-Synthese kommt zusätzlich als Regressionstest, nicht stattdessen.
+3. **`piper` installieren**, sonst bleibt T-3.9 blockiert:
+   ```bash
+   sudo pacman -S --needed piper-tts
+   ```
+
 Dazu, wenn es passt:
 
-2. **Gate P1 kann am 04.08. schließen.** Der Timer läuft und sammelt.
-   Vorher einzutragen — kein Programm kann das messen:
-   * `fehlalarme` und `ablenkungen` in `tests/evidence/phase1-usage.json`
-     (stehen auf `null`, und `null` heißt „noch niemand hat hingesehen")
-   * `verdict` (steht auf `pending`, was der Verifizierer ausdrücklich als **rot**
-     wertet) und `docs/phase1-verdict.md`
-3. **T−1.12** (NVIDIA-Sprachstack) ist weiterhin ungemessen. Werkzeug liegt unter
+4. **T−1.12** (NVIDIA-Sprachstack) ist weiterhin ungemessen. Werkzeug liegt unter
    `spikes/nvidia-voice/` samt `SPEC.md`. Nicht blockierend.
 
 ```bash
@@ -163,6 +167,7 @@ mindestens einen Mutanten.
 | 9 | T-1.8-Verifizierer | Beobachtete nur den vom Prüfling **selbst geführten** Zähler |
 | 10 | T-2.3-Verifizierer | Nahm den *ersten* ausgebliebenen Klick als Treffer — ohne vorher angekommenen |
 | 11 | T-2.4-Verifizierer | Suchte `attach(nil` — wayland-rs schreibt `attach(<anonymous>@0` |
+| 15 | T-0.12-Verifizierer | Prüfte, dass ein **verschachtelter** `kwin_wayland` mit aktiviertem Script **nicht stirbt** — und tolerierte ausdrücklich, wenn der Ladevorgang nicht im Protokoll stand. „Eine Meldung ist angekommen“ wurde nie geprüft. **Der Watcher war wochenlang tot, Gate P0 meldete 11 von 11.** Behoben in T-0.12.v2 |
 | 14 | `FROZEN` selbst | Deckte nur `tests/verify/*.sh` ab. Die eigentliche Messung steht in `tests/harness/*.py` — dort die Toleranz hochzudrehen hätte einen eingefrorenen Verifizierer aufgeweicht, **ohne dass `verify-frozen` etwas merkt**. Behoben in T-1.1.v2 |
 | 13 | T-1.7-Pixelprobe | Schwelle >20 000 Pixel, begründet mit „das Fenster wird breiter" — **es hat feste Breite**. Nie nachgemessen, also seit Wochen rot, ohne dass es jemand sah: `meta.sh` überspringt im Fixture-Modus **alle Live-Prüfungen** (47 statt 90), der Mutationstest deckt nur die Hälfte des Verifizierers ab |
 | 12 | T-2.7-Verifizierer | Positivkontrolle „Hub aus dem geprüften Baum" verglich `<baum>/daimon` mit `<baum>` — zwei `dirname` statt drei. **Konnte nie grün werden**, also jeder Lauf rot, also **jede Mutante „erkannt", ohne dass ihre Mutation je gemessen wurde** |
@@ -208,6 +213,39 @@ falls jemand am `PATH` vorbei aufruft.
 ## Fallen dieser Maschine
 
 Alles gemessen, nicht vermutet.
+
+**KWins `callDBus` nimmt höchstens 13 Argumente** — 4 Ziel plus **9 Nutzlast**. Darüber:
+`Too many arguments, ignoring N`, und die Meldung kommt beim Empfänger **nie** an. Am
+03.08. gemessen (nicht typabhängig, 11 Strings werden wie 11 gemischte Werte gekappt):
+
+```
+ 8 Nutzargumente (12 gesamt): durchgelassen
+ 9 Nutzargumente (13 gesamt): durchgelassen
+10 Nutzargumente (14 gesamt): GEKAPPT
+```
+
+Deshalb geht die Watcher-Nutzlast als **ein JSON-String** (Signatur `"s"`). Wer stattdessen
+Felder kürzt, verschiebt die Grenze nur — beim nächsten Feld steht sie wieder da.
+
+> Und eine Warnung zur Messung selbst: ein erster Versuch meldete „keine Beanstandung"
+> für alle Größen, weil nur nach `ignoring` gegrept wurde, ohne zu prüfen, ob die Skripte
+> **überhaupt liefen**. Erst `print()`-Marken zeigten, dass gar nichts ausgeführt wurde.
+
+**KWin lädt Scripts aus `kwinrc` selbsttätig nach.** Seit `[Plugins]
+daimon-watcherEnabled=true` gesetzt ist, holt **jedes `reconfigure`** den Watcher zurück —
+auch mitten in einem Verifiziererlauf, auch nach `unloadScript`. Gemessen:
+
+```
+vor  reconfigure:  Mutant true,  Bestand false
+nach reconfigure:  Mutant true,  Bestand TRUE
+```
+
+Wer einen Mutanten messen will, muss den Bestand **stilllegen** (Schlüssel auf `false` +
+`reconfigure`) und danach **nachkontrollieren**, dass er weggeblieben ist.
+
+**`bool("nein")` ist `True`.** Ein defensiver Parser, der `bool(wert)` nimmt, lässt einen
+Watcher mit falschem Feldtyp **Vollbild behaupten** — und das GPU-Gate hängt daran. Live
+aufgetreten. Richtig ist `wert is True`.
 
 **`mmap.mmap(-1, n)` nimmt in CPython `MAP_SHARED`** — und ein *shared* anonymes Mapping
 ist unter Linux tmpfs-gestützt: `rw-s`, echte Inode, Name `/dev/zero (deleted)`. Ein
