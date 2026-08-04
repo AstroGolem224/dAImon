@@ -13,10 +13,10 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 | **Gate P0** | 11 von 11 grün — **aber `T-0.12` war davon ein hohles Grün**, siehe unten. Seit T-0.12.v2 belegt |
 | **Gate P1** | **ROT nur noch wegen `T-1.10`** — und dessen Messfenster ist unbrauchbar, siehe unten. `T-1.7` seit v5 grün (95 Prüfungen) |
 | **Gate P2** | **GRÜN** (02.08.): `T-2.4` 17, `T-2.5` 40, `T-1.5` 25 — Idle-CPU **0,000 %**. `verify-frozen` zählte damals 12, heute 20 |
-| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2:** T-0.12.v2 eingefroren, **T-3.7** committet und live belegt, **T-3.9 und T-3.8 fertig und EINGEFROREN** — T-3.9 mit 211 Prüfungen, T-3.8 mit 177, beide 0 rot und je 5 von 5 Mutanten. Offen: 3.10–3.13b, 3.14–3.15 |
+| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2:** T-0.12.v2 eingefroren, **T-3.7** committet und live belegt, **T-3.9, T-3.8 und T-3.10 fertig und EINGEFROREN** — 211 / 177 / 91 Prüfungen, alle 0 rot, je 5 von 5 Mutanten. Offen: 3.11–3.13b, 3.14–3.15 |
 | **Phase 2** | **abgeschlossen.** T-2.1 bis T-2.5 und T-2.7 stehen und sind eingefroren. T-2.6 optional, entfällt |
 
-**Zweiundzwanzig Einträge in `FROZEN`**: 19 Verifizierer + 3 Harness-Dateien. `T-3.9` und `T-3.8` kamen am 03.08. dazu.
+**Dreiundzwanzig Einträge in `FROZEN`**: 20 Verifizierer + 3 Harness-Dateien. `T-3.9` und `T-3.8` kamen am 03.08. dazu, `T-3.10` am 04.08.
 **`FROZEN` deckt seit T-1.1.v2 auch die Harness ab** — `pixelprobe.py`,
 `vollbildfenster.py`, `moodprobe.py`. `freeze.sh` **liest** die Abhängigkeiten aus dem
 Skript, statt eine Liste zu pflegen, die veraltet.
@@ -122,6 +122,28 @@ Skript, statt eine Liste zu pflegen, die veraltet.
 > Namen, mein Dienst meldete den konfigurierten. Das konnte keine Implementierung
 > erfüllen; präzisiert ist es jetzt im Plandokument, und der Prüfstand vergleicht
 > gegen den konfigurierten Namen.
+
+> **Die Lernkurve des Blind-Verfahrens, in Zahlen.** Drei Tasks, dieselben zwei
+> Agenten, immer bessere Verträge:
+>
+> | Task | erster Blindlauf | woran die roten lagen |
+> |---|---|---|
+> | T-3.9 | 17 rot von 192 | Reviewer hatte den Code gelesen, Protokoll musste erraten werden |
+> | T-3.8 | 3 rot von 177 | zwei echte Defekte, eine Vertragslücke |
+> | T-3.10 | **1 rot von 91** | **nur** eine Vertragslücke |
+>
+> Was den Unterschied macht, ist nicht Sorgfalt, sondern **wo der Vertrag steht**.
+> Bei T-3.8 und T-3.10 lag er im Plandokument, bevor jemand baute: Socketpfade,
+> Feldnamen, `art`-Werte, API-Namen, Absagegründe, das Format des erzeugten
+> Prompts. Der Prüfstand musste nichts entdecken. **Und die verbleibenden roten
+> waren beide Male keine Defekte, sondern Stellen, an denen MEIN Vertrag stumm
+> war** — bei T-3.8 die Bedeutung von `modell` bei fehlendem Modell, bei T-3.10
+> welche Schlüssel `herkunft` trägt.
+>
+> **Die Regel für den nächsten `.v`-Task:** erst den Vertrag schreiben, dann den
+> Reviewer-Auftrag, dann bauen. Und wenn der Prüfstand etwas verlangt, was keine
+> Implementierung erfüllen kann, ist zuerst der Vertrag zu prüfen und nicht der
+> Prüfstand.
 
 **Quelle der Planungsdokumente ist `/home/itiger013/Dokumente/UMBRA-Notes/DDs/dAImon/`,
 `docs/` ist die Kopie. Beide pflegen.**
@@ -253,6 +275,7 @@ mindestens einen Mutanten.
 | 22 | T-3.8, fauler Import | Die **erste** Anfrage log über ihre eigene Latenz: `import numpy` stand faul in `wav_lesen()` und wurde beim ersten Aufruf bezahlt — **außerhalb** des gemessenen Fensters. Selbstauskunft 110,8 ms, Wanduhr des Aufrufers 226,6 ms; bei allen 20 folgenden Anfragen 0,6 ms Differenz. **Meine eigenen Tests konnten das nicht sehen — sie lesen dieselbe Selbstauskunft.** Gefunden hat es die Wanduhr-Gegenprobe des fremden Prüfstands |
 | 23 | T-3.8, Wartezeit an der Sperre | Dieselbe Wurzel wie 22, andere Stelle: die Zeit an der `threading.Lock` lag außerhalb von `latenz_ms`. Eine zweite gleichzeitige Anfrage meldete nur ihre Rechenzeit, obwohl der Aufrufer zusätzlich gewartet hatte. Jetzt getrennt gemeldet: `wartezeit_ms`, `latenz_ms`, `gesamt_ms` |
 | 24 | T-3.8, Fehler ohne Antwort | Eine leere oder abgeschnittene WAV-Datei lässt `wave.open` mit **`EOFError`** scheitern, nicht mit `wave.Error`. Gefangen wurde nur letzteres → der Bedienthread starb und der Aufrufer bekam **gar keine** Antwort. Das ist die schlechteste aller Absagen: von einem hängenden Dienst nicht zu unterscheiden. Dazu ein Nachzug: `f"{exc or type(exc).__name__}"` ist falsch, weil ein Ausnahmeobjekt immer truthy ist und `EOFError()` einen leeren Text hat |
+| 25 | T-3.10, halbe Strenge | Der Persona-Lader lehnte eine Zahl in `wake_words` ab, wenn sie in der **Persona-Datei** stand — aus `daimon.toml` hat er sie mit `str()` konvertiert und daraus ein Wake-Word „42" gemacht. Dasselbe bei Palettenfarben, und `persona.voice` aus der Konfiguration wurde gar nicht typgeprüft. **Eine Strenge, die nur an einem Ende der Rückfallkette gilt, ist keine.** Gefunden vom Reviewer beim sehenden Gegenlesen, nicht von den 33 eigenen Tests — die prüften nur den Weg über die Datei |
 
 Dazu zwei Fälle, in denen ein **Mutant** nichts bewies: einmal enthielt die
 Fixture-Kopie ein gebautes `target/` der *unmutierten* Quelle, einmal brach das
@@ -343,6 +366,14 @@ bash in der C-Locale, und dann erzeugt `$'\u202e'` kein Bidi-Zeichen mehr**: der
 Angriffstext war keiner. BEL ist reines ASCII und blieb deshalb grün — die
 Fehlersignatur zeigte also genau auf die Nicht-ASCII-Fälle. Wer einen
 Verifizierer aus einem Skript startet, gibt die vollständige Umgebung mit.
+
+**Zwei Prüfstände rücken an rücken brechen ab, und es sieht wie Rot aus.** Beim
+Nachweis von Kriterium 11 in T-3.10 (laufen T-3.9 und T-3.8 nach dem Umzug der
+Modelle noch?) hat der zweite Lauf mit **Exit 1 bei 70 grün und 0 rot** abgebrochen
+— also kein Prüfungsfehler, sondern ein Sitzungsabbruch: beide greifen auf
+dieselben Sockets und Dienste der Nutzersitzung zu. **Einzeln laufen beide
+vollständig durch** (211/0 und 177/0). Wer sie hintereinander startet, braucht
+eine Aufräumphase dazwischen — oder er sucht die Ursache im falschen Code.
 
 **`~@resources` tötet auch onnxruntime — und zwar NACH dem Laden.** Beim STT
 (T-3.8) steht „Modell geladen" im Journal, dann `status=31/SYS`: onnxruntime
@@ -539,6 +570,24 @@ sieht — zwei Sanitizer in Python und Rust wären auseinandergedriftet.
   nur ein API-Kontingent erteilt. Heute wirkungslos, aber es *behauptet* eine
   Fähigkeit. Kommentar steht an der Tabelle in `ipc.py`. Wer den Ears-Agenten baut,
   entscheidet mit.
+- **T-3.10 ist eingefroren, mit einem Feld, das brachliegt.**
+  `speech_threshold` wird geladen und validiert (vier Stufen, ein fünfter Wert ist
+  ein Fehler), **aber niemand liest sie** — bis T-3.11 (Mind) und T-3.14
+  (Overlay-Zustände). Das steht im Modulkopf und in beiden Personas, damit
+  niemand annimmt, sie wirke schon. Ebenfalls mitgefroren: dass eine fehlende
+  Persona ein **Fehler** ist und kein Vorgabe-Charakter, dass die Persona über
+  `daimon.toml` gewinnt, und dass `prompt()` nichts Wechselndes trägt.
+- **Die Personas werden im CHECKOUT gefunden, nicht nach einer Installation.**
+  `Path(__file__).parents[2] / "config" / "persona"` — nach einem `pip install .`
+  zeigte das nach `site-packages/config/persona`, wo nichts liegt, denn
+  `pyproject.toml` paketiert nur `daimon`. Da **alle** systemd-Units absolute
+  Pfade in dieses Repo tragen, ist der Checkout heute der einzige Betriebsweg.
+  Wer das ändert, legt die Personas als Paketdaten unter `daimon/` ab und sucht
+  sie mit `importlib.resources`.
+- **Kiesels Stimme liegt nicht vor.** `config/persona/kiesel.toml` verlangt
+  `de_DE-kerstin-high`; die Gewichte sind nicht heruntergeladen. Wer Kiesel aktiv
+  schaltet, holt sie zuerst — der TTS sagt sonst ehrlich `stimme_fehlt` ab, statt
+  still auf thorsten auszuweichen. Steht als Warnung in der Datei.
 - **T-3.8 ist eingefroren, und die WER-Grundlinie gilt für EINE Stimme.**
   5,17 % deutsch, 0,0 % englisch — gemessen an 21 Aufnahmen, eigenes Mikrofon,
   ruhiger Raum, Nahbesprechung, vorgelesene Sätze. `herkunft.json` nennt die vier
@@ -549,11 +598,12 @@ sieht — zwei Sanitizer in Python und Rust wären auseinandergedriftet.
   Mitgefroren sind außerdem: der Betriebsbereich **8–48 kHz** für die Samplerate
   (darunter und darüber `format_falsch`), und dass `modell` den **konfigurierten**
   Verzeichnisnamen meldet und nicht einen fest verdrahteten.
-- **Das STT-Modell liegt noch im Spike-Verzeichnis**, wie die TTS-Stimme.
-  `spikes/stt-referenz/models/…` (665 MB, nicht im Repo, `modell_holen.sh` holt
-  es). Beides gehört nach `~/.local/share/daimon/`, sobald **T-3.10** den
-  Persona-Lader baut — dann kommt auch `persona.voice` aus der Persona-Datei
-  statt aus `daimon.toml`.
+- ~~**Das STT-Modell liegt noch im Spike-Verzeichnis**~~ — **erledigt am 04.08.
+  mit T-3.10.** Stimme (126 MB) unter `~/.local/share/daimon/voices/`, Erkenner
+  (640 MB) unter `.../models/`. Die Spike-Pfade sind **Symlinks** dorthin, damit
+  `modell_holen.sh` und die Messskripte weiterlaufen — ein Löschen hätte die
+  Reproduktion der WER-Grundlinie unmöglich gemacht. In der Konfiguration steht
+  `~/…`, beide Dienste machen `expanduser`.
 - **T-3.9 ist eingefroren, mit zwei ausdrücklich mitgefrorenen Zusagen.** (a) Eine
   **Unterbrechung umgeht die Abkühlung** — wörtlich eine Ausnahme von Kriterium 8,
   nötig um es mit Kriterium 4 zu vereinbaren, steht samt Gegenprobe in Design §8.3
