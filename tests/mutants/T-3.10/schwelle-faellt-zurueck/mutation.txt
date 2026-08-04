@@ -1,0 +1,1 @@
+Unbekannte speech_threshold faellt still auf helpful zurueck (Kriterium 2).

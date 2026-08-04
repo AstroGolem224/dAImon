@@ -1,0 +1,1 @@
+Der Systemprompt wird auf seine erste Zeile gekuerzt (Kriterium 3).

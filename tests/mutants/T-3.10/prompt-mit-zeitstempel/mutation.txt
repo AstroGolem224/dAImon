@@ -1,0 +1,1 @@
+Der Prompt enthaelt das aktuelle Datum (Kriterium 9).

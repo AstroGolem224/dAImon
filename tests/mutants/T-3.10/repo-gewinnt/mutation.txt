@@ -1,0 +1,1 @@
+Die mitgelieferte Persona gewinnt vor der XDG-Datei (Kriterium 6).
