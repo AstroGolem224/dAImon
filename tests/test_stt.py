@@ -16,6 +16,7 @@ in `tests/evidence/T-3.8-dienst.json`.
 import io
 import json
 import os
+import pathlib
 import socket
 import struct
 import subprocess
@@ -31,7 +32,9 @@ from daimon.gpu import stt as S
 
 REPO = Path(__file__).resolve().parents[1]
 FIXTURE = REPO / "tests/fixtures/stt-referenz"
-MODELL = REPO / S.MODELL_DIR
+# expanduser: die Vorgabe steht seit T-3.10 als `~/...` in der
+# Konfiguration, nicht mehr als Pfad relativ zum Repo.
+MODELL = pathlib.Path(os.path.expanduser(S.MODELL_DIR))
 UNIT_SERVICE = REPO / "config/systemd/daimon-stt.service"
 UNIT_SOCKET = REPO / "config/systemd/daimon-stt.socket"
 

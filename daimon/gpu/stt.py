@@ -74,8 +74,11 @@ STT_SOCKET = "stt.sock"
 
 # Vorgaben. Stehen zusaetzlich in daimon/common/config.py -- hier, damit das
 # Modul ohne Konfiguration lauffaehig bleibt.
-MODELL_DIR = ("spikes/stt-referenz/models/"
-              "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8")
+# Seit T-3.10 unter $XDG_DATA_HOME. Vorher lag es in `spikes/` -- dort, wo es
+# heruntergeladen wurde, und ein Produktivdienst laedt nicht aus einem
+# Verzeichnis, das "wegwerfbar" heisst. Der Spike-Pfad ist ein Symlink hierher,
+# damit `modell_holen.sh` und die Messskripte weiterlaufen.
+MODELL_DIR = "~/.local/share/daimon/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
 # Acht Threads: gemessen 117 ms Median. Der Wert ist der Kalibrierknopf, kein
 # Naturgesetz -- auf einer Maschine mit vier Kernen gehoert er nach unten.
 THREADS = 8
@@ -393,7 +396,10 @@ def lauf(erkenner: Erkenner, srv: socket.socket) -> int:
 
 
 def einstellungen(cfg: Config) -> dict:
-    return {"modell_dir": str(cfg.get("stt.modell_dir", MODELL_DIR)),
+    # expanduser, damit `~/...` in der Konfiguration steht und nicht ein
+    # absoluter Pfad mit fremdem Benutzernamen.
+    return {"modell_dir": os.path.expanduser(
+                str(cfg.get("stt.modell_dir", MODELL_DIR))),
             "threads": int(cfg.get("stt.threads", THREADS))}
 
 

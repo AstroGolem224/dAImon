@@ -65,11 +65,13 @@ MAX_ZEILE = 1 << 16
 # Vorgaben. Stehen zusaetzlich in daimon/common/config.py -- hier, damit das
 # Modul ohne Konfiguration lauffaehig bleibt.
 STIMME = "de_DE-thorsten-high"
-# Das Modell liegt heute im Spike-Verzeichnis von T−1.12.
-# ponytail: Spike-Pfad als Vorgabe. Obergrenze: sobald T-3.10 die Persona-
-# Dateien anlegt, gehoert die Stimme nach ~/.local/share/daimon/voices/ und
-# dieser Wert in die Persona statt in die Hauptkonfiguration.
-MODELL_DIR = ("spikes/nvidia-voice/models/vits-piper-de_DE-thorsten-high")
+# Seit T-3.10 unter $XDG_DATA_HOME. Vorher lag die Stimme im Spike-Verzeichnis
+# von T−1.12 -- dort, wo sie heruntergeladen wurde, und ein Produktivdienst laedt
+# nicht aus einem Verzeichnis, das "wegwerfbar" heisst. Der Spike-Pfad ist jetzt
+# ein Symlink hierher, damit die Messskripte weiterlaufen.
+# Das ist die SAMMLUNG; welche Stimme daraus genommen wird, sagt `persona.voice`
+# (seit T-3.10 aus der Persona-Datei, mit daimon.toml als Rueckfall).
+MODELL_DIR = "~/.local/share/daimon/voices"
 # Gemessen ueber 20 Aeusserungen der ganzen Kette (Anfrage bis erste Samples
 # beim Wiedergabeprozess), 24 Kerne, Last 1,4:
 #   2 Threads: p95 316 ms  -- verfehlt das Kriterium
@@ -728,7 +730,10 @@ def lauf(sprecher: Sprecher, srv: socket.socket) -> int:
 def einstellungen(cfg: Config) -> dict:
     return {
         "stimme": str(cfg.get("persona.voice", STIMME)),
-        "modell_dir": str(cfg.get("tts.modell_dir", MODELL_DIR)),
+        # expanduser: `~/...` in der Konfiguration statt eines absoluten
+        # Pfades mit fremdem Benutzernamen.
+        "modell_dir": os.path.expanduser(
+            str(cfg.get("tts.modell_dir", MODELL_DIR))),
         "threads": int(cfg.get("tts.threads", THREADS)),
     }
 

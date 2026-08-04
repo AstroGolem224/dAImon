@@ -66,7 +66,7 @@ VORGABEN: dict[str, Any] = {
     # waere ein Schalter, mit dem sich ein CUDA-Provider einschalten laesst, und
     # dann waere die 0-VRAM-Zusage keine Zusage mehr.
     "stt": {
-        "modell_dir": ("spikes/stt-referenz/models/"
+        "modell_dir": ("~/.local/share/daimon/models/"
                        "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"),
         "threads": 8,
     },
@@ -78,7 +78,7 @@ VORGABEN: dict[str, Any] = {
     # `freigabefrist_s` ist die Gueltigkeit einer Sprechfreigabe im Hub, nicht
     # die Wiedergabedauer. `abkuehlung` ist Design §8.4, persistiert.
     "tts": {
-        "modell_dir": "spikes/nvidia-voice/models/vits-piper-de_DE-thorsten-high",
+        "modell_dir": "~/.local/share/daimon/voices",
         "threads": 8,
         "freigabefrist_s": 30.0,
         "abkuehlung": {"ungefragt": 20.0, "reaktion": 10.0, "rueckfrage": 3.0},

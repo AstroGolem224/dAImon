@@ -89,7 +89,7 @@ alert  = "#ffd24a"
 # `threads`: Kalibrierknopf. Weniger Kerne im Rechner: Wert senken.
 # Es gibt bewusst KEINEN `provider`-Schluessel -- siehe daimon/gpu/stt.py.
 [stt]
-modell_dir = "spikes/stt-referenz/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
+modell_dir = "~/.local/share/daimon/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
 threads    = 8
 
 # T-3.9: die Stimme. sherpa-onnx VITS auf der CPU, 0 VRAM.
@@ -104,7 +104,7 @@ threads    = 8
 #   gestorbenen Sprecher ab, schneidet keine langsame Wiedergabe ab.
 # `abkuehlung`: Design 8.4, je Kanal, persistiert unter $XDG_STATE_HOME/daimon.
 [tts]
-modell_dir      = "spikes/nvidia-voice/models/vits-piper-de_DE-thorsten-high"
+modell_dir      = "~/.local/share/daimon/voices"
 threads         = 8
 freigabefrist_s = 30.0
 
