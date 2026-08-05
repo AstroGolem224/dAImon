@@ -46,6 +46,7 @@ from typing import Any
 from daimon.common.config import Config, load as load_config
 from daimon.common.logging import Logger, get_logger
 from daimon.mind.persona import Persona, PersonaFehler, lade as persona_laden
+from daimon.mind.answer import Durchgang2
 from daimon.mind.router import Router, quellen_aus_umgebung
 
 MIND_SOCKET = "mind.sock"
@@ -278,8 +279,12 @@ def main(argv: list[str] | None = None) -> int:
     # Der Router bekommt die echten Quellen und den Mind als Weg nach draussen.
     # Kein Router im Mind selbst: `Mind` soll weiterhin nur eines koennen, und
     # wer das eine mit dem anderen mischt, hat zwei Zusagen an einer Stelle.
+    # Seit T-3.13 sitzt zwischen Router und Mind der zweite Durchgang: der
+    # Router waehlt den Weg, Durchgang 2 fuehrt ihn nach draussen -- ohne
+    # Werkzeugliste und mit einer Antwort, die nur Text sein kann.
     router = Router(quellen=quellen_aus_umgebung(
-        hub_socket=str(cfg.runtime_dir / STATE_SOCKET)), mind=mind)
+        hub_socket=str(cfg.runtime_dir / STATE_SOCKET)),
+        mind=Durchgang2(mind=mind))
 
     if args.frage is not None:
         antwort = router.frage({"v": 1, "art": "frage", "text": args.frage,

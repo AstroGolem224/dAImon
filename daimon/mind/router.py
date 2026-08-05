@@ -341,20 +341,27 @@ class Router:
         if art != "frage":
             return self._nein("unbekannte_art", f"art={str(art)[:40]!r}")
 
-        # Die Markenpruefung steht VOR allem anderen. Design 5.2: `user_audio`
-        # ist spoofbar und erreicht den werkzeugfaehigen Durchgang nicht -- also
-        # darf sie auch keine Quelle abfragen und kein Ticket verbrauchen.
         marke = anfrage.get("marke", "tainted")
-        if marke == "user_audio":
-            return self._nein("marke_verboten",
-                              "user_audio erreicht Durchgang 1 nicht")
-
         text = anfrage.get("text")
         if not isinstance(text, str) or not text.strip():
             return self._nein("kein_text", "Feld `text` fehlt oder ist leer")
 
         self.runden += 1
         was = absicht(text)
+
+        # Die Senkentabelle sperrt `user_audio` gegen den WERKZEUGFAEHIGEN
+        # Durchgang -- nicht gegen den Router. Meine erste Fassung lehnte jede
+        # user_audio-Anfrage ab und hat damit Design 5.2 falschherum gelesen:
+        # eine gespoofte Aeusserung darf eine FRAGE beantworten lassen, sie darf
+        # nur nichts auswaehlen koennen. Genau deshalb hat Durchgang 2 keine
+        # Werkzeuge. Gefunden vom fremden Pruefstand.
+        #
+        # Die Absicht steht hier schon fest, und das ist unbedenklich: sie
+        # entsteht aus einer lokalen Musterliste, ohne Quelle und ohne Ticket.
+        if marke == "user_audio" and was != "api":
+            return self._nein("marke_verboten",
+                              "user_audio erreicht Durchgang 1 nicht")
+
         if was == "aktion":
             # Kein Executor existiert. Ein Router, der so tut, als koennte er
             # handeln, ist schlimmer als einer, der es sagt.
@@ -417,6 +424,15 @@ class Router:
         antwort = self._mind.frage_api(text, kontext)
         if not antwort.get("ok"):
             grund = str(antwort.get("grund", ""))
+            # Hat der Durchgang schon einen gueltigen Grund gebildet, wird SEINE
+            # Absage durchgereicht -- sie weiss mehr (etwa welcher Durchgang es
+            # war). Sie neu zu bauen hiesse, Diagnose wegzuwerfen und dann an der
+            # falschen Stelle zu suchen.
+            if grund in GRUENDE:
+                ergebnis = dict(antwort)
+                ergebnis.update({"v": 1, "ok": False, "weg": "api",
+                                 "api": False})
+                return ergebnis
             # Ein Kontingentfehler behaelt seinen eigenen Grund; alles andere
             # aus dem Transport wird `egress_weg`. Die Meldung nennt WEDER den
             # Nutzertext NOCH einen Koerper -- sie wird gesprochen.
@@ -427,12 +443,16 @@ class Router:
                               weg="api",
                               antwort="Ich komme gerade nicht an die API.")
         self.api_aufrufe += 1
-        return {"v": 1, "ok": True, "weg": "api", "absicht": "api",
-                "antwort": antwort.get("antwort"),
-                # Freie Modellausgabe ist markiert, gleich aus welchem
-                # Durchgang -- Design 5.2, ohne Ausnahme.
-                "marke": "tainted", "api": True,
-                "status": antwort.get("status")}
+        # Die Antwort des Durchgangs wird DURCHGEREICHT und nicht neu gebaut:
+        # sonst faellt beim naechsten Feld (seit T-3.13 `durchgang` und
+        # `aktionsvorschlag_erkannt`) still etwas heraus, und niemand merkt es.
+        # Was der Router setzt, sind nur die Felder, fuer die ER zustaendig ist.
+        ergebnis = dict(antwort)
+        ergebnis.update({"v": 1, "ok": True, "weg": "api", "absicht": "api",
+                         # Freie Modellausgabe ist markiert, gleich aus welchem
+                         # Durchgang -- Design 5.2, ohne Ausnahme.
+                         "marke": "tainted", "api": True})
+        return ergebnis
 
     def _nein(self, grund: str, meldung: str, *, weg: str | None = None,
               **extra) -> dict:
