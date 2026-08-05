@@ -1,0 +1,1 @@
+Die Uhrzeitfrage wird lokal beantwortet, löst aber vorher ein Ticket ein und ruft den Egress — api: false ist dann eine Behauptung (K1).

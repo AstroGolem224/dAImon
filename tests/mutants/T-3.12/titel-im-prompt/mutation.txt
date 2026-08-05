@@ -1,0 +1,1 @@
+Der Modellaufruf bekommt neben der app_id auch den Fenstertitel (K6).

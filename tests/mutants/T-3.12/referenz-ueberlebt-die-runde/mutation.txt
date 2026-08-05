@@ -1,0 +1,1 @@
+Die Referenztabelle wird nicht je Runde neu gebildet; Referenzen aus alten Runden bleiben auflösbar (K8).
