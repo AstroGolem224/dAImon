@@ -1,0 +1,1 @@
+Ein erkannter Aktionsvorschlag wird als action_request an den Hub durchgereicht statt verworfen (K3) — das Flag bleibt wahr, die Verwerfung fehlt.

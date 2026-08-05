@@ -1,0 +1,22 @@
+# Gut-Muster T-3.13: Mind hat weder Netz noch Token, der Router laeuft im
+# Mind-Prozess. ExecStart nutzt absichtlich /usr/bin/python3: der Pruefstand
+# setzt PYTHONPATH auf diesen Baum.
+[Unit]
+Description=dAImon Mind (Gut-Muster T-3.13)
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -m daimon.mind.daemon
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+LimitCORE=0
+UMask=0077
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon
+RestrictAddressFamilies=AF_UNIX

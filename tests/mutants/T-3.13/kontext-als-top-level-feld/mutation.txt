@@ -1,0 +1,1 @@
+Der Kontext steht als Top-Level-Feld neben messages (§6) — die echte Messages-API würde diesen Körper mit 400 invalid_request_error zurückweisen.
