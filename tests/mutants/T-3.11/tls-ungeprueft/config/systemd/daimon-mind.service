@@ -1,0 +1,21 @@
+# Gut-Muster T-3.11: Mind hat weder Token noch Netz.
+[Unit]
+Description=dAImon Mind
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -c "import time; time.sleep(3600)"
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+LimitCORE=0
+UMask=0077
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon
+RestrictAddressFamilies=AF_UNIX
+

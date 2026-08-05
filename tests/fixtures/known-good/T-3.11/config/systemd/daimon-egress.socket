@@ -1,0 +1,9 @@
+[Unit]
+Description=dAImon Egress Socket
+
+[Socket]
+ListenStream=%t/daimon/egress.sock
+SocketMode=0600
+Accept=no
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes

@@ -1,0 +1,1 @@
+Die TLS-Zertifikatsprüfung ist abgeschaltet (K12).

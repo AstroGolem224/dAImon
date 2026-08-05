@@ -1,0 +1,1 @@
+"""Broker des Gut-Musters."""

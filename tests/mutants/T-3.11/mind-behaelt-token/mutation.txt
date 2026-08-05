@@ -1,0 +1,1 @@
+Mind erhält den API-Token zusätzlich in seiner Umgebung (K2/K3).

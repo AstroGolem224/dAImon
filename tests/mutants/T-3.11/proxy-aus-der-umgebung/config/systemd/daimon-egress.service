@@ -1,0 +1,22 @@
+# Gut-Muster T-3.11: Härtung wird am laufenden Prozess geprüft.
+[Unit]
+Description=dAImon Egress
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -m daimon.brokers.egress
+LoadCredential=anthropic-token:/dev/null
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+LimitCORE=0
+UMask=0077
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UnsetEnvironment=HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY
