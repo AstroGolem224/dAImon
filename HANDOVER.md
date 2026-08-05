@@ -307,6 +307,7 @@ mindestens einen Mutanten.
 | 28 | T-3.11, Redaktion unbeobachtbar | Die Testzeile loggte den **zerlegten** Host, und `urlparse` wirft den Userinfo-Teil weg: der Token kam nie in die Zeile. „Kein Token im Log" war grün, weil überhaupt nichts Geheimes drinstand — Fall 2 in neuer Gestalt. Dazu am selben Ort: **der Projektlogger fällt auf stderr nur zurück, wenn der Journal-Socket FEHLT**. Ein Prüfstand, der die Prozessausgabe misst, sieht sonst nichts. Wer eine Zusage über Logzeilen macht, legt ihren Messpunkt dorthin, wo gemessen wird |
 | 29 | T-3.11, Proxy geleert statt entfernt | `Environment=HTTP_PROXY=` setzt die Variable auf den leeren Wert — sie steht damit weiter in `/proc/<pid>/environ`, und eine Bibliothek, die auf Anwesenheit statt auf den Wert prüft, sieht einen Proxy. Richtig ist `UnsetEnvironment=` |
 | 30 | T-3.12, erfundene Felder | Die Sitzungsauskunft las `runden` und `wahrnehmung` aus dem Hub-Schnappschuss. **Die Felder gibt es nicht** (`sessions`, `mood`, `focus` heißen sie), `dict.get` liefert dafür brav Nullen, und eine Auskunft, die immer „0 Runden" sagt, sieht aus wie eine Messung. Die bequeme Größe gemessen, diesmal wörtlich: das bequeme **Feld** |
+| 32 | T-3.9-Prüfstand, die bequeme PID | Der Verifizierer startet den TTS über `systemd-socket-activate`, das den Dienst erst **bei der ersten Verbindung** startet — der Prüfling ist damit ein **Enkelkind**. Aufgeräumt wurde die PID des Aktivators. Der Prüfstand **kennt** die richtige PID sogar (`pgrep -P "$ACT_PID"`) und misst ein Dutzend Zusagen an ihr; er trägt sie nur nie in seine Aufräumliste ein. Ergebnis: vier verwaiste Dienste je Lauf, über Stunden **140 Stück mit 10 GiB RSS**, zram-Swap 16/16 GB voll, Maschine am Anschlag. Gemessen: vorher 0, nach einem Lauf 4, alle mit PPID 1 und einem Socketpfad in einem gelöschten Temp-Verzeichnis. **Die Variante des Projektfehlers lautet hier: nicht die bequeme Größe gemessen, sondern die bequeme PID abgeräumt** — und beides fällt aus demselben Grund nicht auf, nämlich weil das Ergebnis (Exit 0, 211 grün) genau so aussieht wie ein sauberer Lauf |
 | 31 | T-3.12, der Nachtrag als Ausweg | `app_id` blieb immer `unbekannt`, weil KWins `/WindowsRunner` keine `resourceClass` liefert — und ich habe diese Unterschreitung per **Vertragsnachtrag legitimiert**, während der Reviewer-Auftrag schon lief. Der Prüfstand verlangte sie trotzdem und hatte recht: den Titelrest **übernehmen** wäre ein Designbruch, ihn gegen die installierten `.desktop`-Kennungen **nachschlagen** ist genau die geschlossene Aufzählung aus Design §5.1. **Ein Nachtrag, der eine Zusage abschwächt, gehört von der anderen Seite gegengelesen** |
 | 25 | T-3.10, halbe Strenge | Der Persona-Lader lehnte eine Zahl in `wake_words` ab, wenn sie in der **Persona-Datei** stand — aus `daimon.toml` hat er sie mit `str()` konvertiert und daraus ein Wake-Word „42" gemacht. Dasselbe bei Palettenfarben, und `persona.voice` aus der Konfiguration wurde gar nicht typgeprüft. **Eine Strenge, die nur an einem Ende der Rückfallkette gilt, ist keine.** Gefunden vom Reviewer beim sehenden Gegenlesen, nicht von den 33 eigenen Tests — die prüften nur den Weg über die Datei |
 
@@ -399,6 +400,41 @@ bash in der C-Locale, und dann erzeugt `$'\u202e'` kein Bidi-Zeichen mehr**: der
 Angriffstext war keiner. BEL ist reines ASCII und blieb deshalb grün — die
 Fehlersignatur zeigte also genau auf die Nicht-ASCII-Fälle. Wer einen
 Verifizierer aus einem Skript startet, gibt die vollständige Umgebung mit.
+
+**Ein socket-aktivierter Prüfling ist ein ENKELKIND, und `$!` ist nicht seine
+PID.** `systemd-socket-activate -l … <prog>` startet `<prog>` erst bei der
+**ersten Verbindung**. Wer ihn aus einem Skript mit `( … ) &` startet, hält
+danach die PID der Subshell oder des Aktivators in der Hand — nicht die des
+Prüflings. Ein `kill "$!"` im `trap` beendet den Aktivator; das Kind verliert
+seinen Elternprozess, wird auf `systemd --user` umgehängt und läuft weiter, bis
+jemand es von Hand findet. Am 05.08. waren das **140 TTS-Prozesse mit 10 GiB
+RSS**, der älteste 15 Stunden alt, und der zram-Swap stand auf 16/16 GB.
+
+Drei Dinge, die zusammen gehören:
+
+* **Prozessgruppe statt Einzel-PID.** `setsid` beim Start, `kill -- -$PGID` beim
+  Aufräumen. Trifft Aktivator, Wrapper und Prüfling gemeinsam.
+* **Der `trap` rettet nicht alles.** Bekommt der Testläufer SIGKILL, läuft keine
+  EXIT-Falle — dann hilft nur, dass der Dienst sich selbst beendet. In
+  `daimon/face/tts.py` stehen dafür zwei Netze: `PR_SET_PDEATHSIG` (der Kernel
+  beendet ihn, wenn der Elternprozess stirbt, inklusive Prüfung auf das Rennen
+  `getppid() == 1`) und der `HubWaechter` (der Hub-Socket ist dauerhaft weg,
+  also gibt es nichts mehr zu tun).
+* **Ein Leerlauf-Exit ist NICHT die Antwort.** Der Modulkopf von `tts.py`
+  begründet dessen Abwesenheit mit dem TTFA-Kriterium (Modell im Speicher, p95
+  148 ms), und die Zusage ist eingefroren. Die Unterscheidung, die trägt: ein
+  Dienst, der **nichts zu tun hat**, soll warten — ein Dienst, der **nichts mehr
+  tun kann**, soll enden.
+
+**Und die Fixture-Bäume tragen ihre eigene Kopie des Prüflings.** Ein Fix in
+`daimon/` wirkt nicht in `tests/fixtures/known-good/` und `tests/mutants/`,
+solange die Bäume nicht neu erzeugt sind — `meta.sh` leckt sonst weiter, obwohl
+der Arbeitsbaum sauber ist. Gemessen: acht Waisen aus parallel laufenden
+Fixture-Läufen, während der Arbeitsbaumlauf schon null hinterließ.
+
+**Nachmessen, nicht annehmen:** `pgrep -cf 'daimon\.face\.tts'` vor und nach
+jedem Lauf. Ein Verifizierer, der Exit 0 und 211 grüne Prüfungen meldet, sieht
+in beiden Fällen gleich aus.
 
 **Die T-3.9-Prüfung „kein zusätzlicher Compute-Prozess" flackert, und zwar
 fremdverschuldet.** Sie vergleicht die **gesamte** `nvidia-smi`-Compute-Liste der
