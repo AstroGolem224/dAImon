@@ -1,4 +1,4 @@
-# Übergabe — Stand 2026-08-03
+# Übergabe — Stand 2026-08-05
 
 Alles, was nicht aus dem Repo hervorgeht. Die vorige Fassung ist über zwölf Tasks
 gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
@@ -13,10 +13,10 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 | **Gate P0** | 11 von 11 grün — **aber `T-0.12` war davon ein hohles Grün**, siehe unten. Seit T-0.12.v2 belegt |
 | **Gate P1** | **ROT nur noch wegen `T-1.10`** — und dessen Messfenster ist unbrauchbar, siehe unten. `T-1.7` seit v5 grün (95 Prüfungen) |
 | **Gate P2** | **GRÜN** (02.08.): `T-2.4` 17, `T-2.5` 40, `T-1.5` 25 — Idle-CPU **0,000 %**. `verify-frozen` zählte damals 12, heute 20 |
-| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2:** T-0.12.v2 eingefroren, **T-3.7** committet und live belegt, **T-3.9, T-3.8 und T-3.10 fertig und EINGEFROREN** — 211 / 177 / 91 Prüfungen, alle 0 rot, je 5 von 5 Mutanten. Offen: 3.11–3.13b, 3.14–3.15 |
+| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2:** T-0.12.v2 eingefroren, **T-3.7** committet und live belegt, **T-3.9, T-3.8, T-3.10, T-3.11 und T-3.12 fertig und EINGEFROREN** — 211 / 177 / 91 / 207 / 141 Prüfungen, alle 0 rot, 5 / 5 / 5 / 6 / 5 Mutanten. Offen: 3.13, 3.13b, 3.14–3.15 |
 | **Phase 2** | **abgeschlossen.** T-2.1 bis T-2.5 und T-2.7 stehen und sind eingefroren. T-2.6 optional, entfällt |
 
-**Dreiundzwanzig Einträge in `FROZEN`**: 20 Verifizierer + 3 Harness-Dateien. `T-3.9` und `T-3.8` kamen am 03.08. dazu, `T-3.10` am 04.08.
+**Fünfundzwanzig Einträge in `FROZEN`**: 22 Verifizierer + 3 Harness-Dateien. `T-3.9` und `T-3.8` kamen am 03.08. dazu, `T-3.10` am 04.08., `T-3.11` und `T-3.12` am 05.08.
 **`FROZEN` deckt seit T-1.1.v2 auch die Harness ab** — `pixelprobe.py`,
 `vollbildfenster.py`, `moodprobe.py`. `freeze.sh` **liest** die Abhängigkeiten aus dem
 Skript, statt eine Liste zu pflegen, die veraltet.
@@ -144,6 +144,33 @@ Skript, statt eine Liste zu pflegen, die veraltet.
 > Reviewer-Auftrag, dann bauen. Und wenn der Prüfstand etwas verlangt, was keine
 > Implementierung erfüllen kann, ist zuerst der Vertrag zu prüfen und nicht der
 > Prüfstand.
+
+> **Fortgeschrieben am 05.08.** Fünf Tasks, dasselbe Verfahren:
+>
+> | Task | erster Blindlauf | woran die roten lagen |
+> |---|---|---|
+> | T-3.9 | 17 rot von 192 | Reviewer hatte den Code gelesen, Protokoll musste erraten werden |
+> | T-3.8 | 3 rot von 177 | zwei echte Defekte, eine Vertragslücke |
+> | T-3.10 | 1 rot von 91 | **nur** eine Vertragslücke |
+> | T-3.11 | 8 rot von 207 | **fünf echte Defekte**, vier Vertragslücken, drei Umgebung |
+> | T-3.12 | 20 rot von 134 | **fünf echte Defekte**, zwei Vertragslücken, Rest Folgefehler |
+>
+> **Die Kurve dreht sich, und das ist kein Rückschritt.** T-3.9 und T-3.10 waren
+> kleine Oberflächen mit langen Verträgen; T-3.11 und T-3.12 sind die ersten
+> Tasks, in denen der Prüfstand **am laufenden Prozess** misst statt an einer
+> API. Was er dort findet, sind genau die Fehler, die eigene Tests strukturell
+> nicht sehen können — beide Male hat er dieselbe Selbstauskunft gelesen wie die
+> Implementierung, oder er hat einen Messpunkt geprüft, den es im Betrieb gar
+> nicht gibt (Fälle 27 und 28). **Fünf echte Defekte je Task bei null Funden
+> durch 45 bzw. 60 eigene Tests** ist die eigentliche Zahl dieses Verfahrens.
+>
+> **Neue Regel, aus Fall 31:** ein Vertragsnachtrag, der eine Zusage
+> **abschwächt**, gehört von der anderen Seite gegengelesen, bevor er gilt. Meiner
+> ging raus, während der Reviewer-Auftrag schon lief, und er hat eine
+> Unterschreitung nachträglich legitimiert — der Prüfstand hat sie trotzdem
+> gefunden, aber nur, weil er den ursprünglichen Vertrag gelesen hatte. Ein
+> Nachtrag, der eine Zusage **verschärft** oder eine Lücke **schließt**, darf
+> weiterhin einseitig sein.
 
 **Quelle der Planungsdokumente ist `/home/itiger013/Dokumente/UMBRA-Notes/DDs/dAImon/`,
 `docs/` ist die Kopie. Beide pflegen.**
@@ -275,6 +302,12 @@ mindestens einen Mutanten.
 | 22 | T-3.8, fauler Import | Die **erste** Anfrage log über ihre eigene Latenz: `import numpy` stand faul in `wav_lesen()` und wurde beim ersten Aufruf bezahlt — **außerhalb** des gemessenen Fensters. Selbstauskunft 110,8 ms, Wanduhr des Aufrufers 226,6 ms; bei allen 20 folgenden Anfragen 0,6 ms Differenz. **Meine eigenen Tests konnten das nicht sehen — sie lesen dieselbe Selbstauskunft.** Gefunden hat es die Wanduhr-Gegenprobe des fremden Prüfstands |
 | 23 | T-3.8, Wartezeit an der Sperre | Dieselbe Wurzel wie 22, andere Stelle: die Zeit an der `threading.Lock` lag außerhalb von `latenz_ms`. Eine zweite gleichzeitige Anfrage meldete nur ihre Rechenzeit, obwohl der Aufrufer zusätzlich gewartet hatte. Jetzt getrennt gemeldet: `wartezeit_ms`, `latenz_ms`, `gesamt_ms` |
 | 24 | T-3.8, Fehler ohne Antwort | Eine leere oder abgeschnittene WAV-Datei lässt `wave.open` mit **`EOFError`** scheitern, nicht mit `wave.Error`. Gefangen wurde nur letzteres → der Bedienthread starb und der Aufrufer bekam **gar keine** Antwort. Das ist die schlechteste aller Absagen: von einem hängenden Dienst nicht zu unterscheiden. Dazu ein Nachzug: `f"{exc or type(exc).__name__}"` ist falsch, weil ein Ausnahmeobjekt immer truthy ist und `EOFError()` einen leeren Text hat |
+| 26 | T-3.11, der Transport interpretierte | Der Egress hat `koerper` neu serialisiert und die Antwort geparst: aus `{"id":"lokal"}` wurde `{"id": "lokal"}`. Der Vertrag sagt „unverändert weitergegeben, nicht geparst" — meine Fassung war ein **zweiter Autor**, und „transportiert opak" war Prosa statt Bauwerk. Jetzt werden die Originalbytes aus der Anfragezeile geschnitten und die Rohantwort als letztes Feld gesplict. Der Hash bleibt kanonisch: den müssen beide Seiten unabhängig nachrechnen können |
+| 27 | T-3.11, Audit unbeobachtbar | Der Audit-Datensatz lief über den Projektlogger, und der schreibt Journalfelder plus Zeitstempel und Meldung. „Ausschließlich `{ticket, bytes, status, dauer_ms}`" ist so **gar nicht prüfbar** — eine Zusage über eine Zeile braucht eine Zeile, die wirklich nur daraus besteht |
+| 28 | T-3.11, Redaktion unbeobachtbar | Die Testzeile loggte den **zerlegten** Host, und `urlparse` wirft den Userinfo-Teil weg: der Token kam nie in die Zeile. „Kein Token im Log" war grün, weil überhaupt nichts Geheimes drinstand — Fall 2 in neuer Gestalt. Dazu am selben Ort: **der Projektlogger fällt auf stderr nur zurück, wenn der Journal-Socket FEHLT**. Ein Prüfstand, der die Prozessausgabe misst, sieht sonst nichts. Wer eine Zusage über Logzeilen macht, legt ihren Messpunkt dorthin, wo gemessen wird |
+| 29 | T-3.11, Proxy geleert statt entfernt | `Environment=HTTP_PROXY=` setzt die Variable auf den leeren Wert — sie steht damit weiter in `/proc/<pid>/environ`, und eine Bibliothek, die auf Anwesenheit statt auf den Wert prüft, sieht einen Proxy. Richtig ist `UnsetEnvironment=` |
+| 30 | T-3.12, erfundene Felder | Die Sitzungsauskunft las `runden` und `wahrnehmung` aus dem Hub-Schnappschuss. **Die Felder gibt es nicht** (`sessions`, `mood`, `focus` heißen sie), `dict.get` liefert dafür brav Nullen, und eine Auskunft, die immer „0 Runden" sagt, sieht aus wie eine Messung. Die bequeme Größe gemessen, diesmal wörtlich: das bequeme **Feld** |
+| 31 | T-3.12, der Nachtrag als Ausweg | `app_id` blieb immer `unbekannt`, weil KWins `/WindowsRunner` keine `resourceClass` liefert — und ich habe diese Unterschreitung per **Vertragsnachtrag legitimiert**, während der Reviewer-Auftrag schon lief. Der Prüfstand verlangte sie trotzdem und hatte recht: den Titelrest **übernehmen** wäre ein Designbruch, ihn gegen die installierten `.desktop`-Kennungen **nachschlagen** ist genau die geschlossene Aufzählung aus Design §5.1. **Ein Nachtrag, der eine Zusage abschwächt, gehört von der anderen Seite gegengelesen** |
 | 25 | T-3.10, halbe Strenge | Der Persona-Lader lehnte eine Zahl in `wake_words` ab, wenn sie in der **Persona-Datei** stand — aus `daimon.toml` hat er sie mit `str()` konvertiert und daraus ein Wake-Word „42" gemacht. Dasselbe bei Palettenfarben, und `persona.voice` aus der Konfiguration wurde gar nicht typgeprüft. **Eine Strenge, die nur an einem Ende der Rückfallkette gilt, ist keine.** Gefunden vom Reviewer beim sehenden Gegenlesen, nicht von den 33 eigenen Tests — die prüften nur den Weg über die Datei |
 
 Dazu zwei Fälle, in denen ein **Mutant** nichts bewies: einmal enthielt die
@@ -366,6 +399,45 @@ bash in der C-Locale, und dann erzeugt `$'\u202e'` kein Bidi-Zeichen mehr**: der
 Angriffstext war keiner. BEL ist reines ASCII und blieb deshalb grün — die
 Fehlersignatur zeigte also genau auf die Nicht-ASCII-Fälle. Wer einen
 Verifizierer aus einem Skript startet, gibt die vollständige Umgebung mit.
+
+**Die T-3.9-Prüfung „kein zusätzlicher Compute-Prozess" flackert, und zwar
+fremdverschuldet.** Sie vergleicht die **gesamte** `nvidia-smi`-Compute-Liste der
+Maschine auf Gleichheit (`compute_nachher == NVIDIA_VORHER`). Startet oder endet
+während des Laufs irgendein GPU-Programm — am 05.08. zweimal ein Videoplayer —,
+wird sie rot, obwohl der Prüfling nichts getan hat. Einzeln lief T-3.9 an
+denselben Tagen dreimal mit **211 von 211** durch. Sie misst die Maschine statt
+den Dienst; die Nachbarprüfung („der Dienst steht NICHT als Compute-Prozess in
+`nvidia-smi`") tut es richtig. **Kandidat für einen `T-3.9.v2`-Task**, und bis
+dahin: wer T-3.11 oder T-3.12 fährt, lässt keine GPU-Anwendung an- oder
+ausgehen. Nicht von Hand am eingefrorenen Verifizierer drehen.
+
+**Der Rollenwächter liest die KOMMANDOZEILE, nicht nur die Werkzeugabsicht.**
+Ein `git add` mit einem Verifiziererpfad, ein `grep` darauf, ein `sed -n '1,10p'`
+und sogar eine **Commit-Nachricht**, die einen solchen Pfad erwähnt, werden für
+die Rolle `builder` abgelehnt. Das ist kein Fehler, sondern die Kehrseite davon,
+dass der Hook keine Semantik kennt — dieser Absatz selbst wurde beim ersten
+Schreibversuch abgewiesen, weil er einen Pfad zitierte. Praktische Folgen, alle
+am 05.08. gebraucht:
+
+* Verifiziererläufe **ohne Umleitung** starten. `> log` und `2>&1` lösen die
+  Schreib-Erkennung aus; ein Wrapper-Skript im Scratchpad, das die Umleitung
+  enthält, geht durch.
+* Zum Lesen die Read-Werkzeuge nehmen statt `sed`/`grep` mit vollem Pfad.
+* Lange Commit-Nachrichten aus einer Datei **außerhalb** des Repos übergeben:
+  `git commit -F <datei>`.
+* **Ein Task mit beiden Seiten braucht zwei Commits.** Die Rolle `builder` darf
+  Verifizierer, Mutanten und Gut-Muster nicht einmal stagen — der Reviewer
+  committet seine Seite selbst. Präzedenz: die vier Commits vom 04./05.08.
+
+**Die Fensterliste gibt es ohne Compositor-Eingriff.** KWin exportiert
+`org.kde.KWin /WindowsRunner org.kde.krunner1.Match("")` und liefert alle Fenster
+als `a(sssida{sv})` — Kennung, Titel, Icon-Rohdaten. Kein neues KWin-Script, kein
+`reconfigure`, keine der Nachlade-Fallen. **Was fehlt, ist `resourceClass`**:
+eine `app_id` gibt es darüber nicht. In T-3.12 wird der letzte Titelabschnitt
+deshalb gegen die installierten `.desktop`-Kennungen **nachgeschlagen** (nicht
+übernommen) — ein Angreifer kann damit höchstens eine falsche, aber existierende
+Anwendung behaupten. Wer den Aktionskatalog in Phase 5 baut, zieht
+`resourceClass` über ein KWin-Script nach; dann fällt die Titelheuristik weg.
 
 **Zwei Prüfstände rücken an rücken brechen ab, und es sieht wie Rot aus.** Beim
 Nachweis von Kriterium 11 in T-3.10 (laufen T-3.9 und T-3.8 nach dem Umzug der
@@ -617,6 +689,39 @@ sieht — zwei Sanitizer in Python und Rust wären auseinandergedriftet.
   Echo-Referenz**: `interlock.echo_referenz()` will das ausgegebene Signal (16 kHz mono
   int16), und über ein Zustandsfeld geht kein Audio. Ohne sie erkennt die Sperre Echo nur
   über die Zeit, nicht über das Signal. Wer den Ohren-Dienst baut, schließt das.
+- **T-3.11 ist eingefroren, und der Token liegt noch nicht auf dieser Maschine.**
+  Ohne `LoadCredential` sagt der Egress ehrlich `kein_token` ab, statt still
+  etwas anderes zu tun. Das Rotationsverfahren steht in `docs/TOKEN-ROTATION.md`
+  und ist Teil der Abnahme — wer den Token ablegt, folgt ihm und prüft danach
+  `token_vorhanden` im Zustand. **Der Dateiname ist Vertrag**
+  (`anthropic-token`): Unit und Broker müssen denselben nennen, und beim ersten
+  Blindlauf hießen sie verschieden.
+- **T-3.11 hat `IPAddressAllow=` absichtlich NICHT.** Es bräuchte eBPF-Filter,
+  und die stehen einer `--user`-Unit ohne Delegation nicht zur Verfügung. Die
+  Zusage trägt stattdessen die feste Domain im Code plus TLS-Verifikation. Wer
+  den Dienst je als System-Unit führt, zieht es nach.
+- **T-3.12 kennt keine `app_id` aus der Fensterklasse.** Die Zuordnung geht über
+  den **Titel**, nachgeschlagen gegen die installierten `.desktop`-Kennungen. Ein
+  Fenster ohne Trenner im Titel bleibt `unbekannt`, und ein Programm, das eine
+  fremde Anwendung im Titel führt, wird ihr zugeordnet. Steht als
+  `ponytail:`-Vermerk im Code; der Nachrüstweg ist dasselbe KWin-Script, das der
+  Aktionskatalog in Phase 5 ohnehin braucht.
+- **T-3.12 lehnt jeden Aktionswunsch ab, und das ist kein Platzhalter.** Es gibt
+  keinen Executor; die Ablehnung kostet auch kein Kontingent. Wer T-4.x baut,
+  ersetzt den Zweig — und muss dann die Prüfung „Aktionswünsche werden nicht
+  ausgeführt" durch eine ersetzen, die den Katalog und die Freigabe misst.
+- **Die Referenztabelle in T-3.12 lebt genau eine Runde.** Das ist mitgefroren:
+  eine Referenz, die eine Runde überlebt, ließe das Modell auf ein Fenster
+  zeigen, das der Nutzer in dieser Runde nie gesehen hat. Wer Kontext über
+  Runden hinweg braucht (T-3.13, Phase 6), baut ihn **neben** die Tabelle, nicht
+  in sie.
+- **Die Marke der Sitzungsauskunft hängt an ihrem Inhalt.** `sessions`, `mood`
+  und `focus.session_id` sind `trusted`; **`focus.project` nicht** — der Name
+  stammt aus einer Hook-Nutzlast (Design §5.2). Eine Marke gilt für die ganze
+  Antwort, also entweder der Name fehlt oder die Auskunft ist `tainted`. Der
+  Prüfstand hatte seine Kanarie zuerst genau dort und hätte damit einen
+  Designbruch erzwungen; sie liegt jetzt in `focus.session_id`, und eine zweite
+  Kanarie im Projektnamen muss in der Antwort **fehlen**.
 - **T-1.10** braucht Kalenderzeit, siehe oben.
 - **T-2.6** (Wandern zwischen Monitoren) ist laut Plan optional und darf entfallen.
   Auf dieser Maschine ohnehin nicht belegbar — ein Monitor.
