@@ -50,12 +50,14 @@ from daimon.hub import sprechtext
 from daimon.hub.abkuehlung import Abkuehlung
 from daimon.hub.marks import FreigabeBuch, MarkenBuch, MarkenFehler
 from daimon.hub.state import HubState
+from daimon.hub.tickets import Ticketbuch
 
 STATE_SOCKET = "state.sock"
 DIAG_SOCKET = "diag.sock"
 EVENTS_SOCKET = "events.sock"
 GPU_SOCKET = "gpu.sock"
 TTS_SOCKET = "tts.sock"
+TICKET_SOCKET = "ticket.sock"
 MAX_ZEILE = 1 << 20  # 1 MiB. Eine Hook-Nutzlast ist Kilobytes gross.
 
 # Wie oft der Push-Endpunkt nachsieht, ob sich `rev` bewegt hat. 50 ms deckelt
@@ -101,6 +103,17 @@ GPU_LESE_TIMEOUT_S = 5.0
 # wirklich gesprochen wurde.
 TTS_FRIST_S = 30.0
 TTS_ABKUEHLUNG_DATEI = "tts-abkuehlung.json"
+
+# T-3.11: das Ticketbuch aus T-0.8, hier zum ERSTEN MAL verdrahtet. Es war
+# gebaut und getestet (12 Tests), aber kein Prozess hat es instanziiert -- also
+# gab es die Zusage "hoechstens einmal einloesbar" auf Papier und nicht im
+# laufenden System. Der Egress-Broker ist ihr erster Verbraucher.
+#
+# `frist_s`: ein Ticket ist eine Autorisierung, nicht ein Guthaben. Fuenf Minuten
+# reichen fuer eine Anfrage samt Nachdenken, und laenger offen zu stehen macht ein
+# gestohlenes Ticket wertvoller.
+TICKET_DATEI = "tickets.json"
+TICKET_FRIST_S = 300.0
 
 
 def _dumpbarkeit_abschalten() -> None:
@@ -149,6 +162,14 @@ class Hub:
         self.abkuehlung = Abkuehlung(
             Path(self.cfg.state_dir) / TTS_ABKUEHLUNG_DATEI,
             cfg=self.cfg, log=self.log)
+        # T-3.11: Kontingente fuer den Egress. Persistent, weil ein Neustart des
+        # Hubs sonst jedes ausgegebene Ticket wieder gueltig machen wuerde -- und
+        # "hoechstens einmal" waere dann "hoechstens einmal je Hub-Laufzeit".
+        self.ticket_frist_s = float(
+            self.cfg.get("hub.ticket_frist_s", TICKET_FRIST_S))
+        self.tickets = Ticketbuch(
+            Path(self.cfg.state_dir) / TICKET_DATEI,
+            frist_s=self.ticket_frist_s, log=self.log)
         self._server: list[socket.socket] = []
         self._threads: list[threading.Thread] = []
         self._stop = threading.Event()
@@ -408,6 +429,64 @@ class Hub:
                 self._gpu_sperre = None
                 return {"v": 1, "ok": True}
             return {"v": 1, "ok": False, "grund": "fremde_sperre"}
+
+    # -- Kontingente (T-3.11) ----------------------------------------------
+
+    def ticket_anfrage(self, anfrage: object) -> dict:
+        """Ausgeben und Einloesen. Dasselbe Muster wie `gpu.sock` und
+        `tts.sock`: eine Zeile rein, eine raus, **kein Produzent** (kein
+        `ipc.PRODUZENTEN`-Eintrag, kein Bus-Ereignis).
+
+        Warum der Hub das haelt und nicht der Egress: ein Kontingent, das der
+        Prozess ausgibt, der es auch verbraucht, ist eine Zaehlung und keine
+        Autorisierung. Design 2.4 sagt es fuer Marken, und fuer Tickets gilt es
+        genauso -- der Egress kann sich hier nichts selbst erteilen, weil er die
+        Ausgabe nicht erreicht, ohne dass der Hub sie protokolliert.
+        """
+        if not isinstance(anfrage, dict):
+            return {"v": 1, "ok": False, "grund": "unlesbar"}
+        art = anfrage.get("art")
+        if art not in ("ausgeben", "einloesen"):
+            return {"v": 1, "ok": False, "grund": "unbekannte_art",
+                    "meldung": f"art={str(art)[:40]!r}"}
+
+        auftrag_hash = anfrage.get("auftrag_hash")
+        if not isinstance(auftrag_hash, str) or not auftrag_hash.strip():
+            return {"v": 1, "ok": False, "grund": "kein_hash",
+                    "meldung": "Feld `auftrag_hash` fehlt oder ist leer"}
+
+        if art == "ausgeben":
+            try:
+                ticket = self.tickets.ausgeben(auftrag_hash=auftrag_hash)
+            except MarkenFehler as exc:
+                self.diag.verworfen("ticket_ausgabe")
+                return {"v": 1, "ok": False, "grund": "abgelehnt",
+                        "meldung": str(exc)[:200]}
+            self.log.info("Kontingent ausgegeben",
+                          DAIMON_ACTION="ticket_ausgabe",
+                          DAIMON_ZWECK=str(anfrage.get("zweck", ""))[:40])
+            return {"v": 1, "ok": True, "ticket": ticket,
+                    "frist_s": self.ticket_frist_s}
+
+        ticket = anfrage.get("ticket")
+        if not isinstance(ticket, str) or not ticket.strip():
+            return {"v": 1, "ok": False, "grund": "kein_ticket",
+                    "meldung": "Feld `ticket` fehlt oder ist leer"}
+        try:
+            self.tickets.einloesen(ticket, auftrag_hash=auftrag_hash)
+        except MarkenFehler as exc:
+            # Ein Grund, viele Ursachen -- und das ist Absicht: unbekannt,
+            # abgelaufen, schon verbraucht und "gehoert zu anderem Auftrag"
+            # duerfen sich fuer den Aufrufer NICHT unterscheiden. Sonst ist die
+            # Absage ein Orakel, mit dem sich gueltige Ticket-IDs von
+            # abgelaufenen trennen lassen. Das Detail steht im Journal.
+            self.diag.verworfen("ticket_abgelehnt")
+            self.log.warn("Kontingent abgelehnt",
+                          DAIMON_ACTION="ticket_abgelehnt",
+                          DAIMON_GRUND=str(exc)[:160])
+            return {"v": 1, "ok": False, "grund": "ticket_ungueltig"}
+        self.log.info("Kontingent eingeloest", DAIMON_ACTION="ticket_einloesung")
+        return {"v": 1, "ok": True}
 
     # -- Sprechfreigabe (T-3.9) --------------------------------------------
 
@@ -690,6 +769,11 @@ class Hub:
         self._threads.append(t)
         t = threading.Thread(target=self._horche_einfach,
                              args=(TTS_SOCKET, self.tts_anfrage),
+                             kwargs={"liest": True}, daemon=True)
+        t.start()
+        self._threads.append(t)
+        t = threading.Thread(target=self._horche_einfach,
+                             args=(TICKET_SOCKET, self.ticket_anfrage),
                              kwargs={"liest": True}, daemon=True)
         t.start()
         self._threads.append(t)
