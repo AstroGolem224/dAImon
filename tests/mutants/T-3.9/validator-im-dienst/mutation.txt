@@ -1,10 +1,14 @@
 MUTANT: die Pruefung passiert im TTS-DIENST statt im Hub.
 
-Der Hub gibt fuer JEDEN Text eine Marke aus, ohne ihn zu pruefen; der
-Dienst prueft selbst. Damit ist der Validator umgehbar: ein anderer
-Produzent, der eine Marke bekommt (oder die Pruefung im Dienst anders
-auslegt), schiebt ungeprueften Text an die Ausgabe -- genau der Satz aus
-Design §8.3, der die Lage des Validators begruendet.
+Der Hub gibt fuer JEDEN freien Text eine Marke aus, ohne ihn zu pruefen
+(`sprechtext.pruefe` entfaellt in `tts_anfrage`); der Dienst prueft selbst
+(importiert `daimon.hub.sprechtext` und lehnt verletzte Texte ab). Die
+Vorlagen laufen im Hub weiter durch `aus_vorlage`, und harmlose Texte
+werden gesprochen -- der Mutant startet und funktioniert aeusserlich
+normal. Damit ist der Validator aber umgehbar: ein anderer Produzent, der
+eine Marke bekommt (oder die Pruefung im Dienst anders auslegt), schiebt
+ungeprueften Text an die Ausgabe -- genau der Satz aus Design §8.3, der
+die Lage des Validators begruendet.
 
 Sichtbar wird das daran, dass der HUB fuer einen Angriffstext `ok: true`
 plus Marke meldet. Die Zusage "ein Text ohne Hub-Freigabe wird nicht

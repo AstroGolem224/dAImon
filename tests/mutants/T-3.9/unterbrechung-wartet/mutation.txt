@@ -1,10 +1,11 @@
 MUTANT: die neue Aeusserung reiht sich an statt abzubrechen.
 
-Statt den laufenden pw-cat-Prozess zu toeten, wartet der Dienst auf
-dessen Ende. Kein Mischen zweier Stimmen -- aber auch keine Unterbrechung:
-die neue Aeusserung kommt erst, wenn die alte zuende ist. Kriterium 4
-verlangt den Abbruch binnen 100 ms, gemessen am Ende des alten
-pw-cat-Prozesses.
+In `abbrechen()` wartet der Dienst auf das Ende des laufenden
+pw-cat-Prozesses (`p.wait()`) statt ihn zu toeten (`p.kill()`). Kein
+zweites `kill` auf dem Unterbrechungspfad rettet die Unterbrechung. Kein
+Mischen zweier Stimmen -- aber auch keine Unterbrechung: die neue
+Aeusserung kommt erst, wenn die alte zuende ist. Kriterium 4 verlangt den
+Abbruch binnen 100 ms, gemessen am Ende des alten pw-cat-Prozesses.
 
 Gefangen von: der Unterbrechungsmessung -- die alte Wiedergabe muss
 binnen 100 ms nach der neuen Anfrage tot sein. Bei ihm dauert es den Rest

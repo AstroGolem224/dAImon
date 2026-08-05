@@ -46,19 +46,18 @@ from daimon.common.logging import Logger, get_logger
 from daimon.common.protocol import Event, ProtocolError
 from daimon.hub.bus import Bus, mood_of, projekt_aus_cwd
 from daimon.hub.diag import Diagnose
-from daimon.hub.marks import FreigabeBuch, MarkenBuch, MarkenFehler
 from daimon.hub import sprechtext
 from daimon.hub.abkuehlung import Abkuehlung
+from daimon.hub.marks import FreigabeBuch, MarkenBuch, MarkenFehler
 from daimon.hub.state import HubState
+from daimon.hub.tickets import Ticketbuch
 
 STATE_SOCKET = "state.sock"
 DIAG_SOCKET = "diag.sock"
 EVENTS_SOCKET = "events.sock"
 GPU_SOCKET = "gpu.sock"
 TTS_SOCKET = "tts.sock"
-# Frist einer Sprechfreigabe: deckt Synthese plus Wiedergabe eines Satzes.
-TTS_FRIST_S = 30.0
-TTS_ABKUEHLUNG_DATEI = "tts-abkuehlung.json"
+TICKET_SOCKET = "ticket.sock"
 MAX_ZEILE = 1 << 20  # 1 MiB. Eine Hook-Nutzlast ist Kilobytes gross.
 
 # Wie oft der Push-Endpunkt nachsieht, ob sich `rev` bewegt hat. 50 ms deckelt
@@ -96,6 +95,26 @@ GPU_RESERVE_MIB = 1024
 # verbindet und schweigt, darf den Horcher nicht festhalten.
 GPU_LESE_TIMEOUT_S = 5.0
 
+# T-3.9: Frist einer Sprechfreigabe. Sie deckt Synthese plus Wiedergabe eines
+# Satzes ab (gemessen: 100--300 ms Synthese, unter 4 s Audio) und ist bewusst
+# grosszuegig -- sie soll einen gestorbenen Sprecher abfangen, nicht eine
+# langsame Wiedergabe abschneiden. Nach Ablauf wird die Freigabe verworfen; ein
+# `gesprochen` danach vermerkt KEINE Abkuehlung, weil niemand mehr weiss, ob
+# wirklich gesprochen wurde.
+TTS_FRIST_S = 30.0
+TTS_ABKUEHLUNG_DATEI = "tts-abkuehlung.json"
+
+# T-3.11: das Ticketbuch aus T-0.8, hier zum ERSTEN MAL verdrahtet. Es war
+# gebaut und getestet (12 Tests), aber kein Prozess hat es instanziiert -- also
+# gab es die Zusage "hoechstens einmal einloesbar" auf Papier und nicht im
+# laufenden System. Der Egress-Broker ist ihr erster Verbraucher.
+#
+# `frist_s`: ein Ticket ist eine Autorisierung, nicht ein Guthaben. Fuenf Minuten
+# reichen fuer eine Anfrage samt Nachdenken, und laenger offen zu stehen macht ein
+# gestohlenes Ticket wertvoller.
+TICKET_DATEI = "tickets.json"
+TICKET_FRIST_S = 300.0
+
 
 def _dumpbarkeit_abschalten() -> None:
     """Design 7.5: keine ptrace-/Core-Dump-Freigabe fuer den Hub.
@@ -132,15 +151,25 @@ class Hub:
         self.gpu_frist_s = float(self.cfg.get("gpu.sperrfrist_s", GPU_FRIST_S))
         self.gpu_reserve_mib = int(self.cfg.get("gpu.reserve_mib", GPU_RESERVE_MIB))
         # T-3.9: der Sprechtext-Torwaechter. Validator und Abkuehlung liegen
-        # HIER, weil eine Pruefung im sprechenden Dienst umgehbar ist
-        # (Design §8.3).
+        # HIER, weil eine Pruefung im sprechenden Dienst umgehbar ist, sobald
+        # ein anderer Produzent Text an die Ausgabe schicken kann (Design §8.3).
+        # Die Freigabe ist eine Marke mit Frist -- dasselbe Muster wie die
+        # GPU-Ladesperre, aus demselben Grund: der Halter gibt zurueck, was er
+        # bekommen hat, und ein gestorbener Sprecher blockiert nichts dauerhaft.
         self._tts_lock = threading.Lock()
-        self._tts_freigaben: dict[str, tuple[str, float]] = {}
-        self._tts_letzte: str | None = None
+        self._tts_freigaben: dict[str, tuple[str, float]] = {}   # Marke: (Kanal, Ablauf)
         self.tts_frist_s = float(self.cfg.get("tts.freigabefrist_s", TTS_FRIST_S))
         self.abkuehlung = Abkuehlung(
             Path(self.cfg.state_dir) / TTS_ABKUEHLUNG_DATEI,
             cfg=self.cfg, log=self.log)
+        # T-3.11: Kontingente fuer den Egress. Persistent, weil ein Neustart des
+        # Hubs sonst jedes ausgegebene Ticket wieder gueltig machen wuerde -- und
+        # "hoechstens einmal" waere dann "hoechstens einmal je Hub-Laufzeit".
+        self.ticket_frist_s = float(
+            self.cfg.get("hub.ticket_frist_s", TICKET_FRIST_S))
+        self.tickets = Ticketbuch(
+            Path(self.cfg.state_dir) / TICKET_DATEI,
+            frist_s=self.ticket_frist_s, log=self.log)
         self._server: list[socket.socket] = []
         self._threads: list[threading.Thread] = []
         self._stop = threading.Event()
@@ -401,6 +430,63 @@ class Hub:
                 return {"v": 1, "ok": True}
             return {"v": 1, "ok": False, "grund": "fremde_sperre"}
 
+    # -- Kontingente (T-3.11) ----------------------------------------------
+
+    def ticket_anfrage(self, anfrage: object) -> dict:
+        """Ausgeben und Einloesen. Dasselbe Muster wie `gpu.sock` und
+        `tts.sock`: eine Zeile rein, eine raus, **kein Produzent** (kein
+        `ipc.PRODUZENTEN`-Eintrag, kein Bus-Ereignis).
+
+        Warum der Hub das haelt und nicht der Egress: ein Kontingent, das der
+        Prozess ausgibt, der es auch verbraucht, ist eine Zaehlung und keine
+        Autorisierung. Design 2.4 sagt es fuer Marken, und fuer Tickets gilt es
+        genauso -- der Egress kann sich hier nichts selbst erteilen, weil er die
+        Ausgabe nicht erreicht, ohne dass der Hub sie protokolliert.
+        """
+        if not isinstance(anfrage, dict):
+            return {"v": 1, "ok": False, "grund": "unlesbar"}
+        art = anfrage.get("art")
+        if art not in ("ausgeben", "einloesen"):
+            return {"v": 1, "ok": False, "grund": "unbekannte_art",
+                    "meldung": f"art={str(art)[:40]!r}"}
+
+        auftrag_hash = anfrage.get("auftrag_hash")
+        if not isinstance(auftrag_hash, str) or not auftrag_hash.strip():
+            return {"v": 1, "ok": False, "grund": "kein_hash",
+                    "meldung": "Feld `auftrag_hash` fehlt oder ist leer"}
+
+        if art == "ausgeben":
+            try:
+                ticket = self.tickets.ausgeben(auftrag_hash=auftrag_hash)
+            except MarkenFehler as exc:
+                self.diag.verworfen("ticket_ausgabe")
+                return {"v": 1, "ok": False, "grund": "abgelehnt",
+                        "meldung": str(exc)[:200]}
+            self.log.info("Kontingent ausgegeben",
+                          DAIMON_ACTION="ticket_ausgabe",
+                          DAIMON_ZWECK=str(anfrage.get("zweck", ""))[:40])
+            return {"v": 1, "ok": True, "ticket": ticket,
+                    "frist_s": self.ticket_frist_s}
+
+        ticket = anfrage.get("ticket")
+        if not isinstance(ticket, str) or not ticket.strip():
+            return {"v": 1, "ok": False, "grund": "kein_ticket",
+                    "meldung": "Feld `ticket` fehlt oder ist leer"}
+        try:
+            self.tickets.einloesen(ticket, auftrag_hash=auftrag_hash)
+        except MarkenFehler as exc:
+            # Ein Grund, viele Ursachen -- und das ist Absicht: unbekannt,
+            # abgelaufen, schon verbraucht und "gehoert zu anderem Auftrag"
+            # duerfen sich fuer den Aufrufer NICHT unterscheiden. Sonst ist die
+            # Absage ein Orakel, mit dem sich gueltige Ticket-IDs von
+            # abgelaufenen trennen lassen. Das Detail steht im Journal.
+            self.diag.verworfen("ticket_abgelehnt")
+            self.log.warn("Kontingent abgelehnt",
+                          DAIMON_ACTION="ticket_abgelehnt",
+                          DAIMON_GRUND=str(exc)[:160])
+            return {"v": 1, "ok": False, "grund": "ticket_ungueltig"}
+        self.log.info("Kontingent eingeloest", DAIMON_ACTION="ticket_einloesung")
+        return {"v": 1, "ok": True}
 
     # -- Sprechfreigabe (T-3.9) --------------------------------------------
 
@@ -409,17 +495,20 @@ class Hub:
 
         Drei Arten:
 
-        * `sprich` -- Text oder Vorlage rein, sprechbarer Text plus Marke
-          raus. Ohne Marke spricht der Dienst nicht; das ist der Grund,
-          warum ein Direktzugriff auf den TTS-Socket nichts erreicht.
-        * `beginnt` -- der Sprecher hat angefangen. Setzt voice.tts_active.
-        * `gesprochen` -- fertig. Loescht tts_active UND vermerkt die
-          Abkuehlung -- am ENDE, nicht am Anfang.
+        * `freigabe` -- Text oder Vorlage rein, sprechbarer Text plus Marke
+          raus. Ohne Marke spricht der Dienst nicht; das ist der Grund, warum
+          ein Direktzugriff auf den TTS-Socket nichts erreicht.
+        * `beginnt` -- der Sprecher hat angefangen. Setzt `voice.tts_active`.
+        * `gesprochen` -- fertig. Loescht `tts_active` UND vermerkt die
+          Abkuehlung. Vermerkt wird am **Ende**, nicht am Anfang: die Frist
+          zaehlt ab dem letzten Ton, sonst laufen 20 s Abkuehlung waehrend
+          eines 4 s langen Satzes schon zur Haelfte ab.
 
-        Reihenfolge in `sprich`: erst Validator, dann Abkuehlung. Ein Text,
-        der die Regeln verletzt, soll `code` oder `geheimnis` heissen und
-        nicht `abkuehlung` -- sonst verschwindet ein Injektionsversuch
-        hinter einer Frist.
+        Die Reihenfolge in `freigabe` ist Absicht: **erst Validator, dann
+        Abkuehlung**. Ein Text, der die Regeln verletzt, soll `code` oder
+        `geheimnis` heissen und nicht `abkuehlung` -- sonst verschwindet ein
+        Injektionsversuch hinter einer Frist, und im Journal steht nur, dass es
+        zu schnell war.
         """
         if not isinstance(anfrage, dict):
             return {"v": 1, "ok": False, "grund": "unlesbar"}
@@ -428,74 +517,144 @@ class Hub:
             return self._tts_beginnt(anfrage.get("marke"))
         if art == "gesprochen":
             return self._tts_gesprochen(anfrage.get("marke"))
-        if art != "sprich":
+        if art != "freigabe":
             return {"v": 1, "ok": False, "grund": "unbekannte_art"}
 
         kanal = str(anfrage.get("kanal", ""))
-        # MUTANT: der Hub prueft NICHT. Der Text wird ungesehen durchgereicht
-        # und eine Marke ausgegeben; die Pruefung passiert erst im Dienst.
-        # Design §8.3: der Validator sitzt im Hub -- sonst ist er umgehbar,
-        # sobald ein anderer Produzent Text an die Ausgabe schickt.
-        if "vorlage" in anfrage:
+        if "anlass" in anfrage:
             urteil = sprechtext.aus_vorlage(
-                anfrage.get("vorlage"), anfrage.get("werte"),
+                anfrage.get("anlass"), anfrage.get("werte"),
                 markierung=str(anfrage.get("markierung", "trusted")))
         else:
+            # MUTANT: der Hub prueft NICHT. Der Text wird ungesehen
+            # durchgereicht und eine Marke ausgegeben; die Pruefung
+            # passiert erst im Dienst. Design §8.3: der Validator sitzt
+            # im Hub -- sonst ist er umgehbar, sobald ein anderer
+            # Produzent Text an die Ausgabe schickt.
             urteil = sprechtext.Urteil(True, text=str(anfrage.get("text", "")))
-
         if not urteil.ok:
             self.diag.verworfen(f"tts_{urteil.grund}")
             self.log.warn("Sprechtext abgelehnt", DAIMON_ACTION="tts_abgelehnt",
                           DAIMON_KANAL=kanal[:20], DAIMON_GRUND=urteil.grund)
-            # Der abgelehnte Text kommt NICHT ins Journal.
+            # Der abgelehnte Text kommt NICHT ins Journal. Er ist genau das
+            # Material, das nicht weitergegeben werden soll -- ein Logeintrag
+            # waere eine Ausgabe an einer Stelle, die niemand als Ausgabe liest.
             return urteil.als_dict()
 
         darf, rest_s = self.abkuehlung.darf(kanal)
-        if not darf:
+
+        # Zwei Faelle duerfen die Abkuehlung umgehen, und beide sind
+        # Entscheidungen, nicht Bequemlichkeiten:
+        #
+        # UNTERBRECHUNG. Solange wirklich gesprochen wird, ist die naechste
+        # Aeusserung eine Korrektur und kein zweites Geschwaetz -- ein Pet, das
+        # seinen eigenen laufenden Satz nicht abbrechen kann, ist genau das
+        # Aergernis, das die Abkuehlung verhindern soll. Die Gegenprobe: nach
+        # dem Ende der unterbrechenden Aeusserung greift die Frist wieder, denn
+        # `gesprochen` setzt sie neu. Eine Kette von Unterbrechungen ist damit
+        # kein Umweg, sondern ein einziger, immer wieder abgebrochener Satz.
+        #
+        # ERSATZSATZ. Er ist die Antwort auf eine abgelehnte Aeusserung
+        # (Design §8.3: "sagt das Pet, dass die Antwort auf dem Bildschirm
+        # steht"). Unterliegt er der Abkuehlung, dann sagt das Pet es beim
+        # ersten Mal und schweigt danach -- und Schweigen ist von einem
+        # abgestuerzten Dienst nicht zu unterscheiden. Am 03.08. gemessen: von
+        # zehn Angriffstexten wurde genau einer beantwortet.
+        #
+        # ponytail: der Ersatzsatz hat KEINE eigene Frist. Obergrenze: er ist
+        # anfragegetrieben, ein flutender Client flutet also sich selbst. Sobald
+        # ein echter Produzent (Mind) das tut, gehoert hier eine eigene, kurze
+        # Frist hin -- und die haette dann nichts mit `abkuehlung` zu tun.
+        spricht_noch = bool(self.state.snapshot()["voice"].get("tts_active"))
+        ist_ersatz = anfrage.get("anlass") == sprechtext.ERSATZ_VORLAGE
+        if not darf and not (spricht_noch or ist_ersatz):
             self.diag.verworfen("tts_abkuehlung")
             return {"v": 1, "ok": False, "grund": "abkuehlung",
                     "rest_s": rest_s, "ersatz": ""}
+        unterbrechung = (not darf) and spricht_noch and not ist_ersatz
 
         marke = secrets.token_hex(16)
         with self._tts_lock:
             jetzt = time.monotonic()
+            # Abgelaufene Freigaben wegraeumen -- sonst waechst das Buch mit
+            # jedem gestorbenen Sprecher.
             self._tts_freigaben = {m: v for m, v in self._tts_freigaben.items()
                                    if v[1] > jetzt}
-            self._tts_freigaben[marke] = (kanal, jetzt + self.tts_frist_s)
+            self._tts_freigaben[marke] = (kanal, jetzt + self.tts_frist_s,
+                                          ist_ersatz)
         self.log.info("Sprechfreigabe erteilt", DAIMON_ACTION="tts_freigabe",
-                      DAIMON_KANAL=kanal[:20], DAIMON_ZEICHEN=len(urteil.text))
+                      DAIMON_KANAL=kanal[:20],
+                      DAIMON_ZEICHEN=len(urteil.text))
         return {"v": 1, "ok": True, "text": urteil.text, "marke": marke,
-                "kanal": kanal, "frist_s": self.tts_frist_s}
+                "kanal": kanal, "frist_s": self.tts_frist_s,
+                # Sichtbar machen, wenn eine Abkuehlung umgangen wurde. Eine
+                # stille Umgehung waere eine Zusage, die im Protokoll fehlt.
+                "unterbrechung": unterbrechung, "ersatz_freigabe": ist_ersatz,
+                "rest_s": rest_s}
 
-    def _tts_freigabe_holen(self, marke: object, *, entfernen: bool):
+    def _tts_freigabe_holen(self, marke: object, *,
+                            entfernen: bool) -> tuple[str, bool] | None:
+        """`(Kanal, ist_ersatz)` zur Marke, oder None. Nur der Halter -- eine
+        fremde oder abgelaufene Marke bewegt nichts."""
         with self._tts_lock:
             eintrag = self._tts_freigaben.get(marke) if isinstance(marke, str) else None
             if eintrag is None or eintrag[1] <= time.monotonic():
                 return None
             if entfernen:
                 del self._tts_freigaben[marke]
-            return eintrag[0]
+            return (eintrag[0], eintrag[2])
 
     def _tts_beginnt(self, marke: object) -> dict:
-        kanal = self._tts_freigabe_holen(marke, entfernen=False)
-        if kanal is None:
+        eintrag = self._tts_freigabe_holen(marke, entfernen=False)
+        if eintrag is None:
             return {"v": 1, "ok": False, "grund": "fremde_marke"}
-        with self._tts_lock:
-            self._tts_letzte = marke
+        kanal, ist_ersatz = eintrag
         self.state.set_voice(tts_active=True)
+        if ist_ersatz:
+            # Der Ersatzsatz vermerkt KEINE Abkuehlung: er ist die Antwort auf
+            # eine Ablehnung und darf die naechste echte Aeusserung nicht
+            # blockieren. Siehe die Begruendung in `tts_anfrage`.
+            return {"v": 1, "ok": True, "kanal": kanal, "ersatz": True}
+        # Die Abkuehlung faengt HIER an, nicht erst beim `gesprochen` und nicht
+        # schon bei der Freigabe.
+        #
+        # Beim `gesprochen` allein war sie fuer schnelle Aufrufer wirkungslos:
+        # zwei Anfragen hintereinander liefen BEIDE durch, weil die Wiedergabe
+        # der ersten noch lief und deshalb nichts vermerkt war -- die zweite
+        # unterbrach die erste. Am 03.08. gemessen, zwei `rueckfrage`-Saetze.
+        #
+        # Bei der FREIGABE war sie zu frueh: eine Freigabe, die nie gesprochen
+        # wird -- ein Probelauf, ein toter Dienst, eine fehlende Stimme --
+        # haette das Pet fuer die ganze Frist stummgeschaltet. Beim Gegenlesen
+        # ist genau das passiert und hat die Entdeckungsphase des Verifizierers
+        # abgewuergt.
+        #
+        # `beginnt` heisst: es sind Samples beim Wiedergabeprozess. Das
+        # Restrisiko ist das Fenster zwischen Freigabe und erstem Sample, also
+        # der TTFA (gemessen 40--150 ms). Wer in diesem Fenster zweimal
+        # anfragt, bekommt zweimal frei -- und die zweite Aeusserung
+        # unterbricht die erste, was bei 100 ms Abstand ohnehin die richtige
+        # Antwort ist. Beim `gesprochen` wird die Frist neu gesetzt, damit sie
+        # ab dem LETZTEN TON zaehlt.
+        self.abkuehlung.vermerke(kanal)
         return {"v": 1, "ok": True, "kanal": kanal}
 
     def _tts_gesprochen(self, marke: object) -> dict:
-        kanal = self._tts_freigabe_holen(marke, entfernen=True)
-        with self._tts_lock:
-            # Nur die juengste Marke loescht die Anzeige: ein verspaetetes
-            # `gesprochen` einer ABGEBROCHENEN Wiedergabe darf das Flag der
-            # laufenden nicht wegnehmen.
-            if self._tts_letzte == marke:
-                self._tts_letzte = None
-                self.state.set_voice(tts_active=False)
-        if kanal is None:
+        eintrag = self._tts_freigabe_holen(marke, entfernen=True)
+        self.state.set_voice(tts_active=False)
+        if eintrag is None:
+            # `tts_active` wird trotzdem geloescht: ein Sprecher, dessen Marke
+            # verfallen ist, spricht sicher nicht mehr, und ein haengendes
+            # `true` waere fuer die Rueckkopplungssperre schlimmer als eine
+            # verlorene Abkuehlung.
             return {"v": 1, "ok": False, "grund": "fremde_marke"}
+        kanal, ist_ersatz = eintrag
+        if ist_ersatz:
+            return {"v": 1, "ok": True, "kanal": kanal, "ersatz": True}
+        # Neu setzen: die Frist zaehlt ab dem LETZTEN TON, nicht ab dem Beginn
+        # (dort wurde sie schon einmal gesetzt, siehe `_tts_beginnt`). Das ist
+        # zugleich die Gegenprobe zur Unterbrechungs-Umgehung: eine Kette von
+        # Unterbrechungen verlaengert die Frist, statt sie zu umgehen.
         ablauf = self.abkuehlung.vermerke(kanal)
         return {"v": 1, "ok": True, "kanal": kanal,
                 "abkuehlung_bis": round(ablauf, 3)}
@@ -615,6 +774,11 @@ class Hub:
         self._threads.append(t)
         t = threading.Thread(target=self._horche_einfach,
                              args=(TTS_SOCKET, self.tts_anfrage),
+                             kwargs={"liest": True}, daemon=True)
+        t.start()
+        self._threads.append(t)
+        t = threading.Thread(target=self._horche_einfach,
+                             args=(TICKET_SOCKET, self.ticket_anfrage),
                              kwargs={"liest": True}, daemon=True)
         t.start()
         self._threads.append(t)

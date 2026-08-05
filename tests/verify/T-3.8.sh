@@ -9,6 +9,13 @@
 # Aufruf:
 #   tests/verify/T-3.8.sh
 #   DAIMON_FIXTURE=tests/fixtures/known-good/T-3.8 tests/verify/T-3.8.sh
+#
+# T-3.8.v2: das Aufraeumen killt die PROZESSGRUPPE (start_new_session +
+# killpg), nicht nur Aktivator bzw. strace. Der Befund vom 05.08.: 34
+# verwaiste daimon/gpu/stt.py-Prozesse, alle vom strace-Pfad -- terminate()
+# auf strace detachet nur, der Tracee laeuft weiter und verwaist auf
+# systemd --user. Am Ende steht eine Leck-Pruefung mit Positivkontrolle
+# (Abschnitt "L").
 set -uo pipefail
 
 HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1; pwd)"
@@ -233,7 +240,7 @@ for name in kopieren:
         cmd.extend(["-E", name])
 cmd.extend([str(PYTHON), "-B", "-P", str(STT)])
 launcher = subprocess.Popen(cmd, env=env, cwd=REPO, stdout=log,
-                            stderr=subprocess.STDOUT)
+                            stderr=subprocess.STDOUT, start_new_session=True)
 prozesse.append(launcher)
 P.check("K10", "Socket-Aktivator lauscht", warte_datei(sockpfad, launcher), True)
 P.check("K10", "vor der ersten Verbindung ist der Dienst inactive",
@@ -507,7 +514,8 @@ miss_log = (RT / "modell-fehlt.log").open("wb")
 miss_cmd = ["strace", "-f", "-e", "trace=network", "-o", str(strace_log),
             str(PYTHON), "-B", "-P", str(STT), "--socket", str(miss_sock)]
 miss = subprocess.Popen(miss_cmd, cwd=REPO, env=umgebung(miss_cfg, miss_runtime),
-                        stdout=miss_log, stderr=subprocess.STDOUT)
+                        stdout=miss_log, stderr=subprocess.STDOUT,
+                        start_new_session=True)
 prozesse.append(miss)
 P.check("K11", "Direktstart mit --socket legt den Socket an",
         warte_datei(miss_sock, miss), True)
@@ -606,15 +614,55 @@ print("      der Positivkanarienvogel, AF_INET/AF_INET6 muss fehlen.")
 print("  (6) Nicht geprueft: andere Stimmen, Nebengeraeusche, Entfernung und Spontansprache;")
 print("      diese vier Grenzen stammen aus herkunft.json. Ebenso keine Diarisierung oder Wortzeiten.")
 
+# Aufraeumen mit Leck-Pruefung (T-3.8.v2). Der Befund vom 05.08.: 34 verwaiste
+# daimon/gpu/stt.py-Prozesse, alle vom strace-Pfad -- `terminate()` auf strace
+# DETACHET nur, der Tracee laeuft weiter und verwaist auf systemd --user.
+# Deshalb laufen beide Dienststarts in eigenen Prozessgruppen
+# (start_new_session=True), und aufgeraeumt wird die GRUPPE: killpg trifft
+# strace und Tracee bzw. Aktivator und Dienst gemeinsam. terminate/kill auf
+# dem direkten Kind bleibt der Rueckfall.
+def stt_leichen() -> list[str]:
+    """PIDs laufender stt.py-Prozesse DIESES Laufs (RT in Kommandozeile oder
+    Umgebung -- der socket-aktivierte Dienst traegt RT nur in der Umgebung)."""
+    treffer = []
+    for p in Path("/proc").iterdir():
+        if not p.name.isdigit():
+            continue
+        try:
+            args = (p / "cmdline").read_bytes().replace(b"\0", b" ")
+            if b"daimon/gpu/stt.py" not in args:
+                continue
+            um = (p / "environ").read_bytes()
+        except OSError:
+            continue
+        if str(RT).encode() in args or str(RT).encode() in um:
+            treffer.append(p.name)
+    return treffer
+
+P.check("L", "POSITIVKONTROLLE: waehrend des Laufs liefen Dienste aus diesem RT",
+        len(stt_leichen()) >= 2, True)
 for prozess in reversed(prozesse):
     if prozess.poll() is None:
-        prozess.terminate()
+        try:
+            os.killpg(prozess.pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            prozess.terminate()
 for prozess in reversed(prozesse):
     try:
         prozess.wait(timeout=2)
     except subprocess.TimeoutExpired:
-        prozess.kill()
+        try:
+            os.killpg(prozess.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            prozess.kill()
         prozess.wait(timeout=2)
+time.sleep(0.3)
+leichen = stt_leichen()
+P.check("L", "nach dem Aufraeumen ist KEIN stt.py-Prozess dieses Laufs uebrig",
+        leichen, [])
+print(f"    L: {P.n['L']:3d} Pruefungen, {P.rot['L']} rot")
+print(f"  gesamt mit Leck-Pruefung: {gesamt + P.n['L']} Pruefungen, "
+      f"{gesamt_rot + P.rot['L']} rot")
 log.close(); miss_log.close()
 
 if P.fail:

@@ -1,10 +1,12 @@
 MUTANT: die Abkuehlung lebt nur im Speicher.
 
-`Abkuehlung` laedt den Bestand nicht und schreibt ihn nicht. Alles andere
-stimmt: die Fristen (20/10/3 s) wirken im laufenden Prozess, `darf()` und
-`vermerke()` sind unveraendert, die Datei-Machinerie ist sogar noch da --
-sie wird nur nie gerufen. Ein Verifizierer, der die Abkuehlung nur im
-laufenden Prozess prueft, ist bei ihm vollstaendig gruen.
+`Abkuehlung` laedt den Bestand nicht (`self._laden()` entfaellt im
+Konstruktor) und schreibt ihn nicht (`self._schreiben()` entfaellt in
+`vermerke`). Alles andere stimmt: die Fristen (20/10/3 s) wirken im
+laufenden Prozess, `darf()` und `vermerke()` sind unveraendert, die
+Datei-Machinerie samt Boot-ID-Logik ist sogar noch da -- sie wird nur nie
+gerufen. Ein Verifizierer, der die Abkuehlung nur im laufenden Prozess
+prueft, ist bei ihm vollstaendig gruen.
 
 Gefangen von: dem Neustart der Hubs mitten im Abkuehlungsfenster
 (Kriterium 8) -- nach dem Neustart muss dieselbe Anfrage weiter abgelehnt

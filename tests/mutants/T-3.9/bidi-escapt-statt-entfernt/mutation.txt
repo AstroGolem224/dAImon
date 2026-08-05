@@ -1,7 +1,7 @@
 MUTANT: Steuerzeichen werden ESCAPT statt ENTFERNT.
 
-Der Validator benutzt die Behandlung von `wert_saeubern` (der
-Bubble-Sanitizer aus T-1.7): aus einem Bidi-Override wird die
+`unsichtbares_entfernen()` benutzt die Behandlung von `wert_saeubern`
+(der Bubble-Sanitizer aus T-1.7): aus einem Bidi-Override wird die
 Zeichenkette `\u202E`. Fuer die Anzeige ist das richtig und dort
 eingefroren; vorgelesen ist es Unsinn -- Design §8.3 verlangt fuer die
 Stimme: Steuerzeichen, Bidi-Overrides und Nullbreitenzeichen werden

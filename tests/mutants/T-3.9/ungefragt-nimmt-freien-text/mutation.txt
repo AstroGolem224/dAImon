@@ -1,10 +1,12 @@
 MUTANT: der Kanal `ungefragt` nimmt freien Text.
 
-Kriterium 5 ist aufgeweicht: statt freien Text abzulehnen, laeuft er
-durch dieselben Regeln wie eine Antwort. Damit kann ein Modell dem Nutzer
-ungefragt beliebige Saetze vorlesen lassen, solange sie harmlos AUSSEHEN
--- genau der Kanal, fuer den die kuratierten Vorlagen existieren.
+Kriterium 5 ist aufgeweicht: statt freien Text mit dem Grund
+`freier_text` abzulehnen, laeuft er durch dieselben Regeln wie eine
+Antwort. Damit kann ein Modell dem Nutzer ungefragt beliebige Saetze
+vorlesen lassen, solange sie harmlos AUSSEHEN -- genau der Kanal, fuer
+den die kuratierten Vorlagen existieren. Die Vorlagen selbst gehen
+weiterhin durch (`aus_vorlage` ist unveraendert) -- die Positivkontrolle
+des Verifizierers bleibt bei ihm gruen.
 
 Gefangen von: der Ungefragt-Pruefung (Kriterium 5) -- freier Text auf
-`ungefragt` wird abgelehnt, auch ein harmloser Satz; die Positivkontrolle
-daneben (eine kuratierte Vorlage geht durch) ist bei ihm korrekt gruen.
+`ungefragt` wird abgelehnt, auch ein harmloser Satz.

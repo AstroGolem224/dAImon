@@ -159,19 +159,35 @@ class HubState:
                 self._bubble = None
                 self._rev += 1
 
+    def set_voice(self, **felder: Any) -> None:
+        """`voice.tts_active` und Verwandte. T-3.9.
+
+        Das Feld gab es seit Beginn im Schnappschuss und **niemand konnte es
+        setzen** -- es stand also seit Wochen als `false` da und behauptete
+        damit eine Aussage ("es spricht gerade nichts"), die gar nicht gemessen
+        wurde. Hier kommt der Setter dazu.
+
+        Die Rueckkopplungssperre (`daimon/ears/interlock.py`) ist eine
+        In-Prozess-Klasse, und es gibt heute keinen Prozess, der eine Instanz
+        haelt. Bis der Ohren-Dienst existiert, ist dieses Feld der einzige
+        prozessuebergreifende Weg, "ich spreche" zu sagen.
+
+        ponytail: nur ein Wahrheitswert plus Ablauf. Obergrenze: die Sperre
+        braucht zusaetzlich die **Echo-Referenz** (16 kHz mono int16, siehe
+        `interlock.echo_referenz`) -- ueber ein Zustandsfeld geht Audio nicht,
+        das braucht den Ohren-Dienst und einen eigenen Kanal.
+        """
+        with self._lock:
+            vorher = dict(self._voice)
+            self._voice.update(felder)
+            if self._voice != vorher:
+                self._rev += 1
+
     def set_perception(self, **felder: Any) -> None:
         with self._lock:
             vorher = dict(self._perception)
             self._perception.update(felder)
             if self._perception != vorher:
-                self._rev += 1
-
-    def set_voice(self, **felder: Any) -> None:
-        """T-3.9: voice.tts_active (und spaeter mehr) setzen."""
-        with self._lock:
-            vorher = dict(self._voice)
-            self._voice.update(felder)
-            if self._voice != vorher:
                 self._rev += 1
 
     # -- Lesen -------------------------------------------------------------

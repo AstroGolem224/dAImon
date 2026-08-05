@@ -30,6 +30,14 @@
 #     Module fehlten).
 #   * 0 VRAM am laufenden Prozess: /proc/<pid>/maps, /proc/<pid>/fd und
 #     nvidia-smi --query-compute-apps, nicht am Quelltext (Muster T-1.4).
+#   * AM SYSTEM zum Schluss: kein daimon.face.tts-Prozess mit Pfaden unter
+#     $RT darf den Lauf ueberleben. Der Dienst ist ein Enkelkind
+#     (systemd-socket-activate startet ihn erst bei der ersten Verbindung);
+#     ein Kill der Aktivator-PID allein liess ihn verwaist zurueck --
+#     gemessen am 05.08.: 4 Waisen je Lauf, 140 ueber 15 Stunden, 10 GiB
+#     RSS. Deshalb laeuft der Dienst in einer eigenen Prozessgruppe
+#     (setsid) und das Aufraeumen killt die GRUPPE, mit den bekannten
+#     Einzel-PIDs als Rueckfall.
 #
 # ZU JEDER NEGATIVPRUEFUNG EINE POSITIVKONTROLLE IM SELBEN LAUF:
 #   * Sieben verbotene Angriffstexte werden nicht vorgelesen; bei Bidi,
@@ -104,6 +112,8 @@ chk "echtes pw-cat vorhanden (Referenz, wird NICHT angeruehrt)" \
   "$(command -v pw-cat >/dev/null && echo ja || echo nein)" ja
 chk "systemd-socket-activate vorhanden" \
   "$(command -v systemd-socket-activate >/dev/null && echo ja || echo nein)" ja
+chk "setsid vorhanden (Prozessgruppe des Dienstes)" \
+  "$(command -v setsid >/dev/null && echo ja || echo nein)" ja
 chk "nvidia-smi vorhanden" "$(command -v nvidia-smi >/dev/null && echo ja || echo nein)" ja
 chk "Modellverzeichnis vorhanden" "$([[ -d "$MODELL_DIR" ]] && echo ja || echo nein)" ja
 chk "der Baum bringt daimon/hub/sprechtext.py mit" \
@@ -132,10 +142,19 @@ STUBBIN="$RT/bin"; mkdir -p "$STUBBIN"
 STUBLOG="$RT/pw-cat.log"; : >"$STUBLOG"
 HUBPIDS=()
 DIENSTPIDS=()
+GRUPPEN=()
 aufraeumen() {
+  # Die Dienste laufen in EIGENEN Prozessgruppen (setsid in dienst_start):
+  # systemd-socket-activate startet den Dienst erst bei der ersten Verbindung,
+  # er ist also ein Enkelkind -- ein Kill der Aktivator-PID allein laesst es
+  # verwaist zurueck (am 05.08. gemessen: 4 Waisen je Lauf, 140 ueber Nacht).
+  # Die Gruppe ist der Hauptweg, die einzelnen PIDs der Rueckfall.
+  local p
+  for p in "${GRUPPEN[@]:-}"; do [[ -n "$p" ]] && kill -- -"$p" 2>/dev/null; done
   for p in "${DIENSTPIDS[@]:-}"; do [[ -n "$p" ]] && kill "$p" 2>/dev/null; done
   for p in "${HUBPIDS[@]:-}"; do [[ -n "$p" ]] && kill "$p" 2>/dev/null; done
   sleep 0.3
+  for p in "${GRUPPEN[@]:-}"; do [[ -n "$p" ]] && kill -9 -- -"$p" 2>/dev/null; done
   for p in "${DIENSTPIDS[@]:-}" "${HUBPIDS[@]:-}"; do [[ -n "$p" ]] && kill -9 "$p" 2>/dev/null; done
   rm -rf -- "$RT"
 }
@@ -845,8 +864,12 @@ EOF
   # LISTEN_* kommt an) und startet es erst bei der ERSTEN VERBINDUNG.
   # Deshalb geht die Umgebung ueber einen env-Wrapper mit, und die
   # PID-Suche laeuft nach dem ersten Verbindungsversuch noch einmal.
+  # setsid gibt dem Ganzen eine eigene Prozessgruppe (PGID == ACT_PID):
+  # der Dienst ist ein ENKELKIND des Skripts, und ein Kill der Aktivator-PID
+  # allein laesst ihn als Waise zurueck. Die Gruppe trifft Aktivator,
+  # env-Wrapper und Enkelkind gemeinsam.
   ( cd "$RT" && \
-  systemd-socket-activate -l "$RT/xdg/daimon/tts-serve.sock" \
+  exec setsid systemd-socket-activate -l "$RT/xdg/daimon/tts-serve.sock" \
       env PATH="$STUBBIN:$PATH" PYTHONPATH="$TARGET" \
       XDG_RUNTIME_DIR="$RT/xdg" XDG_STATE_HOME="$RT/xdg-state" \
       XDG_CONFIG_HOME="$conf" DAIMON_PWCAT_LOG="$STUBLOG" \
@@ -855,6 +878,7 @@ EOF
       >"$RT/dienst-$logname.log" 2>&1 ) &
   ACT_PID=$!
   DIENSTPIDS+=("$ACT_PID")
+  GRUPPEN+=("$ACT_PID")
   DIENST_PID=""
   local n
   for n in $(seq 1 100); do
@@ -888,10 +912,29 @@ EOF
   done
   # exec-te activate den Dienst direkt, ist die activate-PID der Dienst.
   [[ -n "$DIENST_PID" ]] || DIENST_PID="$ACT_PID"
+  # Guertel und Hosentraeger: die Gruppe (GRUPPEN) ist der Hauptweg, die
+  # bekannte Dienst-PID der Rueckfall, falls sie je aus der Gruppe faellt.
+  [[ "$DIENST_PID" != "$ACT_PID" ]] && DIENSTPIDS+=("$DIENST_PID")
 }
 dienst_stop() {
+  # Erst die ganze Prozessgruppe (Aktivator + env + Enkelkind), dann die
+  # bekannten Einzel-PIDs als Rueckfall -- siehe aufraeumen().
+  [[ -n "$ACT_PID" ]] && kill -- -"$ACT_PID" 2>/dev/null
   [[ -n "$ACT_PID" ]] && kill "$ACT_PID" 2>/dev/null
+  [[ -n "$DIENST_PID" && "$DIENST_PID" != "$ACT_PID" ]] && kill "$DIENST_PID" 2>/dev/null
   [[ -n "$ACT_PID" ]] && wait "$ACT_PID" 2>/dev/null
+  # Kurze Frist, dann eskaliert die Gruppe auf SIGKILL: ein Dienst, der das
+  # TERM ignoriert, darf den naechsten dienst_start nicht behindern.
+  local n
+  for n in $(seq 1 20); do
+    [[ -z "$DIENST_PID" ]] && break
+    kill -0 "$DIENST_PID" 2>/dev/null || break
+    if [[ "$n" -eq 20 ]]; then
+      [[ -n "$ACT_PID" ]] && kill -9 -- -"$ACT_PID" 2>/dev/null
+      [[ -n "$DIENST_PID" ]] && kill -9 "$DIENST_PID" 2>/dev/null
+    fi
+    sleep 0.1
+  done
   ACT_PID=""; DIENST_PID=""; DIENST_SOCK=""
 }
 
@@ -1720,12 +1763,41 @@ chk "SCHLUSS-KANARIENVOGEL: nach allen Angriffen wird der harmlose Satz gesproch
   "$([[ "$(stub_bytes)" -gt $((bytes_vorher + 2000)) ]] && echo ja || echo nein)" ja
 
 # =============================================================================
+# Leck-Pruefung: kein TTS-Dienst ueberlebt den Lauf
+# =============================================================================
+# Der Befund vom 05.08.: vier verwaiste daimon.face.tts je Lauf, weil nur der
+# Aktivator gekillt wurde und der Dienst ein Enkelkind ist. Gemessen wird AM
+# SYSTEM, nicht an den eigenen Aufzeichnungen: nach dem Aufraeumen darf es
+# keinen Prozess mehr geben, dessen Kommandozeile daimon.face.tts nennt UND
+# einen Pfad unter $RT traegt (das $RT grenzt gegen fremde, parallel laufende
+# Pruefstaende ab). Positivkontrolle zuerst: VOR dem Aufraeumen muss es
+# mindestens einen solchen Prozess geben -- sonst waere die Pruefung auch
+# dann gruen, wenn nie ein Dienst gelaufen waere.
+echo
+SEK="L"
+echo "--- Leck-Pruefung: kein Dienst ueberlebt den Lauf ---"
+leck_treffer() {
+  local p args
+  for p in /proc/[0-9]*; do
+    args="$(tr '\0' ' ' <"$p/cmdline" 2>/dev/null)" || continue
+    [[ "$args" == *daimon.face.tts* && "$args" == *"$RT/"* ]] && echo "${p#/proc/}"
+  done
+}
+chk "POSITIVKONTROLLE: waehrend des Laufs lief ein Dienst mit Pfaden unter \$RT" \
+  "$([[ -n "$(leck_treffer)" ]] && echo ja || echo nein)" ja
+dienst_stop
+sleep 0.5
+rest="$(leck_treffer | tr '\n' ' ' | sed 's/ $//')"
+chk "nach dem Aufraeumen ist KEIN daimon.face.tts mit Pfaden unter \$RT uebrig" \
+  "$([[ -z "$rest" ]] && echo ja || { echo "uebrig: $rest"; echo nein; })" ja
+
+# =============================================================================
 # Abrechnung
 # =============================================================================
 echo
 echo "--- Abrechnung je Kriterium ---"
 gesamt=0; gesamt_rot=0
-for k in V K1 K2 K3 K4 K5 K6 K7 K8 K9 K10 K11 K12 KU; do
+for k in V K1 K2 K3 K4 K5 K6 K7 K8 K9 K10 K11 K12 KU L; do
   n="${PRUEFUNGEN[$k]:-0}"; r="${ROT[$k]:-0}"
   [[ "$n" -eq 0 ]] && continue
   gesamt=$((gesamt + n)); gesamt_rot=$((gesamt_rot + r))

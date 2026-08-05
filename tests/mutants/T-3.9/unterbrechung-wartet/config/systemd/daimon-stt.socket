@@ -1,0 +1,34 @@
+# dAImon STT (T-3.8), Socket-Seite.
+#
+# Keine Template-Unit: es gibt ein Modell und eine Sprache-Menge (parakeet-tdt-
+# 0.6b-v3 deckt 25 europaeische Sprachen in EINEM Modell ab, es braucht keinen
+# Sprachschalter und deshalb keine zweite Instanz).
+#
+# Installation: systemctl --user link <dieser Pfad>
+#               systemctl --user enable --now daimon-stt.socket
+
+[Unit]
+Description=dAImon STT Socket
+PartOf=graphical-session.target
+
+[Socket]
+ListenStream=%t/daimon/stt.sock
+# 0600: derselbe Nutzer, sonst niemand. Was hier durchgeht, ist alles, was ins
+# Mikrofon gesprochen wurde.
+SocketMode=0600
+# Accept=no: der Dienst bekommt den HORCHENDEN Socket (fd 3) und nimmt selbst
+# an. Mit Accept=yes gaebe es einen Prozess je Verbindung -- also ein
+# Modellladen (843 ms) je Aeusserung, und die Latenzzusage waere hin.
+Accept=no
+RemoveOnStop=yes
+
+# %t/daimon muss EXISTIEREN, bevor systemd den Namespace baut. Ohne das stirbt
+# die Unit nach JEDEM Neustart mit 226/NAMESPACE, weil /run/user/<uid> leer
+# hochkommt -- am 02.08. real passiert, alle vier Units bei Restart-Zaehler 97.
+# Preserve=yes, weil sonst das Stoppen EINER Unit das Verzeichnis loescht und
+# den anderen die Sockets unter den Fuessen wegzieht.
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+
+[Install]
+WantedBy=sockets.target

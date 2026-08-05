@@ -1,9 +1,12 @@
-# dAImon TTS-Dienst (T-3.9), Socket-Seite. EIN Socket, eine Stimme zur
-# Zeit -- keine Template-Unit, `%i` waere leer.
+# dAImon TTS (T-3.9), Socket-Seite.
 #
-# Der Socket ueberlebt einen Neustart des Dienstes. Installation:
-#   systemctl --user link <dieser Pfad>
-#   systemctl --user enable --now daimon-tts.socket
+# Anders als beim GPU-Worker gibt es hier KEINE Template-Unit: es gibt genau
+# eine Stimme zur Zeit, und `%i` waere leer. Die Stimme wechselt ueber die
+# Persona (Design 10.1), nicht ueber eine zweite Instanz -- zwei gleichzeitige
+# Stimmen waeren zwei Prozesse, die uebereinander sprechen.
+#
+# Installation: systemctl --user link <dieser Pfad>
+#               systemctl --user enable --now daimon-tts.socket
 # Der Dienst selbst wird NIE von Hand gestartet.
 
 [Unit]
@@ -11,18 +14,23 @@ Description=dAImon TTS Socket
 PartOf=graphical-session.target
 
 [Socket]
-ListenStream=%t/daimon/tts-serve.sock
-# 0600: derselbe Nutzer, sonst niemand (Design 1.3 -- Wegweiser, keine
-# Authentifizierung).
+ListenStream=%t/daimon/tts-say.sock
+# Nicht `tts.sock`: der Name gehoert dem HUB-Endpunkt (Validator und
+# Abkuehlung). Zwei Sockets mit derselben Aufgabe waeren eine Einladung, den
+# Validator zu umgehen, indem man den falschen anspricht.
+# 0600: derselbe Nutzer, sonst niemand.
 SocketMode=0600
 # Accept=no: der Dienst bekommt den HORCHENDEN Socket (fd 3) und nimmt selbst
-# an. Accept=yes waere ein Prozess -- also ein Modellladevorgang -- je
-# Verbindung, und das Modell im Speicher ist genau das TTFA-Kriterium.
+# an. Mit Accept=yes gaebe es einen Prozess je Verbindung -- also ein
+# Modellladen je Aeusserung, und der TTFA waere die Ladezeit.
 Accept=no
 RemoveOnStop=yes
-# %t/daimon muss EXISTIEREN, bevor systemd den Namespace baut, und Preserve,
-# weil sonst das Stoppen EINER Unit den anderen die Sockets wegzieht (beides
-# am 02.08. real passiert).
+
+# %t/daimon muss EXISTIEREN, bevor systemd den Namespace baut. Ohne das stirbt
+# die Unit nach JEDEM Neustart mit 226/NAMESPACE, weil /run/user/<uid> leer
+# hochkommt -- am 02.08. real passiert, alle vier Units bei Restart-Zaehler 97.
+# Preserve=yes, weil sonst das Stoppen EINER Unit das Verzeichnis loescht und
+# den anderen die Sockets unter den Fuessen wegzieht.
 RuntimeDirectory=daimon
 RuntimeDirectoryPreserve=yes
 

@@ -57,10 +57,12 @@ echo_schwelle  = 0.7
 # `reserve_mib`: soviel VRAM bleibt nach dem Laden frei. Der naechste, der
 #   nachfordert, ist sonst der Compositor.
 # `idle_s`: Leerlauf bis zum PROZESSENDE des Workers -- nicht bis zum Entladen.
-# `ladedauer_s`: der Platzhalter-Ladevorgang aus T-3.7; T-3.8 ersetzt ihn.
-# `modelle.<name>`: vermuteter VRAM-Bedarf in MiB. Vermutet, nicht gemessen --
-#   der Platzhalter alloziert nichts. 2600 ist parakeet-tdt-0.6b-v3 (2,4 GB)
-#   mit Luft.
+# `ladedauer_s`: der Platzhalter-Ladevorgang aus T-3.7.
+# `modelle.<name>`: vermuteter VRAM-Bedarf in MiB, fuer das Ladegatter.
+#   DER EINTRAG `stt` IST SEIT T-3.8 UNBENUTZT: der Erkenner laeuft auf der CPU
+#   (siehe [stt] unten) und fragt das Gatter nicht. Er bleibt als Beispiel
+#   stehen, damit der erste echte GPU-Verbraucher eine Vorlage hat -- geloescht
+#   waere er eine Frage mehr beim naechsten Modell.
 [gpu]
 sperrfrist_s = 120.0
 reserve_mib  = 1024
@@ -78,8 +80,45 @@ idle   = "#3a2418"
 active = "#ff6b1a"
 alert  = "#ffd24a"
 
+# T-3.8: der Erkenner. sherpa-onnx mit parakeet-tdt-0.6b-v3 auf der CPU, 0 VRAM.
+# Gemessen am 03.08. gegen 21 eigene Aufnahmen, 8 Threads: WER 5,17 % deutsch,
+# 0,0 % englisch, Latenz Median 117 ms, p95 152 ms, Modell laden 843 ms.
+# `modell_dir`: die Gewichte sind 665 MB und liegen NICHT im Repo. Holen mit
+#   spikes/stt-referenz/modell_holen.sh. Fehlen sie, sagt der Dienst
+#   `modell_fehlt` -- er laedt nichts aus dem Netz.
+# `threads`: Kalibrierknopf. Weniger Kerne im Rechner: Wert senken.
+# Es gibt bewusst KEINEN `provider`-Schluessel -- siehe daimon/gpu/stt.py.
+[stt]
+modell_dir = "~/.local/share/daimon/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
+threads    = 8
+
+# T-3.9: die Stimme. sherpa-onnx VITS auf der CPU, 0 VRAM.
+# `threads`: der Kalibrierknopf. Gemessen am 03.08. ueber die ganze Kette
+#   (Anfrage bis erste Samples beim Wiedergabeprozess), 20 Aeusserungen, p95:
+#   2 Threads 316 ms -- VERFEHLT, 4 Threads 187 ms, 8 Threads 148 ms.
+#   Acht ist die Vorgabe: vier erfuellt das Kriterium nur mit 13 ms Marge, und
+#   die ist beim naechsten Hintergrund-Build weg. Weniger Kerne: Wert senken.
+# `modell_dir`: liegt heute im Spike-Verzeichnis von T-1.12. Gehoert nach
+#   ~/.local/share/daimon/voices/, sobald T-3.10 die Persona-Dateien anlegt.
+# `freigabefrist_s`: wie lange eine Sprechfreigabe des Hubs gilt. Faengt einen
+#   gestorbenen Sprecher ab, schneidet keine langsame Wiedergabe ab.
+# `abkuehlung`: Design 8.4, je Kanal, persistiert unter $XDG_STATE_HOME/daimon.
+[tts]
+modell_dir      = "~/.local/share/daimon/voices"
+threads         = 8
+freigabefrist_s = 30.0
+
+[tts.abkuehlung]
+ungefragt  = 20.0
+reaktion   = 10.0
+rueckfrage = 3.0
+
 [persona]
 name = "Ember"
+# Stimme aus der Persona (Design 10.1). Bis T-3.10 den Persona-Lader baut,
+# steht sie hier -- thorsten und kerstin sind CC0, pavoque scheidet aus
+# (CC-BY-NC-SA). Geprueft wird zur Laufzeit die MODEL_CARD, nicht dieser Name.
+voice = "de_DE-thorsten-high"
 
 [logging]
 identifier = "daimon"

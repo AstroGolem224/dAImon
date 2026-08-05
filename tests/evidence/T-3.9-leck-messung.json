@@ -1,0 +1,57 @@
+{
+  "task": "T-3.9.v2 / T-3.8.v2",
+  "gegenstand": "Ressourcenleck in den eingefrorenen Verifizierern: der Dienst ist ein Enkelkind (systemd-socket-activate startet ihn erst bei der ersten Verbindung) bzw. ein strace-Tracee; das Aufraeumen killte nur den Aktivator/strace.",
+  "befund_tts": {
+    "quelle": "Meldung des Nutzers, 05.08.",
+    "prozesse": 140,
+    "rss_gib": 10,
+    "aeltester_stunden": 15,
+    "muster": "daimon.face.tts, PPID systemd --user, --hub-socket unter laengst geloeschten /tmp/tmp.*-Verzeichnissen"
+  },
+  "befund_stt": {
+    "gemessen": "2026-08-05, diese Sitzung",
+    "prozesse": 34,
+    "rss_gib": 0.6,
+    "aeltester_stunden": 15.5,
+    "muster": "daimon/gpu/stt.py --socket /tmp/tmp.*/runtime-fehlt/direkt.sock, PPID systemd --user",
+    "pfad": "ausschliesslich der strace-Pfad (terminate() auf strace detachet nur, der Tracee laeuft weiter); der socket-aktivierte Pfad hinterliess keine Waisen",
+    "aufgeraeumt": "alle 34 in dieser Sitzung beendet"
+  },
+  "fix": {
+    "verifizierer": "Dienst laeuft in eigener Prozessgruppe (T-3.9: setsid; T-3.8: start_new_session=True), das Aufraeumen killt die GRUPPE (kill -- -PGID bzw. os.killpg), nach kurzer Frist SIGKILL auf die Gruppe; die bekannten Einzel-PIDs (inkl. DIENST_PID in DIENSTPIDS) sind der Rueckfall.",
+    "leck_pruefung": "Am Ende jedes Laufs, mit Positivkontrolle: waehrend des Laufs muss ein Dienst-Prozess mit Pfaden unter $RT existiert haben, nach dem Aufraeumen darf keiner mehr existieren (SEK 'L' in beiden Verifizierern).",
+    "dienst_seite": "bereits Builder-seitig committet (daffca6): PR_SET_PDEATHSIG + HubWaechter in daimon/face/tts.py; Gut-Muster und Mutanten tragen diese Fassung seit der Neuerzeugung aus dem abgenommenen Stand."
+  },
+  "messungen": [
+    {
+      "lauf": "T-3.9.sh gegen Arbeitsbaum",
+      "pgrep_vorher": 0, "pgrep_nachher": 0,
+      "pruefungen": 214, "rot": 0, "rc": 0
+    },
+    {
+      "lauf": "T-3.9.sh gegen das ALTE Gut-Muster OHNE die zwei Netze (/tmp/t39-alt-fixture)",
+      "zweck": "Gegenbeweis: der Gruppen-Kill des Verifizierers raeumt auch einen Dienst ohne PR_SET_PDEATHSIG/HubWaechter vollstaendig ab",
+      "pgrep_vorher": 0, "pgrep_nachher": 0,
+      "pruefungen": 195, "rot": 0, "rc": 0
+    },
+    {
+      "lauf": "meta.sh T-3.9 (Gut-Muster + 5 Mutanten, 6 volle Verifizierer-Laeufe)",
+      "pgrep_vorher": 0, "pgrep_nachher": 0,
+      "mutanten_erkannt": ["abkuehlung-nicht-persistiert", "bidi-escapt-statt-entfernt", "ungefragt-nimmt-freien-text", "unterbrechung-wartet", "validator-im-dienst"],
+      "jeder_an_seiner_mutation": true,
+      "rc": 0
+    },
+    {
+      "lauf": "T-3.8.sh (v2) gegen Arbeitsbaum",
+      "pgrep_vorher": 0, "pgrep_nachher": 0,
+      "pruefungen": 179, "rot": 0, "rc": 0
+    },
+    {
+      "lauf": "meta.sh T-3.8 (Gut-Muster + 5 Mutanten)",
+      "pgrep_vorher": 0, "pgrep_nachher": 0,
+      "mutanten_erkannt": ["cuda-provider", "format-egal", "nachladen-je-anfrage", "stille-halluziniert", "text-geschoent"],
+      "rc": 0
+    }
+  ],
+  "zaehlweise": "pgrep -cf 'daimon\\.face\\.tts' bzw. pgrep -cf 'daimon/gpu/stt.py' (mit Selbsttreffer-Schutz); Zahl nach dem Lauf muss gleich der Zahl davor sein -- ueberall erfuellt."
+}
