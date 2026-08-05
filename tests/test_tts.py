@@ -613,3 +613,141 @@ def test_die_konfiguration_traegt_die_fristen_und_die_stimme():
     assert cfg["persona"]["voice"] == "de_DE-thorsten-high"
     # Vier Threads erfuellen das Kriterium nur mit 13 ms Marge -- gemessen.
     assert cfg["tts"]["threads"] >= 8
+
+
+# --------------------------------------------------------------------------
+# Der Dienst darf nicht ueberleben, wenn er nichts mehr bedienen kann
+#
+# Befund vom 05.08.: 140 verwaiste `daimon.face.tts`-Prozesse, zusammen 10 GiB
+# RSS, aeltester 15 Stunden alt, alle auf `systemd --user` umgehaengt und alle
+# auf Sockets in laengst geloeschten Temp-Verzeichnissen horchend. Gemessen
+# ueber einen einzigen T-3.9-Lauf: vorher 0, nachher 4.
+#
+# Der Leerlauf-Exit ist NICHT die Antwort -- der Modulkopf begruendet seine
+# Abwesenheit mit dem TTFA-Kriterium, und das gilt weiter. Ein Dienst, der
+# nichts zu tun hat, soll warten. Ein Dienst, dessen Gegenstelle nachweislich
+# weg ist, soll enden.
+# --------------------------------------------------------------------------
+
+def test_der_waechter_beendet_bei_dauerhaft_fehlendem_hub_socket(tmp_path):
+    sock = tmp_path / "tts.sock"
+    sock.write_bytes(b"")          # existiert erst
+    beendet = []
+    uhr = iter([0.0, 10.0, 20.0, 30.0, 40.0, 50.0])
+
+    w = T.HubWaechter(str(sock), intervall_s=0.0, geduld=3,
+                      ende=lambda: beendet.append(True),
+                      uhr=lambda: next(uhr))
+    assert w.runde() is True          # Socket da -> weiterleben
+    sock.unlink()
+    assert w.runde() is True          # 1. Fehlschlag: noch geduldig
+    assert w.runde() is True          # 2.
+    assert w.runde() is False         # 3. -> Schluss
+    assert beendet == [True]
+
+
+def test_der_waechter_verzeiht_ein_kurzes_verschwinden(tmp_path):
+    # Ein Hub-Neustart darf den Dienst nicht umbringen: sonst kostet die
+    # naechste Aeusserung den vollen Modell-Ladevorgang, und genau den soll
+    # der fehlende Leerlauf-Exit ja vermeiden.
+    sock = tmp_path / "tts.sock"
+    beendet = []
+    w = T.HubWaechter(str(sock), intervall_s=0.0, geduld=3,
+                      ende=lambda: beendet.append(True))
+    assert w.runde() is True          # weg
+    assert w.runde() is True          # weg
+    sock.write_bytes(b"")             # wieder da
+    assert w.runde() is True
+    assert w.runde() is True          # Zaehler zurueckgesetzt
+    assert beendet == []
+
+
+def test_ohne_hub_socket_pfad_waecht_niemand(tmp_path):
+    # Kein Pfad, kein Urteil: ein Dienst ohne konfigurierten Hub soll nicht
+    # aus Prinzip sterben.
+    w = T.HubWaechter("", intervall_s=0.0, geduld=1, ende=lambda: None)
+    for _ in range(5):
+        assert w.runde() is True
+
+
+def test_pdeathsig_wird_gesetzt_und_das_rennen_erkannt(monkeypatch):
+    gesetzt = []
+    monkeypatch.setattr(T, "_prctl_pdeathsig", lambda sig: gesetzt.append(sig))
+    # Elternteil lebt: nur setzen.
+    monkeypatch.setattr(T.os, "getppid", lambda: 4242)
+    assert T.sterbe_mit_elternteil() is True
+    assert gesetzt == [T.signal.SIGTERM]
+    # Elternteil schon tot (auf init umgehaengt): das Signal kaeme nie mehr,
+    # also selbst Schluss machen.
+    monkeypatch.setattr(T.os, "getppid", lambda: 1)
+    assert T.sterbe_mit_elternteil() is False
+
+
+def test_der_dienst_verdrahtet_beide_netze(monkeypatch, tmp_path):
+    # Nicht die Absicht wird geprueft, sondern der Weg: startet `main()` den
+    # Dienstbetrieb, muessen BEIDE Netze gespannt sein. Eines allein reicht
+    # nicht -- PDEATHSIG verpasst den SIGKILL-Fall, der Waechter den Fall
+    # ohne konfigurierten Hub.
+    gerufen = {}
+    monkeypatch.setattr(T, "sterbe_mit_elternteil",
+                        lambda: gerufen.setdefault("pdeathsig", True))
+
+    class Waechter:
+        def __init__(self, pfad, **kw):
+            gerufen["waechter"] = pfad
+
+        def starten(self):
+            gerufen["gestartet"] = True
+
+    monkeypatch.setattr(T, "HubWaechter", Waechter)
+    monkeypatch.setattr(T, "lauf", lambda *a, **kw: 0)
+    T.netze_spannen("/pfad/zum/hub.sock")
+    assert gerufen == {"pdeathsig": True, "waechter": "/pfad/zum/hub.sock",
+                       "gestartet": True}
+
+
+# --------------------------------------------------------------------------
+# Der Waechter gegen die Wiederkehr: keine verwaisten Dienste auf dieser Kiste
+# --------------------------------------------------------------------------
+
+def verwaiste_tts() -> list[tuple[int, str]]:
+    """`(pid, hub_socket)` aller TTS-Prozesse, deren Hub-Socket es nicht gibt.
+
+    Gezaehlt wird der NACHWEISLICH verwaiste Fall: ein Dienst, dessen
+    Socketpfad verschwunden ist, kann nichts mehr bedienen. Ein gerade
+    laufender Verifiziererlauf hat sein Temp-Verzeichnis noch und wird deshalb
+    nicht mitgezaehlt -- sonst waere dieser Test ein Zufallsgenerator.
+    """
+    import glob
+
+    gefunden = []
+    for eintrag in glob.glob("/proc/[0-9]*/cmdline"):
+        try:
+            with open(eintrag, "rb") as fh:
+                argv = fh.read().split(b"\0")
+        except OSError:
+            continue
+        if b"daimon.face.tts" not in argv:
+            continue
+        pfad = ""
+        for i, a in enumerate(argv):
+            if a == b"--hub-socket" and i + 1 < len(argv):
+                pfad = argv[i + 1].decode("utf-8", "replace")
+        if pfad and not os.path.exists(pfad):
+            gefunden.append((int(eintrag.split("/")[2]), pfad))
+    return gefunden
+
+
+def test_kein_tts_dienst_horcht_auf_einen_geloeschten_socket():
+    """Am 05.08. waren es 140 Stueck, zusammen 10 GiB, der aelteste 15 h alt.
+
+    Sie kamen aus den Verifiziererlaeufen: der Dienst wird ueber
+    `systemd-socket-activate` gestartet, der Prueftand kannte nur die PID des
+    Aktivators, und das Enkelkind ueberlebte jedes Aufraeumen. Zwei Netze im
+    Dienst selbst (`PR_SET_PDEATHSIG` und der `HubWaechter`) schliessen das --
+    dieser Test merkt, wenn eines von beiden wieder ausfaellt.
+    """
+    waisen = verwaiste_tts()
+    assert waisen == [], (
+        f"{len(waisen)} verwaiste TTS-Dienste: "
+        + "; ".join(f"pid={p} socket={s}" for p, s in waisen[:5]))

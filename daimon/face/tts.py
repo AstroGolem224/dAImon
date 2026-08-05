@@ -50,6 +50,7 @@ import argparse
 import json
 import os
 import re
+import signal
 import socket
 import subprocess
 import threading
@@ -712,6 +713,116 @@ def bediene(sprecher: Sprecher, conn: socket.socket) -> None:
             markierung=str(anfrage.get("markierung", "trusted"))))
 
 
+# -- Zwei Wege, an denen dieser Dienst zu Ende geht ------------------------
+#
+# Der Leerlauf-Exit bleibt weg -- der Modulkopf begruendet das mit dem
+# TTFA-Kriterium, und diese Begruendung traegt weiter. Was am 05.08. gefehlt
+# hat, ist etwas anderes: ein Dienst, der nichts zu tun hat, soll warten; ein
+# Dienst, der nichts mehr TUN KANN, soll enden.
+#
+# Der Befund: 140 verwaiste Prozesse, zusammen 10 GiB RSS, aeltester 15 Stunden
+# alt, alle auf `systemd --user` umgehaengt, alle horchend auf Sockets in
+# laengst geloeschten Temp-Verzeichnissen. Gemessen ueber einen einzigen
+# T-3.9-Lauf: vorher 0, nachher 4. Der Verifizierer startet den Dienst ueber
+# `systemd-socket-activate` und kennt am Ende nur die PID des Aktivators -- das
+# Enkelkind ueberlebt jeden Aufraeumversuch.
+#
+# Zwei Netze, weil keines allein reicht:
+#
+#   1. `PR_SET_PDEATHSIG` -- der Kernel beendet uns, sobald der ELTERNPROZESS
+#      stirbt. Deckt den geordneten Fall ab (der Aktivator wird gekillt) und
+#      kostet nichts. Deckt NICHT den Fall ab, dass der Testlaeufer selbst
+#      SIGKILL bekommt: dann verwaist der Aktivator, lebt aber weiter.
+#   2. Der Hub-Waechter -- ist der Hub-Socket dauerhaft verschwunden, gibt es
+#      niemanden mehr, der uns etwas zu sprechen gaebe. Deckt den SIGKILL-Fall
+#      ab, denn das Temp-Verzeichnis geht mit.
+
+PR_SET_PDEATHSIG = 1
+WAECHTER_INTERVALL_S = 10.0
+WAECHTER_GEDULD = 3
+
+
+def _prctl_pdeathsig(sig: int) -> None:
+    import ctypes
+
+    ctypes.CDLL("libc.so.6", use_errno=True).prctl(PR_SET_PDEATHSIG, sig,
+                                                   0, 0, 0)
+
+
+def sterbe_mit_elternteil() -> bool:
+    """`True`, wenn wir weiterleben duerfen.
+
+    Das Rennen ist der Punkt: stirbt der Elternteil zwischen `fork` und
+    `prctl`, kommt das Signal nie -- und genau so entsteht ein Waisenkind, das
+    niemand mehr einsammelt. Deshalb wird danach nachgesehen.
+    """
+    try:
+        _prctl_pdeathsig(signal.SIGTERM)
+    except OSError:
+        return True          # kein Linux oder kein libc -- kein Grund zu enden
+    return os.getppid() != 1
+
+
+class HubWaechter:
+    """Beendet den Dienst, wenn der Hub-Socket dauerhaft weg ist.
+
+    `geduld` statt sofortigem Ende, weil ein Hub-Neustart den Socket kurz
+    verschwinden laesst -- und ein Dienst, der daran stirbt, zahlt bei der
+    naechsten Aeusserung den vollen Modell-Ladevorgang. Genau den soll der
+    fehlende Leerlauf-Exit ja vermeiden.
+    """
+
+    def __init__(self, hub_socket: str, *, intervall_s: float = WAECHTER_INTERVALL_S,
+                 geduld: int = WAECHTER_GEDULD, ende=None, uhr=None,
+                 log: Logger | None = None) -> None:
+        self.pfad = hub_socket or ""
+        self.intervall_s = float(intervall_s)
+        self.geduld = int(geduld)
+        self._fehlt = 0
+        self._ende = ende or (lambda: os.kill(os.getpid(), signal.SIGTERM))
+        self._uhr = uhr or time.monotonic
+        self._log = log
+
+    def runde(self) -> bool:
+        """Eine Pruefung. `False` heisst: der Dienst wurde beendet."""
+        if not self.pfad:
+            return True                    # kein Pfad, kein Urteil
+        if os.path.exists(self.pfad):
+            self._fehlt = 0
+            return True
+        self._fehlt += 1
+        if self._fehlt < self.geduld:
+            return True
+        if self._log is not None:
+            self._log.warn("Hub-Socket dauerhaft weg -- Dienst beendet sich",
+                           DAIMON_ACTION="tts_hub_weg",
+                           DAIMON_SOCKET=self.pfad)
+        self._ende()
+        return False
+
+    def lauf(self) -> None:
+        while self.runde():
+            time.sleep(self.intervall_s)
+
+    def starten(self) -> threading.Thread:
+        t = threading.Thread(target=self.lauf, daemon=True)
+        t.start()
+        return t
+
+
+def netze_spannen(hub_socket: str, log: Logger | None = None) -> None:
+    """Beide Netze, vor dem ersten `accept()`.
+
+    Nur im DIENSTBETRIEB. Der Handlauf (`--sag`) endet ohnehin von selbst, und
+    ein `prctl` dort waere eine Wirkung ohne Anlass.
+    """
+    if not sterbe_mit_elternteil():
+        # Der Elternteil war schon tot, bevor das Signal scharf war: dieser
+        # Prozess ist bereits das Waisenkind, um das es geht.
+        raise SystemExit(0)
+    HubWaechter(hub_socket, log=log).starten()
+
+
 def lauf(sprecher: Sprecher, srv: socket.socket) -> int:
     """Kein Leerlauf-Exit. Siehe Modulkopf: das Modell im Speicher IST das
     TTFA-Kriterium, und 0 VRAM heisst, dass Warten nichts kostet."""
@@ -780,6 +891,7 @@ def main(argv: list[str] | None = None) -> int:
                 "Dienst legt ohne beides keinen Socket an: er waere gestartet, "
                 "aber unerreichbar.")
         srv = eigener_socket(args.socket)
+    netze_spannen(hub_socket)
     try:
         return lauf(sprecher, srv)
     finally:
