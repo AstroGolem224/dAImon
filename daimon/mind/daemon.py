@@ -46,10 +46,12 @@ from typing import Any
 from daimon.common.config import Config, load as load_config
 from daimon.common.logging import Logger, get_logger
 from daimon.mind.persona import Persona, PersonaFehler, lade as persona_laden
+from daimon.mind.router import Router, quellen_aus_umgebung
 
 MIND_SOCKET = "mind.sock"
 TICKET_SOCKET = "ticket.sock"
 EGRESS_SOCKET = "egress.sock"
+STATE_SOCKET = "state.sock"
 LISTEN_FDS_START = 3
 MAX_ZEILE = 1 << 20
 
@@ -106,21 +108,36 @@ class Mind:
         self.log = log or get_logger("daimon-mind")
         self.anfragen = 0
 
-    def koerper(self, frage: str) -> dict:
-        """Der API-Koerper. Der Systemprompt kommt WOERTLICH aus der Persona."""
+    def koerper(self, frage: str, kontext: dict | None = None) -> dict:
+        """Der API-Koerper. Der Systemprompt kommt WOERTLICH aus der Persona.
+
+        `kontext` traegt in T-3.12 ausschliesslich **opake Referenzen**
+        (`{"fenster": [{"ref": "w_1", "app_id": "..."}]}`) -- nie einen
+        Fenstertitel, nie Bildschirmtext. Er wird als eigener, klar abgesetzter
+        Block angehaengt und nicht in den Nutzertext gemischt: was das Modell
+        als Anweisung lesen koennte, soll wenigstens sichtbar getrennt sein.
+        """
+        inhalt = frage
+        if kontext:
+            inhalt = (f"{frage}\n\n[Referenzen, keine Inhalte]\n"
+                      f"{json.dumps(kontext, ensure_ascii=False, sort_keys=True)}")
         return {
             "model": self.modell,
             "max_tokens": self.max_tokens,
             "system": self.persona.prompt(),
-            "messages": [{"role": "user", "content": frage}],
+            "messages": [{"role": "user", "content": inhalt}],
         }
 
-    def frage(self, frage: object) -> dict:
+    def frage_api(self, frage: str, kontext: dict | None = None) -> dict:
+        """Der Weg nach draussen, wie ihn der Router benutzt."""
+        return self.frage(frage, kontext)
+
+    def frage(self, frage: object, kontext: dict | None = None) -> dict:
         if not isinstance(frage, str) or not frage.strip():
             return {"v": 1, "ok": False, "grund": "keine_frage",
                     "meldung": "Feld `text` fehlt oder ist leer"}
 
-        koerper = self.koerper(frage)
+        koerper = self.koerper(frage, kontext)
         # Erst das Kontingent, dann der Egress. Umgekehrt waere der Aufruf
         # bezahlt, bevor er autorisiert ist.
         ticket = hub_anfrage(self.hub_socket, {
@@ -187,36 +204,50 @@ def eigener_socket(pfad: str) -> socket.socket:
     return srv
 
 
-def bediene(mind: Mind, conn: socket.socket) -> None:
+def bediene_anfrage(mind: Mind, anfrage: object, *, router) -> dict:
+    """Eine Anfrage, eine Antwort. Ohne Socket, damit sie pruefbar ist.
+
+    `zustand` bleibt beim Mind -- er kennt Persona und Modell. Alles andere
+    geht durch den ROUTER: seit T-3.12 entscheidet nicht mehr der Dienst, dass
+    eine Frage an die API gehoert, sondern die Absicht. Vorher war jede Frage
+    ein API-Aufruf, auch "wie spaet ist es".
+    """
+    if not isinstance(anfrage, dict):
+        return {"v": 1, "ok": False, "grund": "unlesbar",
+                "meldung": "keine lesbare JSON-Zeile"}
+    if anfrage.get("art") == "zustand":
+        # Ein Zustand, FLACH -- so steht er im Vertrag. Ihn unter `router` zu
+        # verschachteln waere eine zweite Form derselben Auskunft, und dann
+        # sucht der Pruefstand `testprofil` an der falschen Stelle.
+        zustand = mind.zustand()
+        zustand.update({k: v for k, v in router.zustand().items()
+                        if k not in ("v", "ok", "pid")})
+        return zustand
+    return router.frage(anfrage)
+
+
+def bediene(mind: Mind, conn: socket.socket, *, router) -> None:
     with conn:
         conn.settimeout(200.0)
         try:
-            anfrage = json.loads(conn.makefile("rb").readline(MAX_ZEILE))
+            anfrage: Any = json.loads(conn.makefile("rb").readline(MAX_ZEILE))
         except (OSError, json.JSONDecodeError, ValueError):
             anfrage = None
-        if not isinstance(anfrage, dict):
-            antwort: dict[str, Any] = {"v": 1, "ok": False, "grund": "unlesbar",
-                                       "meldung": "keine lesbare JSON-Zeile"}
-        elif anfrage.get("art") == "zustand":
-            antwort = mind.zustand()
-        elif anfrage.get("art") == "frage":
-            antwort = mind.frage(anfrage.get("text"))
-        else:
-            antwort = {"v": 1, "ok": False, "grund": "unbekannte_art",
-                       "meldung": f"art={str(anfrage.get('art'))[:40]!r}"}
+        antwort = bediene_anfrage(mind, anfrage, router=router)
         try:
             conn.sendall(json.dumps(antwort).encode() + b"\n")
         except OSError:
             pass
 
 
-def lauf(mind: Mind, srv: socket.socket) -> int:
+def lauf(mind: Mind, srv: socket.socket, *, router) -> int:
     while True:
         try:
             conn, _ = srv.accept()
         except OSError:
             break
-        threading.Thread(target=bediene, args=(mind, conn), daemon=True).start()
+        threading.Thread(target=bediene, args=(mind, conn),
+                         kwargs={"router": router}, daemon=True).start()
     return 0
 
 
@@ -244,8 +275,16 @@ def main(argv: list[str] | None = None) -> int:
         modell=str(cfg.get("mind.modell", MODELL)),
         max_tokens=int(cfg.get("mind.max_tokens", MAX_TOKENS)))
 
+    # Der Router bekommt die echten Quellen und den Mind als Weg nach draussen.
+    # Kein Router im Mind selbst: `Mind` soll weiterhin nur eines koennen, und
+    # wer das eine mit dem anderen mischt, hat zwei Zusagen an einer Stelle.
+    router = Router(quellen=quellen_aus_umgebung(
+        hub_socket=str(cfg.runtime_dir / STATE_SOCKET)), mind=mind)
+
     if args.frage is not None:
-        print(json.dumps(mind.frage(args.frage), ensure_ascii=False)[:4000])
+        antwort = router.frage({"v": 1, "art": "frage", "text": args.frage,
+                                "marke": "user_ptt"})
+        print(json.dumps(antwort, ensure_ascii=False)[:4000])
         return 0
 
     srv = sd_socket()
@@ -262,7 +301,7 @@ def main(argv: list[str] | None = None) -> int:
         pfad = args.socket or str(cfg.runtime_dir / MIND_SOCKET)
         srv = eigener_socket(pfad)
     try:
-        return lauf(mind, srv)
+        return lauf(mind, srv, router=router)
     finally:
         srv.close()
 
