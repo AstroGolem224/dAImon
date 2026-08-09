@@ -108,6 +108,14 @@ modell_dir      = "~/.local/share/daimon/voices"
 threads         = 8
 freigabefrist_s = 30.0
 
+# Nordom spricht durchgaengig mit der geklonten Stimme, auch bei kurzen
+# Ausgaben (Matthias, 09.08.). Die Schwelle 80 war ein Latenzkompromiss: kurze
+# Reaktionen gingen an sherpa, weil Mimic teurer ist. 0 hebt ihn auf.
+# `mimic_nur_warm` bleibt an und traegt die Zusage weiter -- ist Mimic kalt,
+# faellt der Satz auf sherpa zurueck statt zu warten.
+mimic_stimme     = "n0rd0m"
+mimic_ab_zeichen = 0
+
 [tts.abkuehlung]
 ungefragt  = 20.0
 reaktion   = 10.0
