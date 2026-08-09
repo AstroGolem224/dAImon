@@ -74,11 +74,19 @@ from daimon.common.logging import get_logger
 # nachgewiesen).
 KG_BUS = "org.kde.kglobalaccel"
 KG_AKTION = ["daimon-auth", "dAImon Auth", "ptt", "dAImon Push-to-Talk"]
-# T-3.15: der Kill-Switch der Ohren. Zweite Aktion derselben Komponente --
-# die Tastenbindung gehoert dorthin, wo sie schon liegt, und der Ohren-Dienst
-# kann sich nicht selbst abschalten: ein festgefahrener Prozess fuehrt seinen
-# eigenen Kill-Switch nicht mehr aus.
-KG_AKTION_OHREN_AUS = ["daimon-auth", "dAImon Auth", "ohren_aus",
+# T-3.15: der Kill-Switch der Ohren -- in einer EIGENEN Komponente.
+#
+# Zwei Aktionen in einer Komponente ueberleben auf diesem kglobalaccel nicht:
+# beide `setShortcut`-Aufrufe melden Erfolg und liefern ihre Keycodes zurueck,
+# aber `allShortcutInfos` zeigt danach nur die ZULETZT registrierte. Am 09.08.
+# isoliert nachgestellt (zwei Probe-Aktionen, F1 und F2, in einer Komponente:
+# eine ueberlebt; in zwei Komponenten: beide). Genau daran ist Push-to-Talk
+# lautlos verschwunden -- der Kill-Switch kam als zweiter und hat ihn verdraengt.
+#
+# Die Registrierung ist damit KEIN Erfolgsnachweis: sie hat zurueckgemeldet,
+# dass die Taste gesetzt sei, und die Aktion war trotzdem weg. Wer hier etwas
+# aendert, liest danach `allShortcutInfos` und glaubt nicht dem Rueckgabewert.
+KG_AKTION_OHREN_AUS = ["daimon-ears", "dAImon Ohren", "ohren_aus",
                        "dAImon Ohren abschalten"]
 # Flags fuer setShortcut (kglobalacceld.h, enum SetShortcutFlag):
 # SetPresent=2 macht den Shortcut scharf, NoAutoloading=4 verhindert, dass
@@ -426,31 +434,42 @@ class AuthAgent:
                 return bus.call_sync(KG_BUS, ziel, iface, methode, params,
                                      None, Gio.DBusCallFlags.NONE, 3000, None)
 
-            ruf("doRegister", GLib.Variant("(as)", [KG_AKTION]))
-            gesetzt = ruf("setShortcut", GLib.Variant(
-                "(asaiu)", [KG_AKTION, [taste], KG_FLAGS])).unpack()[0]
-            if not gesetzt:
-                raise RuntimeError(f"{kuerzel!r} nicht gesetzt (belegt?)")
-            # T-3.15: der Ohren-Kill-Switch als zweite Aktion. Scheitert nur
-            # SIE, laeuft PTT weiter -- deshalb ein eigener try, nicht ein
-            # zweiter Aufruf im selben.
-            try:
-                ruf("doRegister", GLib.Variant("(as)", [KG_AKTION_OHREN_AUS]))
+            def eintragen(aktion: list[str], taste_qt: int) -> str:
+                """Registrieren, Taste setzen, NACHSEHEN. Gibt den
+                Komponentenpfad zurueck.
+
+                Das Nachsehen ist der Punkt: `setShortcut` meldet auch dann
+                Erfolg, wenn die Aktion gleich darauf verdraengt wird.
+                """
+                ruf("doRegister", GLib.Variant("(as)", [aktion]))
                 ruf("setShortcut", GLib.Variant(
-                    "(asaiu)", [KG_AKTION_OHREN_AUS,
-                                [kuerzel_nach_qt(ohren_kuerzel)], KG_FLAGS]))
+                    "(asaiu)", [aktion, [taste_qt], KG_FLAGS]))
+                pfad = ruf("getComponent",
+                           GLib.Variant("(s)", [aktion[0]])).unpack()[0]
+                infos = ruf("allShortcutInfos", None, ziel=pfad,
+                            iface="org.kde.kglobalaccel.Component").unpack()[0]
+                # Feldfolge von `(ssssssaiai)`: [3] ist der Aktionsname,
+                # [6] die aktiven Tasten.
+                gefunden = [i for i in infos if i[3] == aktion[2] and i[6]]
+                if not gefunden:
+                    raise RuntimeError(
+                        f"{aktion[2]!r} steht nach dem Setzen NICHT in der "
+                        f"Komponente {aktion[0]!r} -- vermutlich verdraengt")
+                bus.signal_subscribe(
+                    KG_BUS, "org.kde.kglobalaccel.Component",
+                    "globalShortcutPressed", pfad, None,
+                    Gio.DBusSignalFlags.NONE,
+                    lambda *a: self._kuerzel_verteilen(a))
+                return pfad
+
+            eintragen(KG_AKTION, taste)
+            # Scheitert nur der Kill-Switch, laeuft PTT weiter -- deshalb ein
+            # eigener try und nicht ein zweiter Aufruf im selben.
+            try:
+                eintragen(KG_AKTION_OHREN_AUS, kuerzel_nach_qt(ohren_kuerzel))
             except Exception as exc:  # noqa: BLE001
                 print(f"Ohren-Kuerzel nicht gesetzt ({exc})", file=sys.stderr)
-            pfad = ruf("getComponent",
-                       GLib.Variant("(s)", [KG_AKTION[0]])).unpack()[0]
-            # Ein Abonnement fuer beide Aktionen: das Signal traegt den
-            # Aktionsnamen als zweites Argument, und daran wird verteilt.
-            bus.signal_subscribe(
-                KG_BUS, "org.kde.kglobalaccel.Component",
-                "globalShortcutPressed", pfad, None,
-                Gio.DBusSignalFlags.NONE,
-                lambda *a: self._kuerzel_verteilen(a))
-            self._bus = bus  # haelt Verbindung und Subscription am Leben
+            self._bus = bus  # haelt Verbindung und Subscriptions am Leben
             self.log.info("Tastenkuerzel registriert",
                           DAIMON_KUERZEL=kuerzel)
         except Exception as exc:  # noqa: BLE001 -- genau HIER darf nichts sterben
