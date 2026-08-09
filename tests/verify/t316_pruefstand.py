@@ -52,7 +52,10 @@ assert len(LANG_80) == 80, len(LANG_80)
 # Fristen aus Schritt 13 und der Abnahme. Der Prüfstand misst gegen diese
 # Zahlen und nicht gegen "fühlt sich schnell an".
 GESAMTFRIST_MS = 500       # Verbindungsbeginn bis erster A-Rahmen
-NAECHSTE_FRIST_MS = 700    # P2-C: die naechste Aeusserung wird bedient
+NAECHSTE_FRIST_MS = 800    # P2-C nach Rev 9: 500 ms Mimic-Frist plus sherpa-TTFA.
+                           # Die 700 der ersten Fassung waren Arithmetik ohne
+                           # Rechnung -- sie halten nur, solange sherpa unter
+                           # 200 ms bleibt, und gemessen sind es 206.
 KALT_FRIST_MS = 400        # P2-B: Ton bei kaltem Mimic
 WARM_FRIST_MS = 200        # Schritt 12a: /warm ist best effort
 
@@ -577,8 +580,9 @@ P.unter("P2-C(d)", "Verzoegerung: Rueckfall binnen Frist", dauer_ms, NAECHSTE_FR
 P.check("P2-C(d)", "vollstaendig mit sherpa",
         str(antwort.get("engine", "")).startswith("sherpa") and antwort.get("ok"), True)
 P.check("P2-C(d)", "Grund nennt die Frist", antwort.get("mimic_grund"), "frist")
-P.info(f"Rechnung: {GESAMTFRIST_MS} ms Mimic-Frist + sherpa-TTFA. Die 700 ms "
-       f"aus P2-C halten nur, solange sherpa unter {NAECHSTE_FRIST_MS - GESAMTFRIST_MS} ms bleibt.")
+P.info(f"Rechnung: {GESAMTFRIST_MS} ms Mimic-Frist + sherpa-TTFA gegen "
+       f"{NAECHSTE_FRIST_MS} ms aus P2-C -- sherpa hat damit "
+       f"{NAECHSTE_FRIST_MS - GESAMTFRIST_MS} ms.")
 mimic.verzoegerung_s = 0.0
 
 # (c) Tod mitten im Stream
