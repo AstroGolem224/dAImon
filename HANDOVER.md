@@ -116,18 +116,44 @@ seit Block 1 fertig da — **ohne einen einzigen Aufrufer**. Deshalb kam
   kglobalaccel-Aktion): ein festgefahrener Ohren-Prozess führt seinen eigenen
   Kill-Switch nicht mehr aus. Derselbe Weg über den Steuer-Socket (`ohren_aus`).
 
-**Live belegt** ist bisher nur der Schalter selbst: `python -m
-daimon.ears.killswitch` meldet gegen die noch nicht verlinkte Unit ehrlich
-`rc=5 "Unit not loaded", ok=false`, und `pw-dump` zählt dabei 0 Aufnahmeströme.
+#### Die Unit ist installiert und läuft (09.08., auf Ansage)
 
-> **Die Unit ist NICHT installiert.** Das ist Absicht — sie startet einen Dienst,
-> der das Mikrofon anfassen darf, und das gehört nicht ungefragt in eine fremde
-> Sitzung. Zwei Befehle:
-> `systemctl --user link $PWD/config/systemd/daimon-ears.service` und
-> `systemctl --user enable --now daimon-ears.service`.
-> **Danach ist der erste Verdacht `PrivateDevices=yes`**, falls die Aufnahme
-> scheitert: PortAudio fällt ohne PipeWire-Client auf ALSA zurück, und ALSA
-> braucht `/dev/snd`.
+`systemctl --user link` + `enable --now`. **Der erste echte Start ist dreimal
+hintereinander gescheitert**, und der Fehler war meiner:
+
+```
+OSError: [Errno 30] Read-only file system: '/home/itiger013/.local/state/daimon'
+```
+
+`load_config()` legt `$XDG_STATE_HOME/daimon` an und **setzt dessen Modus** —
+unter `ProtectHome=read-only` ein Fehler beim Start, und zwar auch dann, wenn
+das Verzeichnis längst existiert und der Modus stimmt: `chmod` scheitert auf
+einem read-only gemounteten Pfad grundsätzlich. STT, TTS und Mind rufen aus
+genau diesem Grund `load_config(make_dirs=False)`, mit gleichlautendem
+Kommentar — der Ohren-Dienst tat es nicht. Behoben in `379ffd4`; die Alternative
+(`ReadWritePaths` auf das State-Verzeichnis) hätte ihm ein Recht gegeben, das er
+nicht braucht.
+
+**Live gemessen, seitdem:**
+
+| | |
+|---|---|
+| Dienst | `active`, 0 Neustarts, hängt mit 4 Sockets am Hub |
+| Aufnahmeströme im Leerlauf | **0** (`pw-dump`) — kein Mikrofon ohne PTT |
+| Kill-Switch am laufenden Dienst | `active → inactive`, `ok: true`, `rc: 0`, **24 ms** |
+| Kill-Switch gegen nicht geladene Unit | `rc: 5 "Unit not loaded"`, `ok: false` — ehrlich rot |
+
+**Was damit NICHT belegt ist**: dass unter PTT tatsächlich ein Strom entsteht
+(die Positivkontrolle zu K2/K5) und dass die Kette durchläuft. Beides braucht
+ein echtes Mikrofon und die übrigen Dienste — `daimon-auth`, `daimon-mind`,
+`daimon-stt.socket` und `daimon-tts.socket` sind derzeit **inaktiv**, es läuft
+nur Hub, Hookbridge und Ears. Der Auth-Agent ist dabei der PTT-Geber: **ohne ihn
+gibt es kein `voice.listening`, und der Ohren-Dienst hört per Konstruktion nie
+zu.**
+
+> **Erster Verdacht, wenn die Aufnahme später scheitert: `PrivateDevices=yes`.**
+> PortAudio fällt ohne PipeWire-Client auf ALSA zurück, und ALSA braucht
+> `/dev/snd`. Ungetestet, solange niemand gesprochen hat.
 
 ### Gate P3 — Stand 09.08.
 
