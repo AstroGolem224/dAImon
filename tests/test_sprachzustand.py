@@ -186,3 +186,39 @@ def test_utterance_setzt_processing(hub, tmp_path):
     rt = tmp_path / "rt"
     sende(rt, "ears", "utterance", {"text": "wie spaet ist es"})
     assert schnappschuss(rt)["voice"]["state"] == "processing"
+
+
+# -- Die dritte Frist: ein gestorbener Sprecher darf nicht ewig sprechen --
+
+def test_sprechfrist_laeuft_ab():
+    """Am 09.08. live gefunden: der TTS-Dienst war inaktiv, der Hub stand
+    seit Minuten auf `tts_active: true` -- ein Sprecher hatte `beginnt`
+    gemeldet und `gesprochen` nie. Folge: die Rueckkopplungssperre verwarf
+    JEDEN Mikrofonblock, und die Ohren waren dauerhaft taub.
+
+    `listening` und `denkt` hatten ihre Ausfallgrenze von Anfang an,
+    `tts_active` nicht. Dasselbe Muster, dieselbe Loesung.
+    """
+    from daimon.hub.state import SPRECH_FRIST_S
+
+    s = HubState()
+    s.set_voice(tts_active=True, jetzt=1000.0)
+    assert s.voice_state(jetzt=1000.0 + SPRECH_FRIST_S - 0.1) == "speaking"
+    assert s.voice_state(jetzt=1000.0 + SPRECH_FRIST_S + 0.1) == "idle"
+
+
+def test_sprechfrist_deckt_die_freigabefrist_des_hubs_ab():
+    """Kuerzer als die Sprechfreigabe waere falsch: dann galte der Sprecher
+    als still, waehrend seine Freigabe noch laeuft."""
+    from daimon.hub.daemon import TTS_FRIST_S
+    from daimon.hub.state import SPRECH_FRIST_S
+
+    assert SPRECH_FRIST_S >= TTS_FRIST_S
+
+
+def test_ein_gemeldetes_ende_beendet_sofort():
+    """Positivkontrolle: die Frist ist die zweite Reihe, nicht der Weg."""
+    s = HubState()
+    s.set_voice(tts_active=True, jetzt=1000.0)
+    s.set_voice(tts_active=False, jetzt=1001.0)
+    assert s.voice_state(jetzt=1001.0) == "idle"

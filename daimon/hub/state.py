@@ -47,7 +47,7 @@ PRIORITY: dict[str, int] = {
 SESSION_TTL_S = 3600.0
 LEASE_GRACE_S = 2.0      # so lange nach dem letzten Ereignis nicht nachsehen
 
-# T-3.14, die zwei Obergrenzen des Sprachzustands. Beide sind Ausfallgrenzen,
+# T-3.14, die drei Obergrenzen des Sprachzustands. Alle sind Ausfallgrenzen,
 # keine Fachlogik: sie greifen nur, wenn die zustaendige Quelle das Ende einer
 # Phase NICHT meldet.
 #
@@ -57,8 +57,16 @@ LEASE_GRACE_S = 2.0      # so lange nach dem letzten Ereignis nicht nachsehen
 #   * PTT_FRIST_S -- der Auth-Agent hat das Ablaufen seines eigenen Zeitlimits
 #     nicht gemeldet. 150 > 120 (Vorgabe des `PTTAutomat`), damit im Normalfall
 #     immer die Quelle zuerst spricht und diese Grenze nur im Ausfall greift.
+#   * SPRECH_FRIST_S -- ein Sprecher hat `beginnt` gemeldet und `gesprochen`
+#     nie. Am 09.08. live passiert: der TTS-Dienst war inaktiv, der Hub stand
+#     seit Minuten auf `tts_active: true`, und die Rueckkopplungssperre des
+#     Ohren-Dienstes verwarf daraufhin JEDEN Mikrofonblock. Die Ohren waren
+#     dauerhaft taub, und nichts im System hat es gemeldet. Der Wert deckt die
+#     Sprechfreigabe des Hubs ab (TTS_FRIST_S, 30 s): danach ist die Freigabe
+#     ohnehin verfallen, und "spricht noch" ist eine Behauptung ohne Grundlage.
 DENK_FRIST_S = 30.0
 PTT_FRIST_S = 150.0
+SPRECH_FRIST_S = 30.0
 
 
 def proc_starttime(pid: int) -> int | None:
@@ -133,6 +141,7 @@ class HubState:
         # Monotone Zeitmarken der beiden Fristen. `None` heisst: laeuft nicht.
         self._denkt_seit: float | None = None
         self._listening_seit: float | None = None
+        self._sprechen_seit: float | None = None
         self._perception = {"ears": False, "eyes": False, "gpu_loaded": []}
 
     # -- Schreiben ---------------------------------------------------------
@@ -203,10 +212,15 @@ class HubState:
         with self._lock:
             vorher = dict(self._voice)
             self._voice.update(felder)
+            marke = jetzt if jetzt is not None else time.monotonic()
             if self._voice["listening"] and not vorher["listening"]:
-                self._listening_seit = jetzt if jetzt is not None else time.monotonic()
+                self._listening_seit = marke
             elif not self._voice["listening"]:
                 self._listening_seit = None
+            if self._voice["tts_active"] and not vorher["tts_active"]:
+                self._sprechen_seit = marke
+            elif not self._voice["tts_active"]:
+                self._sprechen_seit = None
             if self._voice != vorher:
                 self._rev += 1
 
@@ -242,6 +256,9 @@ class HubState:
         if (flags["listening"] and (self._listening_seit is None
                                     or jetzt - self._listening_seit >= PTT_FRIST_S)):
             flags["listening"] = False
+        if (flags["tts_active"] and (self._sprechen_seit is None
+                                     or jetzt - self._sprechen_seit >= SPRECH_FRIST_S)):
+            flags["tts_active"] = False
         return flags
 
     @staticmethod
