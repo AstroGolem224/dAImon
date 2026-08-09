@@ -114,7 +114,7 @@ reaktion   = 10.0
 rueckfrage = 3.0
 
 [persona]
-name = "Ember"
+name = "Nordom"
 # Stimme aus der Persona (Design 10.1). Bis T-3.10 den Persona-Lader baut,
 # steht sie hier -- thorsten und kerstin sind CC0, pavoque scheidet aus
 # (CC-BY-NC-SA). Geprueft wird zur Laufzeit die MODEL_CARD, nicht dieser Name.
