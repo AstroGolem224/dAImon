@@ -61,7 +61,11 @@ PFLICHTFELDER = ("prompt_shown", "params_hash", "mark_id", "initiator",
 
 # `unknown` steht ausdruecklich dabei: eine Ausfuehrung, deren Ausgang wir
 # nicht kennen, ist ein eigener Zustand und kein Misserfolg.
-AUSGAENGE = ("ok", "failed", "denied", "cancelled", "timeout", "unknown")
+# `denied` (die Policy hat verboten) und `declined` (ein Mensch hat nein
+# gesagt) sind ABSICHTLICH zwei Werte. Beides in einen Topf zu werfen waere
+# bequem und macht die spaetere Frage "wer hat das verhindert" unbeantwortbar.
+AUSGAENGE = ("ok", "failed", "denied", "declined", "cancelled", "timeout",
+             "unknown")
 
 
 class AuditFehler(ValueError):
