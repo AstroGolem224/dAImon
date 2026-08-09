@@ -29,6 +29,78 @@ Personaauswahl 92 von 92.**
 
 ---
 
+## Nachtrag 09.08., abends — Phase 4 gebaut, Builder-Seite vollständig
+
+**17 Tasks, 17 Commits, `pytest` 914 grün + 4 xfail.** Alle Builder-Tasks von
+P4 stehen: T-4.1, T-4.2, T-4.3.t, T-4.4 bis T-4.16 und T-4.19. Offen sind
+**ausschließlich Rollen-`reviewer`-Tasks**: T-4.17, T-4.18 und sämtliche
+`.v`-Verifizierer. Der `role_guard` weist den Builder ab, und das ist richtig
+so — die Abnahme gehört nicht dem, der gebaut hat.
+
+### Was jetzt existiert
+
+| Task | Datei | Die eine Zusage |
+|---|---|---|
+| T-4.1 | `tools/generate-action-candidates.py` | 282 Kandidaten, alle `status: candidate`, idempotent, kann `approved` nicht schreiben |
+| T-4.2 | `config/actions/core.yaml`, `docs/action-review.md` | 17 von Hand freigegeben, jede mit Begründung; Mikrofonaktionen abgelehnt |
+| T-4.4 | `daimon/hub/policy.py`, `config/policy.yaml` | deny > ask > allow über **alle** Ebenen, Spezifität irrelevant |
+| T-4.5 | `daimon/common/order.py`, `daimon/hub/order.py` | Auftrag ohne Signatur, Ticket beim Hub, monotone Frist |
+| T-4.6 | `daimon/hub/audit.py` | Hash-Kette + Journal-Anker; eine neu gerechnete Datei fällt an den Ankern auf |
+| T-4.7 | `daimon/brokers/dbus/` | Eine feste Operation je genehmigter Aktion, plus `xdg-dbus-proxy` |
+| T-4.8 | `daimon/brokers/fs/undo.py` | Artefakt wird **verifiziert**; ohne Artefakt keine Mutation |
+| T-4.9 | `daimon/brokers/fs/broker.py` | `openat2`, einmal auflösen, kein Rückfall auf `os.open` |
+| T-4.10 | `daimon/brokers/exec/broker.py` | Whitelist über `desktop_id`, Freigabe am sha256 der Datei |
+| T-4.11 | `daimon/hub/consent.py` | Nonce **und** Absender; `cancel` ist kein `decline` |
+| T-4.12 | `daimon/auth/modal.py` | Dialog im Auth, nicht im Face; Pflicht bei destruktiv ohne Undo |
+| T-4.13 | `daimon/brokers/input/broker.py` | One-shot, `RuntimeMaxSec=30`, ydotool aus |
+| T-4.14 | `docs/broker-sandboxes.md` | vier Units gemessen: 4.0 / 4.2 / 4.2 / 4.2 |
+| T-4.15 | `daimon/hub/action_queue.py` | höchstens einmal, kein Retry, Rückfragen abgelehnt statt gestaut |
+| T-4.16 | `daimon/hub/coordinator.py` | die Naht — Reihenfolge, sonst nichts |
+| T-4.19 | `daimon/mind/router.py` | Aktion nur mit `user_ptt`, und **keine** Rückfrage sonst |
+
+### Die Entscheidungen, die beim Bauen fielen
+
+* **Eine neue Laufzeitabhängigkeit: PyYAML.** Das Katalogformat ist im Plan
+  als YAML gesetzt; ein selbstgebauter Parser für eine sicherheitsrelevante
+  Whitelist wäre schlechter als eine gelesene Bibliothek. Nur `safe_load`.
+  `pyproject.toml` sagt jetzt `dependencies = ["PyYAML>=6"]`.
+* **Die Rundenmarke ist eine Abbildung mit `gueltig_bis`, keine
+  Zeichenkette.** Vorher war „abgelaufen" ein Name, kein Zustand — der Test
+  hätte einen Sonderfall im Produktivcode verlangt.
+* **Das Audit kennt `declined` neben `denied`.** Die Policy hat verboten oder
+  ein Mensch hat nein gesagt; beides in einen Topf zu werfen macht die Frage
+  „wer hat das verhindert" unbeantwortbar.
+* **`ts` im Auditsatz.** Der Plan nennt es nicht. Ein Audit ohne Zeit
+  beantwortet die Frage nicht, für die man es aufschlägt.
+
+### Fallen, die Zeit gekostet haben — und die wiederkommen
+
+* **`openat2` mit `mode` ohne `O_CREAT` ist `EINVAL`.** Ein `mode=0o600` an
+  einem reinen `O_WRONLY` ließ jedes Schreiben scheitern. Gemessen, nicht
+  gelesen.
+* **Vorgabewerte binden zur Definitionszeit.** Die Suchpfade des Exec-Brokers
+  hingen als Default an der Funktion und waren zur Laufzeit nicht mehr
+  austauschbar — und genau die Reihenfolge trägt dort die Zusage.
+* **Zwei Kanonisierungen wären zwei Wahrheiten.** `order.params_hash` ruft
+  bewusst die Funktion der Policy auf, statt dieselbe Rechnung ein zweites
+  Mal hinzuschreiben.
+
+### Was ausdrücklich offen ist
+
+1. **Sämtliche Verifizierer zu P4** (`T-4.4.v` bis `T-4.17.v`) sowie T-4.17
+   und T-4.18. Rolle `reviewer` — `env DAIMON_ROLE=reviewer claude`.
+2. **`T-3.15.v`** aus Phase 3, aus demselben Grund.
+3. **Der `user_audio`-Fall in T-4.19 hat keine gesprochene Rückmeldung.** Die
+   Akzeptanzliste verlangt sie; der Weg dorthin führt über
+   `_nein("marke_verboten", …)`, und dieser Zweig wird von den eingefrorenen
+   T-3.12/T-3.13b mitgemessen. Eigener Task, eigene Entscheidung.
+4. **Nichts davon ist live gelaufen.** Die Broker haben Units, aber keinen
+   Hub, der Aufträge schickt — `coordinator.py` ist verdrahtet und getestet,
+   der Hub-Daemon ruft ihn noch nicht. Das ist der nächste Builder-Task, und
+   er steht so nicht im Plan.
+
+---
+
 ## Nachtrag 09.08., nachmittags — dritte Persona, Personaauswahl, Startknopf
 
 Drei Commits, alle außerhalb der Task-Nummerierung: `677062d`, `07b766d`,
