@@ -344,3 +344,65 @@ def test_die_zweite_persona_unterscheidet_sich_in_jedem_feld():
     for feld in ("name", "voice", "speech_threshold", "traits", "palette",
                  "system_prompt", "wake_words"):
         assert e[feld] != k[feld], feld
+
+
+# --------------------------------------------------------------------------
+# Die Auswahl aus dem Kontextmenue (Zustand schlaegt Konfiguration)
+# --------------------------------------------------------------------------
+
+def auswahl(tmp_path, inhalt: str) -> pathlib.Path:
+    zustand = tmp_path / "state"
+    zustand.mkdir(parents=True, exist_ok=True)
+    p = zustand / "persona.json"
+    p.write_text(inhalt, encoding="utf-8")
+    return p
+
+
+def cfg_mit_zustand(tmp_path, name="Pruefling"):
+    return Config(data={"persona": {"name": name}}, config_dir=tmp_path,
+                  state_dir=tmp_path / "state")
+
+
+def test_die_auswahl_schlaegt_die_konfiguration(tmp_path):
+    schreibe(tmp_path, "pruefling", VOLLSTAENDIG)
+    schreibe(tmp_path, "gewaehlt", VOLLSTAENDIG.replace(
+        'name = "Pruefling"', 'name = "Gewaehlt"'))
+    auswahl(tmp_path, '{"v": 1, "name": "gewaehlt"}\n')
+    p = lade(cfg_mit_zustand(tmp_path))
+    assert p.name == "Gewaehlt"
+    assert p.quelle == tmp_path / "persona" / "gewaehlt.toml"
+
+
+def test_ohne_auswahldatei_gilt_die_konfiguration(tmp_path):
+    schreibe(tmp_path, "pruefling", VOLLSTAENDIG)
+    p = lade(cfg_mit_zustand(tmp_path))
+    assert p.name == "Pruefling"
+
+
+def test_die_auswahl_faellt_bei_muell_nicht_still_zurueck(tmp_path):
+    # Ein stiller Rueckfall hiesse: im Menue steht die eine Persona, reden
+    # wuerde die andere.
+    schreibe(tmp_path, "pruefling", VOLLSTAENDIG)
+    for muell in ('{kaputt', '[]', '{}', '{"name": ""}', '{"name": 7}'):
+        auswahl(tmp_path, muell)
+        with pytest.raises(PersonaFehler) as fehler:
+            lade(cfg_mit_zustand(tmp_path))
+        assert "persona.json" in str(fehler.value)
+
+
+def test_eine_gewaehlte_aber_fehlende_persona_wirft(tmp_path):
+    schreibe(tmp_path, "pruefling", VOLLSTAENDIG)
+    auswahl(tmp_path, '{"v": 1, "name": "gibtesnicht"}')
+    with pytest.raises(PersonaFehler) as fehler:
+        lade(cfg_mit_zustand(tmp_path))
+    assert "gibtesnicht" in str(fehler.value)
+
+
+def test_die_herkunft_bleibt_bei_sieben_feldern(tmp_path):
+    # T-3.10.sh prueft `herkunft` als exakte Menge. Ein achter Schluessel
+    # waere dort sofort rot.
+    schreibe(tmp_path, "gewaehlt", VOLLSTAENDIG)
+    auswahl(tmp_path, '{"v": 1, "name": "gewaehlt"}')
+    p = lade(cfg_mit_zustand(tmp_path))
+    assert set(p.herkunft) == {"name", "system_prompt", "speech_threshold",
+                               "voice", "traits", "wake_words", "palette"}

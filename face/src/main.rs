@@ -705,27 +705,57 @@ impl App {
     /// Popup und fuer `menu ...` am Steuer-Socket. Zwei Wege waeren zwei
     /// Verhalten, und geprueft wuerde nur eines.
     fn menu_aktion_ausfuehren(&mut self, aktion: menu::Aktion) {
-        match aktion.ziel() {
+        // Auf die Aktion selbst verzweigt, NICHT auf `ziel()`: seit es die
+        // Personaauswahl gibt, heisst `ziel() == None` nicht mehr "beenden".
+        match aktion {
             // Das Face ruft NICHT selbst systemctl. Es meldet ein Ziel; der
             // Hub schlaegt den Unit-Namen in seiner Allowlist nach und
             // schaltet. Ein Overlay, das Units benennen darf, kann den Hub
             // und den Auth-Agenten stoppen.
-            Some(ziel) => match self.hub.as_ref() {
-                Some(hub) => {
-                    if let Err(fehler) = hub.wahrnehmung_aus_melden(ziel) {
-                        eprintln!("{fehler}");
+            menu::Aktion::EarsAus | menu::Aktion::EyesAus => {
+                let ziel = aktion.ziel().expect("Abschalt-Aktion ohne Ziel");
+                match self.hub.as_ref() {
+                    Some(hub) => {
+                        if let Err(fehler) = hub.wahrnehmung_aus_melden(ziel) {
+                            eprintln!("{fehler}");
+                        }
                     }
+                    None => eprintln!("Kein Hub-Meldeweg; {ziel} bleibt unveraendert"),
                 }
-                None => eprintln!("Kein Hub-Meldeweg; {ziel} bleibt unveraendert"),
-            },
+            }
+            menu::Aktion::Persona(index) => self.persona_waehlen(index),
             // Geordnet: die Hauptschleife laeuft aus, und erst dadurch
             // raeumen Diagnose- und Steuer-Socket ihre Dateien ab.
-            None => self.beendet = true,
+            menu::Aktion::Beenden => self.beendet = true,
         }
+        let name = aktion.name();
         match self.diagnose.lock() {
-            Ok(mut zustand) => zustand.menu_aktion_gezaehlt(aktion.name()),
-            Err(vergiftet) => vergiftet.into_inner().menu_aktion_gezaehlt(aktion.name()),
+            Ok(mut zustand) => zustand.menu_aktion_gezaehlt(&name),
+            Err(vergiftet) => vergiftet.into_inner().menu_aktion_gezaehlt(&name),
         }
+    }
+
+    /// Die Wahl wird geschrieben und sonst nichts: kein Unit-Neustart, kein
+    /// Signal an den Mind. Die Blase sagt deshalb ausdruecklich, wann sie
+    /// wirkt -- eine Auswahl, die scheinbar sofort gilt, waere eine Luege
+    /// gegenueber dem laufenden Modell, das weiter mit dem alten Prompt redet.
+    fn persona_waehlen(&mut self, index: usize) {
+        let (titel, text) = match menu::persona_setzen(index) {
+            Ok(anzeige) => (
+                format!("Persona: {anzeige}"),
+                "gilt ab dem naechsten Start des Mind".to_owned(),
+            ),
+            Err(fehler) => {
+                eprintln!("Persona nicht gewechselt: {fehler}");
+                ("Persona nicht gewechselt".to_owned(), fehler)
+            }
+        };
+        self.aktuelle_bubble = Some(Bubble {
+            title: titel,
+            body: text,
+            urgent: false,
+        });
+        self.bubble_aktualisieren();
     }
 
     fn position_speichern(&self, position: (i32, i32)) {

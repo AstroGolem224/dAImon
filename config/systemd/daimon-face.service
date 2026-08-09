@@ -45,7 +45,12 @@ ProtectHome=read-only
 # und den anderen drei die Sockets unter den Fuessen wegzieht.
 RuntimeDirectory=daimon
 RuntimeDirectoryPreserve=yes
-ReadWritePaths=%t/daimon
+# %h/.local/state/daimon: dorthin schreibt die Personaauswahl aus dem
+# Kontextmenue ihre `persona.json`. ABSICHTLICH nicht %h/.config/daimon --
+# dort liegt der `anthropic-token` (docs/TOKEN-ROTATION.md), und ein
+# Overlay mit Schreibrecht daneben waere ein zu hoher Preis fuer einen
+# Menueeintrag. Der Mind liest die Auswahl beim Start vor der Konfiguration.
+ReadWritePaths=%t/daimon %h/.local/state/daimon
 InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
 ProtectProc=invisible
 ProcSubset=pid

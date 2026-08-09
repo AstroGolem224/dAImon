@@ -23,6 +23,20 @@ Damit die Kette nicht zur Ausrede wird, sagt `herkunft` je Feld, welcher Ort
 gegolten hat: `persona`, `config` oder `vorgabe`. Eine Kette, die man nicht
 ablesen kann, ist eine Kette, in der Werte verschwinden.
 
+Welcher NAME gilt: erst die Wahl, dann die Konfiguration
+----------------------------------------------------------------------------
+`$XDG_STATE_HOME/daimon/persona.json` schlaegt `persona.name` aus
+`daimon.toml`. Diese Datei schreibt das Kontextmenue des Face -- in den
+ZUSTAND, weil `daimon-face.service` `ProtectHome=read-only` traegt und nur
+`%t/daimon` und `%h/.local/state/daimon` freigibt. Ein Schreibrecht auf
+`~/.config/daimon` haette dem Overlay das Verzeichnis geoeffnet, in dem laut
+`docs/TOKEN-ROTATION.md` der `anthropic-token` liegt; das waere ein zu hoher
+Preis fuer einen Menueeintrag.
+
+`herkunft` bekommt dafuer KEINEN neuen Schluessel: T-3.10.sh prueft die
+Auskunft als exakte Menge aus sieben Feldern. Wer wissen will, woher der Name
+kam, sieht in die Auswahldatei -- sie existiert oder eben nicht.
+
 `system_prompt` wird NICHT angefasst
 ----------------------------------------------------------------------------
 Nicht gekuerzt, nicht umgebrochen, keine Platzhalterersetzung. Es fallen
@@ -52,6 +66,7 @@ markiert.
 
 from __future__ import annotations
 
+import json
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -121,13 +136,47 @@ class Persona:
 
 # -- Lesen und pruefen -----------------------------------------------------
 
+def _auswahl(cfg: Any) -> str | None:
+    """Der zuletzt im Kontextmenue gewaehlte Name, oder None.
+
+    Warum im ZUSTAND und nicht in `daimon.toml`: das Face schreibt diese
+    Datei, und `daimon-face.service` traegt `ProtectHome=read-only`. Ein
+    Schreibrecht auf `~/.config/daimon` haette dem Overlay das Verzeichnis
+    geoeffnet, in dem der `anthropic-token` liegt. Der Zustand ist ohnehin der
+    ehrlichere Ort: die Konfiguration sagt, was eingestellt IST, die Auswahl,
+    was zuletzt GEWAEHLT wurde -- und die Wahl gewinnt.
+
+    Kaputte Datei heisst FEHLER, kein stiller Rueckfall auf die Konfiguration:
+    sonst redet nach einem halben Schreibvorgang eine andere Persona als die
+    im Menue angehakte, und niemand erfaehrt davon.
+    """
+    pfad = Path(cfg.state_dir) / "persona.json"
+    try:
+        with pfad.open("rb") as fh:
+            daten = json.load(fh)
+    except FileNotFoundError:
+        return None
+    except (OSError, json.JSONDecodeError) as exc:
+        raise PersonaFehler(
+            f"{pfad}: Persona-Auswahl nicht lesbar ({exc}). Die Datei schreibt "
+            f"das Kontextmenue des Face; loeschen stellt die Konfiguration "
+            f"wieder her.") from exc
+    if not isinstance(daten, dict):
+        raise PersonaFehler(f"{pfad}: erwartet wird ein Objekt mit `name`")
+    name = daten.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise PersonaFehler(
+            f"{pfad}: Feld `name` fehlt oder ist keine nichtleere Zeichenkette")
+    return name.strip()
+
+
 def _pfade(cfg: Any) -> tuple[str, list[Path]]:
     """`(name, [XDG-Pfad, mitgelieferter Pfad])` -- in dieser Reihenfolge.
 
     Kleingeschrieben gesucht: `name = "Ember"` findet `ember.toml`. Sonst suchte
     ein grossgeschriebener Name eine Datei, die niemand so anlegt.
     """
-    name = str(cfg.get("persona.name", "") or "").strip()
+    name = _auswahl(cfg) or str(cfg.get("persona.name", "") or "").strip()
     if not name:
         raise PersonaFehler(
             "In der Konfiguration steht kein `persona.name`. Ohne Namen ist "
