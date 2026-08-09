@@ -111,10 +111,17 @@ def policy_mit(regeln=None, katalog=None):
                                 regeln if regeln is not None else [EBENE_BASIS])
 
 
+# Eine eingeloeste Rundenmarke traegt eine Frist -- eine ohne waere keine.
+# Diese Form ist beim Bau von T-4.4 entstanden: vorher stand hier eine blosse
+# Zeichenkette, und "abgelaufen" war ein Name, kein Zustand.
+MARKE_GUELTIG = {"id": "m1", "gueltig_bis": 1_000_000.0}
+MARKE_ABGELAUFEN = {"id": "m1", "gueltig_bis": 50.0}
+
+
 def anfrage(action_id, **felder):
     p = lade_policy()
     grund = {"params": {}, "session_id": "s1", "request_id": "r1",
-             "quelle": "parser", "marke": "m1"}
+             "quelle": "parser", "marke": MARKE_GUELTIG}
     grund.update(felder)
     return p.Anfrage(action_id=action_id, **grund)
 
@@ -228,7 +235,7 @@ def test_wert_ausserhalb_der_schranke_ist_nicht_dasselbe_wie_unlesbar():
 def test_dieselbe_aktion_drei_initiator_drei_verdikte():
     pol = policy_mit()
     im_vordergrund = pol.entscheide(anfrage("window.to_next_desktop",
-                                            marke="m1"))
+                                            marke=MARKE_GUELTIG))
     im_hintergrund = pol.entscheide(anfrage("window.to_next_desktop",
                                             marke=None))
     geplant = pol.entscheide(anfrage("window.to_next_desktop", marke=None,
@@ -257,7 +264,8 @@ def test_initiator_kommt_aus_der_marke_nicht_aus_dem_request():
 
 def test_abgelaufene_marke_zaehlt_wie_keine():
     pol = policy_mit()
-    e = pol.entscheide(anfrage("window.to_next_desktop", marke="abgelaufen"))
+    e = pol.entscheide(anfrage("window.to_next_desktop",
+                               marke=MARKE_ABGELAUFEN, jetzt=100.0))
     assert e.initiator == "background"
     assert e.verdikt == "deny"
 
@@ -425,7 +433,7 @@ def test_sicherung_schlaegt_die_direktbefehl_ausnahme():
 
 
 def test_sicherung_schlaegt_in_jedem_initiator_modus():
-    for marke, quelle in (("m1", "parser"), (None, "parser"),
+    for marke, quelle in ((MARKE_GUELTIG, "parser"), (None, "parser"),
                           (None, "scheduler")):
         pol = policy_mit()
         pol.sicherung_werfen("Notaus")
@@ -449,3 +457,54 @@ def test_jede_entscheidung_nennt_ihren_grund_und_ihre_regel():
     e = pol.entscheide(anfrage("media.playpause"))
     assert e.grund
     assert e.regel is not None
+
+
+# --------------------------------------------------------------------------
+# Laden von der Platte (T-4.4): nur Freigegebenes wird zur Entscheidung
+# --------------------------------------------------------------------------
+
+def test_nur_approved_kommt_in_den_katalog(tmp_path):
+    p = lade_policy()
+    katalog = tmp_path / "core.yaml"
+    katalog.write_text(
+        "version: 1\nactions:\n"
+        "  - id: a.erlaubt\n    status: approved\n    rationale: weil\n"
+        "    foreground: allow\n    direct: true\n"
+        "  - id: a.kandidat\n    status: candidate\n"
+        "    foreground: allow\n    direct: true\n", encoding="utf-8")
+    regeln = tmp_path / "policy.yaml"
+    regeln.write_text("version: 1\nebenen: []\n", encoding="utf-8")
+    pol = p.Policy.laden(katalog_pfad=katalog, regel_pfad=regeln)
+    assert set(pol.katalog) == {"a.erlaubt"}
+    # Und der Kandidat ist nicht bloss abwesend, sondern unbekannt:
+    e = pol.entscheide(anfrage("a.kandidat"))
+    assert (e.verdikt, e.grund) == ("deny", "unknown_action")
+
+
+def test_approved_ohne_begruendung_ist_ein_ladefehler(tmp_path):
+    p = lade_policy()
+    katalog = tmp_path / "core.yaml"
+    katalog.write_text(
+        "version: 1\nactions:\n"
+        "  - id: a.ohne\n    status: approved\n    foreground: allow\n",
+        encoding="utf-8")
+    regeln = tmp_path / "policy.yaml"
+    regeln.write_text("version: 1\nebenen: []\n", encoding="utf-8")
+    with pytest.raises(p.PolicyFehler) as fehler:
+        p.Policy.laden(katalog_pfad=katalog, regel_pfad=regeln)
+    assert "rationale" in str(fehler.value)
+
+
+def test_der_mitgelieferte_katalog_laedt_und_entscheidet():
+    """Gegen die echten Dateien im Repo, nicht gegen ein Muster."""
+    p = lade_policy()
+    pol = p.Policy.laden()
+    assert len(pol.katalog) == 17
+    vom_parser = pol.entscheide(anfrage("media.playpause", quelle="parser"))
+    vom_modell = pol.entscheide(anfrage("media.playpause", quelle="modell"))
+    ohne_marke = pol.entscheide(anfrage("media.playpause", marke=None))
+    assert vom_parser.verdikt == "allow"
+    assert vom_modell.verdikt == "ask"
+    assert ohne_marke.verdikt == "deny"
+    # Nichts aus der Kandidatenliste ist entscheidbar.
+    assert pol.entscheide(anfrage("kwin:Kill Window")).grund == "unknown_action"

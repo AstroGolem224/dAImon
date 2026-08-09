@@ -12,7 +12,11 @@ license = { text = "MIT" }
 # Die Laufzeitabhaengigkeiten bleiben bewusst duenn. Phase 0 baut den Hub, und
 # der spricht nur ueber Unix-Sockets und DBus -- alles Schwere (ONNX, CUDA)
 # haengt an den GPU-Arbeitsprozessen und kommt erst in Phase 3.
-dependencies = []
+# PyYAML, und zwar genau eine Abhaengigkeit: das Format des Aktionskatalogs
+# ist im Implementierungsplan als YAML gesetzt (T-4.2), und ein selbstgebauter
+# Parser fuer eine sicherheitsrelevante Whitelist waere schlechter als eine
+# gelesene Bibliothek. Benutzt wird ausschliesslich `safe_load`.
+dependencies = ["PyYAML>=6"]
 
 [project.optional-dependencies]
 # Die Python-Version ist nicht frei gewaehlt. T-1.2 hat native sm_120a-Cubins
