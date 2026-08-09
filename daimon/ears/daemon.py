@@ -190,6 +190,14 @@ class Ohren:
         self.log.info("Aufnahme zu", DAIMON_ACTION="ears_zu")
 
     def _puffer_leeren(self) -> None:
+        # ZUERST den naechsten Index merken, DANN leeren. Andersherum rechnet
+        # `_naechster_index()` auf der bereits leeren Liste und liefert den
+        # ALTEN Startwert zurueck -- waehrend der Chunk-Zaehler der Hysterese
+        # weiterlaeuft. Ab der zweiten Aeusserung zeigte der Segmentindex
+        # dadurch an der Liste vorbei, `stuecke` war leer, und die Runde fiel
+        # STILL aus. Am 09.08. live gefunden: die erste Runde nach dem Start
+        # lief, jede weitere nicht.
+        naechster = self._naechster_index()
         # Nicht nur `clear()`: die Bloecke sollen nicht als Kopie in einer
         # anderen Liste weiterleben. Der Puffer ist Mikrofonmaterial.
         for chunk in self._puffer:
@@ -198,7 +206,7 @@ class Ohren:
             except (TypeError, ValueError):
                 pass
         self._puffer.clear()
-        self._puffer_start = self._naechster_index()
+        self._puffer_start = naechster
 
     def _naechster_index(self) -> int:
         return self._puffer_start + len(self._puffer)

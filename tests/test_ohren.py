@@ -304,3 +304,23 @@ def test_stille_am_push_socket_schliesst_das_mikrofon_nicht(tmp_path):
         fertig.set()
         o.stop()
         srv.close()
+
+
+def test_zwei_aeusserungen_nacheinander_ergeben_zwei_runden(tmp_path):
+    """Am 09.08. live gefunden: die erste Runde nach dem Start lief, jede
+    weitere fiel STILL aus.
+
+    `_puffer_leeren()` rechnete den neuen Startindex, NACHDEM es die Liste
+    geleert hatte -- und `_puffer_start + len([])` ist der alte Wert. Der
+    Chunk-Zaehler der Hysterese laeuft dagegen weiter, also zeigte der
+    Segmentindex ab der zweiten Aeusserung an der Liste vorbei, `stuecke` war
+    leer, und `_segment_fertig` kehrte wortlos zurueck.
+    """
+    rufe = Rufe()
+    o = ohren(tmp_path, rufe)
+    for _ in range(3):
+        o.zustand_uebernehmen({"voice": {"listening": True, "tts_active": False}})
+        sprechen(o)
+        o.zustand_uebernehmen({"voice": {"listening": False, "tts_active": False}})
+    assert o.runden == 3, f"nur {o.runden} von 3 Runden"
+    assert len(rufe.art("transkribiere")) == 3
