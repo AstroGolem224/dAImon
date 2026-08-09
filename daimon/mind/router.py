@@ -407,6 +407,26 @@ class Router:
         except taint.SenkenFehler as exc:
             return self._nein("marke_verboten", str(exc)[:160])
 
+        if was == "aktion" and marke != "user_ptt":
+            # T-4.19: eine Aktionsbitte ohne Absichtsmarke wird WERKZEUGLOS
+            # abgelehnt -- sie erreicht den Auth-Agenten gar nicht erst.
+            #
+            # Warum nicht einfach nachfragen: eine Rueckfrage waere selbst ein
+            # Angriffsweg. Gefaelschtes Audio -- ein Video, ein Lautsprecher,
+            # die eigene Sprachausgabe -- koennte den Nutzer mit Dialogen
+            # zumuellen, bis er einen wegklickt. Der Klick waere echt, die
+            # Absicht nicht.
+            #
+            # Diese Pruefung steht VOR der Rueckfrage nach dem Ziel: sonst
+            # entstuende genau der Dialog, den sie verhindern soll.
+            #
+            # Formulierung nach Design 1.3: es fehlt eine ABSICHTSMARKE.
+            # Nicht "physische Autorisierung" -- ein Tastendruck belegt, dass
+            # jemand etwas wollte, nicht dass er es sein darf.
+            return {"v": 1, "ok": True, "weg": "abgelehnt", "absicht": "aktion",
+                    "antwort": "Fuer eine Aktion brauche ich eine "
+                               "Absichtsmarke — bitte Push-to-Talk druecken.",
+                    "marke": "trusted", "api": False}
         if was == "aktion" and not _ziel_benannt(text):
             # Design 5.2: "Mach das" verweist NICHT auf Assistententext oder
             # Kontext. Die aktuelle Aeusserung muss Aktion und Ziel nennen --
