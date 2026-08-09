@@ -36,8 +36,14 @@ PartOf=graphical-session.target
 [Service]
 Type=simple
 WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+# T-3.11b: `--egress-socket` zeigt auf den CLI-Broker statt auf den Egress.
+# Mind merkt davon nichts -- beide sprechen dieselbe Drahtform, und die Antwort
+# kommt in Messages-Gestalt zurueck. Wer den API-Key statt des Abos will,
+# aendert genau diese eine Zeile zurueck auf `egress.sock` und startet den
+# Egress. Der Preis des Abo-Wegs steht in der Unit des CLI-Brokers.
 ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
-    -m daimon.mind.daemon
+    -m daimon.mind.daemon \
+    --egress-socket %t/daimon/cli.sock
 
 Restart=on-failure
 RestartSec=2
