@@ -247,6 +247,9 @@ struct App {
     overlay: Option<OverlaySurface>,
     diagnose: Arc<Mutex<FaceState>>,
     aktueller_zustand: String,
+    /// T-3.14: der zuletzt vom Hub GERECHNETE Sprachzustand. Das Face leitet
+    /// ihn nicht ab, es traegt ihn nur bis zum Puffer.
+    aktueller_voice: String,
     aktueller_mood: String,
     sichtbarkeit: Sichtbarkeit,
     aktuelle_bubble: Option<Bubble>,
@@ -293,6 +296,32 @@ impl App {
         };
         zustand.sprite_x = position.0;
         zustand.sprite_y = position.1;
+    }
+
+    /// T-3.14: der Sprachzustand, den das Face gerade DARSTELLT.
+    fn voice_state(&self) -> String {
+        self.aktueller_voice.clone()
+    }
+
+    /// Nur echte Pixel zaehlen. Ohne diesen Zaehler waere "das Face zeigt den
+    /// Sprachzustand an" eine Selbstauskunft.
+    fn indikator_zaehlen(&self, gemalt: bool) {
+        if !gemalt {
+            return;
+        }
+        let mut zustand = match self.diagnose.lock() {
+            Ok(z) => z,
+            Err(vergiftet) => vergiftet.into_inner(),
+        };
+        zustand.voice_indikator_gezeichnet += 1;
+    }
+
+    fn diagnose_voice_setzen(&self, voice: &str) {
+        let mut zustand = match self.diagnose.lock() {
+            Ok(z) => z,
+            Err(vergiftet) => vergiftet.into_inner(),
+        };
+        zustand.voice_state = voice.to_owned();
     }
 
     fn diagnose_hub_setzen(&self, rev: u64, mood: &str) {
@@ -425,11 +454,20 @@ impl App {
         if bubble_geaendert {
             self.aktuelle_bubble = zustand.bubble.clone();
         }
+        // T-3.14: der Sprachzustand aendert die Pose NICHT -- er wird
+        // darueber gemalt. Deshalb ein eigenes Kennzeichen: sonst bliebe ein
+        // Wechsel von `listening` nach `speaking` ungezeichnet, weil der Mood
+        // sich nicht bewegt hat.
+        let voice_geaendert = self.aktueller_voice != zustand.voice;
+        if voice_geaendert {
+            self.aktueller_voice = zustand.voice.clone();
+            self.diagnose_voice_setzen(&zustand.voice);
+        }
 
         let sichtbarkeit_geaendert =
             self.sichtbarkeit_setzen(Sichtbarkeit::fuer_mood(&zustand.mood));
         if self.sichtbarkeit.0 && !sichtbarkeit_geaendert {
-            if pose_geaendert || self.render.dirty {
+            if pose_geaendert || voice_geaendert || self.render.dirty {
                 self.sprite_rendern();
             }
             if bubble_geaendert {
@@ -511,6 +549,7 @@ impl App {
         let sichtbar = self.sichtbarkeit.0;
         let qh = self.qh.clone();
         let name = self.aktueller_zustand.clone();
+        let voice = self.aktueller_voice.clone();
         let ergebnis = {
             let Self {
                 overlay,
@@ -527,6 +566,7 @@ impl App {
                     pool,
                     atlas,
                     &name,
+                    &voice,
                     toenung,
                     sichtbar,
                     &qh,
@@ -534,9 +574,10 @@ impl App {
                 )
         };
         match ergebnis {
-            Ok(commits) => {
+            Ok((commits, indikator)) => {
                 self.commits_zaehlen(commits);
                 self.diagnose_sprite_setzen(&name);
+                self.indikator_zaehlen(indikator);
             }
             Err(fehler) => {
                 // Ein fehlgeschlagener Request darf frame_pending nicht fuer
@@ -989,6 +1030,7 @@ impl LayerShellHandler for App {
                     pool,
                     atlas,
                     aktueller_zustand,
+                    aktueller_voice,
                     render,
                     qh,
                     ..
@@ -1003,6 +1045,7 @@ impl LayerShellHandler for App {
                         pool,
                         atlas,
                         aktueller_zustand,
+                        aktueller_voice,
                         toenung,
                         sichtbar,
                         qh,
@@ -1010,8 +1053,9 @@ impl LayerShellHandler for App {
                     )
             };
             match sprite_ergebnis {
-                Ok(commits) => {
+                Ok((commits, indikator)) => {
                     self.commits_zaehlen(commits);
+                    self.indikator_zaehlen(indikator);
                     self.diagnose_sprite_setzen(&self.aktueller_zustand);
                     self.bubble_aktualisieren();
                     println!("READY pid={}", std::process::id());
@@ -1177,6 +1221,7 @@ fn main() {
         overlay: None,
         diagnose,
         aktueller_zustand: "ruhig".into(),
+        aktueller_voice: "idle".into(),
         aktueller_mood: "idle".into(),
         sichtbarkeit: Sichtbarkeit(true),
         aktuelle_bubble: None,
@@ -1274,6 +1319,11 @@ fn main() {
                             rev,
                             mood: mood.to_owned(),
                             bubble: app.aktuelle_bubble.clone(),
+                            // Der Steuerbefehl setzt den MOOD. Den
+                            // Sprachzustand traegt er nicht mit -- der
+                            // gehoert dem Hub, und ein Steuerpfad, der ihn
+                            // nebenbei aendert, waere eine zweite Quelle.
+                            voice: app.voice_state(),
                         };
                         app.hub_zustand_uebernehmen(&zustand);
                     }

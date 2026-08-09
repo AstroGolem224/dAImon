@@ -23,7 +23,7 @@ use crate::{
     bubble::{position_klemmen, Raster as BubbleRaster},
     input::{sichtbare_laeufe, Box2D, InputRegion},
     render::{frame_toenen, Toenung},
-    sprite::{zustand_abbilden, SpriteAtlas},
+    sprite::{indikator_malen, zustand_abbilden, SpriteAtlas},
 };
 
 struct SpriteSurface {
@@ -230,16 +230,30 @@ impl OverlaySurface {
         pool: &mut SlotPool,
         atlas: &SpriteAtlas,
         zustand: &str,
+        voice: &str,
         toenung: Toenung,
         sichtbar: bool,
         qh: &QueueHandle<crate::App>,
         callback_armieren: bool,
-    ) -> Result<u64, String> {
+    ) -> Result<(u64, bool), String> {
         let abbildung = zustand_abbilden(zustand, &atlas.layout);
-        let frame = sichtbaren_frame_bauen(
+        let mut frame = sichtbaren_frame_bauen(
             &frame_toenen(&atlas.frame(abbildung.zeile, 0)?, toenung),
             sichtbar,
         );
+        // T-3.14: der Indikator gehoert in das BILD, nicht in die
+        // Eingabemaske. Waere er in beidem, waechse die Klickflaeche des Pets
+        // mit dem Sprachzustand -- und das Ziehen aus T-2.4 haette je nach
+        // Zustand eine andere Trefferflaeche. Deshalb hier eine Kopie des
+        // Standes davor, und zwar nur, wenn ueberhaupt gemalt wird.
+        let ohne_indikator = (sichtbar && voice != "idle").then(|| frame.clone());
+        let indikator_gemalt = sichtbar
+            && indikator_malen(
+                &mut frame,
+                voice,
+                atlas.layout.cell_w,
+                atlas.layout.cell_h,
+            );
         let breite = i32::try_from(atlas.layout.cell_w)
             .map_err(|_| "Sprite-Breite passt nicht in i32".to_string())?;
         let hoehe = i32::try_from(atlas.layout.cell_h)
@@ -267,7 +281,7 @@ impl OverlaySurface {
                     .frame(qh, FrameCallbackData(self.sprite.surface.clone()));
                 self.sprite.surface.commit();
             }
-            return Ok(0);
+            return Ok((0, indikator_gemalt));
         }
 
         // Erst alle falliblen Pufferschritte abschliessen. So kann danach kein
@@ -296,7 +310,7 @@ impl OverlaySurface {
                 .input_laeufe
                 .fuer_frame(
                     frame_koordinaten,
-                    &frame,
+                    ohne_indikator.as_deref().unwrap_or(&frame),
                     atlas.layout.cell_w,
                     atlas.layout.cell_h,
                 )
@@ -325,7 +339,7 @@ impl OverlaySurface {
         }
         self.sprite.surface.commit();
         self.sprite.letzter_frame = frame;
-        Ok(1)
+        Ok((1, indikator_gemalt))
     }
 
     /// Zeichnet ausschliesslich die Blasen-Subsurface. Der Sprite-Puffer wird

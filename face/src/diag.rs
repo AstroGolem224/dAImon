@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct FaceState {
     pub rev: u64,
     pub mood: String,
@@ -54,6 +54,42 @@ pub struct FaceState {
     pub menu_aktionen: u64,
     /// T-2.7: "ears_aus" | "eyes_aus" | "beenden" | "" (noch keine).
     pub letzte_menu_aktion: String,
+    /// T-3.14: was das Face DARSTELLT, nicht was es empfangen hat. Ohne Hub
+    /// oder bei unlesbarem Schnappschuss: "idle".
+    pub voice_state: String,
+    /// T-3.14: +1 je tatsaechlich in den Sprite-Puffer gezeichnetem
+    /// Indikator. `idle` bewegt ihn nicht -- dort wird nichts gemalt.
+    pub voice_indikator_gezeichnet: u64,
+}
+
+/// Von Hand statt abgeleitet, wegen genau eines Feldes: `voice_state` faengt
+/// bei `"idle"` an, nicht bei `""`. Der leere String waere ein fuenfter,
+/// namenloser Sprachzustand -- und die Diagnose soll nie etwas ausgeben, das
+/// der Verifizierer nicht kennt.
+impl Default for FaceState {
+    fn default() -> Self {
+        Self {
+            rev: 0,
+            mood: String::new(),
+            sprite: String::new(),
+            bubble_visible: false,
+            sichtbar: false,
+            last_render_ts: 0.0,
+            frames_rendered: 0,
+            bubble_frames_rendered: 0,
+            toene_gespielt: 0,
+            configure_empfangen: 0,
+            sprite_x: 0,
+            sprite_y: 0,
+            output: String::new(),
+            output_wechsel: 0,
+            menu_offen: false,
+            menu_aktionen: 0,
+            letzte_menu_aktion: String::new(),
+            voice_state: "idle".to_owned(),
+            voice_indikator_gezeichnet: 0,
+        }
+    }
 }
 
 impl FaceState {
@@ -67,7 +103,8 @@ impl FaceState {
                 "\"sprite_x\":{},\"sprite_y\":{},",
                 "\"output\":\"{}\",\"output_wechsel\":{},",
                 "\"menu_offen\":{},\"menu_aktionen\":{},",
-                "\"letzte_menu_aktion\":\"{}\"}}"
+                "\"letzte_menu_aktion\":\"{}\",",
+                "\"voice_state\":\"{}\",\"voice_indikator_gezeichnet\":{}}}"
             ),
             self.rev,
             escape(&self.mood),
@@ -85,7 +122,9 @@ impl FaceState {
             self.output_wechsel,
             self.menu_offen,
             self.menu_aktionen,
-            escape(&self.letzte_menu_aktion)
+            escape(&self.letzte_menu_aktion),
+            escape(&self.voice_state),
+            self.voice_indikator_gezeichnet
         )
     }
 
@@ -192,6 +231,8 @@ mod tests {
             menu_offen: true,
             menu_aktionen: 1,
             letzte_menu_aktion: "ears_aus".into(),
+            voice_state: "speaking".into(),
+            voice_indikator_gezeichnet: 5,
         };
         let j = s.als_json();
         for feld in [
@@ -210,6 +251,24 @@ mod tests {
         ] {
             assert!(j.contains(feld), "{feld} fehlt in {j}");
         }
+    }
+
+    /// T-3.14: der Verifizierer misst die PTT-Latenz an `voice_state` und
+    /// belegt am Zaehler, dass tatsaechlich Pixel geflossen sind. Ohne den
+    /// Zaehler waere „das Face zeigt den Zustand an" eine Selbstauskunft.
+    #[test]
+    fn sprachzustand_steht_wortwoertlich_im_json() {
+        let mut s = FaceState::default();
+        assert!(
+            s.als_json().contains("\"voice_state\":\"idle\""),
+            "{}",
+            s.als_json()
+        );
+        assert!(s.als_json().contains("\"voice_indikator_gezeichnet\":0"));
+        s.voice_state = "listening".into();
+        s.voice_indikator_gezeichnet = 12;
+        assert!(s.als_json().contains("\"voice_state\":\"listening\""));
+        assert!(s.als_json().contains("\"voice_indikator_gezeichnet\":12"));
     }
 
     /// Der Verifizierer liest genau diese zwei Schluessel zur Laufzeit. Der

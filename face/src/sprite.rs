@@ -149,6 +149,69 @@ pub fn zustand_abbilden(name: &str, layout: &AtlasLayout) -> ZustandsAbbildung {
     }
 }
 
+// -- T-3.14: der Sprachzustand als Zusatz-Element -------------------------
+//
+// Der Mood waehlt die Atlas-Zeile wie bisher; der Sprachzustand malt danach
+// einen Punkt in denselben Puffer, rechts oben. Damit ist "ueberlagert den
+// Mood, ersetzt ihn nicht" keine Aussage, sondern messbar: `sprite` im
+// Diagnose-Socket bleibt bei jedem Sprachzustand unveraendert.
+//
+// Kein neues Sprite-Set: dafuer braeuchte es Assets, die es nicht gibt, und
+// Mood x Sprachzustand waere die vierfache Menge davon.
+
+/// Kantenlaenge des Indikators, in Anteilen der Zellbreite.
+const INDIKATOR_ANTEIL: u32 = 6;
+/// Abstand zum Zellrand, in denselben Anteilen.
+const INDIKATOR_RAND: u32 = 24;
+
+/// Premultipliziertes BGRA je sichtbarem Zustand. `idle` steht nicht dabei --
+/// die Abwesenheit einer Sprachphase malt nichts.
+///
+/// Die Farben sind Darstellung und stehen bewusst NICHT im Vertrag: wer sie
+/// misst, friert Geschmack ein. Gemessen wird `voice_state` und der Zaehler.
+fn indikator_farbe(zustand: &str) -> Option<[u8; 4]> {
+    match zustand {
+        "listening" => Some([80, 220, 120, 255]),  // gruen: das Mikrofon ist offen
+        "processing" => Some([230, 180, 60, 255]), // blau-gelb: es denkt
+        "speaking" => Some([90, 130, 240, 255]),   // rot-ish: es spricht
+        _ => None,
+    }
+}
+
+/// Malt den Indikator in einen BGRA-Zellpuffer. Gibt zurueck, ob gemalt wurde.
+///
+/// `false` heisst: nichts angefasst -- entweder ist der Zustand `idle` oder
+/// unbekannt, oder die Zelle ist zu klein. Ein Panic waere hier das
+/// schlechteste Ergebnis: ein abgestuerztes Overlay ist schlimmer als ein
+/// fehlender Punkt.
+pub fn indikator_malen(frame: &mut [u8], zustand: &str, breite: u32, hoehe: u32) -> bool {
+    let Some(farbe) = indikator_farbe(zustand) else {
+        return false;
+    };
+    let kante = breite / INDIKATOR_ANTEIL;
+    let rand = breite / INDIKATOR_RAND;
+    if kante == 0 || breite == 0 || hoehe == 0 {
+        return false;
+    }
+    let x0 = breite.saturating_sub(kante + rand);
+    let y0 = rand;
+    if x0 + kante > breite || y0 + kante > hoehe / 2 {
+        // Der Indikator gehoert in die obere Haelfte. Passt er dort nicht
+        // hinein, bleibt er weg, statt ins Gesicht zu rutschen.
+        return false;
+    }
+    if frame.len() < (breite * hoehe * 4) as usize {
+        return false;
+    }
+    for y in y0..y0 + kante {
+        for x in x0..x0 + kante {
+            let i = ((y * breite + x) * 4) as usize;
+            frame[i..i + 4].copy_from_slice(&farbe);
+        }
+    }
+    true
+}
+
 #[derive(Debug)]
 pub struct SpriteAtlas {
     pub layout: AtlasLayout,
@@ -373,5 +436,77 @@ mod tests {
                 zurueckgefallen: true
             }
         );
+    }
+}
+
+#[cfg(test)]
+mod indikator_tests {
+    use super::*;
+
+    const W: u32 = 16;
+    const H: u32 = 16;
+
+    fn leerer_frame() -> Vec<u8> {
+        vec![0u8; (W * H * 4) as usize]
+    }
+
+    #[test]
+    fn idle_malt_nichts() {
+        // `idle` ist die Abwesenheit einer Sprachphase. Ein Indikator dafuer
+        // waere ein Zustand, der behauptet, es passiere etwas.
+        let mut frame = leerer_frame();
+        assert!(!indikator_malen(&mut frame, "idle", W, H));
+        assert!(frame.iter().all(|b| *b == 0));
+    }
+
+    #[test]
+    fn unbekannter_zustand_malt_nichts() {
+        let mut frame = leerer_frame();
+        assert!(!indikator_malen(&mut frame, "traeumt", W, H));
+        assert!(frame.iter().all(|b| *b == 0));
+    }
+
+    #[test]
+    fn die_drei_sichtbaren_malen_etwas() {
+        for zustand in ["listening", "processing", "speaking"] {
+            let mut frame = leerer_frame();
+            assert!(indikator_malen(&mut frame, zustand, W, H), "{zustand}");
+            assert!(frame.iter().any(|b| *b != 0), "{zustand}");
+        }
+    }
+
+    #[test]
+    fn die_drei_sind_unterscheidbar() {
+        // Drei Zustaende, die gleich aussehen, sind einer.
+        let mut gemalt: Vec<Vec<u8>> = Vec::new();
+        for zustand in ["listening", "processing", "speaking"] {
+            let mut frame = leerer_frame();
+            indikator_malen(&mut frame, zustand, W, H);
+            assert!(!gemalt.contains(&frame), "{zustand} sieht aus wie ein anderer");
+            gemalt.push(frame);
+        }
+    }
+
+    #[test]
+    fn der_indikator_bleibt_oben_rechts() {
+        // Die Zusage aus dem Plan: er UEBERLAGERT den Mood, er ersetzt ihn
+        // nicht. Die untere Haelfte der Zelle bleibt deshalb unberuehrt.
+        let mut frame = leerer_frame();
+        indikator_malen(&mut frame, "speaking", W, H);
+        let zeilenbytes = (W * 4) as usize;
+        let untere_haelfte = &frame[(H / 2) as usize * zeilenbytes..];
+        assert!(untere_haelfte.iter().all(|b| *b == 0));
+        let linke_spalte: Vec<u8> = (0..H)
+            .map(|y| frame[y as usize * zeilenbytes])
+            .collect();
+        assert!(linke_spalte.iter().all(|b| *b == 0));
+    }
+
+    #[test]
+    fn ein_zu_kleiner_frame_wird_nicht_bemalt() {
+        // Kein Panic an einer Zelle, die kleiner ist als der Indikator --
+        // ein abgestuerztes Overlay ist schlimmer als ein fehlender Punkt.
+        let mut winzig = vec![0u8; 4];
+        assert!(!indikator_malen(&mut winzig, "listening", 1, 1));
     }
 }

@@ -30,6 +30,30 @@ pub struct HubZustand {
     pub rev: u64,
     pub mood: String,
     pub bubble: Option<Bubble>,
+    /// T-3.14: der Sprachzustand, wie ihn der Hub RECHNET. Das Face leitet
+    /// hier nichts ab -- zwei Zustandsmaschinen, die dasselbe behaupten,
+    /// laufen auseinander, und dann ist nicht mehr feststellbar, welche
+    /// recht hat. Einer aus `idle|listening|processing|speaking`.
+    pub voice: String,
+}
+
+/// Die vier bekannten Sprachzustaende. Ein fuenfter ist ein Fehler und keine
+/// Erweiterung -- fuer jeden hier gibt es eine Darstellung, fuer einen
+/// erfundenen nicht.
+pub const VOICE_ZUSTAENDE: [&str; 4] = ["idle", "listening", "processing", "speaking"];
+
+/// `voice.state` aus dem Schnappschuss, oder `"idle"`.
+///
+/// Unbekannt faellt auf `idle` wie ein unbekannter Mood auf `ruhig`:
+/// stillstehen ist der harmlosere Fehler. Ein stehengebliebenes „hoert zu"
+/// waere die gefaehrlichste Anzeige, die dieses Feld haben kann.
+fn voice_lesen(wert: &Value) -> String {
+    wert.get("voice")
+        .and_then(|v| v.get("state"))
+        .and_then(Value::as_str)
+        .filter(|s| VOICE_ZUSTAENDE.contains(s))
+        .unwrap_or("idle")
+        .to_owned()
 }
 
 impl HubZustand {
@@ -41,6 +65,7 @@ impl HubZustand {
             rev: 0,
             mood: "sleeping".into(),
             bubble: None,
+            voice: "idle".into(),
         }
     }
 }
@@ -80,6 +105,7 @@ pub fn snapshot_lesen(zeile: &str) -> Option<HubZustand> {
                 urgent: bubble.get("urgent").and_then(Value::as_bool)?,
             }),
         },
+        voice: voice_lesen(&wert),
     })
 }
 
@@ -208,6 +234,41 @@ mod tests {
     fn unbekannter_mood_bleibt_ruhig() {
         assert_eq!(mood_zu_sprite("gibt-es-nicht"), "ruhig");
         assert_eq!(mood_zu_sprite(""), "ruhig");
+    }
+
+    // -- T-3.14: der Sprachzustand ----------------------------------------
+
+    fn schnappschuss_mit_voice(voice: &str) -> Option<HubZustand> {
+        snapshot_lesen(&format!(
+            "{{\"v\":2,\"rev\":1,\"mood\":\"idle\",\"bubble\":null,\"voice\":{voice}}}"
+        ))
+    }
+
+    #[test]
+    fn voice_state_wird_gelesen() {
+        for zustand in ["idle", "listening", "processing", "speaking"] {
+            let z = schnappschuss_mit_voice(&format!("{{\"state\":\"{zustand}\"}}"))
+                .expect("lesbar");
+            assert_eq!(z.voice, zustand);
+        }
+    }
+
+    #[test]
+    fn fehlendes_oder_unbekanntes_voice_faellt_auf_idle() {
+        // Dieselbe Regel wie beim unbekannten Mood: stillstehen ist der
+        // harmlosere Fehler. Ein erfundener Zustand darf nichts anzeigen.
+        let ohne = snapshot_lesen("{\"v\":2,\"rev\":1,\"mood\":\"idle\",\"bubble\":null}")
+            .expect("lesbar");
+        assert_eq!(ohne.voice, "idle");
+        let erfunden = schnappschuss_mit_voice("{\"state\":\"traeumt\"}").expect("lesbar");
+        assert_eq!(erfunden.voice, "idle");
+    }
+
+    #[test]
+    fn ohne_hub_wird_nicht_zugehoert() {
+        // Ein stehengebliebenes "hoert zu" waere die gefaehrlichste Anzeige,
+        // die dieses Feature haben kann.
+        assert_eq!(HubZustand::schlafend().voice, "idle");
     }
 
     #[test]
