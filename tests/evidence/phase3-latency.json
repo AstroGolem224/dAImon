@@ -1,7 +1,7 @@
 {
  "v": 1,
- "n": 2,
- "erzeugt": "2026-08-09T16:41:56+02:00",
+ "n": 4,
+ "erzeugt": "2026-08-09T17:04:33+02:00",
  "p50_wake_to_audio_ms": 2226.366,
  "p95_wake_to_audio_ms": 2226.366,
  "stufen": {
@@ -11,13 +11,13 @@
    "p95": 2226.366
   },
   "audio_to_stt": {
-   "n": 2,
+   "n": 4,
    "p50": 72.101,
    "p95": 1321.503
   },
   "stt_to_mind": {
-   "n": 2,
-   "p50": 2.157,
+   "n": 4,
+   "p50": 11.796,
    "p95": 16.143
   },
   "mind_to_tts": {
@@ -31,8 +31,8 @@
    "p95": 346.46
   },
   "gesamt": {
-   "n": 2,
-   "p50": 5909.804,
+   "n": 4,
+   "p50": 3711.856,
    "p95": 17742.238
   }
  },
@@ -56,7 +56,27 @@
    "tts_to_audio_ms": null,
    "gesamt_ms": 17742.238,
    "echt": true
+  },
+  {
+   "v": 1,
+   "wake_to_audio_ms": null,
+   "audio_to_stt_ms": 80.891,
+   "stt_to_mind_ms": 12.151,
+   "mind_to_tts_ms": null,
+   "tts_to_audio_ms": null,
+   "gesamt_ms": 3711.856,
+   "echt": true
+  },
+  {
+   "v": 1,
+   "wake_to_audio_ms": null,
+   "audio_to_stt_ms": 69.238,
+   "stt_to_mind_ms": 11.796,
+   "mind_to_tts_ms": null,
+   "tts_to_audio_ms": null,
+   "gesamt_ms": 2942.381,
+   "echt": true
   }
  ],
- "hinweis": "Erste ECHTE Laeufe am 09.08. n zaehlt nur `echt: true`. Das Kriterium bleibt ROT bis n >= 20. Runde 1 enthaelt den STT-Kaltstart (Modell laden); Runde 2 wurde vom Egress abgelehnt (kein API-Token) und hat deshalb keine wake_to_audio-Zahl. Die Datei entsteht mit `python -m daimon.ears.daemon --bericht $XDG_RUNTIME_DIR/daimon/latenz.jsonl`."
+ "hinweis": "Echte Laeufe vom 09.08. n zaehlt nur `echt: true`; das Kriterium bleibt ROT bis n >= 20. ACHTUNG: nur Laeufe mit einer ANTWORT tragen `wake_to_audio_ms`. Ohne API-Token beantwortet der Mind nur lokale Absichten (uhrzeit, lautstaerke, fensterliste, sitzung); alles andere lehnt der Egress ab und misst die Endstufe nicht mit."
 }
