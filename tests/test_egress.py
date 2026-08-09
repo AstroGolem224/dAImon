@@ -422,7 +422,18 @@ def test_der_koerper_traegt_den_persona_prompt_woertlich(hub):
     koerper = m.koerper("Wie steht der Build?")
     assert koerper["system"] == m.persona.prompt()
     assert "Glut-Geist" in koerper["system"]
-    assert koerper["messages"][0]["content"] == "Wie steht der Build?"
+    # Die Frage steht WOERTLICH und am Anfang. Sie ist seit dem 09.08. nicht
+    # mehr der ganze Inhalt: dahinter haengt die Ausgabeform als eigener,
+    # abgesetzter Block -- dasselbe Muster wie die Referenzen. Grund: der
+    # Validator aus T-3.9 wies eine zweizeilige Antwort ab, und das Pet sagte
+    # den Ersatzsatz statt der Antwort. Die frueher hier stehende
+    # Gleichheitszusicherung ist damit bewusst zu einer Praefix-Zusicherung
+    # geworden; der SYSTEMPROMPT bleibt unberuehrt woertlich, und das ist die
+    # Zusage, die dieser Test im Namen traegt.
+    inhalt = koerper["messages"][0]["content"]
+    assert inhalt.startswith("Wie steht der Build?")
+    assert "[Ausgabeform]" in inhalt
+    assert "Glut-Geist" not in inhalt, "die Persona bleibt im Systemprompt"
 
 
 def test_mind_ohne_egress_meldet_die_gegenstelle(hub):

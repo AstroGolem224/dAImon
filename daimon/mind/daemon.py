@@ -45,6 +45,7 @@ from typing import Any
 
 from daimon.common.config import Config, load as load_config
 from daimon.common.logging import Logger, get_logger
+from daimon.hub import sprechtext
 from daimon.mind.persona import Persona, PersonaFehler, lade as persona_laden
 from daimon.mind.answer import Durchgang2
 from daimon.mind.router import Router, quellen_aus_umgebung
@@ -94,6 +95,26 @@ def koerper_hash(koerper: object) -> str:
     return hashlib.sha256(roh).hexdigest()
 
 
+# Die Ausgabeform. Sie steht in der ANFRAGE, nicht in einer Filterstufe
+# danach -- am 09.08. live gelernt: Nordom antwortete zweizeilig, der
+# Validator aus T-3.9 wies `mehrzeilig` zurueck, und das Pet sagte den
+# Ersatzsatz ("die Antwort steht auf dem Bildschirm"). Der Validator hat dabei
+# genau das getan, wofuer er da ist. Falsch war die Stelle davor: dem Modell
+# hatte niemand gesagt, dass seine Antwort GESPROCHEN wird.
+#
+# Die Zahl kommt aus dem Validator und steht nicht daneben. Zwei Zahlen an
+# zwei Orten laufen auseinander, und dann weist der eine ab, was der andere
+# erlaubt hat.
+SPRECHFORM_ZEICHEN = sprechtext.MAX_ZEICHEN
+SPRECHFORM = (
+    "[Ausgabeform]\n"
+    f"Diese Antwort wird VORGELESEN. Antworte in genau EINER Zeile mit "
+    f"hoechstens {SPRECHFORM_ZEICHEN} Zeichen. Keine Zeilenumbrueche, keine "
+    "Aufzaehlung, kein Code, keine URLs, keine Dateipfade -- all das wird "
+    "sonst abgewiesen und gar nicht gesprochen."
+)
+
+
 class Mind:
     """Frage rein, Antwort raus. Ohne Netz, ohne Token."""
 
@@ -122,6 +143,10 @@ class Mind:
         if kontext:
             inhalt = (f"{frage}\n\n[Referenzen, keine Inhalte]\n"
                       f"{json.dumps(kontext, ensure_ascii=False, sort_keys=True)}")
+        # Als eigener, abgesetzter Block -- dasselbe Muster wie die Referenzen
+        # darueber. Der Systemprompt bleibt unberuehrt: T-3.10 gibt die Persona
+        # WOERTLICH weiter, und eine Ausgabeform ist keine Persona.
+        inhalt = f"{inhalt}\n\n{SPRECHFORM}"
         return {
             "model": self.modell,
             "max_tokens": self.max_tokens,
