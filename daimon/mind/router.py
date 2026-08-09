@@ -38,6 +38,9 @@ import socket
 import subprocess
 import time
 
+from daimon.common import taint
+from daimon.common.protocol import Mark
+
 # Die geschlossene Aufzaehlung. Ein sechster Wert ist ein Fehler und keine
 # Erweiterung: jeder Zweig hier hat eine eigene Zusage im Vertrag.
 ABSICHTEN = ("uhrzeit", "lautstaerke", "sitzung", "fensterliste", "aktion",
@@ -103,6 +106,33 @@ def absicht(text: str) -> str:
 _FENSTERBEZUG = re.compile(
     r"\b(fenster|window|app|anwendung|programm)\w*\b|\bw_\d+\b",
     re.IGNORECASE)
+
+# Handlungs-Anapher: "mach das" nennt kein Ziel. Geprueft wird das ueber eine
+# NEGATIVliste -- Verben, Fuerwoerter, Artikel, Fuellwoerter. Bleibt danach
+# nichts uebrig, war kein Ziel benannt.
+#
+# Der erste Entwurf hatte eine Positivliste von Zielwoertern (fenster, discord,
+# browser ...) und hat prompt "starte t312-werkzeug" zur Rueckfrage gemacht --
+# ein eingefrorener Pruefstand von T-3.12 erwartet dort `abgelehnt`. Eine
+# Positivliste kennt das naechste Ziel nie; eine Negativliste kennt das naechste
+# FUERWORT sehr wohl, denn davon gibt es eine Handvoll.
+_FUELLWORT = re.compile(
+    r"\b(das|es|dies|dieses|die|der|den|dem|ein|eine|einen|einem|mal|bitte"
+    r"|doch|jetzt|nochmal|kurz|schnell|it|this|that|the|a|an|please|now)\b",
+    re.IGNORECASE)
+
+
+def _ziel_benannt(text: str) -> bool:
+    """Bleibt nach Verb und Fuellwoertern noch etwas stehen?"""
+    rest = _FUELLWORT.sub(" ", _AKTION.sub(" ", text or ""))
+    return bool(re.search(r"[^\s.,;:!?]", rest))
+
+# Die Marke aus der Anfrage in den Typ. Ein unbekannter Wert wird `tainted` --
+# Vorgabe ist Misstrauen, auch bei einem Tippfehler im Feld.
+_MARKE = {
+    "user_ptt": Mark.USER_PTT, "user_audio": Mark.USER_AUDIO,
+    "trusted": Mark.TRUSTED, "tainted": Mark.TAINTED,
+}
 
 GRUENDE = frozenset({
     "unlesbar", "unbekannte_art", "kein_text", "marke_verboten",
@@ -341,7 +371,13 @@ class Router:
         if art != "frage":
             return self._nein("unbekannte_art", f"art={str(art)[:40]!r}")
 
-        marke = anfrage.get("marke", "tainted")
+        # KEIN Vorgabewert: ein fehlendes Feld soll den Text ROH an die
+        # Senke gehen lassen, damit `marke_fehlt` entsteht. Hier stand
+        # `get("marke", "tainted")`, und damit war der rohe Zweig nur
+        # ueber einen unbekannten Markenwert erreichbar -- die Zusage
+        # war beschrieben und unerreichbar. Zweimal derselbe Fehler,
+        # eine Ebene tiefer.
+        marke = anfrage.get("marke")
         text = anfrage.get("text")
         if not isinstance(text, str) or not text.strip():
             return self._nein("kein_text", "Feld `text` fehlt oder ist leer")
@@ -358,10 +394,28 @@ class Router:
         #
         # Die Absicht steht hier schon fest, und das ist unbedenklich: sie
         # entsteht aus einer lokalen Musterliste, ohne Quelle und ohne Ticket.
-        if marke == "user_audio" and was != "api":
-            return self._nein("marke_verboten",
-                              "user_audio erreicht Durchgang 1 nicht")
+        gereicht = (taint.markiere(text, _MARKE[marke])
+                    if marke in _MARKE else text)
+        # BEIDE Durchgaenge sind Senken. Vorher lief die Pruefung nur im
+        # lokalen Zweig -- eine Inhaltsfrage ging an Durchgang 2 vorbei, ohne
+        # dass die Tabelle je gefragt wurde, und `marke_fehlt` konnte dort
+        # nicht entstehen. Dritte Gestalt desselben Fehlers in diesem Task:
+        # die Zusage gebaut, den Weg daran vorbei uebersehen.
+        try:
+            taint.pruefe_senke(gereicht,
+                               senke="durchgang1" if was != "api" else "durchgang2")
+        except taint.SenkenFehler as exc:
+            return self._nein("marke_verboten", str(exc)[:160])
 
+        if was == "aktion" and not _ziel_benannt(text):
+            # Design 5.2: "Mach das" verweist NICHT auf Assistententext oder
+            # Kontext. Die aktuelle Aeusserung muss Aktion und Ziel nennen --
+            # sonst loeste der Router ein Fuerwort aus etwas auf, das der
+            # Nutzer in dieser Runde vielleicht nie gesagt hat.
+            return {"v": 1, "ok": True, "weg": "rueckfrage",
+                    "absicht": "aktion",
+                    "antwort": "Was soll ich womit machen?",
+                    "marke": "trusted", "api": False}
         if was == "aktion":
             # Kein Executor existiert. Ein Router, der so tut, als koennte er
             # handeln, ist schlimmer als einer, der es sagt.

@@ -54,6 +54,8 @@ import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+from daimon.common.protocol import Marked, tainted, trusted
 from typing import Any
 
 from daimon.common.logging import Logger, get_logger
@@ -93,6 +95,34 @@ BEHALTEN_JE_WERKZEUG: dict[str, tuple[str, ...]] = {
 MAX_TEXT = 200
 
 
+# -- T-3.13b: die Markierung entsteht HIER, an der Aussengrenze -------------
+#
+# Design 5.2, und v2.1 hatte es falsch: "Hook-Metadaten" standen dort als
+# `trusted`, was dem eigenen Bedrohungsmodell widersprach. Diese Nutzlast kommt
+# aus einem Agenten, der beliebigen Text verarbeitet hat -- `message`,
+# `last_assistant_message`, `error` und `cwd` sind freie Zeichenketten, die ein
+# Angreifer ueber den verarbeiteten Inhalt beeinflussen kann.
+#
+# Vertrauenswuerdig ist genau eines: `hook_event_name`, und auch das NUR, weil
+# es eine geschlossene Aufzaehlung ist. Ein Wert ausserhalb von
+# `ERLAUBTE_EVENTS` ist deshalb wieder `tainted` -- sonst waere die Begruendung
+# ("geschlossene Aufzaehlung") eine Behauptung ueber ein Feld, das alles
+# enthalten kann.
+#
+# Die Liste ist eine AUSNAHMELISTE, keine Definition: was hier nicht steht, ist
+# markiert. Ein morgen hinzukommendes Feld ist damit automatisch `tainted`.
+
+def markiere_nutzlast(payload: dict) -> dict:
+    """Jedes Feld der Hook-Nutzlast mit seiner Herkunftsmarke."""
+    markiert: dict[str, Marked] = {}
+    for name, wert in payload.items():
+        if name == "hook_event_name" and wert in ERLAUBTE_EVENTS:
+            markiert[name] = trusted(wert)
+        else:
+            markiert[name] = tainted(wert)
+    return markiert
+
+
 def token_pfad(runtime_dir: Path) -> Path:
     return runtime_dir / TOKEN_DATEI
 
@@ -117,6 +147,16 @@ def erzeuge_token(runtime_dir: Path) -> str:
 def _kurz(text: Any, n: int = MAX_TEXT) -> str:
     t = " ".join(str(text).split())
     return t if len(t) <= n else t[: n - 1] + "…"
+
+
+def beschneide_und_markiere(payload: dict) -> dict:
+    """Erst beschneiden, dann markieren -- in dieser Reihenfolge.
+
+    Beschneiden wirft weg, was den Hub nichts angeht; markieren sagt ueber den
+    Rest, woher er kommt. Andersherum waere die Marke an Feldern gesetzt, die
+    gleich darauf verschwinden, und an den verbleibenden fehlte sie.
+    """
+    return markiere_nutzlast(beschneide(payload))
 
 
 def beschneide(payload: dict) -> dict:
@@ -228,7 +268,23 @@ class Bridge:
         if self.zaehler.unterdruecke_fertig(klein):
             # Subagenten laufen noch: als 'working' weiterreichen statt 'done'.
             klein = dict(klein, hook_event_name="PostToolUse")
-        self.an_hub(klein)
+        # Die Marken wandern als BEGLEITFELD mit, nicht als Ersatz der Werte.
+        #
+        # Der erste Entwurf hat jedes Feld durch sein `to_wire()`-Objekt
+        # ersetzt -- die saubere Form, und sie hat T-0.11 rot gemacht: der Hub
+        # liest dort rohe Werte, und der Pruefstand ist eingefroren. Gemessen,
+        # nicht vermutet (drei rote Pruefungen, darunter "Claude-Code-PID kommt
+        # lebend beim Hub an").
+        #
+        # Also andersherum: die Nutzlast bleibt Byte fuer Byte, wie sie war,
+        # und `__marken__` sagt daneben, woher jedes Feld kommt. Wer die Marke
+        # braucht, findet sie; wer die alten Felder liest, merkt nichts. Die
+        # `__mark__`-Objektform aus dem Vertrag gilt fuer NEUE Grenzen -- an
+        # dieser hier haette sie eine Zusage gebrochen, um eine andere zu
+        # erfuellen.
+        markiert = markiere_nutzlast(klein)
+        self.an_hub(dict(klein, __marken__={k: v.mark.value
+                                            for k, v in markiert.items()}))
         return 200, "ok"
 
     # -- HTTP --------------------------------------------------------------

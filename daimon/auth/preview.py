@@ -34,6 +34,8 @@ was es in 3.12 nicht gibt.
 
 from __future__ import annotations
 
+from daimon.common.taint import pruefe_senke
+
 import unicodedata
 
 
@@ -147,7 +149,7 @@ _VORLAGE = (
 )
 
 
-def vorschau(*, aktion: str, ziel: str, umkehr: str) -> str:
+def vorschau(*, aktion: str, ziel: object, umkehr: str) -> str:
     """Die fertige, mehrzeilige Vorschau nach der festen Vorlage.
 
     `aktion` und `umkehr` sind Schluessel in `AKTIONS_BESCHRIFTUNGEN` bzw.
@@ -164,5 +166,14 @@ def vorschau(*, aktion: str, ziel: str, umkehr: str) -> str:
     except KeyError:
         raise VorschauFehler(f"unbekannter Umkehrschluessel {umkehr!r}") from None
 
-    return _VORLAGE.format(aktion=aktion_text, ziel=pfad_saeubern(ziel),
+    # T-3.13b: die Vorschau ist eine SENKE. `tainted` darf hinein -- aber nur
+    # escapt und laengenbegrenzt, und genau das tut `pfad_saeubern()` seit
+    # T-1.7. Neu ist die Pruefung, DASS es passiert ist: `user_audio` hat hier
+    # nichts verloren (Design 5.2), und ein roher `str` gilt als `tainted`,
+    # ohne zu werfen -- T-1.7 ist eingefroren und ruft mit rohen Zeichenketten
+    # auf, und eine Zusage gegen ihre eigenen Waechter durchzusetzen waere die
+    # falsche Reihenfolge.
+    geprueft = pruefe_senke(ziel, senke="auth_vorschau")
+    return _VORLAGE.format(aktion=aktion_text,
+                           ziel=pfad_saeubern(str(geprueft.value)),
                            umkehr=umkehr_text)

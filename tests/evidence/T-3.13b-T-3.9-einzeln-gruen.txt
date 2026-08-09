@@ -1,0 +1,339 @@
+T-3.9 — Stimme: der Validator sitzt im Hub, der Dienst spricht nur mit Marke
+  Baum: /home/itiger013/Dokumente/Github/dAImon
+  Modell: /home/itiger013/Dokumente/Github/dAImon/spikes/nvidia-voice/models/vits-piper-de_DE-thorsten-high
+  Modus: ARBEITSBAUM
+
+--- 0. Voraussetzungen ---
+  ok   jq vorhanden
+  ok   Interpreter vorhanden
+  ok   echtes pw-cat vorhanden (Referenz, wird NICHT angeruehrt)
+  ok   systemd-socket-activate vorhanden
+  ok   setsid vorhanden (Prozessgruppe des Dienstes)
+  ok   nvidia-smi vorhanden
+  ok   Modellverzeichnis vorhanden
+  ok   der Baum bringt daimon/hub/sprechtext.py mit
+  ok   der Baum bringt daimon/face/tts.py mit
+  ok   der Baum bringt config/systemd/daimon-tts.service mit
+  ok   der Baum bringt config/systemd/daimon-tts.socket mit
+  ok   der Baum bringt den Hub mit (die Grenze liegt im Hub)
+  ok   sherpa-onnx im Interpreter
+
+--- K6/K12 (in-process): der Validator, jede Regel einzeln ---
+  geladen aus: /home/itiger013/Dokumente/Github/dAImon/daimon/hub/sprechtext.py  (Funktion: pruefe
+  ok   POSITIVKONTROLLE: der Validator stammt AUS DEM GEPRUEFTEN BAUM
+  ok   POSITIVKONTROLLE: ein harmloser Satz ist sprechbar (reaktion)
+  ok   POSITIVKONTROLLE: NFC-zerlegte Umlaute sind sprechbar
+  ok   POSITIVKONTROLLE: Umlaute sind kein Regelverstoss
+  ok   140 Zeichen sind sprechbar (die Grenze ist '~140')
+  ok   500 Zeichen: abgelehnt
+  ok   500 Zeichen: Grund ist zu_lang
+  ok   mehrzeilig: abgelehnt
+  ok   mehrzeilig: Grund ist mehrzeilig
+  ok   code_function: abgelehnt
+  ok   code_function: Grund ist code
+  ok   code_const: abgelehnt
+  ok   code_const: Grund ist code
+  ok   code_import: abgelehnt
+  ok   code_import: Grund ist code
+  ok   code_klammern: abgelehnt
+  ok   code_klammern: Grund ist code
+  ok   Codeblock: abgelehnt
+  ok   Codeblock: Grund ist code oder mehrzeilig
+  ok   url_https: abgelehnt
+  ok   url_https: Grund ist url
+  ok   url_www: abgelehnt
+  ok   url_www: Grund ist url
+  ok   pfad_absolut: abgelehnt
+  ok   pfad_absolut: Grund ist pfad
+  ok   pfad_heimat: abgelehnt
+  ok   pfad_heimat: Grund ist pfad
+  ok   pfad_eltern: abgelehnt
+  ok   pfad_eltern: Grund ist pfad
+  ok   geheimnis_apikey: abgelehnt
+  ok   geheimnis_apikey: Grund ist geheimnis
+  ok   geheimnis_password: abgelehnt
+  ok   geheimnis_password: Grund ist geheimnis
+  ok   geheimnis_token: abgelehnt
+  ok   geheimnis_token: Grund ist geheimnis
+  ok   geheimnis_secret: abgelehnt
+  ok   geheimnis_secret: Grund ist geheimnis
+  ok   Bidi-Override: der Text ist sprechbar (die Zeichen fallen, nicht der Satz)
+  ok   Bidi-Override: entfernt -- kein U+202E/U+202C mehr im Text
+  ok   Bidi-Override: NICHT escapt -- keine Backslash-Escape-Folge im Text
+  ok   Bidi-Override: der Rest ist 'Hallo'
+  ok   Nullbreite: entfernt, Rest ist sprechbar
+  ok   Nullbreite: kein U+200B mehr im Text
+  ok   Steuerzeichen (BEL): entfernt, Rest ist sprechbar
+  ok   Steuerzeichen (BEL): nicht mehr im Text
+  ok   ungefragt: freier (harmloser) Text wird abgelehnt, nicht gesaeubert
+  ok   ungefragt: ein Angriffstext wird abgelehnt
+  ok   kein Fall wirft eine Ausnahme
+  vergebene Gruende: code,freier_text,geheimnis,mehrzeilig,pfad,unbekannter_kanal,url,zu_lang
+  ok   mindestens 7 verschiedene Gruende (je Regel einer)
+  ok   kein Sammelgrund 'ungueltig'
+  Vorlagen gefunden: VORLAGEN [begruessung,build_fertig,lange_sitzung,leerlauf,steht_am_bildschirm,tests_gruen,tests_rot]
+  ok   eine kuratierte Vorlagenmenge ist auffindbar (POSITIVKONTROLLE fuer K5)
+
+--- K6/K12 (live): der Hub lehnt die zehn Angriffstexte selbst ab ---
+  ok   Hub aus dem geprueften Baum startet
+  laufender Hub: /home/itiger013/Dokumente/Github/dAImon/daimon/hub/daemon.py
+  ok   POSITIVKONTROLLE: der LAUFENDE Hub stammt aus dem geprueften Baum
+  Endpunkt: /tmp/tmp.5jo6VQnY4M/hubrt-main/tts.sock  art=freigabe  marke-feld=marke
+  ok   ein Sprech-Endpunkt ist am Hub auffindbar (POSITIVKONTROLLE)
+  Vorlage fuer die Positivkontrolle: 'leerlauf' ueber Feld 'anlass'
+  ok   POSITIVKONTROLLE: der harmlose Satz bekommt eine Hub-Freigabe
+  ok   die Freigabe traegt eine nichtleere Marke
+  ok   Hub: Angriff 'Pfad' wird abgelehnt
+  ok   Hub: Angriff 'Pfad' heisst 'pfad'
+  ok   K7: die Absage traegt einen Ersatzsatz
+  ok   K7: der Ersatzsatz besteht selbst den Validator (kuratiert, nicht frei)
+  ok   Hub: Angriff 'URL' wird abgelehnt
+  ok   Hub: Angriff 'URL' heisst 'url'
+  ok   Hub: Angriff 'api_key-Zuweisung' wird abgelehnt
+  ok   Hub: Angriff 'api_key-Zuweisung' heisst 'geheimnis'
+  ok   Hub: Angriff 'Codeblock' wird abgelehnt
+  ok   Hub: 'Codeblock' heisst code oder mehrzeilig
+  ok   Hub: Angriff 'mehrzeilig' wird abgelehnt
+  ok   Hub: Angriff 'mehrzeilig' heisst 'mehrzeilig'
+  ok   Hub: Angriff '500 Zeichen' wird abgelehnt
+  ok   Hub: Angriff '500 Zeichen' heisst 'zu_lang'
+  ok   Hub: Angriff 'Bidi-Override' kommt nur BEREINIGT durch
+  ok   Hub: Angriff 'Nullbreite' kommt nur BEREINIGT durch
+  ok   Hub: Angriff 'Steuerzeichen' kommt nur BEREINIGT durch
+  ok   Hub: Angriff 'password-Zuweisung' wird abgelehnt
+  ok   Hub: Angriff 'password-Zuweisung' heisst 'geheimnis'
+
+--- K5 (live): ungefragt nur aus kuratierten Vorlagen ---
+  ok   ungefragt: freier Text wird abgelehnt -- auch ein harmloser
+  ok   ungefragt: ein Angriffstext wird abgelehnt
+  ok   ungefragt: eine unbekannte Vorlage wird abgelehnt
+  ok   POSITIVKONTROLLE: die Vorlagen-Feldform ist auffindbar
+  ok   POSITIVKONTROLLE: die kuratierte Vorlage wird freigegeben
+  ok   ungefragt: tainted-Werte in der Vorlage sind eine Absage
+
+--- Dienst-Start (Unit-ExecStart, socket-aktiviert, Stub im PATH) ---
+  ExecStart (substituiert): /home/itiger013/Dokumente/Github/dAImon/.venv/bin/python -m daimon.face.tts --hub-socket /tmp/tmp.5jo6VQnY4M/xdg/daimon/tts.sock
+  ok   die Unit traegt einen ExecStart
+
+--- Vorentdeckung: Dienst-Art, und der Positiv-Kanarienvogel ---
+  ok   Dienst startet aus dem geprueften Baum (Socket antwortet)
+  ok   POSITIVKONTROLLE: der Dienst-Prozess hat den geprueften Baum im PYTHONPATH
+  Dienst-Art: sprich
+  ok   eine Sprech-Anfrageform ist auffindbar (POSITIVKONTROLLE)
+  ok   Kanarienvogel: pw-cat wurde ueber den PATH gerufen (der Stub feuert)
+  ok   Kanarienvogel: es flossen Audiodaten (> 2000 Bytes)
+  Antwort beim Sprechen: {"v": 1, "ok": true, "gesprochen": null, "ttfa_ms": 130.71, "segmente": 1, "text": "Der Kanarienvogel singt leise.", "kanal": "reaktion", "engine": "sherpa-onnx-vits", "modell": "de_DE-thorsten-high", "provider": "cpu", "lizenz": "CC0"}
+  ok   die Antwort nennt 'engine'
+  ok   engine ist sherpa (nicht piper1-gpl)
+  ok   die Antwort nennt 'modell'
+  ok   modell ist thorsten
+  ok   die Antwort nennt 'provider'
+  ok   provider ist cpu
+  ok   Dienst startet auch mit verbotener Stimme (ehrliche Absage, kein stiller Tod)
+  ok   pavoque (CC-BY-NC-SA): die Anfrage wird abgelehnt, obwohl die Dateien da sind
+  ok   pavoque: die Absage macht die LIZENZ zum Grund (grund oder meldung)
+  ok   pavoque: pw-cat wurde NICHT gerufen
+  ok   Dienst startet mit fehlender Stimme (kerstin liegt nicht vor)
+  ok   kerstin (nicht installiert): ehrliche Absage statt stiller Vorgabe
+  ok   kerstin: pw-cat wurde NICHT gerufen
+
+--- Hauptdienst: thorsten, fuer den Rest des Laufs ---
+  ok   Hauptdienst startet aus dem geprueften Baum
+  ok   POSITIVKONTROLLE: der Hauptdienst hat den geprueften Baum im PYTHONPATH
+
+--- K6 (live): Direktzugriff -- Lage, dann die zehn Angriffe ---
+  Lage: DIENST_MARKE_PFLICHT=nein (Antwort: {"v": 1, "ok": true, "gesprochen": null, "ttfa_ms": 96.24, "segmente": 1, "text": "Der Kaffee ist fertig.", "kanal": "rueckfrage", "engine": "sherpa-onnx-vits", "modell": "de_DE-thorsten-high", "provider": "cpu", "lizenz": "CC0"})
+  ok   Direktzugriff ohne Marke: eindeutige Lage (abgelehnt ODER selbst validiert gesprochen)
+  ok   Direktzugriff 'Pfad': der Angriffstext wird abgelehnt (ok != true)
+  ok   Direktzugriff 'URL': der Angriffstext wird abgelehnt (ok != true)
+  ok   Direktzugriff 'api_key': der Angriffstext wird abgelehnt (ok != true)
+  ok   Direktzugriff 'Codeblock': der Angriffstext wird abgelehnt (ok != true)
+  ok   Direktzugriff 'mehrzeilig': der Angriffstext wird abgelehnt (ok != true)
+  ok   Direktzugriff '500 Zeichen': der Angriffstext wird abgelehnt (ok != true)
+  ok   Direktzugriff 'Bidi': der bereinigte Rest ist sprechbar
+  ok   Direktzugriff 'Bidi': nur der exakt bereinigte Text geht an die Ausgabe
+  ok   Direktzugriff 'Bidi': der bereinigte Text erreicht pw-cat
+  ok   Direktzugriff 'Nullbreite': der bereinigte Rest ist sprechbar
+  ok   Direktzugriff 'Nullbreite': nur der exakt bereinigte Text geht an die Ausgabe
+  ok   Direktzugriff 'Nullbreite': der bereinigte Text erreicht pw-cat
+  ok   Direktzugriff 'Steuerzeichen': der bereinigte Rest ist sprechbar
+  ok   Direktzugriff 'Steuerzeichen': nur der exakt bereinigte Text geht an die Ausgabe
+  ok   Direktzugriff 'Steuerzeichen': der bereinigte Text erreicht pw-cat
+  ok   Direktzugriff 'password': der Angriffstext wird abgelehnt (ok != true)
+  Byte-Deltas der zehn Angriffe: 20480 16384 16384 20480 12288 24576 4096 4096 4096 24576
+  Ersatzrede-Referenz: 20480 Bytes (Antwort: {"v": 1, "ok": false, "grund": "pfad", "ersatz": "Die Antwort steht auf dem Bildschirm.", "rest_s": null, "engine": "sherpa-onnx-vits", "modell": "de_DE-thorsten-high", "provider": "cpu", "lizenz": "CC0", "ersatz_gesprochen": true, "ersatz_ttfa_ms": 123.63})
+  ok   die Ersatzrede-Referenz ist messbar (POSITIVKONTROLLE)
+  ok   Direktzugriff: Angriff 1 nennt nur den kuratierten Ersatzsatz
+  ok   Direktzugriff: Ersatzrede zu Angriff 1 erreicht pw-cat
+  ok   Direktzugriff: Angriff 2 nennt nur den kuratierten Ersatzsatz
+  ok   Direktzugriff: Ersatzrede zu Angriff 2 erreicht pw-cat
+  ok   Direktzugriff: Angriff 3 nennt nur den kuratierten Ersatzsatz
+  ok   Direktzugriff: Ersatzrede zu Angriff 3 erreicht pw-cat
+  ok   Direktzugriff: Angriff 4 nennt nur den kuratierten Ersatzsatz
+  ok   Direktzugriff: Ersatzrede zu Angriff 4 erreicht pw-cat
+  ok   Direktzugriff: Angriff 5 nennt nur den kuratierten Ersatzsatz
+  ok   Direktzugriff: Ersatzrede zu Angriff 5 erreicht pw-cat
+  ok   Direktzugriff: Angriff 6 nennt nur den kuratierten Ersatzsatz
+  ok   Direktzugriff: Ersatzrede zu Angriff 6 erreicht pw-cat
+  ok   Direktzugriff: Angriff 10 nennt nur den kuratierten Ersatzsatz
+  ok   Direktzugriff: Ersatzrede zu Angriff 10 erreicht pw-cat
+  (erfundene Marke nicht pruefbar: der Dienst holt die Freigabe selbst --
+   die Schranke sind die zehn Angriffe oben, nicht das Marke-Feld)
+
+--- K8: Abkuehlung (gewaeitert und nachgemessen, nicht rest_s abgelesen) ---
+  ok   rueckfrage: der Kanal ist vor dem Abschnitt frei (keine Verschmutzung)
+  ok   rueckfrage: die erste Aeusserung wird gesprochen (POSITIVKONTROLLE)
+  Absage: {"v": 1, "ok": false, "grund": "abkuehlung", "rest_s": 2.428, "ersatz": ""}
+  ok   rueckfrage: sofort danach abgelehnt (Abkuehlung)
+  ok   rueckfrage: rest_s liegt bei hoechstens 3 (gemeldet: 2.428)
+  ok   ungefragt: der Kanal ist vor dem Abschnitt frei (keine Verschmutzung)
+  ok   ungefragt: die Vorlage wird gesprochen (POSITIVKONTROLLE)
+  ok   ungefragt: sofort danach abgelehnt (Abkuehlung 20 s)
+  ok   ungefragt: rest_s liegt bei ~20 (gemeldet: 19.427)
+  ok   Hub startet neu (selbes Zustandsverzeichnis)
+  ok   PERSISTENZ: nach dem Hub-Neustart ist ungefragt IMMER NOCH gesperrt
+  ok   eine Abkuehlungs-Ablage existiert im Zustandsverzeichnis
+  ok   die Ablage ist gueltiges JSON
+  ok   rueckfrage: nach > 3 s ist die Abkuehlung beendet (POSITIVKONTROLLE)
+  ok   reaktion: nach 10 s ist die Abkuehlung beendet (POSITIVKONTROLLE)
+  ok   ungefragt: zu dem Zeitpunkt sperrt die 20-s-Frist NOCH (10 != 20)
+  ok   ungefragt: nach 20 s ist die Abkuehlung beendet (POSITIVKONTROLLE)
+  ok   Uhrenprobe: frische ungefragt-Sperre gesetzt (POSITIVKONTROLLE)
+  ok   Hub mit versetzter Wanduhr startet
+  ok   DIE ZUSAGE: eine um 1 h gestellte WANDUHR hebt die Abkuehlung nicht auf
+  ok   Hub mit vorgestellter monotoner Uhr startet
+  ok   POSITIVKONTROLLE: eine um 25 s vorgestellte MONOTONE Uhr beendet die Frist
+  ok   Hub laeuft nach den Uhrenproben wieder normal
+
+--- K4/K9: Unterbrechung, und voice.tts_active dabei ---
+  ok   reaktion: der Kanal ist vor dem Unterbrechungs-Abschnitt frei
+  ok   voice.tts_active ist vor der Wiedergabe false (POSITIVKONTROLLE)
+  ok   lange Aeusserung A wird angenommen (Vorbedingung)
+  ok   A laeuft wirklich noch (der Stub verbraucht in Echtzeit)
+  ok   voice.tts_active ist WAEHREND der Wiedergabe true
+  Freigabe-Antwort fuer B: {"v": 1, "ok": true, "text": "Kurz.", "marke": "3207057dccb76e5ac7f3fa06bd3a5331", "kanal": "reaktion", "frist_s": 30.0, "unterbrechung": true, "ersatz_freigabe": false, "rest_s": 8.757}
+  ok   UMGEHUNG: Freigabe fuer B waehrend A noch laeuft (Unterbrechung darf das)
+  Ende von A nach Anfrage B: 13.3 ms
+  ok   DIE ZUSAGE: die alte Wiedergabe ist binnen 100 ms tot
+  ok   die neue Aeusserung B kommt danach wirklich (kein Schweigen)
+  ok   kein Mischen: B beginnt nicht vor As Ende (Toleranz 50 ms)
+  ok   genau zwei pw-cat-Aufrufe in diesem Abschnitt (A und B, kein dritter)
+  ok   voice.tts_active ist NACH der Wiedergabe wieder false
+  Freigabe-Antwort nach Bs Ende: {"v": 1, "ok": false, "grund": "abkuehlung", "rest_s": 9.41, "ersatz": ""}
+  ok   KEIN Umweg: nach Bs Ende greift die Abkuehlung wieder (C wird abgelehnt)
+
+--- K11: TTFA ueber 20 Laeufe (Anfrage -> erstes Sample am Stub) ---
+  Lauf  1: 47.8 ms
+  Lauf  2: 49.1 ms
+  Lauf  3: 49.4 ms
+  Lauf  4: 51.9 ms
+  Lauf  5: 38.6 ms
+  Lauf  6: 43.3 ms
+  Lauf  7: 50.9 ms
+  Lauf  8: 48.2 ms
+  Lauf  9: 56.2 ms
+  Lauf 10: 51.4 ms
+  Lauf 11: 40.4 ms
+  Lauf 12: 38.0 ms
+  Lauf 13: 36.0 ms
+  Lauf 14: 45.1 ms
+  Lauf 15: 56.7 ms
+  Lauf 16: 43.9 ms
+  Lauf 17: 44.2 ms
+  Lauf 18: 41.0 ms
+  Lauf 19: 50.8 ms
+  Lauf 20: 35.8 ms
+  Auswertung: {"n": 20, "p50": 45.1, "p95": 56.2, "min": 35.8, "max": 56.7}
+  Evidence: /home/itiger013/Dokumente/Github/dAImon/tests/evidence/T-3.9-ttfa.json
+  ok   20 Laeufe brachten je ein erstes Sample
+  ok   POSITIVKONTROLLE: die Messung unterscheidet (min > 0 ms)
+  ok   DIE ZUSAGE: TTFA p95 < 200 ms
+
+--- K10: 0 VRAM am laufenden Dienst ---
+  ok   /proc/<pid>/maps lesbar und nichtleer (POSITIVKONTROLLE)
+  CUDA-Bibliotheken im Adressraum: 0
+  ok   keine libcuda/libcudart/libnvinfer/libnvrtc geladen
+  ok   /proc/<pid>/fd lesbar und nichtleer (POSITIVKONTROLLE)
+  ok   keine /dev/dri-Deskriptoren
+  ok   nvidia-smi ist abfragbar (POSITIVKONTROLLE)
+  ok   der Dienst steht NICHT als Compute-Prozess in nvidia-smi
+  ok   kein Compute-Prozess aus dem Prozessbaum des Pruefstands (fremde GPU-Prozesse ignoriert)
+
+--- Units: daimon-tts.service und daimon-tts.socket ---
+  ok   socket: ListenStream unter %t/daimon
+  ok   socket: SocketMode=0600
+  ok   socket: Accept=no (kein Prozess je Verbindung)
+  ok   socket: RuntimeDirectory=daimon
+  ok   socket: RuntimeDirectoryPreserve=yes
+  ok   socket: aktiviert ueber sockets.target
+  ok   service: Requires auf den Socket (ohne ihn waere er unerreichbar)
+  ok   service: RuntimeDirectory=daimon
+  ok   service: RuntimeDirectoryPreserve=yes
+  ok   service: kein [Install]/WantedBy -- der Socket aktiviert, nicht enable
+  ok   service: RestrictAddressFamilies enthaelt AF_UNIX
+  ok   service: RestrictAddressFamilies enthaelt KEIN AF_INET/AF_INET6
+  ok   service: NoNewPrivileges=yes
+  ok   service: ProtectSystem=strict
+  ok   service: ProtectHome=read-only
+  ok   service: PrivateTmp=yes
+  ok   service: LimitCORE=0
+  ok   service: UMask=0077
+  ok   service: PrivateDevices ist gesetzt ODER begruendet
+  ok   service: MemoryDenyWriteExecute ist gesetzt ODER begruendet
+
+--- K12: Schluss-Kanarienvogel im selben Lauf ---
+  ok   SCHLUSS-KANARIENVOGEL: nach allen Angriffen wird der harmlose Satz gesprochen
+
+--- Leck-Pruefung: kein Dienst ueberlebt den Lauf ---
+  ok   POSITIVKONTROLLE: waehrend des Laufs lief ein Dienst mit Pfaden unter $RT
+  ok   nach dem Aufraeumen ist KEIN daimon.face.tts mit Pfaden unter $RT uebrig
+
+--- Abrechnung je Kriterium ---
+  V    13 Pruefungen, 0 rot
+  K1    8 Pruefungen, 0 rot
+  K2    5 Pruefungen, 0 rot
+  K3    3 Pruefungen, 0 rot
+  K4    9 Pruefungen, 0 rot
+  K5    6 Pruefungen, 0 rot
+  K6  105 Pruefungen, 0 rot
+  K7    2 Pruefungen, 0 rot
+  K8   22 Pruefungen, 0 rot
+  K9    3 Pruefungen, 0 rot
+  K10   7 Pruefungen, 0 rot
+  K11   3 Pruefungen, 0 rot
+  K12   6 Pruefungen, 0 rot
+  KU   20 Pruefungen, 0 rot
+  L     2 Pruefungen, 0 rot
+  ---
+  gesamt: 214 Pruefungen, 0 rot (Modus: ARBEITSBAUM)
+
+--- OFFEN, und zwar benannt ---
+  (1) KRITERIUM 8 (Plan) IST NUR TEILERFUELLT MESSBAR. Kein Prozess haelt
+      eine Rueckkopplungssperre (der Ohren-Dienst existiert nicht), also
+      meldet der Dienst an den Hub: geprueft ist voice.tts_active waehrend
+      und nach der Wiedergabe (K9). Die ECHO-REFERENZ wird nicht
+      uebertragen -- es gibt niemanden, der sie annimmt (Plan §3.1).
+  (2) 'pw-cat ohne absoluten Pfad' ist belegt, SOLANGE der Stub feuert.
+      Bluebe er still, waere das ein Befund und der execve-Mitschnitt
+      stuende oben im Protokoll.
+  (3) TTFA misst Anfrage-an-den-Dienst bis erstes Sample am Stub. Der
+      Hub-Rundlauf (Freigabe) ist nicht eingerechnet -- er ist klein und
+      gehoert zur Hub-Latenz, nicht zur Synthese.
+  (4) Klang ist ungemessen: DASS und WANN Daten fliessen, nicht WIE sie
+      klingen. Satzmelodie prueft der Mensch, nicht der Stub.
+  (5) Die '~140 Zeichen' werden als <= 140 plus 500-Zeichen-Absage
+      geprueft; die Zone dazwischen ist Auslegungsspielraum des Plans.
+  (6) Vorlagenfeld (vorlage/anlass) und Marke-Feldname werden ENTDECKT
+      und stehen oben im Protokoll. Eine Implementierung mit anderem
+      Vokabular faellt hier als 'nicht auffindbar' auf -- das ist dann
+      ein Punkt fuers Gegenlesen, nicht automatisch ein Defekt.
+  (7) Der Stub belegt Textfluss bis zum TTS-Vertrag (bereinigter Text in
+      Hub- und Dienstantwort) und PCM-Fluss zur Ausgabe. Er dekodiert das
+      PCM nicht wieder zu Sprache; Aussprache und semantischer Audioinhalt
+      bleiben Teil der ungemessenen Klangpruefung aus (4).
+
+T-3.9: gruen. Der Validator sitzt im Hub, der Dienst spricht nur mit
+       Marke, verbotene Angriffstexte kamen nicht durch und die drei
+       Unicode-Klassen nur bereinigt -- der
+       Kanarienvogel wurde vorgelesen. KEINE volle Abnahme -- siehe
+       die offenen Punkte oben, insbesondere (1).
