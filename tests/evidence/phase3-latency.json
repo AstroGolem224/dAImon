@@ -1,0 +1,41 @@
+{
+ "v": 1,
+ "n": 0,
+ "erzeugt": "2026-08-09T14:21:05+02:00",
+ "p50_wake_to_audio_ms": null,
+ "p95_wake_to_audio_ms": null,
+ "stufen": {
+  "wake_to_audio": {
+   "n": 0,
+   "p50": null,
+   "p95": null
+  },
+  "audio_to_stt": {
+   "n": 0,
+   "p50": null,
+   "p95": null
+  },
+  "stt_to_mind": {
+   "n": 0,
+   "p50": null,
+   "p95": null
+  },
+  "mind_to_tts": {
+   "n": 0,
+   "p50": null,
+   "p95": null
+  },
+  "tts_to_audio": {
+   "n": 0,
+   "p50": null,
+   "p95": null
+  },
+  "gesamt": {
+   "n": 0,
+   "p50": null,
+   "p95": null
+  }
+ },
+ "laeufe": [],
+ "hinweis": "n=0: es hat noch niemand gesprochen. Der Dienst schreibt je Runde eine Zeile nach $XDG_RUNTIME_DIR/daimon/latenz.jsonl; dieser Bericht entsteht daraus mit `python -m daimon.ears.daemon --bericht <datei>`. Das Kriterium bleibt ROT, bis n >= 20 echte Anfragen vorliegen."
+}

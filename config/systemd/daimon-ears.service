@@ -1,0 +1,71 @@
+# dAImon Ohren (T-3.15): Mikrofon nur unter Push-to-Talk.
+#
+# Der Dienst ist das Gelenk zwischen den Bibliotheken aus Block 1 (capture,
+# vad, interlock) und der Kette STT -> Mind -> TTS. Er haengt am Push-Endpunkt
+# des Hubs und oeffnet einen Aufnahmestrom NUR, solange `voice.listening` gilt.
+#
+# Diese Unit ist der Kill-Switch. Es gibt keinen zweiten Weg, die Ohren
+# abzuschalten -- kein Steuer-Socket, kein Signal, keine Konfigurationsflagge.
+# Ein zweiter Weg waere eine zweite Angriffsflaeche, und `systemctl stop` ist
+# der einzige, den auch ein festgefahrener Prozess nicht ueberleben kann.
+#
+# Installation: systemctl --user link <dieser Pfad>
+#               systemctl --user enable --now daimon-ears.service
+
+[Unit]
+Description=dAImon Ohren (Push-to-Talk, PipeWire, 16 kHz mono)
+# Ohne Hub kein Rundenzustand -- und ohne Rundenzustand hoert der Dienst
+# grundsaetzlich nicht zu (fail-safe im Code, siehe `_horchen`). `Wants` statt
+# `Requires`: ein neu startender Hub soll die Ohren nicht mitreissen.
+Wants=daimon-hub.service
+After=daimon-hub.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+
+# Projekt-venv: sounddevice und der VAD liegen dort.
+ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
+    -m daimon.ears.daemon
+
+# Restart=on-failure, NICHT always: ein `systemctl stop` ist der Kill-Switch
+# und muss ein Ende bleiben. `always` wuerde ihn nach RestartSec aufheben --
+# der Nutzer haette abgeschaltet und das Mikrofon kaeme von selbst zurueck.
+Restart=on-failure
+RestartSec=2
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=read-only
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+# Dieser Dienst hoert alles, was gesprochen wird. Fremde Prozesse und die
+# Nicht-PID-Teile von /proc gehen ihn nichts an.
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+# Keine Core-Dumps: ein Dump enthielte den Audiopuffer.
+LimitCORE=0
+UMask=0077
+
+# Die Zusage aus der Akzeptanzliste. Der Dienst spricht mit vier Unix-Sockets
+# (Hub, STT, Mind, TTS) und mit PipeWire -- ebenfalls ueber einen Unix-Socket.
+# Ein Mikrofondienst mit Netzzugang ist die falsche Kombination, unabhaengig
+# davon, ob er ihn heute nutzt.
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @obsolete @mount @swap @reboot @module
+MemoryDenyWriteExecute=yes
+# PrivateDevices=yes: der Zugang zu PipeWire laeuft ueber
+# $XDG_RUNTIME_DIR/pipewire-0, nicht ueber /dev/snd. WENN die Aufnahme hier
+# scheitert, ist das die erste Direktive, die man prueft -- PortAudio faellt
+# ohne den PipeWire-Client auf ALSA zurueck, und ALSA braucht /dev/snd.
+PrivateDevices=yes
+TimeoutStopSec=10
+
+[Install]
+WantedBy=graphical-session.target

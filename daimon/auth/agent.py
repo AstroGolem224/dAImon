@@ -74,6 +74,12 @@ from daimon.common.logging import get_logger
 # nachgewiesen).
 KG_BUS = "org.kde.kglobalaccel"
 KG_AKTION = ["daimon-auth", "dAImon Auth", "ptt", "dAImon Push-to-Talk"]
+# T-3.15: der Kill-Switch der Ohren. Zweite Aktion derselben Komponente --
+# die Tastenbindung gehoert dorthin, wo sie schon liegt, und der Ohren-Dienst
+# kann sich nicht selbst abschalten: ein festgefahrener Prozess fuehrt seinen
+# eigenen Kill-Switch nicht mehr aus.
+KG_AKTION_OHREN_AUS = ["daimon-auth", "dAImon Auth", "ohren_aus",
+                       "dAImon Ohren abschalten"]
 # Flags fuer setShortcut (kglobalacceld.h, enum SetShortcutFlag):
 # SetPresent=2 macht den Shortcut scharf, NoAutoloading=4 verhindert, dass
 # die gespeicherte kglobalaccelrc ihn beim naechsten Start ueberschreibt.
@@ -147,6 +153,7 @@ class AuthAgent:
         self.dialoge_gezeigt = 0
         self.freigaben_gesendet = 0
         self.marken_gesendet = 0
+        self.ohren_abschaltungen = 0
         self.letzte_entscheidung: str | None = None
 
         self._dialog_sichtbar = False
@@ -362,7 +369,41 @@ class AuthAgent:
         if wechsel is not None:
             self._an_hub("ptt", {"an": wechsel})
 
-    def _kglobalaccel_registrieren(self, kuerzel: str) -> None:
+    def _kuerzel_verteilen(self, argumente: tuple) -> None:
+        """`globalShortcutPressed(component, aktion, zeitstempel)`.
+
+        Verteilt auf die Aktion. Ein unbekannter Name tut NICHTS -- der Fall
+        entsteht, wenn kglobalaccel eine Aktion meldet, die wir nicht mehr
+        kennen, und dann ist Nichtstun die richtige Antwort.
+        """
+        nutzlast = argumente[-1] if argumente else None
+        werte = nutzlast.unpack() if hasattr(nutzlast, "unpack") else ()
+        aktion = werte[1] if len(werte) > 1 else ""
+        if aktion == KG_AKTION[2]:
+            self._ptt_ausloesen()
+        elif aktion == KG_AKTION_OHREN_AUS[2]:
+            self._ohren_abschalten()
+
+    def _ohren_abschalten(self) -> None:
+        """T-3.15: die Ohren-Unit stoppen und das Ergebnis ins Journal.
+
+        Der Auth-Agent laeuft unter System-Python ohne das venv -- deshalb
+        wird `killswitch` hier lokal importiert und nicht oben. Das Modul ist
+        reines stdlib, genau dafuer.
+        """
+        try:
+            from daimon.ears.killswitch import stoppe
+            ergebnis = stoppe()
+        except Exception as exc:  # noqa: BLE001 -- ein Kill-Switch stirbt nicht
+            print(f"Ohren-Kill-Switch fehlgeschlagen ({exc})", file=sys.stderr)
+            return
+        self.ohren_abschaltungen += 1
+        self.log.info("Ohren abgeschaltet", DAIMON_ACTION="ohren_aus",
+                      DAIMON_OK=ergebnis["ok"], DAIMON_RC=ergebnis["rc"],
+                      DAIMON_STROEME=str(ergebnis["aufnahmestroeme_nachher"]))
+
+    def _kglobalaccel_registrieren(self, kuerzel: str,
+                                   ohren_kuerzel: str = "Meta+Shift+M") -> None:
         """Meta+Space (Vorgabe) ueber org.kde.kglobalaccel. Scheitert die
         Registrierung (keine Plasma-Sitzung, Name belegt, unbekannte
         Taste), ist das EINE stderr-Zeile und sonst nichts: der
@@ -385,12 +426,25 @@ class AuthAgent:
                 "(asaiu)", [KG_AKTION, [taste], KG_FLAGS])).unpack()[0]
             if not gesetzt:
                 raise RuntimeError(f"{kuerzel!r} nicht gesetzt (belegt?)")
+            # T-3.15: der Ohren-Kill-Switch als zweite Aktion. Scheitert nur
+            # SIE, laeuft PTT weiter -- deshalb ein eigener try, nicht ein
+            # zweiter Aufruf im selben.
+            try:
+                ruf("doRegister", GLib.Variant("(as)", [KG_AKTION_OHREN_AUS]))
+                ruf("setShortcut", GLib.Variant(
+                    "(asaiu)", [KG_AKTION_OHREN_AUS,
+                                [kuerzel_nach_qt(ohren_kuerzel)], KG_FLAGS]))
+            except Exception as exc:  # noqa: BLE001
+                print(f"Ohren-Kuerzel nicht gesetzt ({exc})", file=sys.stderr)
             pfad = ruf("getComponent",
                        GLib.Variant("(s)", [KG_AKTION[0]])).unpack()[0]
+            # Ein Abonnement fuer beide Aktionen: das Signal traegt den
+            # Aktionsnamen als zweites Argument, und daran wird verteilt.
             bus.signal_subscribe(
                 KG_BUS, "org.kde.kglobalaccel.Component",
                 "globalShortcutPressed", pfad, None,
-                Gio.DBusSignalFlags.NONE, lambda *a: self._ptt_ausloesen())
+                Gio.DBusSignalFlags.NONE,
+                lambda *a: self._kuerzel_verteilen(a))
             self._bus = bus  # haelt Verbindung und Subscription am Leben
             self.log.info("Tastenkuerzel registriert",
                           DAIMON_KUERZEL=kuerzel)
@@ -423,6 +477,7 @@ class AuthAgent:
                 "dialoge_gezeigt": self.dialoge_gezeigt,
                 "freigaben_gesendet": self.freigaben_gesendet,
                 "marken_gesendet": self.marken_gesendet,
+                "ohren_abschaltungen": self.ohren_abschaltungen,
                 "letzte_entscheidung": self.letzte_entscheidung}
 
     def _diag_bedienen(self) -> None:
@@ -485,6 +540,13 @@ class AuthAgent:
         teile = zeile.split()
         if teile == ["ptt"]:
             self._ptt_ausloesen()
+            return True
+        if teile == ["ohren_aus"]:
+            # T-3.15: derselbe Weg, den das Tastenkuerzel nimmt. Ein
+            # zweiter Pfad zum Abschalten waere ein zweiter Pfad, der
+            # anders kaputtgehen kann -- und der Pruefstand soll den
+            # ECHTEN messen, nicht einen Zwilling fuer Tests.
+            self._ohren_abschalten()
             return True
         if teile == ["schliessen"]:
             self._verbergen()
