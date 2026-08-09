@@ -94,10 +94,70 @@ so — die Abnahme gehört nicht dem, der gebaut hat.
    Akzeptanzliste verlangt sie; der Weg dorthin führt über
    `_nein("marke_verboten", …)`, und dieser Zweig wird von den eingefrorenen
    T-3.12/T-3.13b mitgemessen. Eigener Task, eigene Entscheidung.
-4. **Nichts davon ist live gelaufen.** Die Broker haben Units, aber keinen
-   Hub, der Aufträge schickt — `coordinator.py` ist verdrahtet und getestet,
-   der Hub-Daemon ruft ihn noch nicht. Das ist der nächste Builder-Task, und
-   er steht so nicht im Plan.
+4. ~~**Nichts davon ist live gelaufen.**~~ — **erledigt am 09.08. abends,**
+   siehe unten. Der Hub hat jetzt `aktion.sock`, und der erste Auditsatz
+   stammt aus einem echten Lauf.
+
+### Der Hub-Anschluss — und das eine Buch
+
+Zwei Commits nach der Phase, beide außerhalb der Task-Nummerierung:
+`8ac6728` und `e8e898d`.
+
+**`aktion.sock` am Hub.** Eine Zeile rein, eine raus. Der Endpunkt ist
+**ausdrücklich kein Produzent** — dasselbe Muster wie `gpu.sock`, `tts.sock`
+und `ticket.sock`: kein `ipc.PRODUZENTEN`-Eintrag, kein Bus-Ereignis, keine
+Rolle im Ereignisprotokoll. Damit bleiben T-1.7, T-2.2 und T-2.7 unberührt,
+und ein Test hält fest, dass die Tabelle unverändert ist.
+
+Die Rundenmarke wird im Markenbuch **nachgeschlagen**, nicht aus der Anfrage
+gelesen — und zwar mit `initiator()`, einer Auskunft ohne Nebenwirkung. Eine
+Einlösung an dieser Stelle hätte die Runde nach der ersten Aktion getötet.
+
+Der Broker-Pfad steht im Hub (`BROKER_SOCKETS`), nicht im Auftrag. Stünde er
+im Auftrag, könnte ein Absender sich seinen Broker aussuchen. Heute gibt es
+genau einen Weg (`dbus`); die anderen drei Broker haben Units, aber noch
+keinen.
+
+**Live gemessen** nach `systemctl --user restart daimon-hub`:
+`media.playpause` ohne gedrückte PTT-Taste ergibt
+`{"verdikt": "deny", "grund": "katalog:background"}`, und unter
+`~/.local/state/daimon/audit/audit.jsonl` steht `seq 1`, `outcome denied`,
+`initiator background`. Das ist der erste Auditsatz aus einem echten Lauf.
+
+**Ein Buch statt zwei.** Der `ask`-Pfad antwortete zunächst `cancelled`, weil
+der Auth-Agent seine Freigaben ins `FreigabeBuch` (T-1.7) meldete, während
+der Koordinator ein zweites Buch aus T-4.11 führte. Zusammengelegt: die
+**Autorität bleibt `FreigabeBuch`** — die eingefrorene Zusage hängt daran,
+und zwei Einmaligkeiten nebeneinander wären zwei Wahrheiten. `Consent` hält
+nur noch, was dort fehlt: offene Rückfragen, den Absender, die Persistenz und
+den Unterschied zwischen `declined` und `cancelled`. Die Nonce kommt aus dem
+Buch; sonst wäre sie dort unbekannt, wenn der Auth-Agent bestätigt.
+
+Reihenfolge im Auth-Weg: **erst das Buch, dann die Rückfrage.** Scheitert das
+Buch, ist in `Consent` nichts passiert. Eine Freigabe ohne offene Rückfrage
+läuft unverändert durch — genau so schickt T-1.7 sie.
+
+Gewartet wird im Thread der jeweiligen Verbindung, `RUECKFRAGE_FRIST_S = 120`.
+Keine Antwort bleibt `cancelled`: ein Zeitablauf ist kein Nein.
+
+### Was jetzt noch offen ist
+
+* **Der Direktpfad ist der einzige, der live etwas tut** — Medien und
+  Lautstärke unter gedrückter PTT-Taste, sobald `daimon-dbus.service` läuft.
+  Der `ask`-Pfad ist verdrahtet, aber der Auth-Agent zeigt für Aktionen noch
+  keinen Dialog: `modal.py` (T-4.12) ist gebaut und wird von niemandem
+  aufgerufen.
+* **Die drei anderen Broker haben keinen Weg vom Hub.** `BROKER_SOCKETS`
+  kennt nur `dbus`.
+* **Keiner der vier Broker-Dienste läuft.** Units sind installiert und
+  gemessen, gestartet ist keiner.
+
+> **Achtung, Parallelsitzung:** am 09.08. gegen 18:55 sind
+> `tests/test_cli_broker.py` und `daimon/brokers/cli/` aufgetaucht, beide
+> ungetrackt, `broker.py` fehlte noch. `pytest tests/` bricht dadurch beim
+> **Einsammeln** ab (`ImportError: cannot import name 'broker'`) — das ist
+> kein roter Test, sondern eine halbe Datei. Mit
+> `--ignore=tests/test_cli_broker.py` war der Lauf vollständig grün.
 
 ---
 
