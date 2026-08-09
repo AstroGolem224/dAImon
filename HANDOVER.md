@@ -141,9 +141,12 @@ Projekts — am Bildrand sehen, dass ein Agent wartet — war seit T-0.11 nie in
 Betrieb. Die fertige Konfiguration lag die ganze Zeit als
 `config/claude-hooks.json` im Repo.
 
-**Installiert am 09.08.**, Sicherung unter
-`~/.claude/settings.json.vor-daimon-hooks`, die Spike-Hooks stehen unverändert
-daneben. **Eine Abweichung von der Vorlage, mit Absicht:** `__TOKEN__` ist
+**Installiert am 09.08.** mit `tools/hooks_installieren.py` (Commit
+`0954ba0`), Sicherung unter `~/.claude/settings.json.vor-daimon-hooks`, die
+Spike-Hooks stehen unverändert daneben. Das Skript ist wiederholbar, kennt
+`--pruefen` (Exit 1, wenn etwas fehlt) und `--entfernen`, und es hat einen
+`--selbsttest`; gegen eine Kopie der echten Datei gemessen: Ausbau, Einbau,
+dieselbe Fassung. **Eine Abweichung von der Vorlage, mit Absicht:** `__TOKEN__` ist
 nicht eingesetzt, sondern wird zur Laufzeit gelesen —
 `$(cat "$XDG_RUNTIME_DIR/daimon/hook-token")`. Die Bridge erzeugt das Token bei
 **jedem** Start neu (`bridge.py:130`); ein eingebackenes wäre nach dem nächsten
@@ -480,6 +483,12 @@ Sprachanfragen fehlen, und die Falsch-Positiv-Rate über eine Woche Alltag fehlt
    der Mind `"token_vorhanden": false` und beantwortet nur lokale Absichten.
    **Ausdrücklich deine Handbewegung**, entschieden am 09.08.: Zugangsdaten
    legt hier kein Agent an.
+0. **Nach jedem Zurücksetzen von `~/.claude/settings.json`:**
+   `tools/hooks_installieren.py`. Ohne die Hooks sieht das Pet keine Sitzung
+   und steht auf `sleeping` — und das sieht man ihm nicht an, es sieht aus wie
+   ein Pet, das eben nichts tut. `--pruefen` sagt in einer Zeile, ob sie
+   stehen, und endet mit Exit 1, wenn nicht; `--entfernen` nimmt nur die
+   eigenen Einträge zurück. Wiederholtes Ausführen ändert nichts.
 0. **Rechtsklick auf das Pet, einmal.** Die Personaauswahl im Kontextmenü ist
    nur am Code und am geschriebenen `persona.json` belegt, nicht am Bild: acht
    Zeilen bei 208 px Breite, und ob eine Beschriftung abgeschnitten ist, sieht
