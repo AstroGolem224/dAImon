@@ -432,7 +432,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.bericht:
         print(json.dumps(bericht(args.bericht), ensure_ascii=False, indent=1))
         return 0
-    cfg = load_config()
+    # make_dirs=False, wie STT, TTS und Mind: `load()` legt sonst
+    # $XDG_STATE_HOME/daimon an und setzt dessen Modus -- unter
+    # `ProtectHome=read-only` ist das ein OSError beim Start. Dieser Dienst
+    # schreibt ohnehin nur unter $XDG_RUNTIME_DIR, das systemd als
+    # RuntimeDirectory selbst anlegt. Am 09.08. beim ersten echten Start
+    # gemessen: drei Neustarts, jedes Mal `Errno 30` auf `st.chmod(0o700)`.
+    cfg = load_config(make_dirs=False)
     ohren = Ohren(cfg, runtime_dir=Path(args.runtime_dir) if args.runtime_dir
                   else None)
     ohren.start()
