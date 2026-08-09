@@ -96,7 +96,19 @@ PRODUZENTEN: dict[str, frozenset[str]] = {
     # und T-2.7 zusammen halten -- und braucht dafuer eine eigene
     # Entscheidung, keine Erweiterung dieser Zeile.
     "face": frozenset({"bubble_dismiss", "wahrnehmung_aus"}),
-    "auth": frozenset({"intent_mark", "freigabe"}),
+    # T-3.14 laesst diese Menge um genau einen Typ wachsen: `ptt`. Dieselbe
+    # Pruefung wie bei T-2.7, mit denselben drei Punkten:
+    #
+    #   1. DER ABSENDER BESITZT ES SCHON. Der PTT-Umschaltautomat steht in
+    #      `daimon/auth/ptt.py` und gehoert dem Auth-Agenten. Die Meldung sagt
+    #      nichts, was er nicht ohnehin entscheidet.
+    #   2. KEINE FAEHIGKEIT. `ptt` erteilt keine Freigabe, erzeugt keine
+    #      Rundenmarke, startet und stoppt nichts. Die Nutzlast ist ein
+    #      Wahrheitswert. Insbesondere erteilt `listening` KEIN Mikrofonrecht --
+    #      das Mikrofon oeffnet der Ohren-Dienst, nicht dieses Feld.
+    #   3. SCHLIMMSTER MISSBRAUCH: das Overlay zeigt "hoert zu", obwohl niemand
+    #      zuhoert. Sichtbar falsch, folgenlos fuer jede Schranke.
+    "auth": frozenset({"intent_mark", "freigabe", "ptt"}),
 }
 
 

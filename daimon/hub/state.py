@@ -47,6 +47,19 @@ PRIORITY: dict[str, int] = {
 SESSION_TTL_S = 3600.0
 LEASE_GRACE_S = 2.0      # so lange nach dem letzten Ereignis nicht nachsehen
 
+# T-3.14, die zwei Obergrenzen des Sprachzustands. Beide sind Ausfallgrenzen,
+# keine Fachlogik: sie greifen nur, wenn die zustaendige Quelle das Ende einer
+# Phase NICHT meldet.
+#
+#   * DENK_FRIST_S -- der Mind ist gestorben, waehrend er dachte. Ohne die
+#     Frist stuende `processing` fuer immer, und ein haengender Zustand ist von
+#     einem arbeitenden nicht zu unterscheiden.
+#   * PTT_FRIST_S -- der Auth-Agent hat das Ablaufen seines eigenen Zeitlimits
+#     nicht gemeldet. 150 > 120 (Vorgabe des `PTTAutomat`), damit im Normalfall
+#     immer die Quelle zuerst spricht und diese Grenze nur im Ausfall greift.
+DENK_FRIST_S = 30.0
+PTT_FRIST_S = 150.0
+
 
 def proc_starttime(pid: int) -> int | None:
     """Startzeit aus /proc/<pid>/stat, Feld 22. None, wenn es den Prozess
@@ -116,7 +129,10 @@ class HubState:
         self._bubble: dict[str, Any] | None = None
         self._rev = 0
         self._ttl = ttl_s
-        self._voice = {"state": "idle", "listening": False, "tts_active": False}
+        self._voice = {"listening": False, "tts_active": False, "denkt": False}
+        # Monotone Zeitmarken der beiden Fristen. `None` heisst: laeuft nicht.
+        self._denkt_seit: float | None = None
+        self._listening_seit: float | None = None
         self._perception = {"ears": False, "eyes": False, "gpu_loaded": []}
 
     # -- Schreiben ---------------------------------------------------------
@@ -159,8 +175,8 @@ class HubState:
                 self._bubble = None
                 self._rev += 1
 
-    def set_voice(self, **felder: Any) -> None:
-        """`voice.tts_active` und Verwandte. T-3.9.
+    def set_voice(self, *, jetzt: float | None = None, **felder: Any) -> None:
+        """`voice.tts_active` und Verwandte. T-3.9, erweitert in T-3.14.
 
         Das Feld gab es seit Beginn im Schnappschuss und **niemand konnte es
         setzen** -- es stand also seit Wochen als `false` da und behauptete
@@ -176,12 +192,76 @@ class HubState:
         braucht zusaetzlich die **Echo-Referenz** (16 kHz mono int16, siehe
         `interlock.echo_referenz`) -- ueber ein Zustandsfeld geht Audio nicht,
         das braucht den Ohren-Dienst und einen eigenen Kanal.
+
+        T-3.14: `state` ist KEIN Feld mehr, sondern gerechnet -- ein
+        uebergebenes `state=` wird stillschweigend fallengelassen. Wer den
+        Zustand setzen koennte, koennte ihn behaupten, ohne dass das
+        zugrundeliegende Ereignis stattgefunden hat; dann waere die Anzeige
+        eine Meinung. Vertrag T-3.14 §1.
         """
+        felder.pop("state", None)
         with self._lock:
             vorher = dict(self._voice)
             self._voice.update(felder)
+            if self._voice["listening"] and not vorher["listening"]:
+                self._listening_seit = jetzt if jetzt is not None else time.monotonic()
+            elif not self._voice["listening"]:
+                self._listening_seit = None
             if self._voice != vorher:
                 self._rev += 1
+
+    def voice_denkt_an(self, *, jetzt: float | None = None) -> None:
+        """Eine Aeusserung ist eingegangen und noch nicht beantwortet."""
+        with self._lock:
+            self._denkt_seit = jetzt if jetzt is not None else time.monotonic()
+            if not self._voice["denkt"]:
+                self._voice["denkt"] = True
+                self._rev += 1
+
+    def voice_denkt_aus(self) -> None:
+        with self._lock:
+            self._denkt_seit = None
+            if self._voice["denkt"]:
+                self._voice["denkt"] = False
+                self._rev += 1
+
+    def _voice_flags(self, jetzt: float | None) -> dict[str, bool]:
+        """Die drei Flags, NACH Ablauf der beiden Fristen.
+
+        Die Fristen werden gerechnet und nicht per Timer geloescht: ein
+        Zustand, der nur beim Hinsehen richtig wird, war beim Wegsehen falsch.
+        Der Schnappschuss zeigt deshalb das Ergebnis der Rechnung -- ein
+        `listening: true`, das nirgends mehr gilt, waere die gefaehrlichste
+        Anzeige, die dieses Feld haben kann.
+        """
+        jetzt = jetzt if jetzt is not None else time.monotonic()
+        flags = dict(self._voice)
+        if (flags["denkt"] and (self._denkt_seit is None
+                                or jetzt - self._denkt_seit >= DENK_FRIST_S)):
+            flags["denkt"] = False
+        if (flags["listening"] and (self._listening_seit is None
+                                    or jetzt - self._listening_seit >= PTT_FRIST_S)):
+            flags["listening"] = False
+        return flags
+
+    @staticmethod
+    def _zustand(flags: dict[str, bool]) -> str:
+        """Die Ableitung. Die Reihenfolge ist die ganze Aussage: `listening`
+        schlaegt `speaking`, weil ein Tastendruck waehrend des Sprechens ein
+        Einwurf ist -- die neueste Handlung des Nutzers gewinnt vor der
+        laufenden Ausgabe der Maschine."""
+        if flags["listening"]:
+            return "listening"
+        if flags["tts_active"]:
+            return "speaking"
+        if flags["denkt"]:
+            return "processing"
+        return "idle"
+
+    def voice_state(self, *, jetzt: float | None = None) -> str:
+        """Der abgeleitete Sprachzustand. Vertrag T-3.14 §2."""
+        with self._lock:
+            return self._zustand(self._voice_flags(jetzt))
 
     def set_perception(self, **felder: Any) -> None:
         with self._lock:
@@ -197,6 +277,22 @@ class HubState:
         for sid in tot:
             del self._sessions[sid]
         return bool(tot)
+
+    def _voice_schnappschuss(self) -> dict:
+        """Nur unter `self._lock` rufen.
+
+        Laeuft eine Frist im Stillen ab, steigt hier `rev` -- sonst bekaeme das
+        Face den Rueckfall auf `idle` erst beim naechsten fremden Ereignis zu
+        sehen, und bis dahin stuende dort eine Aussage, die nicht mehr gilt.
+        """
+        flags = self._voice_flags(None)
+        if flags != self._voice:
+            self._voice.update(flags)
+            self._rev += 1
+        zustand = ("listening" if flags["listening"] else
+                   "speaking" if flags["tts_active"] else
+                   "processing" if flags["denkt"] else "idle")
+        return {"state": zustand, **flags}
 
     def snapshot(self) -> dict:
         """State nach Design 9, Schema v2."""
@@ -225,7 +321,7 @@ class HubState:
                 "sessions": len(self._sessions),
                 "focus": focus,
                 "bubble": self._bubble,
-                "voice": dict(self._voice),
+                "voice": self._voice_schnappschuss(),
                 "perception": dict(self._perception),
             }
 

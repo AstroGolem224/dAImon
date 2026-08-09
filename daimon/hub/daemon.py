@@ -158,6 +158,11 @@ class Hub:
         # bekommen hat, und ein gestorbener Sprecher blockiert nichts dauerhaft.
         self._tts_lock = threading.Lock()
         self._tts_freigaben: dict[str, tuple[str, float]] = {}   # Marke: (Kanal, Ablauf)
+        # Welche Marke gerade spricht. Ohne dieses Feld loescht die verspaetete
+        # Meldung einer abgebrochenen Aeusserung die Sperre einer neueren --
+        # seit T-3.16 liegt zwischen Freigabe und erstem Ton eine Prozessgrenze
+        # mehr, und damit ist das kein Randfall mehr.
+        self._tts_aktive_marke: str | None = None
         self.tts_frist_s = float(self.cfg.get("tts.freigabefrist_s", TTS_FRIST_S))
         self.abkuehlung = Abkuehlung(
             Path(self.cfg.state_dir) / TTS_ABKUEHLUNG_DATEI,
@@ -255,6 +260,11 @@ class Hub:
                     else:
                         self.state.clear_bubble()
                     continue
+                if event.type == "utterance":
+                    # T-3.14: hier faengt `processing` an. Kein neuer Typ und
+                    # kein neuer Socket -- der Hub sieht die Aeusserung ohnehin,
+                    # und was er ohnehin sieht, muss ihm niemand extra sagen.
+                    self.state.voice_denkt_an()
                 self.bus.publish(event)
 
     def _wahrnehmung_aus(self, ziel: object) -> None:
@@ -313,6 +323,18 @@ class Hub:
         koennen nur noch die beiden auth-Typen ankommen.
         """
         p = event.payload or {}
+        if event.type == "ptt":
+            # T-3.14: nur ein Wahrheitswert. Alles andere ist Unsinn und kein
+            # Rollenbruch -- die Zeile faellt weg, die Verbindung bleibt. Die
+            # Uhr fuer die Frist ist die des Hubs; ein Absender soll die Dauer
+            # eines Zustands nicht steuern koennen.
+            an = p.get("an")
+            if not isinstance(an, bool):
+                self.log.warn("ptt ohne Wahrheitswert verworfen",
+                              DAIMON_WERT=str(an)[:40])
+                return True
+            self.state.set_voice(listening=an)
+            return True
         try:
             if event.type == "intent_mark":
                 # Die turn_id erzeugt der HUB, nicht der Absender (Design
@@ -604,7 +626,11 @@ class Hub:
         if eintrag is None:
             return {"v": 1, "ok": False, "grund": "fremde_marke"}
         kanal, ist_ersatz = eintrag
+        with self._tts_lock:
+            self._tts_aktive_marke = marke if isinstance(marke, str) else None
         self.state.set_voice(tts_active=True)
+        # Gedacht wurde offenbar zu Ende: es wird gesprochen. T-3.14 §2.
+        self.state.voice_denkt_aus()
         if ist_ersatz:
             # Der Ersatzsatz vermerkt KEINE Abkuehlung: er ist die Antwort auf
             # eine Ablehnung und darf die naechste echte Aeusserung nicht
@@ -636,7 +662,16 @@ class Hub:
 
     def _tts_gesprochen(self, marke: object) -> dict:
         eintrag = self._tts_freigabe_holen(marke, entfernen=True)
-        self.state.set_voice(tts_active=False)
+        # Nur die Marke, die zuletzt `beginnt` gemeldet hat, darf die Sperre
+        # loeschen. Sonst raeumt die verspaetete Meldung einer abgebrochenen
+        # Aeusserung das Mikrofon frei, waehrend die naechste noch spricht --
+        # und die Rueckkopplungssperre hoert der eigenen Stimme zu.
+        with self._tts_lock:
+            eigene = self._tts_aktive_marke is None or marke == self._tts_aktive_marke
+            if eigene:
+                self._tts_aktive_marke = None
+        if eigene:
+            self.state.set_voice(tts_active=False)
         if eintrag is None:
             # `tts_active` wird trotzdem geloescht: ein Sprecher, dessen Marke
             # verfallen ist, spricht sicher nicht mehr, und ein haengendes
@@ -752,7 +787,11 @@ class Hub:
     def start(self, produzenten: list[str] | None = None) -> None:
         self.runtime_dir.mkdir(parents=True, exist_ok=True)
         os.chmod(self.runtime_dir, 0o700)
-        for p in produzenten or ["hookbridge", "face", "auth"]:
+        # `ears` steht seit T-3.14 dabei: der Ohren-DIENST entsteht erst in
+        # T-3.15, aber der Socket muss vorher da sein, sonst ist `processing`
+        # nirgends messbar -- und ein Zustand, den niemand messen kann, ist
+        # eine Behauptung.
+        for p in produzenten or ["hookbridge", "face", "auth", "ears"]:
             t = threading.Thread(target=self._horche_produzent, args=(p,), daemon=True)
             t.start()
             self._threads.append(t)
