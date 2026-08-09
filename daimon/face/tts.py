@@ -58,6 +58,7 @@ import time
 
 from daimon.common.config import Config, load as load_config
 from daimon.common.logging import Logger, get_logger
+from daimon.face import mimic as mimic_client
 
 TTS_SOCKET = "tts.sock"            # der Hub-Endpunkt (Validator + Abkuehlung)
 LISTEN_FDS_START = 3
@@ -85,6 +86,14 @@ MODELL_DIR = "~/.local/share/daimon/voices"
 THREADS = 8
 SAMPLERATE = 22050                 # kommt aus dem Modell, hier nur als Vorgabe
 HUB_TIMEOUT_S = 10.0
+
+# T-3.16, PHASE2.md Schritt 16. Die Schwelle ist ein STARTWERT, kein
+# Messergebnis: sherpa liegt bei 132 ms p95, Mimic warm bei ~250 ms und kalt
+# bei 7.1 s. Unter der Schwelle ist der Unterschied hoerbar, darueber wiegt
+# Mimics Stimme ihn auf. Nach zwei Wochen Alltag gehoert die Zahl nachgemessen.
+MIMIC_STIMME = "matthias"
+MIMIC_AB_ZEICHEN = 80
+MIMIC_NUR_WARM = True
 
 # Erlaubte Stimmlizenzen. Design §8.2: thorsten und kerstin sind CC0, pavoque
 # ist CC-BY-NC-SA und scheidet aus. Geprueft wird die MODEL_CARD der Stimme --
@@ -286,11 +295,26 @@ class Sprecher:
 
     def __init__(self, *, hub_socket: str, modell_dir: str,
                  stimme: str = STIMME, threads: int = THREADS,
+                 mimic_socket: str = "", mimic_stimme: str = MIMIC_STIMME,
+                 mimic_ab_zeichen: int = MIMIC_AB_ZEICHEN,
+                 mimic_nur_warm: bool = MIMIC_NUR_WARM,
                  log: Logger | None = None) -> None:
         self.hub_socket = hub_socket
         self.modell_dir = modell_dir
         self.stimme = stimme
         self.threads = int(threads)
+        self.mimic_socket = mimic_socket
+        self.mimic_stimme = mimic_stimme
+        self.mimic_ab_zeichen = int(mimic_ab_zeichen)
+        self.mimic_nur_warm = bool(mimic_nur_warm)
+        # Leer heisst: Mimic ist nutzbar. Gesetzt wird das von der
+        # Startpruefung -- und dann bleibt es gesetzt, bis jemand den Dienst
+        # neu startet. Ein Pfad, der beim Start nicht antwortet, soll nicht bei
+        # jeder Aeusserung erneut 300 ms kosten.
+        self.mimic_aus: str = ""
+        self._mimic_sitzung = None
+        self._mimic_gen = -1
+        self._warm_laeuft = False
         self.log = log or get_logger("daimon-tts")
         # Erst die Stimme finden, dann ihre Lizenz pruefen -- und beides VOR
         # dem Laden. Eine Lizenz, die nach dem Laden geprueft wird, ist eine
@@ -338,6 +362,7 @@ class Sprecher:
         """Einmal, beim Start. Nicht bei der ersten Anfrage: die Ladezeit
         wuerde sonst in den TTFA der ersten Aeusserung wandern, und genau die
         erste ist die, bei der jemand hinhoert."""
+        self._mimic_startpruefung()
         if self.absage:
             self.log.warn("Stimme nicht verwendbar -- der Dienst laeuft und "
                           "sagt ab", DAIMON_ACTION="tts_absage",
@@ -386,6 +411,65 @@ class Sprecher:
                       DAIMON_WARMLAUF_MS=self.warmlauf_ms,
                       DAIMON_THREADS=self.threads)
 
+    # -- Mimic -------------------------------------------------------------
+
+    def _mimic_startpruefung(self) -> None:
+        """Einmal `GET /status`, mit harter Frist (Schritt 6).
+
+        Scheitert sie, wird **nur** der Mimic-Pfad abgeschaltet und
+        protokolliert. Ein Mimic, der da ist und schweigt, darf den Start von
+        `daimon-tts` nicht aufhalten -- sonst haette ausgerechnet der
+        Rueckfalldienst eine Abhaengigkeit vom Dienst, den er ersetzen soll.
+        """
+        if not self.mimic_socket:
+            self.mimic_aus = "aus"
+            return
+        t0 = time.monotonic()
+        antwort = mimic_client.status(self.mimic_socket)
+        dauer_ms = round((time.monotonic() - t0) * 1000, 2)
+        stimmen = antwort.get("voices") if isinstance(antwort, dict) else None
+        if not antwort:
+            self.mimic_aus = "status_weg"
+        elif isinstance(stimmen, list) and self.mimic_stimme not in [
+                s.get("name") if isinstance(s, dict) else s for s in stimmen]:
+            # Ein Profil, das Mimic nicht laden kann, ist kein Bereitschafts-
+            # signal. Lieber sherpa als eine Aeusserung, die erst am Socket
+            # scheitert.
+            self.mimic_aus = "stimme_fehlt"
+        else:
+            self.mimic_aus = ""
+        self.log.info("Mimic-Startpruefung", DAIMON_ACTION="tts_mimic_start",
+                      DAIMON_GRUND=self.mimic_aus or "ok",
+                      DAIMON_DAUER_MS=dauer_ms,
+                      DAIMON_SOCKET=self.mimic_socket[:120])
+
+    def _mimic_gewuenscht(self, satz: str) -> bool:
+        return (not self.mimic_aus and bool(self.mimic_socket)
+                and len(satz) >= self.mimic_ab_zeichen)
+
+    def _warmlauf_anstossen(self) -> None:
+        """Best effort, hoechstens einer gleichzeitig (Schritt 12a).
+
+        Wird **nach** dem sherpa-Start aufgerufen, nie davor: ein haengendes
+        `/warm` soll die Zukunft verbessern und nicht die Gegenwart aufhalten.
+        """
+        with self._lock:
+            if self._warm_laeuft or not self.mimic_socket or self.mimic_aus:
+                return
+            self._warm_laeuft = True
+
+        def lauf() -> None:
+            try:
+                grund = mimic_client.warmlauf(self.mimic_socket)
+                self.log.info("Warmlauf angestossen",
+                              DAIMON_ACTION="tts_mimic_warm",
+                              DAIMON_GRUND=grund or "ok")
+            finally:
+                with self._lock:
+                    self._warm_laeuft = False
+
+        threading.Thread(target=lauf, daemon=True).start()
+
     # -- Unterbrechen ------------------------------------------------------
 
     def abbrechen(self) -> int:
@@ -399,6 +483,13 @@ class Sprecher:
             self._gen += 1
             p = self._wiedergabe
             self._wiedergabe = None
+            # Die Mimic-Sitzung atomar mitnehmen, geschlossen wird ausserhalb
+            # des Locks: `shutdown()` kann blockieren, und der Lock haelt hier
+            # den ganzen Dienst auf (Schritt 10).
+            sitzung = self._mimic_sitzung
+            self._mimic_sitzung = None
+        if sitzung is not None:
+            sitzung.schliessen()
         if p is not None and p.poll() is None:
             # NUR toeten. `p.stdin` wird hier ABSICHTLICH nicht angefasst:
             # der Sprech-Thread steht gerade in einem blockierenden `write()`
@@ -424,9 +515,12 @@ class Sprecher:
         darf nichts entstehen, was danach noch versehentlich ausgegeben werden
         koennte.
         """
-        if self.absage:
-            # Vor dem Hub, weil eine Freigabe fuer eine Stimme, die es nicht
-            # gibt, nur eine Abkuehlung verbrauchen wuerde.
+        if self.absage and not self.mimic_socket:
+            # Nur wenn es AUCH keinen Mimic gibt. Bis T-3.16 stand diese
+            # Ruecckehr vor dem Hub, und damit haette eine fehlende
+            # sherpa-Stimme auch Mimic totgelegt -- obwohl der sprechen
+            # koennte. Die Absage gilt jetzt dort, wo sie gilt: als Ergebnis
+            # der Vorgabestufe (Schritt 11).
             return {"v": 1, "ok": False, "grund": self.absage,
                     "gesprochen": False, "meldung": self.absage_meldung,
                     "stimme": self.stimme, "engine": "sherpa-onnx-vits",
@@ -473,6 +567,140 @@ class Sprecher:
         return self._ausgeben(satz, kanal=kanal, marke=marke)
 
     def _ausgeben(self, satz: str, *, kanal: str, marke: str) -> dict:
+        """Engine waehlen, dann ausgeben. Eine Generation fuer beide Wege.
+
+        Schritt 9: **einmal** abbrechen und eine Generation reservieren -- sie
+        gilt fuer Mimic UND den sherpa-Rueckfall und wird nicht erneut erhoeht.
+        Sonst koennte eine aeltere Aeusserung, deren Mimic-Frist spaeter
+        ablaeuft, sherpa ueber einer neueren starten, und es laegen zwei
+        `pw-cat` uebereinander.
+        """
+        gen = self.abbrechen()
+        mimic_grund = ""
+        if self._mimic_gewuenscht(satz):
+            try:
+                sitzung = mimic_client.sprechen(
+                    self.mimic_socket, satz, stimme=self.mimic_stimme,
+                    nur_warm=self.mimic_nur_warm)
+            except mimic_client.MimicFehler as exc:
+                mimic_grund = exc.grund
+            else:
+                with self._lock:
+                    if gen != self._gen:
+                        fremd = True
+                    else:
+                        fremd = False
+                        self._mimic_sitzung = sitzung
+                        self._mimic_gen = gen
+                if fremd:
+                    sitzung.schliessen()
+                    return {"v": 1, "ok": False, "grund": "abgebrochen",
+                            **self.kennung()}
+                return self._mimic_ausgeben(sitzung, satz, kanal=kanal,
+                                            marke=marke, gen=gen)
+        antwort = self._sherpa_ausgeben(satz, kanal=kanal, marke=marke, gen=gen,
+                                        mimic_grund=mimic_grund)
+        if mimic_grund:
+            # ERST sherpa, DANN /warm. Die Reihenfolge ist bindend (12a).
+            self._warmlauf_anstossen()
+        return antwort
+
+    def _mimic_ausgeben(self, sitzung, satz: str, *, kanal: str, marke: str,
+                        gen: int) -> dict:
+        """Der Mimic-Pfad: `pw-cat` mit der Rate **aus dem H-Rahmen**.
+
+        Die Rate steht beim Oeffnen fest, deshalb wird sie hier und nicht
+        vorher entschieden (Schritt 12). Ein Abbruch mitten im Strom laesst den
+        Satz halb -- kein Stimmwechsel mitten im Satz, keine Wiederholung
+        (Schritt 15).
+        """
+        t0 = time.monotonic()
+        p = subprocess.Popen(
+            ["pw-cat", "--playback", "--raw", "--format=s16",
+             f"--rate={sitzung.rate}", "--channels=1", "-"],
+            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL)
+        with self._lock:
+            if gen != self._gen:
+                p.kill()
+                sitzung.schliessen()
+                return {"v": 1, "ok": False, "grund": "abgebrochen",
+                        **self.mimic_kennung()}
+            self._wiedergabe = p
+        stand: dict = {"ttfa_ms": None, "bytes": 0}
+
+        def schreibe(block: bytes) -> bool:
+            if gen != self._gen:
+                return False
+            try:
+                p.stdin.write(block[:PIPE_STUECK])
+                p.stdin.flush()
+                if stand["ttfa_ms"] is None:
+                    stand["ttfa_ms"] = round((time.monotonic() - t0) * 1000, 2)
+                    hub_anfrage(self.hub_socket,
+                                {"v": 1, "art": "beginnt", "marke": marke})
+                if len(block) > PIPE_STUECK:
+                    p.stdin.write(block[PIPE_STUECK:])
+                    p.stdin.flush()
+            except (OSError, ValueError):
+                return False
+            stand["bytes"] += len(block)
+            return True
+
+        weiter = schreibe(sitzung.erster_block)
+
+        def rest() -> None:
+            try:
+                if weiter:
+                    for block in sitzung.bloecke():
+                        if not schreibe(block):
+                            break
+            finally:
+                sitzung.schliessen()
+                try:
+                    if p.stdin is not None:
+                        p.stdin.close()
+                except OSError:
+                    pass
+                if gen == self._gen:
+                    try:
+                        p.wait(timeout=120)
+                    except subprocess.TimeoutExpired:
+                        p.kill()
+                    with self._lock:
+                        if self._wiedergabe is p:
+                            self._wiedergabe = None
+                        if self._mimic_sitzung is sitzung and self._mimic_gen == gen:
+                            self._mimic_sitzung = None
+                if stand["ttfa_ms"] is not None:
+                    hub_anfrage(self.hub_socket,
+                                {"v": 1, "art": "gesprochen", "marke": marke})
+                if gen == self._gen and not sitzung.grund:
+                    self.gesprochen += 1
+                self.log.info("Gesprochen (Mimic)", DAIMON_ACTION="tts_sprich",
+                              DAIMON_ENGINE="mimic", DAIMON_KANAL=kanal[:20],
+                              DAIMON_TTFA_MS=stand["ttfa_ms"],
+                              DAIMON_ZEICHEN=len(satz),
+                              DAIMON_KORRELATION=sitzung.correlation_id,
+                              DAIMON_GRUND=sitzung.grund or "ok")
+
+        if stand["ttfa_ms"] is None:
+            rest()
+            return {"v": 1, "ok": False, "grund": "ausgabe_weg",
+                    "gesprochen": False, "ttfa_ms": None,
+                    "wiedergabe_rc": p.returncode, **self.mimic_kennung()}
+        threading.Thread(target=rest, daemon=True).start()
+        return {"v": 1, "ok": True, "gesprochen": None,
+                "ttfa_ms": stand["ttfa_ms"], "text": satz, "kanal": kanal,
+                "korrelation": sitzung.correlation_id,
+                "samplerate": sitzung.rate, **self.mimic_kennung()}
+
+    def mimic_kennung(self) -> dict:
+        return {"engine": "mimic", "modell": self.mimic_stimme,
+                "provider": "cuda-extern", "lizenz": "dots.tts Apache-2.0"}
+
+    def _sherpa_ausgeben(self, satz: str, *, kanal: str, marke: str, gen: int,
+                         mimic_grund: str = "") -> dict:
         """Erstes Segment im Vordergrund, Rest im Hintergrund.
 
         Die Antwort geht raus, sobald die ersten Samples beim
@@ -486,7 +714,13 @@ class Sprecher:
         Versuch und liess zwei schnelle Anfragen beide durch; die Begruendung
         steht in `daimon/hub/daemon.py`.
         """
-        gen = self.abbrechen()          # eine neue Aeusserung bricht die alte ab
+        if self.absage:
+            # Hier gilt sie: die Vorgabestufe kann nicht sprechen. Mimic wurde
+            # zu diesem Zeitpunkt schon versucht oder gar nicht gewollt.
+            return {"v": 1, "ok": False, "grund": self.absage,
+                    "gesprochen": False, "meldung": self.absage_meldung,
+                    "stimme": self.stimme, "mimic_grund": mimic_grund,
+                    **self.kennung()}
         stuecke = segmente(satz)
         t0 = time.monotonic()
         p = subprocess.Popen(
@@ -594,7 +828,8 @@ class Sprecher:
                           DAIMON_RC=p.returncode)
             return {"v": 1, "ok": False, "grund": "ausgabe_weg",
                     "gesprochen": False, "ttfa_ms": None,
-                    "wiedergabe_rc": p.returncode, **self.kennung()}
+                    "wiedergabe_rc": p.returncode, "mimic_grund": mimic_grund,
+                    **self.kennung()}
 
         self._rest_thread = threading.Thread(target=rest, daemon=True)
         self._rest_thread.start()
@@ -611,7 +846,8 @@ class Sprecher:
         # der Schreibweise zu umgehen (T-1.7.v3).
         return {"v": 1, "ok": True, "gesprochen": stand["gesprochen"],
                 "ttfa_ms": stand["ttfa_ms"], "segmente": len(stuecke),
-                "text": satz, "kanal": kanal, **self.kennung()}
+                "text": satz, "kanal": kanal, "mimic_grund": mimic_grund,
+                **self.kennung()}
 
     def kennung(self) -> dict:
         """Was zur Laufzeit belegt, WAS hier spricht. Kriterium 1 und 2.
@@ -637,6 +873,13 @@ class Sprecher:
             "absage": self.absage, "absage_meldung": self.absage_meldung,
             "spricht": self._wiedergabe is not None
                        and self._wiedergabe.poll() is None,
+            # T-3.16. `mimic_aus` leer heisst nutzbar; `mimic_sitzung` ist die
+            # Zusage aus P2-I, dass nach jedem Ende keine Verbindung offen ist.
+            "mimic_socket": self.mimic_socket,
+            "mimic_aus": self.mimic_aus,
+            "mimic_ab_zeichen": self.mimic_ab_zeichen,
+            "mimic_nur_warm": self.mimic_nur_warm,
+            "mimic_sitzung": self._mimic_sitzung is not None,
         }
 
 
@@ -846,6 +1089,14 @@ def einstellungen(cfg: Config) -> dict:
         "modell_dir": os.path.expanduser(
             str(cfg.get("tts.modell_dir", MODELL_DIR))),
         "threads": int(cfg.get("tts.threads", THREADS)),
+        # Leerer Eintrag heisst absichtlich "Mimic aus" -- deshalb wird der
+        # Vorgabewert nur genommen, wenn der Schluessel FEHLT, nicht wenn er
+        # leer ist.
+        "mimic_socket": str(cfg.get("tts.mimic_socket",
+                                    mimic_client.socket_vorgabe())),
+        "mimic_stimme": str(cfg.get("tts.mimic_stimme", MIMIC_STIMME)),
+        "mimic_ab_zeichen": int(cfg.get("tts.mimic_ab_zeichen", MIMIC_AB_ZEICHEN)),
+        "mimic_nur_warm": bool(cfg.get("tts.mimic_nur_warm", MIMIC_NUR_WARM)),
     }
 
 

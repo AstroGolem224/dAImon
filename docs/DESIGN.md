@@ -1100,8 +1100,22 @@ Manifest `pet.json`: `id` (Regex `^[a-z0-9][a-z0-9_-]{0,63}$`), `displayName`, `
 | Stufe | Engine | Latenz | VRAM | Wofür |
 |---|---|---|---|---|
 | **Schnell (Vorgabe)** | sherpa-onnx VITS mit `de_DE-thorsten-high`, CPU | **132 ms TTFA (p95)** [V] | **0** | Bestätigungen, Status, kurze Antworten |
-| **Charakter (auf Abruf)** | Kartoffelbox-v0.1 (Chatterbox DE, MIT) | <300 ms TTFB **[U]** | 8–16 GB | längere Antworten |
-| **Charakter, Kandidat** | NVIDIA Magpie-TTS Multilingual 357M, NeMo | **[U]** | ~3 GB **[U]** | dito — wird in **T−1.12** gegen die Vorgabe gemessen |
+| **Charakter (auf Abruf)** | **Mimic** — dots.tts `mf`, geklonte Stimme, eigener Dienst | **190 ms bis zum ersten Rahmen [V]**, bis zum ersten *hörbaren* Sample p95 858 ms [V] | 6.2 GB | längere Antworten ab 80 Zeichen |
+
+> **Die Charakterstufe ist seit 2026-08-09 Mimic, nicht Kartoffelbox und nicht
+> Magpie (T-3.16).** Mimic ist ein eigener socket-aktivierter Dienst mit eigenem
+> GPU-Eigentümer, eigener Hub-Ladesperre und geklonter Stimme; dAImon spricht ihn
+> über `daimon/face/mimic.py` an und fällt bei jeder gerissenen Frist still auf
+> die Vorgabestufe zurück. Damit entfällt der Kandidatenvergleich aus **T−1.12**:
+> Magpie kann seit v2607 kein Zero-Shot-Cloning mehr, also gerade das, was die
+> Charakterstufe ausmacht. Der Abschnitt darunter bleibt als Begründung stehen,
+> warum nicht Magpie — nicht als offene Messaufgabe.
+>
+> **Zwei Zahlen, nicht eine.** Der erste Rahmen liegt bei 190 ms und ist stabil;
+> die Zeit bis zum ersten *hörbaren* Sample streut, weil dots.tts stochastisch bis
+> zu 16 stille Chunks voranstellt (p95 858 ms, gemessen am 2026-08-09). Deshalb
+> greift die Auswahlregel: unter 80 Zeichen spricht die Vorgabestufe, wo der
+> Unterschied hörbar wäre. Die 80 sind ein Startwert, kein Messergebnis.
 
 #### Der NVIDIA-Kandidat für die Charakterstufe
 
