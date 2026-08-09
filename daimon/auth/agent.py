@@ -138,6 +138,7 @@ class AuthAgent:
     def __init__(self, args: argparse.Namespace) -> None:
         self.log = get_logger("daimon-auth")
         self.hub_socket = args.hub_socket
+        self.zeitlimit_s = float(args.zeitlimit)
         self.automat = PTTAutomat(zeitlimit_s=args.zeitlimit, log=self.log)
         self._bus: Gio.DBusConnection | None = None
 
@@ -330,6 +331,36 @@ class AuthAgent:
         aktiv = self.automat.umschalten()
         if aktiv and self._an_hub("intent_mark", {}):
             self.marken_gesendet += 1
+        self._ptt_melden()
+        if aktiv:
+            # EIN Wecker beim Einschalten, statt eines Taktes, der dauernd
+            # nachsieht. Das Zeitlimit ist der einzige Zeitpunkt, an dem sich
+            # ohne Zutun etwas aendert -- und ein pollender Agent kostet
+            # Aufwachvorgaenge fuer ein Ereignis, dessen Uhrzeit feststeht.
+            # Eine Sekunde Zugabe, damit der Wecker sicher NACH dem Ablauf
+            # klingelt und nicht in dieselbe Millisekunde faellt.
+            GLib.timeout_add_seconds(int(self.zeitlimit_s) + 1,
+                                     self._ptt_wecker)
+
+    def _ptt_wecker(self) -> bool:
+        """Einmalig, beim Ablauf des Zeitlimits. `False` = nicht wiederholen."""
+        self._ptt_melden()
+        return False
+
+    def _ptt_melden(self) -> None:
+        """Jeden Zustandswechsel genau einmal an den Hub, auch den stillen.
+
+        T-3.14: `ist_aktiv` rechnet den Ablauf aus, meldet ihn aber niemandem.
+        Ohne diese Meldung sieht der Hub das Ende eines PTT-Fensters nie, und
+        `listening` haengt im Overlay, bis der Nutzer erneut drueckt.
+
+        Der Hub hat fuer genau diesen Ausfall eine eigene Obergrenze
+        (`PTT_FRIST_S`, 150 s). Sie ist die zweite Reihe, nicht der Weg: bleibt
+        diese Meldung aus, steht das Overlay eine halbe Minute lang falsch.
+        """
+        wechsel = self.automat.melden()
+        if wechsel is not None:
+            self._an_hub("ptt", {"an": wechsel})
 
     def _kglobalaccel_registrieren(self, kuerzel: str) -> None:
         """Meta+Space (Vorgabe) ueber org.kde.kglobalaccel. Scheitert die

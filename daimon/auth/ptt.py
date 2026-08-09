@@ -60,6 +60,9 @@ class PTTAutomat:
         self._jetzt = jetzt
         self._log = log if log is not None else _Stumm()
         self._seit: float | None = None
+        # Was zuletzt nach draussen gemeldet wurde. Startwert `False`: ein
+        # frisch gestarteter Agent hoert nicht zu, und das weiss auch der Hub.
+        self._gemeldet = False
 
     def umschalten(self) -> bool:
         """Kippt den Zustand und gibt den NEUEN zurueck.
@@ -96,6 +99,27 @@ class PTTAutomat:
         if self._seit is not None:
             self._seit = None
             self._log.info("ptt aus", DAIMON_TYP="ptt", DAIMON_HANDLUNG="aus")
+
+    def melden(self) -> bool | None:
+        """Der naechste noch nicht gemeldete Zustandswechsel, oder None.
+
+        T-3.14: der Hub braucht den Sprachzustand, und `ist_aktiv` rechnet den
+        Ablauf zwar aus, sagt ihn aber niemandem. Ohne diese Methode haengt
+        `listening` im Overlay, bis der Nutzer erneut drueckt -- ein
+        stehengebliebenes "hoert zu" ist die gefaehrlichste Anzeige, die es
+        hier gibt.
+
+        Der ABLAUF ist damit meldbar, ohne ein Ereignis zu werden: es gibt
+        weiterhin keine Audit-Zeile "abgelaufen" (niemand hat gehandelt), und
+        der Aufruf bewegt weder Zustand noch Restzeit. Gemeldet wird nur die
+        Differenz zum zuletzt Gemeldeten, damit ein Aufrufer beliebig oft
+        fragen darf.
+        """
+        aktiv = self.ist_aktiv()
+        if aktiv == self._gemeldet:
+            return None
+        self._gemeldet = aktiv
+        return aktiv
 
     def restsekunden(self) -> float:
         """0.0 wenn inaktiv. Fuer die Diagnose."""

@@ -163,3 +163,61 @@ def test_kein_gi_im_modul():
     import sys
     import daimon.auth.ptt  # noqa: F401
     assert "gi" not in sys.modules
+
+
+# -- T-3.14 L2: der Ablauf will gemeldet werden ---------------------------
+#
+# `ist_aktiv` RECHNET den Ablauf, meldet ihn aber niemandem -- eine Auskunft
+# veraendert nichts. Fuer den Sprachzustand im Overlay reicht das nicht: der
+# Hub sieht das Ablaufen sonst nie, und `listening` haengt am Overlay, bis
+# der Nutzer erneut drueckt. `melden()` schliesst genau diese Luecke.
+
+
+def test_melden_gibt_beim_einschalten_true():
+    a, _, _ = automat()
+    assert a.melden() is None          # nichts passiert, nichts zu melden
+    a.umschalten()
+    assert a.melden() is True
+
+
+def test_melden_meldet_jeden_wechsel_nur_einmal():
+    a, _, _ = automat()
+    a.umschalten()
+    assert a.melden() is True
+    assert a.melden() is None
+    a.umschalten()
+    assert a.melden() is False
+    assert a.melden() is None
+
+
+def test_ablauf_wird_gemeldet_ohne_dass_jemand_umschaltet():
+    """Die eigentliche Luecke: niemand hat gehandelt, es ist nur Zeit
+    vergangen -- und trotzdem muss der Hub es erfahren."""
+    a, uhr, _ = automat(zeitlimit=120.0)
+    a.umschalten()
+    assert a.melden() is True
+    uhr.vor(119.0)
+    assert a.melden() is None
+    uhr.vor(2.0)
+    assert a.melden() is False
+
+
+def test_ausdrueckliches_beenden_wird_gemeldet():
+    a, _, _ = automat()
+    a.umschalten()
+    a.melden()
+    a.aus()
+    assert a.melden() is False
+
+
+def test_melden_veraendert_den_automaten_nicht():
+    """Eine Meldung ist eine Auskunft ueber einen Wechsel, kein Ereignis:
+    sie darf weder den Zustand noch die Restzeit bewegen."""
+    a, _, puffer = automat()
+    a.umschalten()
+    vorher = a.restsekunden()
+    zeilen_vorher = len(zeilen(puffer))
+    a.melden()
+    assert a.ist_aktiv() is True
+    assert a.restsekunden() == vorher
+    assert len(zeilen(puffer)) == zeilen_vorher
