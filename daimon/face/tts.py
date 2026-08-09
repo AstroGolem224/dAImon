@@ -576,6 +576,10 @@ class Sprecher:
         `pw-cat` uebereinander.
         """
         gen = self.abbrechen()
+        # Der Zeitnullpunkt der AEUSSERUNG, nicht der der Wiedergabe. Wer den
+        # Mimic-TTFA erst ab `pw-cat` misst, meldet 0.2 ms neben sherpas 206 --
+        # und verschweigt genau die Wartezeit, die zwischen beiden entscheidet.
+        t_start = time.monotonic()
         mimic_grund = ""
         if self._mimic_gewuenscht(satz):
             try:
@@ -597,7 +601,7 @@ class Sprecher:
                     return {"v": 1, "ok": False, "grund": "abgebrochen",
                             **self.kennung()}
                 return self._mimic_ausgeben(sitzung, satz, kanal=kanal,
-                                            marke=marke, gen=gen)
+                                            marke=marke, gen=gen, t0=t_start)
         antwort = self._sherpa_ausgeben(satz, kanal=kanal, marke=marke, gen=gen,
                                         mimic_grund=mimic_grund)
         if mimic_grund:
@@ -606,7 +610,7 @@ class Sprecher:
         return antwort
 
     def _mimic_ausgeben(self, sitzung, satz: str, *, kanal: str, marke: str,
-                        gen: int) -> dict:
+                        gen: int, t0: float) -> dict:
         """Der Mimic-Pfad: `pw-cat` mit der Rate **aus dem H-Rahmen**.
 
         Die Rate steht beim Oeffnen fest, deshalb wird sie hier und nicht
@@ -614,7 +618,6 @@ class Sprecher:
         Satz halb -- kein Stimmwechsel mitten im Satz, keine Wiederholung
         (Schritt 15).
         """
-        t0 = time.monotonic()
         p = subprocess.Popen(
             ["pw-cat", "--playback", "--raw", "--format=s16",
              f"--rate={sitzung.rate}", "--channels=1", "-"],
