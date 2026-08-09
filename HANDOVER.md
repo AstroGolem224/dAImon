@@ -24,7 +24,83 @@ kommt zuerst.
 `vollbildfenster.py`, `moodprobe.py`. `freeze.sh` **liest** die Abhängigkeiten aus dem
 Skript, statt eine Liste zu pflegen, die veraltet.
 `pytest` grün mit 4 per `xfail(strict=True)` dokumentiert roten.
-`cargo test -p face` 74 von 74 — **seit T-3.14: 84 von 84.**
+`cargo test -p face` 74 von 74 — **seit T-3.14: 84 von 84, seit der
+Personaauswahl 92 von 92.**
+
+---
+
+## Nachtrag 09.08., nachmittags — dritte Persona, Personaauswahl, Startknopf
+
+Drei Commits, alle außerhalb der Task-Nummerierung: `677062d`, `07b766d`,
+`2450af4`. Keiner davon fasst einen eingefrorenen Prüfstand an, und das war
+jedes Mal die teuerste Randbedingung.
+
+### Nordom als dritte Persona
+
+`config/persona/nordom.toml` — ein Rogue-Modron aus Planescape: Torment.
+Nicht Schmuck: seine Sprache besteht aus Präfixen (`ANFRAGE:`, `ANTWORT:`,
+`FESTSTELLUNG:`). Ein Lader, der `system_prompt` umbricht oder „aufbereitet",
+zerstört sie **sichtbar** — die wörtliche Weitergabe aus T-3.10 ist damit an
+einem Beispiel ablesbar statt nur zugesagt.
+
+`config/daimon.toml` ist ein **Muster** und wird zur Laufzeit nicht gelesen;
+der Lader nimmt `$XDG_CONFIG_HOME/daimon/daimon.toml`. Diese Datei existierte
+auf der Maschine gar nicht — es galt still die Code-Vorgabe `Ember` aus
+`daimon/common/config.py:94`. Die Vorgabe bleibt absichtlich `Ember`: ein
+Rückfall, der auf eine gerade erst hinzugefügte Datei zeigt, ist keiner.
+
+### Personaauswahl im Kontextmenü — und warum sie in den Zustand schreibt
+
+Der Eintrag „Persona wechseln" trug seit T-2.7 keine Aktion. Jetzt steht
+darunter je eine Zeile pro gefundener Persona, die aktive mit `●` und ohne
+Aktion. Ein Klick schreibt `$XDG_STATE_HOME/daimon/persona.json` und **sonst
+nichts** — kein Unit-Start, kein Reload. `daimon/mind/persona.py` liest die
+Datei beim Start **vor** `persona.name` aus der Konfiguration.
+
+**Die Falle, die zwei Anläufe gekostet hat:** `daimon-face.service` trägt
+`ProtectHome=read-only` und gab nur `%t/daimon` frei — der erste
+Schreibversuch lief in `EROFS`, und zwar erst zur Laufzeit, nicht im Test.
+Der naheliegende Ausweg `ReadWritePaths=%h/.config/daimon` **scheidet aus**:
+dort liegt der `anthropic-token` (`docs/TOKEN-ROTATION.md`). Freigegeben ist
+`%h/.local/state/daimon`. Der Weg über den Hub scheidet ebenfalls aus — der
+Hub hat dieselbe Sperre, und ein dritter Nachrichtentyp fürs Face hätte
+`T-2.7` (prüft `PRODUZENTEN["face"]` als **exakte** Menge) rot gemacht.
+
+Zwei weitere eingefrorene Zusagen haben die Form bestimmt:
+
+* `T-2.7` (8c) verlangt, dass `menu persona`, `menu persona_wechseln` und
+  `menu persona naechste` **wirkungslos** bleiben. Das neue Namensschema
+  heißt deshalb `persona:<dateiname>`; ein eigener Rust-Test hält die drei
+  toten Befehle tot.
+* `T-3.10` vergleicht `herkunft` als exakte Menge aus sieben Feldern —
+  deshalb **kein** achter Schlüssel für die Auswahl.
+
+**Nebenbefund, der beinahe durchgerutscht wäre:** `menu_aktion_ausfuehren`
+verzweigte auf `ziel() == None` nach „beenden". Ein Personaklick hätte das
+Face beendet. Verzweigt wird jetzt auf die Aktion selbst.
+
+### Startknopf auf dem Schreibtisch
+
+`config/desktop/daimon.desktop` plus `face/assets/icon.png` (Idle-Zelle aus
+dem Spritesheet). Anlass: **das Face beendet sich, wenn der letzte `wl_output`
+verschwindet** (Journal: „Kein wl_output mehr verfuegbar; Face beendet sich").
+Nach einem Monitorwechsel ist das Pet weg, und es gab keinen Weg zurück außer
+`systemctl --user start` im Terminal. Der Eintrag schaltet die Unit, mehr
+nicht; Rechtsklick bietet Neustart und Beenden. Einrichtung steht als
+Kommentar in der Datei.
+
+### Was gemessen wurde, und was nicht
+
+Live belegt: Steuerbefehl → `persona.json` → `python -m daimon.mind.persona`
+meldet die neue Persona; `daimon-mind` nach Neustart `"persona": "Nordom"`.
+`cargo test` 92 grün, `pytest` grün, `sha256` von `tests/verify/T-2.7.sh`
+unverändert.
+
+**Nicht gemessen: das Popup selbst.** Acht Zeilen bei 208 px Breite — ob eine
+Beschriftung abgeschnitten ist, sieht nur ein Mensch. Der Zeiger lässt sich
+auf dieser Maschine nicht setzen, und ein hängender Grab macht die Maus
+unbedienbar (steht so in `T-2.7.sh`). **Nachzuholen von Hand: Rechtsklick auf
+das Pet.**
 
 ---
 
@@ -339,7 +415,12 @@ Sprachanfragen fehlen, und die Falsch-Positiv-Rate über eine Woche Alltag fehlt
 
 ## Was Matthias tun muss
 
-**Zwei Entscheidungen, eine Handbewegung.**
+**Zwei Entscheidungen, zwei Handbewegungen.**
+
+0. **Rechtsklick auf das Pet, einmal.** Die Personaauswahl im Kontextmenü ist
+   nur am Code und am geschriebenen `persona.json` belegt, nicht am Bild: acht
+   Zeilen bei 208 px Breite, und ob eine Beschriftung abgeschnitten ist, sieht
+   keine Automatik. Dauert zehn Sekunden, siehe Nachtrag oben.
 
 1. **`T-1.10` läuft seit dem 02.08. neu — frühestens ab dem 07.08. abnehmbar.**
    Das alte Messfenster ist verworfen und liegt samt Begründung unter
