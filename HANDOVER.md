@@ -15,7 +15,8 @@ kommt zuerst.
 | **Gate P0** | 11 von 11 grün — **aber `T-0.12` war davon ein hohles Grün**, siehe unten. Seit T-0.12.v2 belegt |
 | **Gate P1** | **ROT nur noch wegen `T-1.10`** — und dessen Messfenster ist unbrauchbar, siehe unten. `T-1.7` seit v5 grün (95 Prüfungen) |
 | **Gate P2** | **GRÜN** (02.08.): `T-2.4` 17, `T-2.5` 40, `T-1.5` 25 — Idle-CPU **0,000 %**. `verify-frozen` zählte damals 12, heute 20 |
-| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2:** T-0.12.v2 eingefroren, **T-3.7** committet und live belegt, **T-3.9, T-3.8, T-3.10, T-3.11 und T-3.12 fertig und EINGEFROREN** — 211 / 177 / 91 / 207 / 141 Prüfungen, alle 0 rot, 5 / 5 / 5 / 6 / 5 Mutanten. **09.08.: T-3.13 und T-3.13b committet, T-3.14 gebaut** — siehe Nachtrag. Offen: 3.15 und die Prüfstände zu 3.13b/3.14 |
+| **Gate P3** | **5 von 6 grün** (09.08.): `verify-frozen`, `T-3.4`, `T-3.12`, `pytest`, VRAM. Rot nur `T-3.15.sh` — **den Prüfstand gibt es nicht**. Siehe Nachtrag |
+| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2:** T-0.12.v2 eingefroren, **T-3.7** committet und live belegt, **T-3.9, T-3.8, T-3.10, T-3.11 und T-3.12 fertig und EINGEFROREN** — 211 / 177 / 91 / 207 / 141 Prüfungen, alle 0 rot, 5 / 5 / 5 / 6 / 5 Mutanten. **09.08.: T-3.13, T-3.13b, T-3.14 und T-3.15 gebaut und committet** — siehe Nachtrag. Offen: die Prüfstände zu 3.13b/3.14/3.15 und die zwei Messungen, die einen Menschen brauchen |
 | **Phase 2** | **abgeschlossen.** T-2.1 bis T-2.5 und T-2.7 stehen und sind eingefroren. T-2.6 optional, entfällt |
 
 **Fünfundzwanzig Einträge in `FROZEN`**: 22 Verifizierer + 3 Harness-Dateien. `T-3.9` und `T-3.8` kamen am 03.08. dazu, `T-3.10` am 04.08., `T-3.11` und `T-3.12` am 05.08.
@@ -82,6 +83,66 @@ Gemessen: `pytest` grün, `cargo test` 84/84, **T-0.7, T-1.7, T-2.4** (100 Zykle
 **T-3.14.v gibt es nicht.** Die Latenzmessung (p95 < 200 ms über 20 Auslösungen)
 und der Live-Weg Hub → Face sind bisher nur durch Unit-Tests belegt. Der Vertrag
 liegt fertig für den Reviewer; er nennt 13 Kriterien und 6 Mutanten.
+
+### T-3.15: die Ohren bekommen einen Dienst — und die Phase ihr fehlendes Gelenk
+
+**Der Plan hat hier ein Loch, und es ist keins von T-3.15.** Die Unit
+`daimon-ears.service` soll abschaltbar sein und zwanzig Ende-zu-Ende-Messungen
+tragen — aber **den Dienst, den sie startet, erzeugt kein Task**: `T-3.5` und
+`T-3.6` sind mit Plan C entfallen, und mit T-3.6 fiel der einzige weg, der den
+Aufnahmepfad verdrahtet hätte. `capture`, `vad`, `ring` und `interlock` standen
+seit Block 1 fertig da — **ohne einen einzigen Aufrufer**. Deshalb kam
+`daimon/ears/daemon.py` dazu: das Gelenk, nicht mehr, es ruft nur Vorhandenes.
+
+* **Kein Mikrofon ohne PTT.** Ohne `voice.listening` existiert kein
+  Aufnahmeobjekt — nicht „Strom offen, Blöcke verworfen". Ein offener Strom ist
+  ein Mikrofonsymbol in Plasma, und genau das schließt Design 1.1 aus.
+* **Der Ring bleibt außen vor, absichtlich.** Sein gelockter Vorlauf löst die
+  Wake-Word-Lage (Auslösung *nach* dem Sprechbeginn). Bei PTT läuft die Aufnahme
+  ab dem Tastendruck; der Rundenpuffer enthält den Vorlauf ohnehin, und ein
+  zweiter Mechanismus wäre ein zweiter Ort, an dem Mikrofonmaterial liegt.
+  Rückweg steht als `ponytail:`-Kommentar im Modulkopf. **`ring.Ring` hat damit
+  weiterhin keinen Aufrufer** — das ist jetzt eine Entscheidung und kein Versehen.
+* **Die Marke hängt am Beginn des Segments.** Wer beim Loslassen zu Ende spricht,
+  hat unter offener Runde begonnen. Andersherum erbte ein Satz, der erst danach
+  anfängt, `user_ptt` — und damit Werkzeugrechte, die niemand erteilt hat.
+* **Der Kill-Switch misst, statt zu glauben.** `ok` heißt nicht „systemctl lieferte
+  0", sondern „danach nimmt nichts mehr auf". Eine *nicht gemessene* Stromzahl
+  (`pw-dump` fehlt) ist ebenfalls kein Erfolg. Die Unit ist nicht frei wählbar —
+  dieselbe Allowlist-Grenze wie bei `wahrnehmung_aus`.
+* **`Restart=on-failure`, nicht `always`**: ein `systemctl stop` ist der
+  Kill-Switch und muss ein Ende bleiben.
+* Das Tastenkürzel liegt beim **Auth-Agenten** (`Meta+Shift+M`, zweite
+  kglobalaccel-Aktion): ein festgefahrener Ohren-Prozess führt seinen eigenen
+  Kill-Switch nicht mehr aus. Derselbe Weg über den Steuer-Socket (`ohren_aus`).
+
+**Live belegt** ist bisher nur der Schalter selbst: `python -m
+daimon.ears.killswitch` meldet gegen die noch nicht verlinkte Unit ehrlich
+`rc=5 "Unit not loaded", ok=false`, und `pw-dump` zählt dabei 0 Aufnahmeströme.
+
+> **Die Unit ist NICHT installiert.** Das ist Absicht — sie startet einen Dienst,
+> der das Mikrofon anfassen darf, und das gehört nicht ungefragt in eine fremde
+> Sitzung. Zwei Befehle:
+> `systemctl --user link $PWD/config/systemd/daimon-ears.service` und
+> `systemctl --user enable --now daimon-ears.service`.
+> **Danach ist der erste Verdacht `PrivateDevices=yes`**, falls die Aufnahme
+> scheitert: PortAudio fällt ohne PipeWire-Client auf ALSA zurück, und ALSA
+> braucht `/dev/snd`.
+
+### Gate P3 — Stand 09.08.
+
+| Schritt | Ergebnis |
+|---|---|
+| `verify-frozen.sh` | **grün** — 26 Verifizierer unverändert |
+| `T-3.15.sh` | **fehlt** — T-3.15.v ist nicht gebaut (Rolle `reviewer`) |
+| `T-3.4.sh` | **grün** |
+| `T-3.12.sh` | **grün** — 141 Prüfungen, 0 rot |
+| `pytest -q` | **grün** |
+| VRAM nach 90 s Ruhe | **grün** — kein `daimon-gpu@`-Worker hält VRAM; belegt nur `kwin_wayland` |
+
+**Das Gate ist damit nicht abgenommen**, und zwar an drei Stellen, die alle
+außerhalb des Codes liegen: der Prüfstand T-3.15.v fehlt, die zwanzig echten
+Sprachanfragen fehlen, und die Falsch-Positiv-Rate über eine Woche Alltag fehlt.
 
 ### Zwei Befunde, die niemand bestellt hat
 
@@ -908,6 +969,17 @@ dieses Dokuments.
 **T-1.8 hatte keinen unabhängigen Builder** (beide Subagenten waren ausgefallen).
 Verifizierer und Mutant standen davor und unabhängig; das Gegenlesen wurde
 nachgeholt, zwei Runden, neun Befunde.
+
+**Für T-3.15 fehlen zwei Messungen, die kein Agent liefern kann.** „≥20 echte
+Sprachanfragen" braucht einen Menschen, der zwanzigmal spricht;
+„Falsch-Positiv-Rate über eine Woche Alltagsbetrieb" braucht zusätzlich eine
+Woche. `tests/evidence/phase3-latency.json` steht deshalb mit **`n: 0`** da —
+eine Datei, die ehrlich Null sagt, ist besser als keine: sie ist rot und
+sichtbar statt rot und vergessen. Jede Latenzzeile trägt `echt`, damit zwanzig
+abgespielte WAVs nicht wie zwanzig gesprochene Sätze zählen können.
+**Und: der Ohren-Dienst hat noch nie ein echtes Mikrofon gesehen.** Alle
+26 Tests fahren mit injizierter Aufnahme; die Sperre läuft dabei echt mit, der
+Rest nicht.
 
 **T-3.14 ist gebaut und nicht abgenommen** (09.08.). Es gibt keinen unabhängigen
 Prüfstand: `pytest` und `cargo test` sind vom selben Builder geschrieben wie der
