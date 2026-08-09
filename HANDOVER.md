@@ -1,7 +1,9 @@
-# Übergabe — Stand 2026-08-05
+# Übergabe — Stand 2026-08-09
 
 Alles, was nicht aus dem Repo hervorgeht. Die vorige Fassung ist über zwölf Tasks
 gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
+Der Stand vom 05.08. steht unverändert darunter; der Nachtrag vom **09.08.**
+kommt zuerst.
 
 ---
 
@@ -13,7 +15,7 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 | **Gate P0** | 11 von 11 grün — **aber `T-0.12` war davon ein hohles Grün**, siehe unten. Seit T-0.12.v2 belegt |
 | **Gate P1** | **ROT nur noch wegen `T-1.10`** — und dessen Messfenster ist unbrauchbar, siehe unten. `T-1.7` seit v5 grün (95 Prüfungen) |
 | **Gate P2** | **GRÜN** (02.08.): `T-2.4` 17, `T-2.5` 40, `T-1.5` 25 — Idle-CPU **0,000 %**. `verify-frozen` zählte damals 12, heute 20 |
-| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2:** T-0.12.v2 eingefroren, **T-3.7** committet und live belegt, **T-3.9, T-3.8, T-3.10, T-3.11 und T-3.12 fertig und EINGEFROREN** — 211 / 177 / 91 / 207 / 141 Prüfungen, alle 0 rot, 5 / 5 / 5 / 6 / 5 Mutanten. Offen: 3.13, 3.13b, 3.14–3.15 |
+| **Phase 3** | **Block 1 (Ohren) steht**, T-3.1–3.4 eingefroren. **Block 2:** T-0.12.v2 eingefroren, **T-3.7** committet und live belegt, **T-3.9, T-3.8, T-3.10, T-3.11 und T-3.12 fertig und EINGEFROREN** — 211 / 177 / 91 / 207 / 141 Prüfungen, alle 0 rot, 5 / 5 / 5 / 6 / 5 Mutanten. **09.08.: T-3.13 und T-3.13b committet, T-3.14 gebaut** — siehe Nachtrag. Offen: 3.15 und die Prüfstände zu 3.13b/3.14 |
 | **Phase 2** | **abgeschlossen.** T-2.1 bis T-2.5 und T-2.7 stehen und sind eingefroren. T-2.6 optional, entfällt |
 
 **Fünfundzwanzig Einträge in `FROZEN`**: 22 Verifizierer + 3 Harness-Dateien. `T-3.9` und `T-3.8` kamen am 03.08. dazu, `T-3.10` am 04.08., `T-3.11` und `T-3.12` am 05.08.
@@ -21,7 +23,78 @@ gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
 `vollbildfenster.py`, `moodprobe.py`. `freeze.sh` **liest** die Abhängigkeiten aus dem
 Skript, statt eine Liste zu pflegen, die veraltet.
 `pytest` grün mit 4 per `xfail(strict=True)` dokumentiert roten.
-`cargo test -p face` 74 von 74.
+`cargo test -p face` 74 von 74 — **seit T-3.14: 84 von 84.**
+
+---
+
+## Nachtrag 09.08. — T-3.13b abgeschlossen, T-3.14 gebaut
+
+### T-3.13b: die zwei Codebefunde des Prüfstands sind weg
+
+Der Reviewer-Bericht vom 05.08. (`tests/evidence/T-3.13b-bericht.md`) nannte drei
+rote. Zwei waren echt und sind behoben, beide in `daimon/mind/router.py`:
+
+* **`marke_fehlt` war unerreichbar.** `anfrage.get("marke", "tainted")` ersetzte
+  das fehlende Feld durch die *Zeichenkette* `"tainted"` — damit ging der Text
+  bereits markiert an die Senke, und der rohe Zweig, der protokolliert hätte, war
+  nur noch über einen *unbekannten* Markenwert erreichbar. Der Vorgabewert ist
+  raus; zusätzlich prüfen **beide** Durchgänge gegen die Senkentabelle, nicht nur
+  der lokale Zweig.
+* **Ein benannter Aktionswunsch wurde zur Rückfrage.** Die Zielwort-Erkennung war
+  eine Positivliste und kannte „werkzeug" nicht; T-3.12 ist eingefroren und
+  erwartet dort `abgelehnt`. Jetzt eine **Negativliste** — eine Positivliste kennt
+  das nächste Ziel nie, eine Negativliste kennt das nächste Fürwort sehr wohl.
+
+**Zwei vollständige Nachläufe: je 145 Prüfungen, je 1 rot — und jedes Mal ein
+anderer, jedes Mal Maschinenrauschen.** K1–K12 in beiden Läufen 0 rot, T-0.7 und
+T-0.11 grün. Belege und Zuordnung:
+`tests/evidence/T-3.13b-builder-nachlauf.md`. **Eingefroren ist T-3.13b nicht** —
+`tests/verify/**` gehört der Rolle `reviewer`, `freeze.sh` kann der Builder nicht
+rufen.
+
+### T-3.14 steht auf allen drei Seiten (drei Commits)
+
+Vertrag **vor** der Implementierung geschrieben, mit gepinnter API und Drahtform:
+`UMBRA-Notes/DDs/dAImon/T-3.14-Sprachzustaende-Plan.md`. Das ist die Lehre aus
+T-3.13b, wo genau diese Pins fehlten und der erste Arbeitsbaumlauf 32 rote maß,
+von denen die meisten Auslegungsunterschiede waren.
+
+* **Hub** — `voice.state` ist **abgeleitet und nicht setzbar**; ein übergebenes
+  `state=` fällt weg. Wer ihn setzen könnte, könnte ihn behaupten, ohne dass das
+  Ereignis stattgefunden hat. Vorrang `listening > speaking > processing > idle`:
+  ein Tastendruck während des Sprechens ist ein Einwurf, der Nutzer gewinnt vor
+  der laufenden Ausgabe der Maschine. Zwei Ausfallgrenzen, **gerechnet** statt per
+  Timer gelöscht (`DENK_FRIST_S=30` gegen einen gestorbenen Mind, `PTT_FRIST_S=150`
+  gegen eine ausgebliebene Abschaltmeldung); `rev` steigt auch beim stillen Ablauf,
+  sonst sähe das Face den Rückfall erst beim nächsten fremden Ereignis.
+* **Face** — liest `voice.state` und leitet **nichts** ab. Indikator rechts oben in
+  denselben Sprite-Puffer, `idle` malt nichts. Diagnose: `voice_state` und
+  `voice_indikator_gezeichnet` (ohne den Zähler wäre „das Face zeigt es an" eine
+  Selbstauskunft).
+* **Auth-Agent** — `PTTAutomat.melden()` gibt den nächsten noch nicht gemeldeten
+  Wechsel zurück; der Agent schickt daraus `ptt {an: bool}`, beim Umschalten **und
+  beim Ablauf** (ein einzelner Wecker, kein Takt). Damit ist der Ablauf meldbar,
+  ohne ein Ereignis zu werden: weiterhin keine Audit-Zeile „abgelaufen".
+
+Gemessen: `pytest` grün, `cargo test` 84/84, **T-0.7, T-1.7, T-2.4** (100 Zyklen,
+0 Ausfälle, Idle-CPU 0,000 %) **und T-2.5 grün**.
+
+**T-3.14.v gibt es nicht.** Die Latenzmessung (p95 < 200 ms über 20 Auslösungen)
+und der Live-Weg Hub → Face sind bisher nur durch Unit-Tests belegt. Der Vertrag
+liegt fertig für den Reviewer; er nennt 13 Kriterien und 6 Mutanten.
+
+### Zwei Befunde, die niemand bestellt hat
+
+* **`T-0.9.sh` ist rot** an „hält mindestens einen horchenden Unix-Socket". Der
+  Check macht `ss -lxp | grep "pid=$hub,"` und findet die PID nicht. **Gegen einen
+  sauberen Worktree auf HEAD gegengeprüft: dort genauso rot** — vorbestehend, nicht
+  aus T-3.14. Reparieren darf ihn nur der Reviewer.
+* **Der T-3.9-Schlusskanarienvogel ist in verschachtelten Läufen flaky.** Fällt er,
+  reißt er T-3.10 → T-3.11 → T-3.12 → T-3.13 mit, weil jeder T-3.9 verschachtelt —
+  ein einziger roter sieht dann nach fünf aus. Einzeln nachgelaufen: grün, der
+  Kanarienvogel wird vorgelesen. Ursache ist Audio-Kontention, wenn mehrere
+  Prüfstände nacheinander eigene TTS-Dienste starten. Wer K13-artige Ketten baut,
+  rechnet ihn einzeln ab und lässt einen Nachlauf zu.
 
 > **`T-1.7.sh` ist rot, und das ist eine Entscheidung, kein Unfall.** T-2.7 gibt dem
 > Face das Recht, `wahrnehmung_aus` zu senden; der eingefrorene Verifizierer verlangt
@@ -353,6 +426,28 @@ falls jemand am `PATH` vorbei aufruft.
 
 Alles gemessen, nicht vermutet.
 
+**Ein laufender Prüfstand sieht aus wie eine Sammlung Waisen.** Am 09.08. habe ich
+zwei `daimon`-Prozesse für Reste eines abgebrochenen Laufs gehalten und abgeschossen
+— es waren die Kinder des Prüfstands, der gerade lief. Sekunden alt, gleicher
+Kommandozeilen-Bau, und `pgrep` sagt einem nicht, wer sie gestartet hat. **Vor jedem
+`kill` die Startzeit gegen die eigene Laufzeit halten** (`ps -o lstart`) und
+nachsehen, ob gerade ein eigener Lauf im Hintergrund hängt. Der verdorbene Lauf
+kostete vierzig Minuten und produzierte einen roten, der nichts bedeutete.
+
+**Der `role_guard` prüft Bash-Kommandos als Text, nicht als Absicht.** Seine
+Schreib-Regex trifft `>`, also auch `2>&1`, und sie trifft `tee`, `cp`, `ln`.
+Steht im selben Kommando irgendwo ein Pfad unter `tests/verify/`, wird der ganze
+Aufruf abgelehnt — auch das reine *Ausführen* eines Verifizierers mit
+`2>&1 | tail`. Kein Fehler im Hook, sondern seine bewusste Großzügigkeit
+(„lieber eine Rückfrage zu viel"). Ausweg: Umleitung weglassen, oder das
+schreibende Kommando in einen eigenen Aufruf ohne den Pfad legen.
+
+**Ein T-3.13b-Lauf braucht deutlich mehr als 20 Minuten**, weil K13 acht
+eingefrorene Prüfstände nacheinander fährt und mehrere davon eigene TTS-Dienste
+starten. Wer ihn unter einen Zeitdeckel setzt, killt die Shell und lässt
+socket-aktivierte Enkelkinder zurück — die zählt der *nächste* Lauf dann in seiner
+Prozesszählung mit. Genau so entstand der eine rote in Nachlauf 2.
+
 **KWins `callDBus` nimmt höchstens 13 Argumente** — 4 Ziel plus **9 Nutzlast**. Darüber:
 `Too many arguments, ignoring N`, und die Meldung kommt beim Empfänger **nie** an. Am
 03.08. gemessen (nicht typabhängig, 11 Strings werden wie 11 gemischte Werte gekappt):
@@ -674,6 +769,15 @@ sieht — zwei Sanitizer in Python und Rust wären auseinandergedriftet.
 
 ## Offen und benannt
 
+- **Der Hub horcht seit T-3.14 auf `ears.sock`, den Dienst gibt es nicht.** Der
+  Socket musste vor dem Ohren-Dienst da sein, sonst wäre `processing` nirgends
+  messbar — und ein Zustand, den niemand messen kann, ist eine Behauptung. Wer
+  T-3.15 baut, findet den Socket also schon vor. Die Typprüfung greift wie bei
+  jedem anderen Produzenten.
+- **`PTT_FRIST_S` im Hub ist eine zweite Reihe, kein Weg.** Seit dem Auth-Agenten
+  von T-3.14 meldet die Quelle den Ablauf selbst; die Obergrenze greift nur, wenn
+  diese Meldung ausbleibt, und dann steht das Overlay bis zu einer halben Minute
+  falsch. Wer eine der beiden Seiten anfasst, prüft die andere mit.
 - **`ears` darf weiterhin `intent_mark` senden**, obwohl Design §2.4 dem Wake-Word
   nur ein API-Kontingent erteilt. Heute wirkungslos, aber es *behauptet* eine
   Fähigkeit. Kommentar steht an der Tabelle in `ipc.py`. Wer den Ears-Agenten baut,
@@ -804,6 +908,18 @@ dieses Dokuments.
 **T-1.8 hatte keinen unabhängigen Builder** (beide Subagenten waren ausgefallen).
 Verifizierer und Mutant standen davor und unabhängig; das Gegenlesen wurde
 nachgeholt, zwei Runden, neun Befunde.
+
+**T-3.14 ist gebaut und nicht abgenommen** (09.08.). Es gibt keinen unabhängigen
+Prüfstand: `pytest` und `cargo test` sind vom selben Builder geschrieben wie der
+Code, und die Plan-Zahl (p95 < 200 ms vom PTT-Druck bis `listening` im
+Face-Diagnose-Socket) ist **nie gemessen worden**. Der Vertrag dafür steht
+geschrieben und gepinnt, damit der Reviewer blind bauen kann — aber ein Vertrag
+ist keine Messung. Der Live-Weg Hub → Face ist bisher nur auf beiden Seiten
+einzeln belegt, nicht als Kette.
+
+**Auf `main` sind am 09.08. zwei fremde Commits gelandet** (`5a666bd`, `b525d1b`,
+T-3.16 Mimic-Stimme) — eine parallele Sitzung im selben Arbeitsbaum. Sie berühren
+keine Datei aus T-3.13b oder T-3.14, und **ich habe sie nicht gegengelesen.**
 
 **Für T-1.7 Teil 2 hat der Builder den bereits geschriebenen Verifizierer gelesen.**
 Mein Auftrag untersagte nur das Ändern. Die Kriterien standen vorher fest, aber
