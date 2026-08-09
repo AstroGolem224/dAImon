@@ -59,7 +59,19 @@ UMask=0077
 RestrictAddressFamilies=AF_UNIX
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @obsolete @mount @swap @reboot @module
-MemoryDenyWriteExecute=yes
+# MemoryDenyWriteExecute FEHLT hier, und das ist gemessen, nicht vergessen.
+# Mit der Direktive stirbt der erste Aufnahmeversuch:
+#
+#   MemoryError: Cannot allocate write+execute memory for ffi.callback()
+#
+# `sounddevice` legt seinen Audio-Callback ueber cffi an, und cffi schreibt
+# dafuer einen Trampolin-Code zur Laufzeit -- das ist genau der Fall, den W^X
+# verbietet. Am 09.08. beim ersten echten PTT gemessen (der Strom oeffnete
+# nicht, der Hub stand auf `listening`, das Journal zeigte den Traceback).
+#
+# Dieselbe Lage wie beim GPU-Worker, dem der CUDA-JIT die Direktive verbietet.
+# Wer sie zurueckhaben will, braucht einen Aufnahmeweg ohne cffi-Callback --
+# etwa PipeWire direkt ueber ein C-Binding statt ueber PortAudio.
 # PrivateDevices=yes: der Zugang zu PipeWire laeuft ueber
 # $XDG_RUNTIME_DIR/pipewire-0, nicht ueber /dev/snd. WENN die Aufnahme hier
 # scheitert, ist das die erste Direktive, die man prueft -- PortAudio faellt

@@ -101,8 +101,13 @@ def kuerzel_nach_qt(text: str) -> int:
     """"Meta+Space" -> Qt-Keycode mit Modifier-Bits. ValueError bei
     unbekannten Modifiern oder Tasten."""
     teile = [t.strip() for t in text.split("+") if t.strip()]
-    if len(teile) < 2:
-        raise ValueError(f"Kuerzel {text!r}: Modifier+Taste erwartet")
+    if not teile:
+        raise ValueError(f"Kuerzel {text!r}: leer")
+    # Eine NACKTE Taste ist erlaubt, seit PTT auf `^` liegt. Das ist eine
+    # bewusste Entscheidung des Nutzers und keine Bequemlichkeit: ein globales
+    # Kuerzel ohne Modifier fangen ALLE Anwendungen nicht mehr -- wer `^` in
+    # einen Editor tippt, loest stattdessen Push-to-Talk aus. Genau deshalb
+    # taugt dafuer nur eine Taste, die man sonst kaum braucht.
     mods = 0
     for m in teile[:-1]:
         bit = _QT_MOD.get(m.lower())

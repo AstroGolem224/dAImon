@@ -9,6 +9,7 @@ sonst prueft K8 eine Attrappe.
 """
 
 import json
+import time
 
 import numpy as np
 import pytest
@@ -254,3 +255,52 @@ def test_bericht_ohne_datei_ist_null_und_nicht_leer(tmp_path):
     b = bericht(tmp_path / "gibt-es-nicht.jsonl")
     assert b["n"] == 0
     assert b["p95_wake_to_audio_ms"] is None
+
+
+# -- Die Push-Verbindung darf nicht von selbst abreissen -----------------
+
+def test_stille_am_push_socket_schliesst_das_mikrofon_nicht(tmp_path):
+    """Am 09.08. live gefunden: mit einem Lese-Timeout auf dem Push-Socket
+    riss die Verbindung nach jeder Stille ab, und der Wiederaufbau schloss
+    und oeffnete das Mikrofon -- alle fuenf Sekunden. Eine Aeusserung, die
+    laenger dauert, wird dabei zersaegt.
+
+    Der Hub schickt NUR bei Aenderung. Stille ist hier der Normalfall und
+    kein Fehler.
+    """
+    import socket as s
+    import threading
+
+    pfad = tmp_path / "events.sock"
+    srv = s.socket(s.AF_UNIX, s.SOCK_STREAM)
+    srv.bind(str(pfad))
+    srv.listen(1)
+    fertig = threading.Event()
+
+    def hub():
+        conn, _ = srv.accept()
+        with conn:
+            conn.sendall(json.dumps(
+                {"v": 2, "rev": 1, "voice": {"listening": True,
+                                             "tts_active": False}}).encode() + b"\n")
+            fertig.wait(2.0)          # danach SCHWEIGEN, wie der echte Hub
+
+    t = threading.Thread(target=hub, daemon=True)
+    t.start()
+
+    o = Ohren(runtime_dir=tmp_path, aufnahme_fabrik=AufnahmeAttrappe,
+              erkenner=ErkennerAttrappe(), ruf=Rufe(),
+              verbinde_timeout_s=0.2)
+    o.start()
+    try:
+        # Deutlich laenger als das Verbindungs-Timeout: ein Lese-Timeout
+        # haette hier mehrfach neu verbunden.
+        time.sleep(1.2)
+        assert AufnahmeAttrappe.erzeugt == 1, (
+            f"{AufnahmeAttrappe.erzeugt} Stroeme geoeffnet -- die Verbindung "
+            "reisst ab und baut sich neu auf")
+        assert AufnahmeAttrappe.lebende == 1
+    finally:
+        fertig.set()
+        o.stop()
+        srv.close()

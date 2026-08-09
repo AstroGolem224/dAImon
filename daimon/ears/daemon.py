@@ -106,7 +106,8 @@ class Ohren:
                  erkenner: Any = None,
                  ruf: Callable[[str, dict], dict] = ruf_socket,
                  uhr: Callable[[], float] = time.monotonic,
-                 echt: bool = True) -> None:
+                 echt: bool = True,
+                 verbinde_timeout_s: float = 5.0) -> None:
         self.cfg = cfg or load_config()
         self.runtime_dir = Path(runtime_dir or self.cfg.runtime_dir)
         self.log = log or get_logger("daimon-ears")
@@ -135,6 +136,7 @@ class Ohren:
         self.runden = 0
         self.letzte_latenz: dict | None = None
 
+        self._verbinde_timeout_s = float(verbinde_timeout_s)
         self._stop = threading.Event()
         self._leser: threading.Thread | None = None
 
@@ -348,8 +350,20 @@ class Ohren:
         while not self._stop.is_set():
             try:
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as c:
-                    c.settimeout(5.0)
+                    c.settimeout(self._verbinde_timeout_s)
                     c.connect(pfad)
+                    # Das Timeout gilt fuer das VERBINDEN, nicht fuers Lesen.
+                    #
+                    # Mit einem Lese-Timeout riss die Verbindung nach jeder
+                    # Stille ab -- und weil der Wiederaufbau als "kein Hub"
+                    # gilt, ging bei jedem Zyklus das Mikrofon zu und wieder
+                    # auf. Am 09.08. live gemessen: "Aufnahme offen"/"Aufnahme
+                    # zu" im Fuenf-Sekunden-Takt, mitten in einer Aeusserung.
+                    #
+                    # Der Hub schickt nur bei Aenderung. Stille ist hier der
+                    # Normalfall, kein Fehler -- ein abgerissener Socket faellt
+                    # als EOF auf, und darauf reagiert die Schleife ohnehin.
+                    c.settimeout(None)
                     with c.makefile("rb") as fh:
                         for zeile in fh:
                             if self._stop.is_set():

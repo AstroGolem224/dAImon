@@ -23,7 +23,8 @@ Type=simple
 ExecStart=/usr/bin/python3 %h/Dokumente/Github/dAImon/daimon/auth/agent.py \
     --hub-socket %t/daimon/auth.sock \
     --diag-socket %t/daimon/auth-diag.sock \
-    --control-socket %t/daimon/auth-control.sock
+    --control-socket %t/daimon/auth-control.sock \
+    --shortcut ^
 
 # Produktivbetrieb: der DAIMON_MAX_SECS-Watchdog (Notbremse fuer manuelle
 # Laeufe, Vorgabe 90 s) ist hier aus -- systemd uebernimmt mit Restart.
@@ -54,7 +55,18 @@ ReadWritePaths=%t/daimon
 # nichts im Home wird beschrieben. Schluesselmaterial ist zusaetzlich ganz
 # unsichtbar.
 ProtectHome=read-only
-InaccessiblePaths=%h/.ssh %h/.gnupg %h/.local/share/keyrings %h/.pki
+# Der `-`-Praefix heisst "ueberspringen, wenn es den Pfad nicht gibt". Ohne ihn
+# startet die Unit NICHT, sobald eines der vier Verzeichnisse fehlt:
+#
+#   Failed to set up mount namespacing: /home/itiger013/.gnupg: No such file
+#   Failed at step NAMESPACE spawning /usr/bin/python3
+#   status=226/NAMESPACE
+#
+# Am 09.08. beim ersten Start unter systemd gemessen (acht Neustarts) -- auf
+# dieser Maschine gibt es kein ~/.gnupg. Die Haertung verliert dadurch nichts:
+# ein Pfad, den es nicht gibt, ist nicht erreichbar. Alle zwoelf anderen Units
+# des Projekts tragen den Praefix; diese hier war die Ausnahme.
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
 # Kein Mitsehen auf fremde Prozesse; /proc nur die eigene Sicht.
 ProtectProc=invisible
 ProcSubset=pid
