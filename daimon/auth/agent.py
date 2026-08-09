@@ -64,7 +64,7 @@ except (ImportError, ValueError) as exc:
           file=sys.stderr)
     sys.exit(1)
 
-from daimon.auth import preview
+from daimon.auth import modal, preview
 from daimon.auth.ptt import PTTAutomat
 from daimon.common.logging import get_logger
 
@@ -173,6 +173,10 @@ class AuthAgent:
         self.freigaben_gesendet = 0
         self.marken_gesendet = 0
         self.ohren_abschaltungen = 0
+        # T-4.12 im Betrieb: welche Rueckfragen dieser Agent schon gezeigt
+        # hat. Ohne diese Menge zeigte jede Abfrage denselben Dialog erneut --
+        # und ein Dialog, der von selbst wiederkommt, wird weggeklickt.
+        self._gezeigt: set[str] = set()
         self.letzte_entscheidung: str | None = None
 
         self._dialog_sichtbar = False
@@ -183,6 +187,13 @@ class AuthAgent:
         self._ctl_sock = self._horche(args.control_socket,
                                       self._steuer_annehmen)
         self._kglobalaccel_registrieren(args.shortcut)
+        # T-4.12 im Betrieb: alle 500 ms beim Hub nachsehen, ob eine
+        # Rueckfrage offen ist. Ein Takt und kein Push -- der auth-Socket des
+        # Hubs ist ein PRODUZENTEN-Socket und liest nicht zurueck; ein
+        # zweiter Kanal dafuer waere eine neue Angriffsflaeche fuer einen
+        # Dialog, den niemand angefordert hat. 500 ms sind fuer einen
+        # Menschen sofort und fuer die CPU nichts.
+        GLib.timeout_add(500, self._rueckfragen_zeigen)
 
     # ------------------------------------------------------------------
     # Fenster
@@ -292,6 +303,80 @@ class AuthAgent:
     # ------------------------------------------------------------------
     # Hub
     # ------------------------------------------------------------------
+
+
+    # -- Aktionsdialog (T-4.12 im Betrieb) ---------------------------------
+
+    def _rueckfragen_holen(self) -> list[dict]:
+        """Was der Hub offen hat. Lesend, ueber `aktion.sock`.
+
+        Der Auth-Agent formuliert NICHTS: Vorschautext, Nonce und
+        `action_hash` kommen alle vom Hub. Er zeigt und er meldet zurueck --
+        mehr ist seine Rolle nicht (Design 2.2).
+        """
+        if not self.hub_socket:
+            return []
+        pfad = str(Path(self.hub_socket).parent / "aktion.sock")
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as c:
+                c.settimeout(2.0)
+                c.connect(pfad)
+                c.sendall(json.dumps({"v": 1, "art": "offene"}).encode() + b"\n")
+                roh = c.recv(65536)
+            antwort = json.loads(roh.decode("utf-8", "replace"))
+        except (OSError, ValueError):
+            # Kein Hub, keine Dialoge. Ein Agent, der bei unerreichbarem Hub
+            # etwas zeigt, zeigt etwas Erfundenes.
+            return []
+        return antwort.get("offen") or [] if antwort.get("ok") else []
+
+    def _rueckfragen_zeigen(self) -> bool:
+        """Einmal nachsehen und hoechstens EINE Rueckfrage zeigen.
+
+        Hoechstens eine, weil der Dialog modal ist: zwei gleichzeitig waeren
+        zwei modale Fenster, und das zweite verdeckt das erste. Die naechste
+        Runde des Weckers holt die naechste.
+        """
+        for rueckfrage in self._rueckfragen_holen():
+            kennung = rueckfrage.get("id")
+            if not kennung or kennung in self._gezeigt:
+                continue
+            self._gezeigt.add(kennung)
+            self._rueckfrage_beantworten(rueckfrage)
+            break
+        return True  # der Wecker laeuft weiter
+
+    def _rueckfrage_beantworten(self, rueckfrage: dict) -> None:
+        vorlage = modal.Vorlage(
+            text=str(rueckfrage.get("prompt_shown") or "")[:600],
+            aktion=str(rueckfrage.get("action_id") or ""), umkehr="")
+        self.dialoge_gezeigt += 1
+        try:
+            antwort = modal.zeigen(vorlage)
+        except Exception as fehler:
+            # Kein Fenster, keine Freigabe. Der Hub laesst die Rueckfrage
+            # ablaufen, und das ist `cancelled` -- kein Nein.
+            self.log.warn("Aktionsdialog nicht zeigbar",
+                          DAIMON_GRUND=str(fehler)[:120])
+            return
+        try:
+            antwort = modal.freigabe_annehmen(erteiler="auth", antwort=antwort)
+        except modal.ModalFehler as fehler:
+            self.log.warn("Antwort verworfen", DAIMON_GRUND=str(fehler)[:120])
+            return
+        if antwort != modal.ANTWORT_AUSFUEHREN:
+            # Ablehnung und Abbruch werden NICHT gemeldet: der Hub kennt nur
+            # die Freigabe, alles andere laeuft dort in die Frist. Zwei Wege
+            # fuer "nein" waeren zwei Wege, auf denen sich etwas verheddern
+            # kann -- und der teure Fehler waere ein faelschlich gemeldetes Ja.
+            self.log.info("Aktion nicht freigegeben",
+                          DAIMON_ACTION="aktion_dialog",
+                          DAIMON_ANTWORT=antwort)
+            return
+        if self._an_hub("freigabe", {"nonce": rueckfrage.get("nonce", ""),
+                                     "action_hash": rueckfrage.get("action_hash", "")}):
+            self.freigaben_gesendet += 1
+            self.log.info("Aktion freigegeben", DAIMON_ACTION="aktion_dialog")
 
     def _an_hub(self, typ: str, payload: dict) -> bool:
         if not self.hub_socket:

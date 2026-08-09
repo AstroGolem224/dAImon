@@ -201,3 +201,51 @@ def test_keine_antwort_ist_ein_abbruch_kein_nein(tmp_path):
                   absender="auth", jetzt=0.0)
     assert c.warten(r, timeout_s=0.05) == ABBRUCH
     assert c.offen == {}
+
+
+# --------------------------------------------------------------------------
+# Der Weg zum Auth-Agenten: `art: "offene"`
+# --------------------------------------------------------------------------
+
+def test_offene_rueckfragen_sind_lesbar_und_tragen_was_der_agent_braucht(tmp_path, monkeypatch):
+    """Nonce, action_hash und Vorschautext kommen vom HUB.
+
+    Der Auth-Agent formuliert nichts: haette er den Text, waere die feste
+    Vorlage eine Empfehlung.
+    """
+    import threading
+
+    monkeypatch.setattr(D, "RUECKFRAGE_FRIST_S", 1.0)
+    h = hub(tmp_path, monkeypatch)
+
+    gestellt = threading.Event()
+    ergebnis = {}
+
+    def stellen_und_warten():
+        ergebnis["lauf"] = h.aktion_anfrage(anfrage(quelle="modell"))
+
+    t = threading.Thread(target=stellen_und_warten)
+    t.start()
+    # Warten, bis die Rueckfrage steht -- ohne feste Schlafzeit.
+    import time as _t
+    for _ in range(200):
+        antwort = h.aktion_anfrage({"v": 1, "art": "offene"})
+        if antwort["offen"]:
+            gestellt.set()
+            break
+        _t.sleep(0.005)
+    assert gestellt.is_set(), "keine Rueckfrage sichtbar geworden"
+
+    eintrag = antwort["offen"][0]
+    assert eintrag["nonce"] and eintrag["action_hash"].startswith("sha256:")
+    assert eintrag["action_id"] == "media.playpause"
+    assert eintrag["prompt_shown"]
+    assert eintrag["destructive"] is False
+    t.join(timeout=5)
+    assert ergebnis["lauf"]["grund"] == "cancelled"
+
+
+def test_ohne_offene_rueckfrage_ist_die_liste_leer(tmp_path, monkeypatch):
+    h = hub(tmp_path, monkeypatch)
+    a = h.aktion_anfrage({"v": 1, "art": "offene"})
+    assert a["ok"] and a["offen"] == []

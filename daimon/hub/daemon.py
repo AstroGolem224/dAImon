@@ -670,6 +670,22 @@ class Hub:
         """
         if not isinstance(anfrage, dict):
             return {"v": 1, "ok": False, "grund": "unlesbar"}
+        if anfrage.get("art") == "offene":
+            # Der Weg, auf dem der Auth-Agent von einer Rueckfrage erfaehrt.
+            # LESEND: er holt sich, was offen ist, und bekommt Nonce und
+            # action_hash mit -- beides braucht er, um zu bestaetigen, und
+            # beides hat der Hub selbst erzeugt. Der Vorschautext kommt
+            # ebenfalls von hier: der Auth-Agent formuliert nichts.
+            self._aktionsteile()
+            offen = [{"id": r.id, "nonce": r.nonce,
+                      "action_id": r.action_id,
+                      "action_hash": r.action_hash,
+                      "prompt_shown": r.prompt_shown,
+                      "destructive": bool(self._aktion.policy.katalog.get(
+                          r.action_id, {}).get("destructive")),
+                      "frist": r.frist}
+                     for r in self.consent.offen.values()]
+            return {"v": 1, "ok": True, "offen": offen}
         if anfrage.get("art") != "ausfuehren":
             return {"v": 1, "ok": False, "grund": "unbekannte_art",
                     "meldung": f"art={str(anfrage.get('art'))[:40]!r}"}
