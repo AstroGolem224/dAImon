@@ -11,7 +11,9 @@ Type=simple
 WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
 ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
     -m daimon.brokers.fs.daemon \
-    --socket %t/daimon/fs-broker.sock
+    --socket %t/daimon/fs-broker.sock \
+    --wurzel %h/Dokumente \
+    --wurzel %h/Downloads
 Restart=on-failure
 RestartSec=2
 
@@ -25,27 +27,31 @@ ProtectKernelModules=yes
 ProtectKernelTunables=yes
 ProtectSystem=strict
 
-# ProtectHome=tmpfs statt read-only -- das löst den Widerspruch aus v1.0.
-# `read-only` hätte bedeutet: der Dateisystem-Broker kann keine Datei
-# schreiben, also nichts tun. `tmpfs` blendet $HOME komplett aus und legt
-# eine leere Attrappe darüber; sichtbar wird ausschließlich, was unten in
-# ReadWritePaths steht. Ein Pfad, der hier nicht steht, existiert für diesen
-# Prozess nicht -- das ist eine schärfere Aussage als "darf nicht schreiben".
-ProtectHome=tmpfs
-ReadWritePaths=%t/daimon %h/.local/state/daimon
-# Die Arbeitsverzeichnisse, in denen der Broker überhaupt etwas tun darf.
-# Diese Liste ist die eigentliche Schranke, und sie ist absichtlich kurz.
-# Wer sie verlängert, verlängert die Reichweite des Pets -- nicht seine
-# Bequemlichkeit.
-ReadWritePaths=%h/Dokumente %h/Downloads
-# Der XDG-Trash, sonst kann T-4.8 kein Undo-Artefakt anlegen.
-ReadWritePaths=%h/.local/share/Trash
-
-# Doppelt gemoppelt, mit Absicht: ProtectHome=tmpfs blendet diese Pfade schon
-# aus. Steht die Zeile trotzdem hier, fällt eine spätere Lockerung von
-# ProtectHome nicht lautlos aus.
+# ProtectHome=tmpfs
+# ProtectHome=tmpfs blendet $HOME komplett aus. Zwei Folgen, beide am 09.08.
+# als 226/NAMESPACE gemessen:
+#
+# 1. Auch das venv verschwindet, aus dem ExecStart startet -- und mit ihm der
+#    Interpreter, denn `.venv/bin/python` ist ein Symlink nach
+#    ~/.local/share/uv/python/. Beides muss eingeblendet werden, das Repo
+#    allein genügt nicht.
+# 2. `ReadWritePaths=` auf einen Pfad unter $HOME schlägt fehl: der Pfad ist
+#    zu diesem Zeitpunkt vom tmpfs verdeckt, es gibt ihn im Namespace nicht.
+#    Was schreibbar sein soll, wird mit `BindPaths=` eingeblendet -- das
+#    bringt das echte Verzeichnis mit, statt ein verstecktes zu suchen.
+#
+# Diese Liste ist die eigentliche Schranke des FS-Brokers, und sie ist
+# absichtlich kurz. Wer sie verlängert, verlängert die Reichweite des Pets.
+BindReadOnlyPaths=/home/itiger013/Dokumente/Github/dAImon
+BindReadOnlyPaths=/home/itiger013/.local/share/uv/python
+BindPaths=/home/itiger013/Dokumente
+BindPaths=/home/itiger013/Downloads
+BindPaths=/home/itiger013/.local/share/Trash
+BindPaths=/home/itiger013/.local/state/daimon
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon
 InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
-
 ProtectProc=invisible
 ProcSubset=pid
 PrivateTmp=yes
