@@ -23,8 +23,7 @@ Type=simple
 ExecStart=/usr/bin/python3 %h/Dokumente/Github/dAImon/daimon/auth/agent.py \
     --hub-socket %t/daimon/auth.sock \
     --diag-socket %t/daimon/auth-diag.sock \
-    --control-socket %t/daimon/auth-control.sock \
-    --shortcut ^
+    --control-socket %t/daimon/auth-control.sock
 
 # Produktivbetrieb: der DAIMON_MAX_SECS-Watchdog (Notbremse fuer manuelle
 # Laeufe, Vorgabe 90 s) ist hier aus -- systemd uebernimmt mit Restart.

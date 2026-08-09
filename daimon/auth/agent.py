@@ -111,11 +111,17 @@ def kuerzel_nach_qt(text: str) -> int:
     teile = [t.strip() for t in text.split("+") if t.strip()]
     if not teile:
         raise ValueError(f"Kuerzel {text!r}: leer")
-    # Eine NACKTE Taste ist erlaubt, seit PTT auf `^` liegt. Das ist eine
-    # bewusste Entscheidung des Nutzers und keine Bequemlichkeit: ein globales
-    # Kuerzel ohne Modifier fangen ALLE Anwendungen nicht mehr -- wer `^` in
-    # einen Editor tippt, loest stattdessen Push-to-Talk aus. Genau deshalb
-    # taugt dafuer nur eine Taste, die man sonst kaum braucht.
+    # Eine NACKTE Taste ist erlaubt (etwa "F8"). Preis: ein globales Kuerzel
+    # ohne Modifier sehen alle anderen Anwendungen nicht mehr.
+    #
+    # TOT-TASTEN GEHEN NICHT. Am 09.08. gemessen: `^` der deutschen Belegung
+    # erreicht kglobalaccel ueberhaupt nicht -- weder als Key_AsciiCircum
+    # (0x5E) noch als Key_Dead_Circumflex (0x01001257). Die Compose-/xkb-Schicht
+    # verschluckt Tot-Tasten, bevor daraus ein globales Kuerzel werden koennte.
+    # Die Bindung stand dabei sauber in kglobalaccel (getGlobalShortcutsByKey
+    # lieferte sie), und F8 als Positivkontrolle im selben Lauf feuerte. Es
+    # sieht also aus wie ein kaputtes Kuerzel und ist eine Eigenschaft der
+    # Tastaturbelegung. Betroffen: ^ ´ ` .
     mods = 0
     for m in teile[:-1]:
         bit = _QT_MOD.get(m.lower())
@@ -383,19 +389,32 @@ class AuthAgent:
             self._an_hub("ptt", {"an": wechsel})
 
     def _kuerzel_verteilen(self, argumente: tuple) -> None:
-        """`globalShortcutPressed(component, aktion, zeitstempel)`.
+        """`globalShortcutPressed` -- verteilt auf die KOMPONENTE.
 
-        Verteilt auf die Aktion. Ein unbekannter Name tut NICHTS -- der Fall
-        entsteht, wenn kglobalaccel eine Aktion meldet, die wir nicht mehr
-        kennen, und dann ist Nichtstun die richtige Antwort.
+        Feld 0 der Nutzlast ist der eindeutige Komponentenname, Feld 1 ein
+        ANZEIGENAME. Der erste Entwurf verglich Feld 1 gegen "ptt" bzw.
+        "ohren_aus", traf nie und warf jeden Tastendruck still weg -- der Agent
+        bekam die Signale die ganze Zeit. Am 09.08. mit einer Sonde
+        nachgewiesen, die die Nutzlast mitschrieb:
+
+            TREFFER /component/daimon_sonde2_f8 ('daimon-sonde2-f8', 'Sonde2 f8')
+
+        Seit jede Aktion ihre eigene Komponente hat (siehe KG_AKTION_OHREN_AUS),
+        ist Feld 0 eindeutig. Ein unbekannter Absender wird PROTOKOLLIERT und
+        nicht verschwiegen: genau dieses Schweigen hat den Fehler zwei Anlaeufe
+        lang versteckt.
         """
         nutzlast = argumente[-1] if argumente else None
         werte = nutzlast.unpack() if hasattr(nutzlast, "unpack") else ()
-        aktion = werte[1] if len(werte) > 1 else ""
-        if aktion == KG_AKTION[2]:
+        komponente = werte[0] if werte else ""
+        if komponente == KG_AKTION[0]:
             self._ptt_ausloesen()
-        elif aktion == KG_AKTION_OHREN_AUS[2]:
+        elif komponente == KG_AKTION_OHREN_AUS[0]:
             self._ohren_abschalten()
+        else:
+            self.log.warn("Kuerzel von unbekannter Komponente",
+                          DAIMON_KOMPONENTE=str(komponente)[:40],
+                          DAIMON_NUTZLAST=str(werte)[:120])
 
     def _ohren_abschalten(self) -> None:
         """T-3.15: die Ohren-Unit stoppen und das Ergebnis ins Journal.
