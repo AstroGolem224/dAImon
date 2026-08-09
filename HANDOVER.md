@@ -280,17 +280,60 @@ nicht braucht.
 | Kill-Switch am laufenden Dienst | `active → inactive`, `ok: true`, `rc: 0`, **24 ms** |
 | Kill-Switch gegen nicht geladene Unit | `rc: 5 "Unit not loaded"`, `ok: false` — ehrlich rot |
 
-**Was damit NICHT belegt ist**: dass unter PTT tatsächlich ein Strom entsteht
-(die Positivkontrolle zu K2/K5) und dass die Kette durchläuft. Beides braucht
-ein echtes Mikrofon und die übrigen Dienste — `daimon-auth`, `daimon-mind`,
-`daimon-stt.socket` und `daimon-tts.socket` sind derzeit **inaktiv**, es läuft
-nur Hub, Hookbridge und Ears. Der Auth-Agent ist dabei der PTT-Geber: **ohne ihn
-gibt es kein `voice.listening`, und der Ohren-Dienst hört per Konstruktion nie
-zu.**
+#### Der erste echte Durchlauf — und die vier Fehler, die er gefunden hat
 
-> **Erster Verdacht, wenn die Aufnahme später scheitert: `PrivateDevices=yes`.**
-> PortAudio fällt ohne PipeWire-Client auf ALSA zurück, und ALSA braucht
-> `/dev/snd`. Ungetestet, solange niemand gesprochen hat.
+Am 09.08. mit Matthias am Mikrofon. **Die Kette läuft**: Mikrofon → STT → Mind
+→ TTS, der TTS meldet `Gesprochen (Mimic)`.
+
+| Stufe | kalt | warm |
+|---|---|---|
+| `audio_to_stt` | 1322 ms | **72 ms** |
+| `stt_to_mind` | **2 ms** | 16 ms |
+| `mind_to_tts` | 902 ms | — |
+| `tts_to_audio` | 346 ms | — |
+| **`wake_to_audio`** | **2226 ms** | — |
+
+`stt_to_mind` von 2 ms ist kein Messfehler: die Absicht war **lokal**
+(`uhrzeit` u. ä.), da läuft kein API-Aufruf. Die zweite Runde fiel auf
+`Egress hat abgelehnt` — kein API-Token — und trägt deshalb keine
+`wake_to_audio`-Zahl.
+
+**Keiner der vier Fehler war in den 26 Tests sichtbar**, weil die alle Aufnahme
+und Sockets injizieren. Genau dafür war der Live-Lauf da:
+
+1. **`MemoryDenyWriteExecute=yes` tötet die Aufnahme.**
+   `MemoryError: Cannot allocate write+execute memory for ffi.callback()` —
+   `sounddevice` legt seinen Audio-Callback über cffi an, cffi schreibt dafür
+   ein Trampolin zur Laufzeit. Direktive raus, dieselbe Lage wie beim GPU-Worker
+   mit dem CUDA-JIT.
+2. **Der Push-Socket riss alle fünf Sekunden ab.** `settimeout(5.0)` galt auch
+   fürs *Lesen*, und ein Abriss gilt als „kein Hub" → das Mikrofon ging im Takt
+   zu und wieder auf, mitten in der Äußerung. Timeout jetzt nur fürs Verbinden.
+   Der Hub schickt nur bei Änderung — **Stille ist der Normalfall, kein Fehler.**
+3. **`daimon-auth.service` ist nie gestartet.** `InaccessiblePaths=%h/.gnupg`
+   ohne `-`-Präfix, und diese Maschine hat kein `~/.gnupg` → `226/NAMESPACE`.
+   Einzige von dreizehn Units ohne den Präfix.
+4. **`tts_active` hing auf `true`** (siehe T-3.14-Nachtrag): ein Sprecher hatte
+   `beginnt` gemeldet und `gesprochen` nie. Die Rückkopplungssperre verwarf
+   daraufhin **jeden** Block — 56 s offenes Mikrofon, nichts erreichte den VAD.
+   Von außen sieht das aus wie „die Spracherkennung erkennt nichts".
+
+**PTT liegt jetzt auf `^`** (`--shortcut ^` in der Unit). `kuerzel_nach_qt` nimmt
+dafür eine nackte Taste an, was es vorher abgelehnt hat. Der Preis steht im
+Code: ein globales Kürzel ohne Modifier sehen andere Anwendungen **nicht mehr** —
+wer `^` in einen Editor tippt, löst Push-to-Talk aus.
+
+> **Der Hotkey selbst ist ungeklärt.** kglobalaccel listet unter der Komponente
+> `daimon-auth` nur `ohren_aus`, die `ptt`-Aktion fehlt — mit `Meta+Space` wie
+> mit `^`. Ausgelöst wurde bisher **immer über den Steuer-Socket**
+> (`printf 'ptt\n' | nc -U $XDG_RUNTIME_DIR/daimon/auth-control.sock`), und der
+> nimmt exakt denselben Pfad. Wer das aufräumt, fängt bei `doRegister` mit zwei
+> Aktionen derselben Komponente an.
+
+**Was weiterhin NICHT belegt ist:** die p95-Zusage. `n = 2` von 20, und der
+einzige vollständige Lauf enthält den STT-Kaltstart. `PrivateDevices=yes` war
+übrigens **kein** Problem — der Verdacht war falsch, PipeWire läuft über den
+Socket unter `$XDG_RUNTIME_DIR`.
 
 ### Gate P3 — Stand 09.08.
 
