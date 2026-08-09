@@ -14,8 +14,11 @@
 Type=Application
 Name=dAImon
 GenericName=Desktop-Familiar
-Comment=Das Pet-Overlay starten (systemd-Unit daimon-face.service)
-Exec=systemctl --user start daimon-face.service
+Comment=Das Pet-Overlay starten und hervorholen
+# NICHT bloss `systemctl --user start`: auf eine laufende Unit ist das
+# folgenlos, und bei `mood = sleeping` blendet sich das Pet ohnehin aus --
+# ein Knopf, der dann stumm bleibt, sieht aus wie ein kaputtes Programm.
+Exec=/home/itiger013/Dokumente/Github/dAImon/tools/pet_zeigen.py
 Icon=/home/itiger013/Dokumente/Github/dAImon/face/assets/icon.png
 Terminal=false
 Categories=Utility;
