@@ -101,7 +101,12 @@ class Koordinator:
     uhr: Callable[[], float] = time.monotonic
 
     def _melden(self, lauf: Lauf, schluessel: str) -> Lauf:
-        text = SPRACHE.get(schluessel, SPRACHE["broker"])
+        # Ein unbekannter Grund ist ein Grund aus einer Regel
+        # (`katalog:background`, `regel:deny`, `vorschau_pflicht`). Er wird
+        # NICHT vorgelesen: die gesprochenen Saetze sind kuratierte Vorlagen
+        # (Design 5.2), und ein durchgereichter Regelname waere Text aus einer
+        # Konfigurationsdatei im Raum. Also die allgemeine Absage.
+        text = SPRACHE.get(schluessel) or SPRACHE["deny"]
         if text:
             lauf.gesprochen = text
             self.sprechen(text)

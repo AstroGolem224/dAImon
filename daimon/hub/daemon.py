@@ -58,6 +58,14 @@ EVENTS_SOCKET = "events.sock"
 GPU_SOCKET = "gpu.sock"
 TTS_SOCKET = "tts.sock"
 TICKET_SOCKET = "ticket.sock"
+# T-4.16 im Betrieb: der Aktionsendpunkt. Wie gpu/tts/ticket AUSDRUECKLICH
+# kein Produzent -- kein `ipc.PRODUZENTEN`-Eintrag, kein Bus-Ereignis. Der
+# Mind schickt eine Zeile und bekommt eine zurueck; er sendet damit nichts
+# in den Ereignisstrom und bekommt keine Rolle darin.
+AKTION_SOCKET = "aktion.sock"
+# Wohin ein Auftrag geht. Heute genau einer -- die anderen drei Broker haben
+# Units, aber noch keinen Weg vom Hub.
+BROKER_SOCKETS = {"dbus": "dbus-broker.sock"}
 MAX_ZEILE = 1 << 20  # 1 MiB. Eine Hook-Nutzlast ist Kilobytes gross.
 
 # Wie oft der Push-Endpunkt nachsieht, ob sich `rev` bewegt hat. 50 ms deckelt
@@ -146,6 +154,8 @@ class Hub:
         # zwar HIER, weil ein Worker nur sich selbst kennt. `_gpu_sperre` ist
         # (Marke, Ablauf in monotoner Zeit) -- monoton, weil eine
         # NTP-Korrektur keine Sperre aufheben und keine erzeugen darf.
+        # T-4.16: erst beim ersten Aufruf gebaut, siehe `_aktionsteile`.
+        self._aktion = None
         self._gpu_lock = threading.Lock()
         self._gpu_sperre: tuple[str, float] | None = None
         self.gpu_frist_s = float(self.cfg.get("gpu.sperrfrist_s", GPU_FRIST_S))
@@ -510,6 +520,158 @@ class Hub:
         self.log.info("Kontingent eingeloest", DAIMON_ACTION="ticket_einloesung")
         return {"v": 1, "ok": True}
 
+
+    # -- Aktionen (T-4.16 im Betrieb) --------------------------------------
+
+    def _aktionsteile(self):
+        """Policy, Consent, Auftragsbuch, Schlange und Audit -- einmal gebaut.
+
+        Erst beim ersten Aufruf: ein Hub, der den Katalog beim Start liest,
+        stirbt an einer kaputten `core.yaml`, auch wenn nie eine Aktion
+        kommt. Die Anzeige der Sitzungen ist das taegliche Versprechen; sie
+        darf nicht an einer Datei haengen, die nur der Aktionspfad braucht.
+        """
+        if self._aktion is None:
+            from daimon.hub.action_queue import Aktionsschlange
+            from daimon.hub.audit import Audit
+            from daimon.hub.consent import Consent
+            from daimon.hub.coordinator import Koordinator
+            from daimon.hub.order import Auftragsbuch
+            from daimon.hub.policy import Policy
+
+            hub = self
+
+            class HubKoordinator(Koordinator):
+                def consent_abwarten(self, rueckfrage):
+                    # NOCH NICHT VERDRAHTET, und deshalb `cancelled` statt
+                    # `declined`: abgelehnt hat niemand, es gibt nur keinen
+                    # Weg zum Menschen. Der Auth-Agent hat einen
+                    # `freigabe`-Produzentenpfad (T-1.7), aber der spricht
+                    # das Freigabebuch an, nicht dieses Consent-Buch -- zwei
+                    # Buecher fuer dieselbe Zusage waeren zwei Wahrheiten.
+                    # Das Zusammenlegen ist ein eigener Task.
+                    hub.log.warn("Rueckfrage nicht zustellbar",
+                                 DAIMON_ACTION="aktion_ask_unverdrahtet",
+                                 DAIMON_RUECKFRAGE=rueckfrage.id)
+                    return "cancelled"
+
+            self._aktion = HubKoordinator(
+                policy=Policy.laden(),
+                consent=Consent.laden(Path(self.cfg.state_dir) / "consent"),
+                auftragsbuch=Auftragsbuch(),
+                schlange=Aktionsschlange(),
+                audit=Audit.oeffnen(Path(self.cfg.state_dir) / "audit"),
+                broker=self._auftrag_zustellen,
+                vorschau=self._vorschau_bauen,
+                sprechen=self._sprechen)
+        return self._aktion
+
+    def _vorschau_bauen(self, *, action_id: str, params: dict) -> str:
+        """Feste Vorlage, escapte Werte (T-1.7). Kein Modelltext."""
+        from daimon.auth.preview import VorschauFehler, pfad_saeubern
+
+        try:
+            ziel = pfad_saeubern(str(next(iter((params or {}).values()), "")))
+        except VorschauFehler:
+            ziel = "(unlesbar)"
+        return f"Aktion: {action_id}\n  Wert: \"{ziel}\""
+
+    def _sprechen(self, text: str) -> None:
+        """Ueber den TTS-Torwaechter, nicht am ihm vorbei.
+
+        Der Weg ist derselbe wie fuer jede andere Aeusserung: Validator,
+        Abkuehlung, Freigabe. Faellt er aus, bleibt es still -- eine Stimme,
+        die sich am Torwaechter vorbei meldet, waere eine zweite Quelle.
+        """
+        try:
+            antwort = self.tts_anfrage({"v": 1, "art": "freigabe",
+                                        "kanal": "reaktion", "text": text,
+                                        "marke": "trusted"})
+            if not antwort.get("ok"):
+                self.log.info("Sprachausgabe abgelehnt",
+                              DAIMON_GRUND=str(antwort.get("grund"))[:60])
+        except Exception as fehler:  # der Aktionspfad haengt nicht an der Stimme
+            self.log.warn("Sprachausgabe fehlgeschlagen",
+                          DAIMON_GRUND=str(fehler)[:120])
+
+    def _auftrag_zustellen(self, auftrag) -> dict:
+        """Den kanonischen Auftrag an den Broker seiner `audience`.
+
+        Der Hub kennt den Socket, nicht der Auftrag: stuende der Pfad im
+        Auftrag, koennte ein Absender sich seinen Broker aussuchen.
+        """
+        from daimon.common.order import kanonisch
+
+        dateiname = BROKER_SOCKETS.get(auftrag.audience)
+        if dateiname is None:
+            return {"ok": False, "grund": "kein_broker",
+                    "meldung": f"fuer {auftrag.audience!r} gibt es keinen Weg"}
+        pfad = self.runtime_dir / dateiname
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as c:
+                c.settimeout(15.0)
+                c.connect(str(pfad))
+                c.sendall(kanonisch(auftrag) + b"\n")
+                roh = c.recv(4096)
+        except OSError as fehler:
+            return {"ok": False, "grund": "broker_weg",
+                    "meldung": f"{pfad}: {fehler}"}
+        try:
+            return json.loads(roh.decode("utf-8", "replace"))
+        except ValueError:
+            return {"ok": False, "grund": "broker_antwort_unlesbar"}
+
+    def aktion_anfrage(self, anfrage: object) -> dict:
+        """Eine Aktionsanfrage vom Mind. Eine Zeile rein, eine raus.
+
+        Die Rundenmarke kommt aus dem MARKENBUCH, nicht aus der Anfrage --
+        der Absender schickt nur die `turn_id`. Design 1357: ein Feld, das
+        der Absender setzt, sagt nichts. Und `initiator` leitet die Policy
+        daraus selbst ab.
+        """
+        if not isinstance(anfrage, dict):
+            return {"v": 1, "ok": False, "grund": "unlesbar"}
+        if anfrage.get("art") != "ausfuehren":
+            return {"v": 1, "ok": False, "grund": "unbekannte_art",
+                    "meldung": f"art={str(anfrage.get('art'))[:40]!r}"}
+        action_id = anfrage.get("action_id")
+        if not isinstance(action_id, str) or not action_id.strip():
+            return {"v": 1, "ok": False, "grund": "keine_aktion"}
+        params = anfrage.get("params") or {}
+        if not isinstance(params, dict):
+            return {"v": 1, "ok": False, "grund": "params_unlesbar"}
+        turn_id = str(anfrage.get("turn_id") or "")
+
+        # Die Marke wird NACHGESCHLAGEN. `initiator()` ist eine Auskunft und
+        # veraendert nichts -- eingeloest wird die Runde nicht hier, sonst
+        # waere eine Runde mit zwei Aktionen nach der ersten tot.
+        gueltig = self.marken.initiator(turn_id) == "user"
+        marke = {"id": turn_id, "gueltig_bis": float("inf")} if gueltig else None
+
+        try:
+            lauf = self._aktionsteile().ausfuehren(
+                action_id=action_id, params=params,
+                quelle=str(anfrage.get("quelle") or "modell"),
+                marke=marke, session_id=str(anfrage.get("session_id") or ""),
+                turn_id=turn_id,
+                tool_use_id=str(anfrage.get("tool_use_id") or ""),
+                audience=str(anfrage.get("audience") or "dbus"))
+        except Exception as fehler:
+            self.log.error("Aktionspfad gescheitert",
+                           DAIMON_ACTION="aktion_fehler",
+                           DAIMON_GRUND=str(fehler)[:200])
+            return {"v": 1, "ok": False, "grund": "aktionspfad",
+                    "meldung": str(fehler)[:200]}
+
+        self.log.info("Aktion bearbeitet", DAIMON_ACTION="aktion",
+                      DAIMON_AKTION_ID=action_id[:60],
+                      DAIMON_VERDIKT=lauf.verdikt,
+                      DAIMON_AUSGEFUEHRT=str(lauf.ausgefuehrt))
+        return {"v": 1, "ok": True, "verdikt": lauf.verdikt,
+                "ausgefuehrt": lauf.ausgefuehrt, "direkt": lauf.direkt,
+                "grund": lauf.grund, "gesprochen": lauf.gesprochen,
+                "dauer_ms": lauf.dauer_ms}
+
     # -- Sprechfreigabe (T-3.9) --------------------------------------------
 
     def tts_anfrage(self, anfrage: object) -> dict:
@@ -813,6 +975,11 @@ class Hub:
         self._threads.append(t)
         t = threading.Thread(target=self._horche_einfach,
                              args=(TICKET_SOCKET, self.ticket_anfrage),
+                             kwargs={"liest": True}, daemon=True)
+        t.start()
+        self._threads.append(t)
+        t = threading.Thread(target=self._horche_einfach,
+                             args=(AKTION_SOCKET, self.aktion_anfrage),
                              kwargs={"liest": True}, daemon=True)
         t.start()
         self._threads.append(t)
