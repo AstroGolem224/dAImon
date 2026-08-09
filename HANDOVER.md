@@ -102,6 +102,64 @@ auf dieser Maschine nicht setzen, und ein hängender Grab macht die Maus
 unbedienbar (steht so in `T-2.7.sh`). **Nachzuholen von Hand: Rechtsklick auf
 das Pet.**
 
+### Der Startknopf startete, aber holte nichts hervor
+
+Erster Befund nach dem Einrichten: Doppelklick, nichts passiert. Die Unit lief
+seit einer Stunde — `systemctl --user start` auf eine laufende Unit ist
+folgenlos —, und `mood = sleeping` blendet das Pet ohnehin aus
+(`Sichtbarkeit::fuer_mood`). Beides für sich korrekt, zusammen sieht es aus wie
+ein kaputtes Programm.
+
+`tools/pet_zeigen.py` (Commit `e5d5387`) startet die Unit **und** schickt
+`sichtbar an` an den Steuer-Socket. **Falle darin:** die Socketdatei des
+vorigen Laufs bleibt liegen (`RuntimeDirectoryPreserve`), ein `os.path.exists`
+darauf ist sofort wahr — der erste Entwurf lief prompt in „Connection
+refused". Gewartet wird jetzt auf eine **Antwort**. Gemessen: 0,12 s vom
+gestoppten Zustand bis zum sichtbaren Pet.
+
+### Warum das Pet „nichts machte" — die Hooks waren nie installiert
+
+Die Frage war „es beobachtet nicht und hört mich nicht, ist das schon
+gebaut?". Antwort in vier Teilen, alle nachgesehen, nicht erinnert:
+
+* **Augen: gibt es nicht.** `daimon/eyes/` enthält nur `__init__.py`. Phase 5.
+* **Hände: gibt es nicht.** Phase 4, nicht begonnen. Der Mind kennt die
+  Absicht `aktion`, dahinter liegt kein Broker.
+* **Ohren: gebaut, aber sie lauschen nicht von selbst.** Kein Wake-Word (T−1.1,
+  Plan C). Der Weg ist Push-to-Talk `Meta+Space` über kglobalaccel im
+  Auth-Agenten; `Meta+Shift+M` schaltet die Ohren aus. Kette seit T-3.15
+  vollständig, alle beteiligten Dienste laufen.
+* **Mind: ohne Token.** `~/.config/daimon/anthropic-token` fehlt,
+  `"token_vorhanden": false`. Lokale Absichten antworten, alles darüber nicht.
+
+**Der eigentliche Befund aber war die Anzeige selbst.** In
+`~/.claude/settings.json` standen neun Hooks — und alle schrieben nur nach
+`spikes/mood/events.jsonl`, dem alten Mood-Spike aus T−1.5. **Kein einziger
+meldete an die Hook-Bridge auf `127.0.0.1:8787`.** Der Hub sah deshalb
+`units: {}`, der Mood stand auf `sleeping`, und das Kernversprechen des
+Projekts — am Bildrand sehen, dass ein Agent wartet — war seit T-0.11 nie in
+Betrieb. Die fertige Konfiguration lag die ganze Zeit als
+`config/claude-hooks.json` im Repo.
+
+**Installiert am 09.08.**, Sicherung unter
+`~/.claude/settings.json.vor-daimon-hooks`, die Spike-Hooks stehen unverändert
+daneben. **Eine Abweichung von der Vorlage, mit Absicht:** `__TOKEN__` ist
+nicht eingesetzt, sondern wird zur Laufzeit gelesen —
+`$(cat "$XDG_RUNTIME_DIR/daimon/hook-token")`. Die Bridge erzeugt das Token bei
+**jedem** Start neu (`bridge.py:130`); ein eingebackenes wäre nach dem nächsten
+Neustart still ungültig, und stille Ausfälle sind die Fehlersorte, die dieses
+Projekt sammelt. Vor dem Schreiben mit einer Probe-Nutzlast gemessen: Mood
+`sleeping` → `observing`, `rev` 4 → 5.
+
+### Die Stimme: Mimic kann Nordom wirklich
+
+`config/daimon.toml` trägt `mimic_stimme = "n0rd0m"`, und der Weg trägt:
+`python -m daimon.face.tts --sag …` meldet `engine: mimic`, `modell: n0rd0m`,
+`provider: cuda-extern`, TTFA 472 ms. **Die Längengrenze greift ebenfalls** —
+ein langer Absatz kam als `{"ok": false, "grund": "zu_lang"}` zurück, gesprochen
+wurde der Ersatz „Die Antwort steht auf dem Bildschirm." mit thorsten. Wer das
+Pet vorlesen lässt, teilt vorher in Sätze.
+
 ---
 
 ## Nachtrag 09.08. — T-3.13b abgeschlossen, T-3.14 gebaut
@@ -417,6 +475,11 @@ Sprachanfragen fehlen, und die Falsch-Positiv-Rate über eine Woche Alltag fehlt
 
 **Zwei Entscheidungen, zwei Handbewegungen.**
 
+0. **Den API-Token hinlegen** — `~/.config/daimon/anthropic-token`, 0600, eine
+   Zeile, kein „Bearer" (`docs/TOKEN-ROTATION.md`). Solange er fehlt, meldet
+   der Mind `"token_vorhanden": false` und beantwortet nur lokale Absichten.
+   **Ausdrücklich deine Handbewegung**, entschieden am 09.08.: Zugangsdaten
+   legt hier kein Agent an.
 0. **Rechtsklick auf das Pet, einmal.** Die Personaauswahl im Kontextmenü ist
    nur am Code und am geschriebenen `persona.json` belegt, nicht am Bild: acht
    Zeilen bei 208 px Breite, und ob eine Beschriftung abgeschnitten ist, sieht
