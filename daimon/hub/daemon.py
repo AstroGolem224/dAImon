@@ -63,6 +63,9 @@ TICKET_SOCKET = "ticket.sock"
 # Mind schickt eine Zeile und bekommt eine zurueck; er sendet damit nichts
 # in den Ereignisstrom und bekommt keine Rolle darin.
 AKTION_SOCKET = "aktion.sock"
+# Wie lange der Hub auf die Antwort des Menschen wartet. Laenger als ein
+# Blick, kuerzer als ein Kaffee -- und danach `cancelled`, nicht `declined`.
+RUECKFRAGE_FRIST_S = 120.0
 # Wohin ein Auftrag geht. Heute genau einer -- die anderen drei Broker haben
 # Units, aber noch keinen Weg vom Hub.
 BROKER_SOCKETS = {"dbus": "dbus-broker.sock"}
@@ -156,6 +159,7 @@ class Hub:
         # NTP-Korrektur keine Sperre aufheben und keine erzeugen darf.
         # T-4.16: erst beim ersten Aufruf gebaut, siehe `_aktionsteile`.
         self._aktion = None
+        self.consent = None
         self._gpu_lock = threading.Lock()
         self._gpu_sperre: tuple[str, float] | None = None
         self.gpu_frist_s = float(self.cfg.get("gpu.sperrfrist_s", GPU_FRIST_S))
@@ -325,6 +329,27 @@ class Hub:
         elif typ == "freigabe":
             self.diag.zaehle("aktionsfreigabe", "abgelehnt")
 
+    def _rueckfrage_schliessen(self, nonce: str) -> None:
+        """Die zum Nonce gehoerende Rueckfrage auf `granted` setzen.
+
+        Ohne offene Rueckfrage passiert nichts -- der eingefrorene Pruefstand
+        T-1.7 schickt Freigaben ohne Rueckfrage, und die sollen weiter genau
+        so durchlaufen wie bisher.
+        """
+        if self.consent is None:
+            return
+        rueckfrage = self.consent.antwort_zu_nonce(nonce)
+        if rueckfrage is None:
+            return
+        try:
+            self.consent.antwort(rueckfrage_id=rueckfrage.id,
+                                 nonce=rueckfrage.nonce,
+                                 absender=rueckfrage.absender,
+                                 zustand="granted", jetzt=time.monotonic())
+        except Exception as fehler:
+            self.log.warn("Rueckfrage nicht schliessbar",
+                          DAIMON_GRUND=str(fehler)[:120])
+
     def _verarbeite_auth(self, event: Event) -> bool:
         """`intent_mark` und `freigabe` vom auth-Socket. True = angenommen,
         False = abgewiesen (die Verbindung wird geschlossen, nicht der Hub).
@@ -360,6 +385,11 @@ class Hub:
                     nonce=p.get("nonce", ""),
                     action_hash=p.get("action_hash", ""))
                 self.diag.zaehle("aktionsfreigabe", "ausgegeben")
+                # Und dieselbe Antwort schliesst die offene Rueckfrage, falls
+                # es eine gibt. REIHENFOLGE: erst das Buch, dann hier. Das
+                # Buch ist die eingefrorene Zusage aus T-1.7; scheitert es,
+                # darf hier nichts passiert sein.
+                self._rueckfrage_schliessen(p.get("nonce", ""))
             return True
         except MarkenFehler as exc:
             self.log.warn("Auth-Anfrage abgewiesen, Verbindung ab",
@@ -531,10 +561,17 @@ class Hub:
         kommt. Die Anzeige der Sitzungen ist das taegliche Versprechen; sie
         darf nicht an einer Datei haengen, die nur der Aktionspfad braucht.
         """
+        if self.consent is None:
+            from daimon.hub.consent import Consent
+            # EIN Buch: die Autoritaet bleibt `self.freigaben` (T-1.7,
+            # eingefroren). Consent haelt daneben nur, was dort fehlt --
+            # offene Rueckfragen, Absender, Persistenz und den Unterschied
+            # zwischen `declined` und `cancelled`.
+            self.consent = Consent.laden(Path(self.cfg.state_dir) / "consent",
+                                         buch=self.freigaben)
         if self._aktion is None:
             from daimon.hub.action_queue import Aktionsschlange
             from daimon.hub.audit import Audit
-            from daimon.hub.consent import Consent
             from daimon.hub.coordinator import Koordinator
             from daimon.hub.order import Auftragsbuch
             from daimon.hub.policy import Policy
@@ -543,21 +580,23 @@ class Hub:
 
             class HubKoordinator(Koordinator):
                 def consent_abwarten(self, rueckfrage):
-                    # NOCH NICHT VERDRAHTET, und deshalb `cancelled` statt
-                    # `declined`: abgelehnt hat niemand, es gibt nur keinen
-                    # Weg zum Menschen. Der Auth-Agent hat einen
-                    # `freigabe`-Produzentenpfad (T-1.7), aber der spricht
-                    # das Freigabebuch an, nicht dieses Consent-Buch -- zwei
-                    # Buecher fuer dieselbe Zusage waeren zwei Wahrheiten.
-                    # Das Zusammenlegen ist ein eigener Task.
-                    hub.log.warn("Rueckfrage nicht zustellbar",
-                                 DAIMON_ACTION="aktion_ask_unverdrahtet",
+                    # Der Weg zum Menschen: die Rueckfrage steht offen, der
+                    # Auth-Agent zeigt sie und meldet die Antwort ueber
+                    # seinen `freigabe`-Produzentenpfad zurueck. Hier wird
+                    # gewartet -- in DIESEM Thread, nicht in der
+                    # Hauptschleife; `aktion.sock` bedient je Verbindung.
+                    #
+                    # Keine Antwort ist `cancelled` und kein `declined`. Ein
+                    # Zeitablauf ist kein Nein.
+                    hub.log.info("Rueckfrage offen",
+                                 DAIMON_ACTION="aktion_rueckfrage",
                                  DAIMON_RUECKFRAGE=rueckfrage.id)
-                    return "cancelled"
+                    return hub.consent.warten(
+                        rueckfrage, timeout_s=RUECKFRAGE_FRIST_S)
 
             self._aktion = HubKoordinator(
                 policy=Policy.laden(),
-                consent=Consent.laden(Path(self.cfg.state_dir) / "consent"),
+                consent=self.consent,
                 auftragsbuch=Auftragsbuch(),
                 schlange=Aktionsschlange(),
                 audit=Audit.oeffnen(Path(self.cfg.state_dir) / "audit"),

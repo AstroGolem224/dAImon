@@ -42,9 +42,11 @@ import hashlib
 import json
 import os
 import secrets
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any, Callable
 
 DATEI = "consent-pending.json"
 VORGABE_FRIST_S = 120.0
@@ -87,13 +89,19 @@ class Consent:
     pfad: Path
     offen: dict = field(default_factory=dict)
     _freigaben: dict = field(default_factory=dict)
+    # Das FreigabeBuch des Hubs (T-1.7). Ist es da, liegt die Autoritaet
+    # DORT: Nonce, Bestaetigung und Einloesung laufen ueber dieses eine Buch.
+    # Zwei Buecher fuer dieselbe Zusage waeren zwei Wahrheiten, und die
+    # eingefrorene Zusage aus T-1.7 haengt an diesem hier.
+    buch: Any = None
+    _wecker: dict = field(default_factory=dict)
 
     @classmethod
-    def laden(cls, verzeichnis: Path | str) -> "Consent":
+    def laden(cls, verzeichnis: Path | str, *, buch: Any = None) -> "Consent":
         verzeichnis = Path(verzeichnis)
         verzeichnis.mkdir(parents=True, exist_ok=True)
         os.chmod(verzeichnis, 0o700)
-        selbst = cls(pfad=verzeichnis / DATEI)
+        selbst = cls(pfad=verzeichnis / DATEI, buch=buch)
         if selbst.pfad.is_file():
             try:
                 roh = json.loads(selbst.pfad.read_text(encoding="utf-8"))
@@ -120,13 +128,20 @@ class Consent:
                 absender: str, jetzt: float, frist_s: float = VORGABE_FRIST_S
                 ) -> Rueckfrage:
         """Eine neue Rueckfrage. Mehrere gleichzeitig sind unterscheidbar."""
+        hash_ = action_hash(action_id, params_hash)
+        # Die Nonce kommt aus dem Freigabebuch, wenn es eines gibt: der
+        # Auth-Agent bestaetigt spaeter GEGEN dieses Buch, und eine hier
+        # erfundene Nonce waere dort unbekannt.
+        nonce = (self.buch.nonce_ausgeben(action_hash=hash_) if self.buch
+                 else secrets.token_urlsafe(32))
         rueckfrage = Rueckfrage(
-            id=secrets.token_urlsafe(12), nonce=secrets.token_urlsafe(32),
+            id=secrets.token_urlsafe(12), nonce=nonce,
             action_id=action_id, params_hash=params_hash,
-            action_hash=action_hash(action_id, params_hash),
+            action_hash=hash_,
             prompt_shown=prompt_shown, absender=absender,
             frist=float(jetzt) + float(frist_s))
         self.offen[rueckfrage.id] = rueckfrage
+        self._wecker[rueckfrage.id] = threading.Event()
         self._speichern()
         return rueckfrage
 
@@ -155,6 +170,9 @@ class Consent:
         rueckfrage.zustand = zustand
         rueckfrage.beantwortet = float(jetzt)
         del self.offen[rueckfrage_id]
+        wecker = self._wecker.pop(rueckfrage_id, None)
+        if wecker is not None:
+            wecker.set()
         if zustand == ZUSTIMMUNG:
             # EINMALIG und an die Tat gebunden, nicht an die Rueckfrage.
             self._freigaben[rueckfrage.action_hash] = {
@@ -178,8 +196,19 @@ class Consent:
 
     def freigabe_einloesen(self, *, action_id: str, params_hash: str,
                            jetzt: float) -> bool:
-        """Genau einmal, und nur fuer genau diese Parameter."""
+        """Genau einmal, und nur fuer genau diese Parameter.
+
+        Mit Buch entscheidet das Buch: `einloesen` dort ist die eingefrorene
+        Zusage aus T-1.7, und eine zweite Einmaligkeit daneben waere eine
+        zweite Wahrheit.
+        """
         schluessel = action_hash(action_id, params_hash)
+        if self.buch is not None:
+            try:
+                self.buch.einloesen(action_hash=schluessel)
+                return True
+            except Exception:
+                return False
         eintrag = self._freigaben.get(schluessel)
         if eintrag is None or eintrag["verbraucht"]:
             return False
@@ -188,6 +217,31 @@ class Consent:
         eintrag["verbraucht"] = True
         return True
 
+
+    # -- Warten (der Weg zum Menschen) --------------------------------------
+
+    def warten(self, rueckfrage: Rueckfrage, *, timeout_s: float,
+               jetzt: Callable[[], float] = time.monotonic) -> str:
+        """Auf die Antwort des Auth-Agenten. Blockiert, aber nicht ewig.
+
+        Laeuft die Frist ab, ist das `cancelled` -- keine Antwort ist kein
+        Nein. Der Aufrufer sitzt in einem eigenen Thread des Hubs; die
+        Hauptschleife bleibt frei.
+        """
+        wecker = self._wecker.get(rueckfrage.id)
+        if wecker is None:
+            return rueckfrage.zustand
+        if not wecker.wait(timeout_s):
+            self.ablaufen_lassen(jetzt=rueckfrage.frist + 1.0)
+            return ABBRUCH
+        return rueckfrage.zustand
+
+    def antwort_zu_nonce(self, nonce: str) -> Rueckfrage | None:
+        """Die offene Rueckfrage zu einer Nonce -- fuer den Weg vom Auth."""
+        for r in self.offen.values():
+            if secrets.compare_digest(r.nonce, str(nonce)):
+                return r
+        return None
     def hat_freigabe(self, *, action_id: str, params_hash: str) -> bool:
         eintrag = self._freigaben.get(action_hash(action_id, params_hash))
         return bool(eintrag and not eintrag["verbraucht"])

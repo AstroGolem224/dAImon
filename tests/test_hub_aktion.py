@@ -25,6 +25,9 @@ def hub(tmp_path, monkeypatch, *, marke_gueltig=True, broker_ok=True):
     h = D.Hub.__new__(D.Hub)          # ohne __init__: kein Socket, kein Thread
     h.log = _Log()
     h.marken = Marken(marke_gueltig)
+    from daimon.hub.marks import FreigabeBuch
+    h.freigaben = FreigabeBuch()
+    h.consent = None
     h.runtime_dir = tmp_path
     h._aktion = None
     h.gesprochen = []
@@ -80,8 +83,13 @@ def test_ohne_gueltige_marke_passiert_nichts(tmp_path, monkeypatch):
     assert h.zugestellt == []
 
 
-def test_eine_modellausgabe_landet_in_der_unverdrahteten_rueckfrage(tmp_path, monkeypatch):
-    """Und die ist `cancelled`, nicht `declined`: abgelehnt hat niemand."""
+def test_eine_modellausgabe_wartet_auf_den_menschen(tmp_path, monkeypatch):
+    """Kommt keine Antwort, ist das `cancelled` -- kein `declined`.
+
+    Die Frist wird hier auf 50 ms gedreht; ein Test, der zwei Minuten
+    wartet, wird nie gefahren.
+    """
+    monkeypatch.setattr(D, "RUECKFRAGE_FRIST_S", 0.05)
     h = hub(tmp_path, monkeypatch)
     a = h.aktion_anfrage(anfrage(quelle="modell"))
     assert not a["ausgefuehrt"]
@@ -123,3 +131,73 @@ def test_der_broker_pfad_steht_im_hub_nicht_im_auftrag(tmp_path, monkeypatch):
     from daimon.common.order import FELDER
     assert "socket" not in FELDER and "broker" not in FELDER
     assert set(D.BROKER_SOCKETS) <= {"dbus", "fs", "exec", "input"}
+
+
+# --------------------------------------------------------------------------
+# Ein Buch: Freigabebuch und Consent zusammengelegt
+# --------------------------------------------------------------------------
+
+def test_die_nonce_kommt_aus_dem_freigabebuch(tmp_path):
+    """Sonst waere sie dort unbekannt, wenn der Auth-Agent bestaetigt."""
+    from daimon.hub.consent import Consent
+    from daimon.hub.marks import FreigabeBuch
+
+    buch = FreigabeBuch()
+    c = Consent.laden(tmp_path / "consent", buch=buch)
+    r = c.stellen(action_id="fs.file.delete", params_hash="sha256:aa",
+                  prompt_shown="x", absender="auth", jetzt=0.0)
+    # Genau diese Nonce bestaetigt im Buch -- und nur mit dem richtigen Hash.
+    buch.bestaetigen(nonce=r.nonce, action_hash=r.action_hash)
+    assert c.freigabe_einloesen(action_id="fs.file.delete",
+                                params_hash="sha256:aa", jetzt=1.0)
+    # Und genau einmal: die zweite Einloesung faellt im Buch.
+    assert not c.freigabe_einloesen(action_id="fs.file.delete",
+                                    params_hash="sha256:aa", jetzt=1.0)
+
+
+def test_eine_freigabe_ohne_offene_rueckfrage_laeuft_wie_bisher(tmp_path):
+    """T-1.7 schickt Freigaben ohne Rueckfrage -- das muss unveraendert
+    durchlaufen."""
+    from daimon.hub.consent import Consent
+    from daimon.hub.marks import FreigabeBuch
+
+    h = D.Hub.__new__(D.Hub)
+    h.log = _Log()
+    h.freigaben = FreigabeBuch()
+    h.consent = Consent.laden(tmp_path / "consent", buch=h.freigaben)
+    nonce = h.freigaben.nonce_ausgeben(action_hash="sha256:zzz")
+    h.freigaben.bestaetigen(nonce=nonce, action_hash="sha256:zzz")
+    h._rueckfrage_schliessen(nonce)      # kein Eintrag -> darf nicht werfen
+    assert h.consent.offen == {}
+
+
+def test_die_antwort_des_auth_agenten_weckt_den_wartenden(tmp_path):
+    import threading
+
+    from daimon.hub.consent import ABBRUCH, ZUSTIMMUNG, Consent
+    from daimon.hub.marks import FreigabeBuch
+
+    buch = FreigabeBuch()
+    c = Consent.laden(tmp_path / "consent", buch=buch)
+    r = c.stellen(action_id="a", params_hash="sha256:aa", prompt_shown="x",
+                  absender="auth", jetzt=0.0)
+
+    ergebnis = {}
+    warter = threading.Thread(
+        target=lambda: ergebnis.setdefault("zustand", c.warten(r, timeout_s=5)))
+    warter.start()
+    c.antwort(rueckfrage_id=r.id, nonce=r.nonce, absender="auth",
+              zustand=ZUSTIMMUNG, jetzt=1.0)
+    warter.join(timeout=5)
+    assert ergebnis["zustand"] == ZUSTIMMUNG
+
+
+def test_keine_antwort_ist_ein_abbruch_kein_nein(tmp_path):
+    from daimon.hub.consent import ABBRUCH, Consent
+    from daimon.hub.marks import FreigabeBuch
+
+    c = Consent.laden(tmp_path / "consent", buch=FreigabeBuch())
+    r = c.stellen(action_id="a", params_hash="sha256:aa", prompt_shown="x",
+                  absender="auth", jetzt=0.0)
+    assert c.warten(r, timeout_s=0.05) == ABBRUCH
+    assert c.offen == {}
