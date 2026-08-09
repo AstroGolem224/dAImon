@@ -1,41 +1,62 @@
 {
  "v": 1,
- "n": 0,
- "erzeugt": "2026-08-09T14:21:05+02:00",
- "p50_wake_to_audio_ms": null,
- "p95_wake_to_audio_ms": null,
+ "n": 2,
+ "erzeugt": "2026-08-09T16:41:56+02:00",
+ "p50_wake_to_audio_ms": 2226.366,
+ "p95_wake_to_audio_ms": 2226.366,
  "stufen": {
   "wake_to_audio": {
-   "n": 0,
-   "p50": null,
-   "p95": null
+   "n": 1,
+   "p50": 2226.366,
+   "p95": 2226.366
   },
   "audio_to_stt": {
-   "n": 0,
-   "p50": null,
-   "p95": null
+   "n": 2,
+   "p50": 72.101,
+   "p95": 1321.503
   },
   "stt_to_mind": {
-   "n": 0,
-   "p50": null,
-   "p95": null
+   "n": 2,
+   "p50": 2.157,
+   "p95": 16.143
   },
   "mind_to_tts": {
-   "n": 0,
-   "p50": null,
-   "p95": null
+   "n": 1,
+   "p50": 902.389,
+   "p95": 902.389
   },
   "tts_to_audio": {
-   "n": 0,
-   "p50": null,
-   "p95": null
+   "n": 1,
+   "p50": 346.46,
+   "p95": 346.46
   },
   "gesamt": {
-   "n": 0,
-   "p50": null,
-   "p95": null
+   "n": 2,
+   "p50": 5909.804,
+   "p95": 17742.238
   }
  },
- "laeufe": [],
- "hinweis": "n=0: es hat noch niemand gesprochen. Der Dienst schreibt je Runde eine Zeile nach $XDG_RUNTIME_DIR/daimon/latenz.jsonl; dieser Bericht entsteht daraus mit `python -m daimon.ears.daemon --bericht <datei>`. Das Kriterium bleibt ROT, bis n >= 20 echte Anfragen vorliegen."
+ "laeufe": [
+  {
+   "v": 1,
+   "wake_to_audio_ms": 2226.366,
+   "audio_to_stt_ms": 1321.503,
+   "stt_to_mind_ms": 2.157,
+   "mind_to_tts_ms": 902.389,
+   "tts_to_audio_ms": 346.46,
+   "gesamt_ms": 5909.804,
+   "echt": true
+  },
+  {
+   "v": 1,
+   "wake_to_audio_ms": null,
+   "audio_to_stt_ms": 72.101,
+   "stt_to_mind_ms": 16.143,
+   "mind_to_tts_ms": null,
+   "tts_to_audio_ms": null,
+   "gesamt_ms": 17742.238,
+   "echt": true
+  }
+ ],
+ "hinweis": "Erste ECHTE Laeufe am 09.08. n zaehlt nur `echt: true`. Das Kriterium bleibt ROT bis n >= 20. Runde 1 enthaelt den STT-Kaltstart (Modell laden); Runde 2 wurde vom Egress abgelehnt (kein API-Token) und hat deshalb keine wake_to_audio-Zahl. Die Datei entsteht mit `python -m daimon.ears.daemon --bericht $XDG_RUNTIME_DIR/daimon/latenz.jsonl`."
 }
