@@ -72,6 +72,18 @@ def test_negativ_richtiger_typ_auf_falschem_socket():
         ipc.pruefe_typ("hookbridge", "screen")
 
 
+def test_ears_darf_keine_rundenmarke_behaupten():
+    """Design 2.4: dem Wake-Word war nur ein API-Kontingent zugesagt, keine
+    Rundenmarke -- und mit Plan C gibt es nicht einmal das Wake-Word. Die
+    Ohren melden Aeusserungen, sonst nichts; wer ein Wake-Word nachruestet,
+    bekommt einen EIGENEN Typ auf dem Kontingentweg (Kommentar an der
+    Tabelle), nicht diesen zurueck."""
+    assert ipc.PRODUZENTEN["ears"] == frozenset({"utterance"})
+    with pytest.raises(ipc.MessageTypeError):
+        ipc.pruefe_typ("ears", "intent_mark")
+    ipc.pruefe_typ("ears", "utterance")   # Positivkontrolle
+
+
 def test_negativ_falsche_uid(rt):
     srv = ipc.listen(rt, "hookbridge")
     try:
