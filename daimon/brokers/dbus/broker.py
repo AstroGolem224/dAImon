@@ -34,6 +34,7 @@ zweite Wahrheit, und die beiden liefen auseinander.
 from __future__ import annotations
 
 import subprocess
+import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -86,10 +87,22 @@ def _kglobalaccel_operation(eintrag: dict) -> Operation | None:
         # maskiert, sondern abgelehnt: Maskierung ist eine Zusage, die man
         # vergisst.
         raise BrokerFehler(f"unbrauchbarer Aktionsname: {komponente}/{aktion}")
-    kennung = f"['{komponente}', '{aktion}', '', '']"
-    return Operation(dienst="org.kde.kglobalaccel", pfad="/kglobalaccel",
-                     schnittstelle="org.kde.KGlobalAccel",
-                     methode="invokeShortcut", argumente=(kennung,))
+    # Der Aufruf liegt am KOMPONENTENOBJEKT, nicht an /kglobalaccel. Am
+    # 10.08. live gemessen: `org.kde.KGlobalAccel.invokeShortcut(as)` gibt es
+    # nicht -- der Bus antwortet `UnknownMethod`. Was es gibt, ist
+    # `org.kde.kglobalaccel.Component.invokeShortcut(s)` unter
+    # `/component/<komponente>`.
+    #
+    # KDE ersetzt in diesem Pfad alles, was in einem DBus-Objektpfad nicht
+    # erlaubt ist, durch `_` -- `org.kde.spectacle.desktop` wird zu
+    # `org_kde_spectacle_desktop`. Dieselbe Ersetzung hier, statt den Namen
+    # ungeprueft einzusetzen: ein Pfad mit einem Punkt darin waere kein
+    # Objektpfad, und der Aufruf schluege mit einer Meldung fehl, die nach
+    # einem fehlenden Kurzbefehl aussieht.
+    pfad = "/component/" + re.sub(r"[^A-Za-z0-9_]", "_", komponente)
+    return Operation(dienst="org.kde.kglobalaccel", pfad=pfad,
+                     schnittstelle="org.kde.kglobalaccel.Component",
+                     methode="invokeShortcut", argumente=(aktion,))
 
 
 @dataclass

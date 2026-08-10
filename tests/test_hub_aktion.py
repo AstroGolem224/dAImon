@@ -14,8 +14,15 @@ from daimon.hub import daemon as D
 
 
 class Marken:
+    """So viel Markenbuch, wie der Aktionsendpunkt anfasst."""
+
     def __init__(self, gueltig: bool) -> None:
         self.gueltig = gueltig
+
+    def aktuelle(self):
+        # Der Hub fragt sich selbst, welche Runde offen ist -- die turn_id
+        # gibt er nie heraus.
+        return "r1" if self.gueltig else None
 
     def initiator(self, turn_id):
         return "user" if self.gueltig else "background"

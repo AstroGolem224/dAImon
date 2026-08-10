@@ -164,6 +164,27 @@ class MarkenBuch(_Buch):
             self._audit("einloesung", DAIMON_TURN_ID=turn_id)
             return marke
 
+    def aktuelle(self) -> str | None:
+        """Die juengste noch gueltige, nicht eingeloeste Runde -- oder None.
+
+        Gebraucht, weil die `turn_id` NIEMAND ausserhalb des Hubs kennt: sie
+        entsteht hier aus `secrets.token_hex` und wird nirgends
+        herausgegeben. Ein Absender, der sie nennen muesste, koennte sie nur
+        raten -- oder sie waere ihm gesagt worden, und dann waere sie ein
+        Feld, das der Absender setzt (Design 1357).
+
+        Also fragt der Hub sich selbst, welche Runde offen ist. Auskunft ohne
+        Nebenwirkung, wie `initiator`.
+        """
+        with self._lock:
+            jetzt = self._jetzt()
+            offen = [(m.ablauf_ts, t) for t, m in self._marken.items()
+                     if t not in self._verbraucht and jetzt < m.ablauf_ts]
+            if not offen:
+                return None
+            # Die juengste: wer zweimal drueckt, meint den zweiten Druck.
+            return max(offen)[1]
+
     def initiator(self, turn_id: str) -> str:
         """"user" bei gueltiger, nicht eingeloester Marke, sonst "background".
 

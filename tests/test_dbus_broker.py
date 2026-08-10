@@ -77,6 +77,10 @@ def test_der_mitgelieferte_katalog_ergibt_lauter_feste_operationen():
     for kennung, op in b.operationen.items():
         assert op.dienst == "org.kde.kglobalaccel", kennung
         assert op.methode == "invokeShortcut", kennung
+        # Der Aufruf liegt am Komponentenobjekt, und der Pfad ist ein
+        # gueltiger DBus-Objektpfad -- Punkte sind darin nicht erlaubt.
+        assert op.pfad.startswith("/component/"), kennung
+        assert "." not in op.pfad, kennung
         # Nichts daran ist zur Laufzeit waehlbar: die Argumente stehen fest.
         assert op.argumente and all(isinstance(a, str) for a in op.argumente)
     # Die beiden Katalogeintraege ohne kglobalaccel-Ursprung bekommen hier
@@ -106,7 +110,8 @@ def test_positivkontrolle_ein_genehmigter_auftrag_wird_ausgefuehrt():
     argv = stub.aufrufe[0]
     assert argv[0] == "gdbus"
     assert "org.kde.kglobalaccel" in argv
-    assert "playpausemedia" in " ".join(argv)
+    assert "playpausemedia" in argv
+    assert "/component/mediacontrol" in argv
 
 
 def test_der_kern_nicht_genehmigt_derselben_komponente_wird_abgewiesen():

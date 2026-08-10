@@ -30,7 +30,10 @@ from typing import Callable
 # Speicher fuellt.
 MAX_BYTES = 64 * 1024
 LESE_TIMEOUT_S = 10.0
-HUB_SOCKET = "hub.sock"
+# `aktion.sock`, nicht `ticket.sock`: dort liegen die Kontingente aus T-3.11
+# (Egress), hier die Auftragstickets aus T-4.5. Zwei Buecher, zwei Sockets --
+# und der Broker fragt das Buch, in dem sein Ticket steht.
+HUB_SOCKET = "aktion.sock"
 
 
 def ticket_beim_hub_einloesen(hub_pfad: Path, ticket: str,

@@ -30,7 +30,9 @@ from daimon.common.logging import get_logger
 # Groesser als jeder ehrliche Auftrag und klein genug, dass niemand hier
 # Speicher fuellt.
 MAX_BYTES = 64 * 1024
-HUB_SOCKET = "hub.sock"
+# Siehe daimon/brokers/dienst.py: die Auftragstickets liegen an
+# `aktion.sock`, nicht am Kontingent-Socket aus T-3.11.
+HUB_SOCKET = "aktion.sock"
 
 
 def katalog_lesen(pfad: Path) -> dict:

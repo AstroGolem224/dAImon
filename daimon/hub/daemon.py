@@ -670,6 +670,29 @@ class Hub:
         """
         if not isinstance(anfrage, dict):
             return {"v": 1, "ok": False, "grund": "unlesbar"}
+        if anfrage.get("art") == "ticket_einloesen":
+            # Die Einloesung, um die der Broker unmittelbar vor der
+            # Ausfuehrung bittet (T-4.5). Sie gehoert HIERHER, weil
+            # "hoechstens einmal" eine Aussage ueber alle Broker zusammen ist
+            # -- loeste jeder sein Ticket selbst ein, waere derselbe Auftrag
+            # bei zwei Brokern zweimal ausfuehrbar.
+            from daimon.common.order import AuftragsFehler
+
+            self._aktionsteile()
+            try:
+                auftrag = self._aktion.auftragsbuch.einloesen(
+                    str(anfrage.get("ticket") or ""))
+            except AuftragsFehler as fehler:
+                # Ein Grund, viele Ursachen -- wie beim Kontingent in T-3.11:
+                # unbekannt, abgelaufen und verbraucht duerfen sich fuer den
+                # Aufrufer nicht unterscheiden, sonst ist die Absage ein
+                # Orakel ueber gueltige Ticket-IDs. Das Detail steht im
+                # Journal.
+                self.log.warn("Ticket abgelehnt",
+                              DAIMON_ACTION="aktion_ticket",
+                              DAIMON_GRUND=str(fehler)[:160])
+                return {"v": 1, "ok": False, "grund": "ticket_ungueltig"}
+            return {"v": 1, "ok": True, "action_id": auftrag.action_id}
         if anfrage.get("art") == "offene":
             # Der Weg, auf dem der Auth-Agent von einer Rueckfrage erfaehrt.
             # LESEND: er holt sich, was offen ist, und bekommt Nonce und
@@ -695,7 +718,13 @@ class Hub:
         params = anfrage.get("params") or {}
         if not isinstance(params, dict):
             return {"v": 1, "ok": False, "grund": "params_unlesbar"}
-        turn_id = str(anfrage.get("turn_id") or "")
+        # Die `turn_id` kommt NICHT aus der Anfrage, wenn der Hub eine
+        # offene Runde hat: sie entsteht im Markenbuch und wird nirgends
+        # herausgegeben. Ein Absender koennte sie nur raten -- oder sie waere
+        # ihm gesagt worden, und dann waere sie ein Feld, das er setzt
+        # (Design 1357). Eine mitgeschickte gilt nur als Rueckfallwert fuer
+        # Pruefstaende, die ohne Markenbuch messen.
+        turn_id = self.marken.aktuelle() or str(anfrage.get("turn_id") or "")
 
         # Die Marke wird NACHGESCHLAGEN. `initiator()` ist eine Auskunft und
         # veraendert nichts -- eingeloest wird die Runde nicht hier, sonst
@@ -908,8 +937,24 @@ class Hub:
 
     # -- State-Socket ------------------------------------------------------
 
+    def _eine_verbindung(self, conn, liefere, liest: bool) -> None:
+        with conn:
+            try:
+                if liest:
+                    conn.settimeout(GPU_LESE_TIMEOUT_S)
+                    roh = conn.makefile("rb").readline(MAX_ZEILE)
+                    try:
+                        antwort = liefere(json.loads(roh))
+                    except (json.JSONDecodeError, ValueError):
+                        antwort = {"v": 1, "ok": False, "grund": "unlesbar"}
+                else:
+                    antwort = liefere()
+                conn.sendall(json.dumps(antwort).encode() + b"\n")
+            except OSError:
+                pass
+
     def _horche_einfach(self, dateiname: str, liefere, *,
-                        liest: bool = False) -> None:
+                        liest: bool = False, nebenlaeufig: bool = False) -> None:
         """Ein Socket, eine Zeile JSON, fertig. Fuer State und Diagnose --
         beide sind lesend und brauchen kein Protokoll.
 
@@ -935,6 +980,18 @@ class Hub:
                 continue
             except OSError:
                 break
+            if nebenlaeufig:
+                # Ein Thread je Verbindung -- und zwar NUR fuer den
+                # Aktionsendpunkt. Grund, am 10.08. als Haenger gemessen: der
+                # Broker loest sein Ticket ueber DENSELBEN Socket ein,
+                # waehrend der Hub noch im Auftrag steckt. Sequentiell
+                # nehmen heisst hier: der Hub wartet auf den Broker, der
+                # Broker auf den Hub. Die anderen Endpunkte bleiben
+                # sequentiell -- sie rufen niemanden, der zurueckruft.
+                threading.Thread(target=self._eine_verbindung,
+                                 args=(conn, liefere, liest),
+                                 daemon=True).start()
+                continue
             with conn:
                 try:
                     if liest:
@@ -1035,7 +1092,8 @@ class Hub:
         self._threads.append(t)
         t = threading.Thread(target=self._horche_einfach,
                              args=(AKTION_SOCKET, self.aktion_anfrage),
-                             kwargs={"liest": True}, daemon=True)
+                             kwargs={"liest": True, "nebenlaeufig": True},
+                             daemon=True)
         t.start()
         self._threads.append(t)
         t = threading.Thread(target=self._horche_push, daemon=True)
