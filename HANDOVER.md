@@ -142,15 +142,50 @@ Keine Antwort bleibt `cancelled`: ein Zeitablauf ist kein Nein.
 
 ### Was jetzt noch offen ist
 
-* **Der Direktpfad ist der einzige, der live etwas tut** — Medien und
-  Lautstärke unter gedrückter PTT-Taste, sobald `daimon-dbus.service` läuft.
-  Der `ask`-Pfad ist verdrahtet, aber der Auth-Agent zeigt für Aktionen noch
-  keinen Dialog: `modal.py` (T-4.12) ist gebaut und wird von niemandem
-  aufgerufen.
+* ~~Der Auth-Agent zeigt für Aktionen keinen Dialog.~~ — **erledigt**
+  (`c4cf329`). `aktion.sock` beantwortet `art: "offene"` mit Nonce,
+  `action_hash`, Vorschautext und `destructive`-Flag; der Agent sieht alle
+  500 ms nach und zeigt höchstens **eine** Rückfrage je Runde — zwei modale
+  Fenster verdecken einander. Ein Takt statt eines Pushs, weil der
+  auth-Socket des Hubs ein Produzenten-Socket ist und nicht zurückliest.
+  Gemeldet wird **nur** die Freigabe: Ablehnung und Abbruch laufen im Hub in
+  die Frist, und der teure Fehler wäre ein fälschlich gemeldetes Ja.
 * **Die drei anderen Broker haben keinen Weg vom Hub.** `BROKER_SOCKETS`
   kennt nur `dbus`.
-* **Keiner der vier Broker-Dienste läuft.** Units sind installiert und
-  gemessen, gestartet ist keiner.
+
+### Die vier Broker-Dienste — Stand 09.08. abends
+
+| Unit | Zustand | Warum |
+|---|---|---|
+| `daimon-dbus` | **läuft**, `NRestarts=0` | Socket 0600, kaputte Zeile → `{"ok": false, "grund": "auftrag"}` |
+| `daimon-fs` | **läuft**, `NRestarts=0` | Wurzeln aus dem Aufruf (`--wurzel`), nicht aus dem Auftrag |
+| `daimon-exec` | **läuft nicht — richtig so** | Kein Katalogeintrag trägt eine `desktop_id`; T-4.2 hat keinen Anwendungsstarter freigegeben. Der Dienst sagt das und endet mit 1, statt zu laufen und `ok` zu melden |
+| `daimon-input` | **läuft nicht — richtig so** | `Type=oneshot`, wird pro Aktion gestartet. Ein Prozess, der Tastenanschläge synthetisieren kann, soll nicht warten |
+
+`daimon/brokers/dienst.py` hält die Socketschleife **einmal statt viermal**.
+Drei Kopien hätten drei Stellen, an denen Größengrenze und Timeout
+auseinanderlaufen — und die Grenze ist die Zusage, dass hier niemand Speicher
+füllt. `einmal=True` ist die One-shot-Zusage des Input-Brokers, als Schalter
+an einer Stelle statt als Auslegung in drei Mänteln.
+
+### Drei Unit-Fallen, alle am 09.08. gemessen
+
+1. **`Type=notify` ohne `sd_notify`** — der DBus-Broker meldet keine
+   Bereitschaft, systemd wartete auf sie, lief in den Timeout und startete
+   neu. Das Restart-Karussell aus Fall 4, diesmal nach zwei Minuten bemerkt,
+   weil `is-active` `activating` sagte statt `active`. Jetzt `Type=simple`.
+2. **`ProtectHome=tmpfs` blendet auch das venv aus.** Und das Repo
+   einzublenden genügt nicht: `.venv/bin/python` ist ein Symlink nach
+   `~/.local/share/uv/python/`, das Ziel liegt weiter im verdeckten `$HOME`.
+   Beides braucht ein `BindReadOnlyPaths=`.
+3. **`ReadWritePaths=` unter `$HOME` scheitert bei `ProtectHome=tmpfs`** —
+   der Pfad ist zu dem Zeitpunkt vom tmpfs verdeckt, im Namespace gibt es ihn
+   nicht. Was schreibbar sein soll, wird mit `BindPaths=` eingeblendet; das
+   bringt das echte Verzeichnis mit, statt ein verstecktes zu suchen.
+
+Alle drei ergaben denselben Befund an der Oberfläche: eine Unit, die
+`activating` bleibt oder im Karussell hängt. **`is-active` allein reicht als
+Prüfung nicht** — `NRestarts` gehört dazu.
 
 > **Achtung, Parallelsitzung:** am 09.08. gegen 18:55 sind
 > `tests/test_cli_broker.py` und `daimon/brokers/cli/` aufgetaucht, beide
