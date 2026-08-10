@@ -168,6 +168,51 @@ auseinanderlaufen — und die Grenze ist die Zusage, dass hier niemand Speicher
 füllt. `einmal=True` ist die One-shot-Zusage des Input-Brokers, als Schalter
 an einer Stelle statt als Auslegung in drei Mänteln.
 
+### Der Direktpfad ist gelaufen — 10.08., erster vollständiger Durchlauf
+
+`fd71ac9`. PTT → Rundenmarke → Policy → Ticket → Broker → Audit, und die
+Medienwiedergabe hat tatsächlich umgeschaltet:
+
+```
+{"verdikt": "allow", "ausgefuehrt": true, "direkt": true,
+ "dauer_ms": {"policy": 0.041, "broker": 4.361, "audit": 1.614}}
+```
+
+Im Audit: `seq 8`, `outcome ok`, `initiator foreground`, `mark_id` gleich
+`turn_id`. Ausgelöst über den Steuer-Socket des Auth-Agenten (`ptt` an
+`auth-control.sock`) — **das ist eine Umschaltung, das Mikrofon geht dabei
+auf.** Danach wieder aus.
+
+**Vier Befunde, und keiner davon war im Testlauf sichtbar.** Alle vier sind
+die Sorte, die beim nächsten Broker wiederkommt:
+
+1. **Die `turn_id` kannte niemand.** Sie entsteht im Markenbuch aus
+   `secrets.token_hex` und wurde nirgends herausgegeben — ein Absender hätte
+   sie raten müssen. Jetzt fragt der Hub sich selbst
+   (`MarkenBuch.aktuelle()`). Das ist auch die richtige Richtung: eine
+   `turn_id` im Request wäre wieder ein Feld, das der Absender setzt.
+2. **Der Broker löste sein Ticket am falschen Buch ein.** An `ticket.sock`
+   liegen die Egress-Kontingente aus T-3.11, die Auftragstickets aus T-4.5
+   liegen im Auftragsbuch des Koordinators. `aktion.sock` beantwortet jetzt
+   `art: "ticket_einloesen"`.
+3. **Dann hängte der Hub sich selbst auf.** `_horche_einfach` nahm eine
+   Verbindung nach der anderen an; der Broker löst sein Ticket über
+   **denselben** Socket ein, während der Hub noch im Auftrag steckt. Hub
+   wartet auf Broker, Broker auf Hub. Der Aktionsendpunkt bedient jetzt je
+   Verbindung in einem Thread — die anderen bleiben sequentiell, sie rufen
+   niemanden, der zurückruft. **Wer einen Endpunkt baut, der einen Dienst
+   ruft, der zurückruft, braucht diesen Thread.**
+4. **`org.kde.KGlobalAccel.invokeShortcut(as)` gibt es nicht.** Der Bus
+   antwortet `UnknownMethod`. Der Aufruf liegt am Komponentenobjekt:
+   `org.kde.kglobalaccel.Component.invokeShortcut(s)` unter
+   `/component/<komponente>`, und KDE ersetzt darin jedes in einem
+   Objektpfad unerlaubte Zeichen durch `_`
+   (`org.kde.spectacle.desktop` → `org_kde_spectacle_desktop`).
+
+Die ersten drei waren im Test unsichtbar, weil dort niemand zurückruft und
+der Bus eine Attrappe ist. **Genau dafür ist ein Probelauf da** — und
+deshalb steht in der Akzeptanzliste jedes Brokers eine Live-Prüfung.
+
 ### Drei Unit-Fallen, alle am 09.08. gemessen
 
 1. **`Type=notify` ohne `sd_notify`** — der DBus-Broker meldet keine
