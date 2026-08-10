@@ -102,10 +102,17 @@ def koerper_hash(koerper: object) -> str:
 # genau das getan, wofuer er da ist. Falsch war die Stelle davor: dem Modell
 # hatte niemand gesagt, dass seine Antwort GESPROCHEN wird.
 #
-# Die Zahl kommt aus dem Validator und steht nicht daneben. Zwei Zahlen an
-# zwei Orten laufen auseinander, und dann weist der eine ab, was der andere
-# erlaubt hat.
-SPRECHFORM_ZEICHEN = sprechtext.MAX_ZEICHEN
+# Die Zahl haengt am Validator und steht nicht daneben -- zwei Zahlen an zwei
+# Orten laufen auseinander, und dann weist der eine ab, was der andere erlaubt
+# hat. Sie liegt aber BEWUSST darunter: am 09.08. an gemma4:26b gemessen,
+# Vorgabe 140, geliefert 146. Ein Modell zielt auf die genannte Zahl, es trifft
+# sie nicht -- und ein Treffer knapp darueber kostet die ganze Antwort.
+#
+# ponytail: 20 Zeichen Rand, geraten und einmal nachgemessen. Obergrenze: wer
+# ein Modell einsetzt, das enger trifft, dreht den Rand herunter; wer eins
+# einsetzt, das weiter streut, hoch. Ein Kalibrierknopf, kein Naturgesetz.
+SPRECHFORM_RAND = 20
+SPRECHFORM_ZEICHEN = sprechtext.MAX_ZEICHEN - SPRECHFORM_RAND
 SPRECHFORM = (
     "[Ausgabeform]\n"
     f"Diese Antwort wird VORGELESEN. Antworte in genau EINER Zeile mit "

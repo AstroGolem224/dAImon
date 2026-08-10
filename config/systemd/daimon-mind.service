@@ -36,14 +36,20 @@ PartOf=graphical-session.target
 [Service]
 Type=simple
 WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
-# T-3.11b: `--egress-socket` zeigt auf den CLI-Broker statt auf den Egress.
-# Mind merkt davon nichts -- beide sprechen dieselbe Drahtform, und die Antwort
-# kommt in Messages-Gestalt zurueck. Wer den API-Key statt des Abos will,
-# aendert genau diese eine Zeile zurueck auf `egress.sock` und startet den
-# Egress. Der Preis des Abo-Wegs steht in der Unit des CLI-Brokers.
+# T-3.11c: `--egress-socket` zeigt auf den LOKALEN Broker. Mind merkt davon
+# nichts -- alle drei Rueckgrate sprechen dieselbe Drahtform und antworten in
+# Messages-Gestalt. Die Wahl ist damit genau diese eine Zeile:
+#
+#   lokal.sock    Modell auf dieser Maschine (T-3.11c). 1--5 s, kostenlos,
+#                 und die einzige Variante, deren Unit kein offenes Netz
+#                 braucht. Voraussetzung: ollama laeuft, Modell gezogen.
+#   cli.sock      `claude -p` ueber das Abo (T-3.11b). 7--25 s, rund 0,11 USD
+#                 Kontingent je Frage, Unit mit offenem Netz.
+#   egress.sock   Messages-API mit API-Key (T-3.11). Braucht
+#                 ~/.config/daimon/anthropic-token.
 ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
     -m daimon.mind.daemon \
-    --egress-socket %t/daimon/cli.sock
+    --egress-socket %t/daimon/lokal.sock
 
 Restart=on-failure
 RestartSec=2
