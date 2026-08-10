@@ -1,78 +1,213 @@
-# Plan: dAImon — Desktop-Pet als Familiar und Assistent
+# Plan: Reviewer-Session für die offenen Verifizierer
 
-_Round 3 revision — regenerated from the v3.0 architecture, not patched_
-
-> **Documents under review** (these are the plan; this file is the contestable summary):
-> - `/home/itiger013/Dokumente/UMBRA-Notes/DDs/dAImon/dAImon-Design.md` **v3.0** — read §1.2 first
-> - `/home/itiger013/Dokumente/UMBRA-Notes/DDs/dAImon/dAImon-Implementierungsplan.md` **v3.0**
->
-> Existing code: `pet_daemon.py`, `pet_client.gd`, `claude-hooks.json`, `PHASE3.md`.
-> German documents; review in English is fine.
+_Round 5 revision — MAX_ROUNDS erreicht ohne APPROVED. Die fünf Befunde
+der Schlussrunde sind eingearbeitet; die Abnahme dieser letzten Fassung
+liegt bei Matthias (siehe PLAN-REVIEW-LOG.md)._
 
 ## Goal
 
-Extend an existing agent-status pet into a desktop familiar: answers when addressed, reads the screen for context, controls the PC under explicit confirmation via a reviewed whitelist, and has a configurable character. Single machine, single user, KDE Plasma 6.7.3 on Wayland, RTX 5090. Facts marked `[V]` were verified live on this machine.
+Eine Sitzung mit `DAIMON_ROLE=reviewer` baut die offenen Verifizierer und
+klärt die vorbestehenden Rot-Fälle. **Erfolg ist ein Ausgangs-LEDGER, kein
+grünes Gate:** jeder Posten endet als `gruen`, `mensch-blockiert`,
+`umgebungs-blockiert`, `zieltask-offen` (das Prüfziel ist planmäßig noch
+nicht gebaut, z. B. die Eyes-Unit für T-5.13) oder `produktdefekt-rot`;
+„gebaut und ehrlich rot"
+ist ein gültiger Ausgang und wird nie als Abnahme ausgegeben. Der Ledger
+vermerkt je Posten auch die PROVENIENZ (welcher Kontext hat gebaut, was
+hat er gelesen). Offen: T-3.14.v, T-3.15.v, T-4.4.v–T-4.16.v, T-4.17.sh,
+T-4.18.sh, Klärung T-0.9 und T-3.12 K4/K6. `T-4.17.v` (zweiter Ordnung,
+Anhang E) bleibt zurückgestellt — `T-4.17.sh` selbst nicht.
 
-## Threat model (Design §1.2) — read this before judging any claim
+## Vorab-Festlegungen (gelten für jeden Schritt)
 
-**In scope:** injected instructions in observed content (screen text, window titles, **hook payloads**, files); spoofed audio (speakers, video, our own TTS); model error; accidental disclosure.
-
-**Explicitly out of scope:** an attacker already executing code as this uid. Such a process can ptrace peers, control `systemd --user`, read any 0600 runtime file, and call `kglobalaccel.invokeShortcut` to manufacture the "push-to-talk" event. Unit names, file modes and signatures cannot exclude them.
-
-Consequently the vocabulary is fixed: **intent mark** (Auth reported a user action — not proof a human acted), **trusted component path** (model output does not flow here — not "an attacker cannot"), **peer check** (`SO_PEERPIDFD`, a signpost between our own components — not authentication), **ticket** (single-use and deadline — not cryptographic provenance).
-
-This is what made round 2's HMAC deletion correct rather than evasive: the key was ptrace-readable by the excluded attacker, and a broker cannot verify with a key that exists only in the Hub. **v3.0 exists because v2.1 stated this model but left eight dependent sections describing the superseded mechanics.** This revision regenerates both documents rather than patching them.
-
-## What changed since round 2
-
-1. **Both documents regenerated** against §1.2. Service inventory is now canonical (Design §2.1: twelve services + one KWin script + one worker-spawned helper); every count and diagram derives from it. Previous versions said "eight", "eleven" and "thirteen" in different places.
-2. **The Hub is named as the trusted computing base**, with explicit input validation and failure boundaries, instead of being implicitly treated as attack-surface-free.
-3. **Taint model reworked.** Four labels: `user_ptt`, `user_audio`, `trusted`, `tainted`. Three fixes: (a) wake-word speech is `user_audio` and reaches neither the tool-capable pass nor memory nor proactive triggers — otherwise spoofed audio writes durable instructions; (b) free-text hook fields are `tainted`, contradicting v2.1 which called them trusted while the threat model called hooks injectable; (c) taint derives from **data provenance, not the fetching component** — a broker result carrying file contents or a window title is tainted in that part. Labels are typed values that survive IPC, serialization and DB round-trips; protected sinks reject raw strings as a type error.
-4. **The Auth preview is a declared taint sink.** v2.1 promised Auth "never renders model text" while requiring meaningful confirmation — unresolvable. Resolution: fixed template, fixed labels, parameter values escaped, length-bounded, visibly quoted; no free text, no markup, no control characters.
-5. **The direct-command exception is Hub-owned:** it fires only when the catalog marks the action `direct: true` **and** a deterministic Hub parser recognized it in the utterance. Anything model-derived goes through the preview regardless.
-6. **The verifier regime became a task graph.** v2.1 stated rules without creating tasks. Now 33 reviewer-owned `.v` tasks precede their implementation tasks, each with mutants per acceptance criterion, and verifier hashes are frozen in `tests/verify/FROZEN` — the phase gate fails if a builder modified one. T-1.7 no longer builds the superseded Face-owned PTT path first.
-7. **Self-reported values eliminated** from gates: the P−1 blocking set is hard-coded rather than read from investigator JSON; `restart_prompted` is derived from portal signals by the verifier; mood distinctness is compared as image hashes of the pet region, not sprite identifiers; pixel probes use a randomized marker in a controlled region with before/after capture.
-8. **T-5.10's egress capture cannot itself leak:** structural markers and hashes only, test-profile only.
+* **Benannter Reviewer-Branch statt losem Worktree.** Der Hauptbaum trägt
+  ein unautorisiertes `T-3.9.sh`/`FROZEN`-Paar; verschachtelte Läufe
+  (T-3.13b, T-3.14 u. a.) würden GEGEN diese Fassung messen, auch
+  ungestagt. Deshalb: Branch `reviewer/p4-verifizierer` vom
+  protokollierten HEAD, frischer Worktree AUF DIESEM BRANCH, alle Commits
+  nur dort. Übergabe an Matthias als Branch + Commit-Hashes; KEIN Merge
+  und kein Cherry-Pick in den schmutzigen Hauptbaum durch diese Session.
+* **T-3.13b-Transfer mit Provenienz:** die T-3.13b-Artefakte sind im
+  Hauptbaum UNTRACKED und fehlen im frischen Worktree. Transfer nur als
+  inventarisiertes Patch (Dateiliste + sha256 je Datei am Ursprung),
+  Einspielen in den Reviewer-Branch, Hash-Abgleich gegen die unberührten
+  Originale VOR dem ersten Testlauf.
+* **FROZEN-Inventar nach kanonischer Vorgabe:** eingefroren werden
+  `T-3.13b.sh`, `T-3.14.sh`, `T-3.15.sh` und JEDER `T-4.4.sh`–`T-4.16.sh`
+  (die `.v`-Blöcke enden ausdrücklich mit `freeze.sh`; das globale Regime
+  friert Reviewer-Verifizierer ein — kein Ledger-Ermessen), jeweils
+  einschließlich aller repo-lokalen Laufzeit-Helfer.
+  **Helfer-Hash-Sperre, maschinell und geschlossen:** Abhängigkeiten
+  werden über eine GESCHLOSSENE Deklarationsgrammatik geführt (wörtliche
+  Pfade unter `tests/verify/**`/`tests/harness/**`, rekursiv validiert).
+  Berechnete Pfade (`$HIER`, Task-Interpolation — der Bestand nutzt sie)
+  sind zulässig, WENN ihr aufgelöstes Ziel in der endlichen, deklarierten
+  Menge liegt; alles darüber hinaus wird zurückgewiesen, und jeder
+  Bestands-Wrapper, der dafür umgeschrieben werden müsste, bekommt einen
+  eigenen autorisierten `.v2`-Task statt einer stillen Änderung.
+  Ergänzend läuft eine LAUFZEIT-Dateiöffnungs-Spur (rekursiv ab
+  Prozessstart, Kindprozesse eingeschlossen) über Gut-, Mutanten- UND
+  Echtbaum-Lauf. **Gegenstand ist nur Prüf-Rahmenwerk:** Öffnungen unter
+  den SUBJEKT-Wurzeln (Produktquelle `daimon/**`/`face/**`,
+  Fixture-Bäume, erzeugte Testdaten) sind KEINE Abhängigkeiten — verfolgt
+  und deklarationspflichtig ist ausschließlich ausführbarer
+  Verifizierer-Code und seine Helfer. Jede dort entdeckte, nicht
+  deklarierte Abhängigkeit lässt das Einfrieren SCHEITERN. Wo der
+  kanonische Vertrag einen Pfad festschreibt (z. B.
+  `tests/verify/lib/sandbox_units.sh`, Anhang D), wird der Pfad nicht
+  verschoben.
+* **Voraussetzungs-Task „Freeze-Erweiterung", einzeln autorisiert:** die
+  Änderung an `freeze.sh`/`verify-frozen.sh` ist Sicherheitsmaschinerie
+  und läuft als EIGENER, von Matthias beim Kickoff freizugebender Task
+  mit Akzeptanzkriterien (Deklarationsgrammatik + Laufzeitspur) und
+  eigenen Mutanten, deren jeder an der RICHTIGEN Prüfung scheitern muss:
+  (a) Wrapper mit GÜLTIG aktualisiertem Hash, der einen im Manifest
+  absichtlich FEHLENDEN Helfer ruft → der Fehlschlag muss der
+  Abhängigkeits-Entdeckung zugeschrieben sein, nicht dem alten
+  Hash-Vergleich; (b) ein undeklarierter TRANSITIVER Helfer; (c) ein
+  dynamisch aufgelöster Pfad außerhalb der deklarierten endlichen Menge.
+  Ein bloß manipulierter, bereits gelisteter Helfer beweist nur das alte
+  Hashing und zählt nicht als Nachweis. Atomarer Commit — BEVOR irgendein
+  Verifizierer den erweiterten Mechanismus benutzt. **Die Migration deckt
+  den BESTAND auf:** T-3.10, T-3.11, T-3.12 und T-3.13 delegieren an
+  ungehashte Helfer bzw. bauen Pfade variabel; ein echter Scan über die
+  26 bestehenden Einträge KANN nicht grün bleiben. Der Task nimmt die
+  UNVERÄNDERTEN Bestands-Helfer einmalig autorisiert ins Manifest auf
+  (Inhalte unangetastet); nur Wrapper, deren Pfadbau die Grammatik
+  verletzt, bekommen eigene `.v2`-Tasks.
+* **Re-Freeze (T-3.12.v2):** atomare DREI-Artefakt-Prüfung — Wrapper,
+  Helfer (`t312_pruefstand.py`), Manifest. Alte Wrapper-Zeile bleibt bis
+  zum Abschluss des Mutantenlaufs; danach in EINEM Commit: Wrapper-Hash
+  ersetzt, Helfer-Hash ergänzt, Diff aller drei Artefakte angesehen,
+  `verify-frozen.sh` grün. Nur unter ausdrücklich autorisiertem
+  `.v2`-Task.
+* **Mutanten vollständig, externe Verträge haben Vorrang:** je Task der
+  Satz aus Anhang D — außer wo ein externer Vertrag mehr verlangt:
+  T-3.14 nutzt alle SECHS Vertragsmutanten (Anhang D kennt den Task
+  nicht), T-3.15 alle VIER aus seinem Vertrag (Anhang D nennt nur zwei).
+  Kriterium-zu-Mutant-Matrix; jeder Mutant als erkannt GEMESSEN.
+* **Commit-Protokoll:** Für Tasks MIT Freeze-Pflicht EIN atomarer Commit
+  (Verifizierer + Fixtures + Mutanten + Freeze + Evidenzverweis), erst
+  nach `meta.sh` UND Lauf gegen den echten Baum — kein committeter, aber
+  unfixierter Abnahmeskript-Zustand in der Historie. **Sonderregeln ohne
+  `meta.sh`-Ziel:** `T-4.17.sh` wird nach seinen VORGESCHRIEBENEN Prüfungen
+  committet (pytest grün + externe Prompt-Beobachtung gelaufen) — ohne so
+  zu tun, als wäre der zurückgestellte `T-4.17.v` gelaufen. `T-4.18.sh`
+  wird VOR jeder Befunderhebung committet (siehe Schritt 8); sein Beleg
+  sind Läufe gegen synthetische Befundregister: ein vollständiges →
+  Exit 0, und JEDES der folgenden → Exit ≠ 0: leer, unbelegt geschlossen,
+  `closed` mit scheiterndem Reproduktions-Handler, `closed` mit
+  unbekanntem Handler, `closed` mit ungültigen/grenzverletzenden
+  Handler-Daten.
+  Vor jedem Commit: `git diff --cached --name-only` gegen eine je Task
+  ERZEUGTE, exakte Dateinamens-Allowlist. Ausdrücklich verweigert, außer
+  einzeln autorisiert: jede bereits in `FROZEN` gelistete Datei,
+  `freeze.sh`/`verify-frozen.sh`/`meta.sh` selbst, `docs/DESIGN.md`,
+  `docs/IMPLEMENTATION-PLAN.md`, vorbestehende Dateien unter
+  `tests/evidence/**`.
+* **Aufräumen:** Vorzustand erfassen (Units, DND, Sockets,
+  `pgrep`-Basislinie), `trap`-Restauration, eigene Runtime-Verzeichnisse,
+  Leck-Prüfung danach; ohne garantierte Restauration wird der Fall als
+  blockiert vermerkt statt ausgeführt. Echte Units NUR über `systemctl`;
+  `kill -- -PGID` ausschließlich für selbst erzeugte `setsid`-Gruppen,
+  nach Prüfung, dass PGID = bekannter Leader-PID.
+* **Evidenz ist lesend:** `tests/evidence/phase3-latency.json` u. a.
+  werden ausgewertet, nie erzeugt oder überschrieben.
 
 ## Approach
 
-Twelve services, each boundary listed in Design §2.1 with the capability it removes:
-
-| Group | Services | Network | System access |
-|---|---|---|---|
-| Core | `hub` (TCB), `auth`, `hookbridge` | bridge: loopback listen only | no |
-| Perception | `ears`, `eyes` | **no** (`RestrictAddressFamilies=AF_UNIX`) | read-only |
-| Cognition | `mind`, `gpu@`, `egress` | **only `egress`**; `mind` has no token and no `AF_INET` | no |
-| Actuation | `dbus`, `fs`, `exec`, `input` | no | one capability each |
-| Presentation | `face` | no | no |
-
-**Core rule:** passive context cannot originate an action. Screen text, hook events and background loops may *propose*; execution needs an intent mark plus, for anything model-derived, a confirmed canonical preview.
-
-Phases: **P−1** feasibility (8) · **P0** core (14) · **P1** minimal overlay + auth agent (10) · **P2** full overlay (7) · **P3** voice, egress, taint (17) · **P4** actuation (19) · **P5** eyes (13) · **P6** memory, character, cross-turn test (11). **99 implementation + 33 verifier = 132 tasks.**
+1. **Hauptbaum: erhalten, klassifizieren, Owner-Stopp.** Uncommittete
+   Reviewer-Artefakte (T-3.13b-Satz; `T-3.9.sh`+`FROZEN`-Paar) werden
+   NICHT verworfen, NICHT pauschal committet. Für das Paar gilt: ohne
+   ausdrücklich autorisierten `T-3.9.v2`/`v3`-Task keine Übernahme —
+   Matthias entscheidet. Die T-3.13b-Artefakte durchlaufen Mutantenlauf +
+   `meta.sh` im sauberen Worktree und werden erst danach committet.
+2. **T-0.9 klären** (nicht eingefroren): Listener-Inode gegen
+   `/proc/<hub>/fd` korrelieren statt `ss | grep pid`; Positivkontrolle
+   mit eigenem Unix-Listener; Mutant mit TCP-Listener im Hub, der erkannt
+   werden MUSS.
+3. **T-3.12 diagnostizieren:** Entscheidungsbaum (bekannt-gutes Fixture →
+   HEAD → Socket-Waisen → Import-Baum). Die Helfer-Hash-Abdeckung von
+   T-3.12 kommt bereits EINMALIG aus der Bestandsmigration des
+   Voraussetzungs-Tasks (unveränderte Inhalte); Schritt 3 hasht Wrapper
+   und Helfer NUR DANN neu, wenn ein nachgewiesener Harness-Defekt eine
+   Inhaltsänderung erzwingt (`T-3.12.v2`, Drei-Artefakt-Verfahren).
+   Produktdefekt → Befund an den Builder, Test bleibt rot. Umgebung →
+   dokumentieren, aufräumen, erneut messen.
+4. **T-3.14.v:** dessen Vertrag verbietet das Lesen von `daimon/**` und
+   `face/**` vor dem ersten Lauf — Blindheit ist hier VERTRAGLICH. Ein
+   frischer, isolierter Autor-Kontext erhält nur Vertrag + gepinnte
+   Schnittstelle; sein Werkzeug-Transkript ist Abnahmebestandteil. Ohne
+   dieses Transkript oder nach Vertragsbruch ist der Posten GESCHEITERT
+   (neuer frischer Autor), nicht „nicht-blind etikettiert".
+5. **T-3.15.v:** nur die `n ≥ 20`-Latenz-Evidenz ist ein
+   Verifizierer-Kriterium (rot bei unzureichender Evidenz, lesend). Die
+   Falsch-Positiv-Woche ist laut Vertrag KEIN Verifizierer-Kriterium und
+   steht ausschließlich als `mensch-blockiert` im Ledger.
+6. **P4-Verifizierer T-4.4.v → T-4.16.v** nach den bindenden Blöcken in
+   `docs/IMPLEMENTATION-PLAN.md` (Z. 1226–1392). Besonderheiten:
+   * **T-4.14.v/T-5.13.v wird als kombinierter Vertrag AUSGEFÜHRT, wie
+     geschrieben** — beide Einstiege, gemeinsame
+     `tests/verify/lib/sandbox_units.sh` am kanonischen Ort, zwei
+     Mutantensätze, zwei `meta.sh`-Läufe; die Bibliothek wird über den
+     erweiterten (mutantengeprüften) Freeze-Mechanismus fixiert.
+     `T-5.13.sh` SCHEITERT (Exit ≠ 0) auf dem echten Baum, solange die
+     Eyes-Unit fehlt — ein Erfolg ohne getestete Unit widerspräche seiner
+     Positivkontrolle; das Rot steht im Ledger als `zieltask-offen`, nie
+     als Grün und nie als Defekt.
+   * **exec-Positivfall:** Wegwerf-`.desktop` + Test-Katalog unter
+     temporären XDG-Verzeichnissen im Prüfstand-Baum; Produktivkatalog
+     unberührt; geprüft wird die echte cgroup des gestarteten Prozesses.
+   * **Live-Kanarien vs. Beobachten:** Positivfälle gegen Wegwerf-Ziele
+     echt; eng abgefangen nur an gefährlichen Endpunkten
+     (`systemctl`-Stub-Muster); jede Attrappe mit Positivkontrolle, dass
+     das Abfangen selbst greift.
+7. **T-4.17.sh:** pytest-Anteil plus EXTERNE Prompt-Beobachtung
+   (Fensterliste/Notification-Bus); `/diag`-Zähler nur als Gegenprobe.
+   **Zwei getrennte Beobachtungsfenster:** zuerst die Positivkontrolle
+   (ein autorisierter Prompt WIRD gesehen) in einem eigenen, markierten
+   Fenster; dann Beobachter zurücksetzen; dann das Angriffsfenster, in
+   dem die Zählung null sein muss — die Kontrolle darf die Messung nicht
+   kontaminieren.
+8. **T-4.18, entzirkelt und mit getrennter Autorenschaft:** Kontext A
+   pinnt Prüfliste (nummerierte IDs aus Design §1.3/§6/§7) + JSON-Schema
+   UND schreibt `T-4.18.sh` — BEVOR irgendein Befund existiert; eigener
+   Commit. **Reproduktion ohne Kommando-Loch:** der Prüfer führt NIE
+   Kommandos aus dem Befundregister aus; er kennt VORDEKLARIERTE, sichere
+   Reproduktions-Handler je Prüflisten-/Befundklasse (z. B.
+   „Unit-Property lesen", „Socket-Verbindungsversuch", „Datei-Hash
+   vergleichen"), und jeder als `closed` gemeldete Befund referenziert
+   einen Handler plus begrenzte Daten — kein ausführbarer Text. Kontext B
+   (frisch) erhebt die Befunde. Dann läuft der bereits fixierte Prüfer
+   über Befundregister und Belege. Provenienz beider Kontexte steht im
+   Ledger.
 
 ## Key decisions & tradeoffs
 
-Attack these.
-
-1. **Writing down the threat model instead of hardening against same-uid.** Is anything left in the documents that still exceeds it? Is the "trusted component path" framing meaningful, or just a nicer name for the same gap?
-2. **Voice asks, PTT authorizes.** A real usability cost on a machine with no adversary present. Over-correction?
-3. **Taint as typed values with protected sinks.** Every transformation boundary is a place labels can be lost. Is a type system plus mutation tests enough, or does this need something stronger to be credible?
-4. **The Auth preview.** It must display a model-selected path to be a meaningful confirmation, so it *is* a taint sink. Is escaping + bounding + quoting sufficient, or does showing attacker-influenced strings in the approval dialog defeat the approval?
-5. **Hub as TCB.** The entire model rests on one process that owns policy, marks, tickets, declassification, references and audit. Is concentrating this correct, or should declassification and ticketing be separated from routing?
-6. **33 verifier tasks and a FROZEN hash list.** Meaningful independence, or ceremony that a single agent loop will route around anyway?
-7. **P−1 gates on two measurements**: German wake-word FRR/FAR, and whether sm_120 ONNX Runtime is importable from a cp312 venv — Arch's package ships no Python bindings **[V]**. If both fail, is the rest still worth building?
-8. **Overlay: smithay-client-toolkit + `wl_shm`, no GPU context**, excluding the NVIDIA Blackwell risk class structurally.
+* Aller unabhängige Bau läuft im sauberen Worktree; der Owner-Stopp zum
+  T-3.9-Paar blockiert damit nichts außer der Übernahme des Paars selbst.
+* Kombinierter T-4.14/T-5.13-Vertrag statt Teilung: teurer jetzt, aber
+  keine stillschweigende Vertragsänderung; der Freeze-Mechanismus wird
+  erweitert statt der Artefakt-Topologie geändert.
+* Atomarer Einzel-Commit bei Freeze-Pflicht: verhindert „committet, aber
+  weich" in der Historie; Preis ist ein größerer Commit, den der
+  Drei-Artefakt-Diff-Blick abfedert.
+* Der Ledger ersetzt jede Gate-Behauptung.
 
 ## Risks / open questions
 
-- **R1/R2 (blocking, P−1):** no German KWS model; ONNX Runtime bindings absent from the system package.
-- **R3/R4:** injection and audio spoofing — mitigations structural, unproven until T-5.11 (25 attacks rendered on a real screen) and T-6.7b (cross-turn laundering through hook fields, action results, serialization, summaries, and `user_audio` memory).
-- **R5:** taint loss at a serialization boundary.
-- **R13:** verifier written or later weakened by the implementer.
-- **R16:** Hub compromise defeats everything above the kernel-level network split.
-- **R17:** thirteen units as maintenance burden on a single-user system.
-- Unmeasured: end-to-end screenshot→VLM latency; GPU cost of a `PLAYING` ScreenCast pipeline during a game.
+* Owner-Entscheidung zum T-3.9-Paar steht aus (Stopp-Punkt nur für die
+  Übernahme; dank Worktree kein Blocker für den Rest).
+* T-3.12 kann Produktdefekt sein → bleibt rot, Befund an Builder.
+* Die Freeze-Mechanismus-Erweiterung (Zusatzpfade) ist selbst neue
+  Maschinerie und einzeln autorisiert + mutantengeprüft, bevor sie
+  irgendetwas fixiert.
+* Latenzzusagen eng am Dienst messen; GPU-Nachbarlast vor Messläufen
+  prüfen. Verschachtelte Ketten nur mit Einzelabrechnung und Nachlauf.
 
 ## Out of scope
 
-Continuous recording; cloud processing of passive perception without a user turn; free mouse/keyboard computer-use; multi-user; platform portability beyond Linux/Wayland/KDE; cursor-following (impossible on Wayland by design); external telemetry; containerization; password-field detection; defence against same-uid code execution.
+* Produktcode-Änderungen (Defekte werden Befunde).
+* Die zwei Menschmessungen selbst; der API-Token.
+* `T-4.17.v` (Anhang E), T-6.x. Der P5-Anteil von T-5.13.v wird gemessen,
+  soweit heute Units existieren — nicht mehr.
