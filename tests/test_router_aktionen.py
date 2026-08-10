@@ -39,17 +39,41 @@ def test_user_audio_erreicht_den_aktionszweig_gar_nicht():
     Gefaelschtes Audio -- ein Video, ein Lautsprecher, die eigene
     Sprachausgabe -- koennte den Nutzer sonst mit Dialogen zumuellen, bis er
     einen wegklickt. Der Klick waere echt, die Absicht nicht.
+
+    Die Ablehnung bleibt (ok False, marke_verboten) -- die eingefrorenen
+    Pruefstaende messen genau dieses Paar. NEU (T-4.19-Akzeptanzliste): sie
+    traegt eine gesprochene Rueckmeldung, dieselbe kuratierte Vorlage wie im
+    trusted-Zweig. Kein Dialog, kein Klick -- nur ein Satz.
     """
     a = frage("user_audio")
     assert a["ok"] is False
     assert a["grund"] == "marke_verboten"
     assert a["weg"] is None
-    assert "antwort" not in a
+    assert "Absichtsmarke" in a["antwort"]
+    assert "Push-to-Talk" in a["antwort"]
+    assert a["marke"] == "trusted"
 
 
 def test_user_audio_erzeugt_auch_ohne_ziel_keine_rueckfrage():
     a = frage("user_audio", text="mach das")
     assert a.get("weg") != "rueckfrage"
+
+
+def test_user_audio_mit_auskunftsfrage_bekommt_keine_rueckmeldung():
+    """Die Rueckmeldung gilt dem Aktionswunsch, nicht jeder Absage: eine
+    Inhaltsfrage unter user_audio laeuft ueber Durchgang 2, eine lokale
+    Auskunft bleibt stumm marke_verboten wie bisher."""
+    a = frage("user_audio", text="wie spaet ist es?")
+    assert a["ok"] is False and a["grund"] == "marke_verboten"
+    assert "antwort" not in a
+
+
+def test_tainted_aktionswunsch_bleibt_stumm():
+    """Die Rueckmeldung gehoert dem Menschen, der wirklich gesprochen hat --
+    einem injizierten Text sagt niemand, wie er eskaliert."""
+    a = frage("tainted")
+    assert a["ok"] is False and a["grund"] == "marke_verboten"
+    assert "antwort" not in a
 
 
 def test_trusted_ohne_ptt_wird_werkzeuglos_abgelehnt():

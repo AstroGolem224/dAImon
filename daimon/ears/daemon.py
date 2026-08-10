@@ -285,8 +285,12 @@ class Ohren:
                              "marke": marke_fuer(
                                  listening_bei_beginn=listening_bei_beginn)})
         t2 = self._uhr()
+        # Gesprochen wird, was der Mind als `antwort` mitgibt -- AUCH bei
+        # ok=False: eine Absage mit kuratierter Rueckmeldung (T-4.19,
+        # "Aktion ohne Absichtsmarke") ist fuer den Sprecher kein Fehler.
+        # Eine Absage OHNE Rueckmeldung bleibt stumm wie bisher.
         satz = str(antwort.get("antwort") or "").strip()
-        if not antwort.get("ok") or not satz:
+        if not satz:
             self.log.info("Keine Antwort", DAIMON_ACTION="ears_stumm",
                           DAIMON_GRUND=str(antwort.get("grund", "leer"))[:60])
             self._latenz_schreiben(t_segment, t0, t1, t2, None, None)

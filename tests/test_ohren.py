@@ -141,6 +141,45 @@ def test_eine_aeusserung_laeuft_durch_alle_vier_stufen(tmp_path):
     assert o.runden == 1
 
 
+def test_eine_absage_mit_rueckmeldung_wird_gesprochen(tmp_path):
+    """T-4.19: der Mind lehnt einen Aktionswunsch ohne Marke ab (ok False,
+    marke_verboten) und gibt eine kuratierte Rueckmeldung mit -- die wird
+    gesprochen. Sonst sieht die Ablehnung aus wie ein Dienst, der nichts
+    verstanden hat."""
+    class AbsageRufe(Rufe):
+        def __call__(self, pfad, anfrage):
+            if anfrage.get("art") == "frage":
+                self.anfragen.append((str(pfad), anfrage))
+                return {"v": 1, "ok": False, "grund": "marke_verboten",
+                        "antwort": "Fuer eine Aktion brauche ich eine "
+                                   "Absichtsmarke — bitte Push-to-Talk "
+                                   "druecken.", "marke": "trusted"}
+            return super().__call__(pfad, anfrage)
+
+    rufe = AbsageRufe()
+    o = ohren(tmp_path, rufe)
+    o.zustand_uebernehmen({"voice": {"listening": True, "tts_active": False}})
+    sprechen(o)
+    assert len(rufe.art("sprich")) == 1
+    assert "Absichtsmarke" in rufe.art("sprich")[0]["text"]
+
+
+def test_eine_absage_ohne_rueckmeldung_bleibt_stumm(tmp_path):
+    """Eine Absage ohne `antwort`-Feld spricht weiterhin nichts."""
+    class StummeRufe(Rufe):
+        def __call__(self, pfad, anfrage):
+            if anfrage.get("art") == "frage":
+                self.anfragen.append((str(pfad), anfrage))
+                return {"v": 1, "ok": False, "grund": "marke_verboten"}
+            return super().__call__(pfad, anfrage)
+
+    rufe = StummeRufe()
+    o = ohren(tmp_path, rufe)
+    o.zustand_uebernehmen({"voice": {"listening": True, "tts_active": False}})
+    sprechen(o)
+    assert rufe.art("sprich") == []
+
+
 def test_leeres_transkript_fragt_den_mind_nicht(tmp_path):
     """Ein Segment ohne Worte ist keine Frage. Sonst kostet jedes Rascheln
     ein Kontingent."""

@@ -134,6 +134,12 @@ _MARKE = {
     "trusted": Mark.TRUSTED, "tainted": Mark.TAINTED,
 }
 
+# T-4.19: die EINE kuratierte Rueckmeldung fuer "Aktion ohne Absichtsmarke".
+# Eine Vorlage fuer beide Zweige (trusted-Ablehnung, user_audio-Absage) --
+# zwei Formulierungen waeren zwei Wahrheiten.
+_ABSICHTSMARKE_HINWEIS = ("Fuer eine Aktion brauche ich eine "
+                          "Absichtsmarke — bitte Push-to-Talk druecken.")
+
 GRUENDE = frozenset({
     "unlesbar", "unbekannte_art", "kein_text", "marke_verboten",
     "kein_kontingent", "egress_weg", "quelle_weg",
@@ -405,6 +411,17 @@ class Router:
             taint.pruefe_senke(gereicht,
                                senke="durchgang1" if was != "api" else "durchgang2")
         except taint.SenkenFehler as exc:
+            if was == "aktion" and marke == "user_audio":
+                # T-4.19-Akzeptanzliste: der Mensch, der wirklich gesprochen
+                # hat, erfaehrt sonst nie, WARUM nichts passiert. Die Absage
+                # selbst bleibt (ok False, marke_verboten) -- die
+                # eingefrorenen Pruefstaende messen genau dieses Paar. Die
+                # Rueckmeldung ist die kuratierte Vorlage, kein Material aus
+                # der Aeusserung; `tainted` bekommt sie NICHT, einem
+                # injizierten Text sagt niemand, wie er eskaliert.
+                return self._nein("marke_verboten", str(exc)[:160],
+                                  antwort=_ABSICHTSMARKE_HINWEIS,
+                                  marke="trusted")
             return self._nein("marke_verboten", str(exc)[:160])
 
         if was == "aktion" and marke != "user_ptt":
@@ -424,8 +441,7 @@ class Router:
             # Nicht "physische Autorisierung" -- ein Tastendruck belegt, dass
             # jemand etwas wollte, nicht dass er es sein darf.
             return {"v": 1, "ok": True, "weg": "abgelehnt", "absicht": "aktion",
-                    "antwort": "Fuer eine Aktion brauche ich eine "
-                               "Absichtsmarke — bitte Push-to-Talk druecken.",
+                    "antwort": _ABSICHTSMARKE_HINWEIS,
                     "marke": "trusted", "api": False}
         if was == "aktion" and not _ziel_benannt(text):
             # Design 5.2: "Mach das" verweist NICHT auf Assistententext oder
