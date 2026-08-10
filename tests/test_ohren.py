@@ -180,6 +180,64 @@ def test_eine_absage_ohne_rueckmeldung_bleibt_stumm(tmp_path):
     assert rufe.art("sprich") == []
 
 
+# -- Echo-Referenz (Vertrag: Echo-Referenz-Plan.md) ------------------------
+
+def _echo_paket(pcm: bytes) -> bytes:
+    import base64
+    return json.dumps({"v": 1, "art": "echo", "rate": 16000,
+                       "pcm": base64.b64encode(pcm).decode("ascii")}).encode()
+
+
+def test_ein_echo_paket_landet_in_der_sperre(tmp_path):
+    o = ohren(tmp_path)
+    pcm = np.full(160, 1000, dtype="<i2").tobytes()
+    o._echo_verarbeiten(_echo_paket(pcm))
+    assert bytes(o.sperre._ref) == pcm
+    assert o.echo_pakete == 1
+
+
+def test_muell_wird_verworfen_nicht_geworfen(tmp_path):
+    o = ohren(tmp_path)
+    for kaputt in (b"kein json", b"{}",
+                   json.dumps({"v": 1, "art": "echo", "rate": 22050,
+                               "pcm": "AAAA"}).encode(),
+                   json.dumps({"v": 1, "art": "echo", "rate": 16000,
+                               "pcm": "!!!"}).encode()):
+        o._echo_verarbeiten(kaputt)
+    assert o.echo_pakete == 0
+    assert bytes(o.sperre._ref) == b""
+
+
+def test_das_wiedergabeende_leert_die_referenz(tmp_path):
+    """Eine Referenz, die die Wiedergabe ueberlebt, koennte spaeter echte
+    Sprache als Echo verwerfen."""
+    o = ohren(tmp_path)
+    o.zustand_uebernehmen({"voice": {"listening": False, "tts_active": True}})
+    o._echo_verarbeiten(_echo_paket(b"\x01\x02" * 100))
+    assert len(o.sperre._ref) > 0
+    o.zustand_uebernehmen({"voice": {"listening": False, "tts_active": False}})
+    assert len(o.sperre._ref) == 0
+
+
+def test_der_echo_socket_nimmt_datagramme_an(tmp_path):
+    import socket as S
+    o = ohren(tmp_path)
+    o.start()
+    try:
+        pcm = np.full(160, 500, dtype="<i2").tobytes()
+        s = S.socket(S.AF_UNIX, S.SOCK_DGRAM)
+        s.sendto(_echo_paket(pcm), str(tmp_path / "echo.sock"))
+        s.close()
+        for _ in range(200):
+            if o.echo_pakete:
+                break
+            time.sleep(0.005)
+        assert o.echo_pakete == 1
+        assert bytes(o.sperre._ref) == pcm
+    finally:
+        o.stop()
+
+
 def test_leeres_transkript_fragt_den_mind_nicht(tmp_path):
     """Ein Segment ohne Worte ist keine Frage. Sonst kostet jedes Rascheln
     ein Kontingent."""

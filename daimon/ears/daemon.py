@@ -64,6 +64,10 @@ EVENTS_SOCKET = "events.sock"
 STT_SOCKET = "stt.sock"
 MIND_SOCKET = "mind.sock"
 SAY_SOCKET = "tts-say.sock"
+# Echo-Referenz vom TTS (Vertrag: Echo-Referenz-Plan.md). SOCK_DGRAM: der
+# Sender ist der Sprech-Thread des TTS und darf an nichts haengen bleiben.
+ECHO_SOCKET = "echo.sock"
+ECHO_MAX_DGRAM = 200_000
 LATENZ_DATEI = "latenz.jsonl"
 
 STUFEN = ("wake_to_audio", "audio_to_stt", "stt_to_mind", "mind_to_tts",
@@ -134,7 +138,10 @@ class Ohren:
 
         self.segmente = 0
         self.runden = 0
+        self.echo_pakete = 0
         self.letzte_latenz: dict | None = None
+        self._echo_sock: socket.socket | None = None
+        self._echo_thread: threading.Thread | None = None
 
         self._verbinde_timeout_s = float(verbinde_timeout_s)
         self._stop = threading.Event()
@@ -154,6 +161,14 @@ class Ohren:
                 self.sperre.wiedergabe_an("tts")
             else:
                 self.sperre.wiedergabe_aus()
+                # Eine Referenz, die die Wiedergabe ueberlebt, koennte
+                # spaeter echte Sprache als Echo verwerfen.
+                self.sperre.echo_referenz_leeren()
+                # Zaehler, kein Audio: die einzige von aussen sichtbare
+                # Spur, dass die Referenz wirklich ankommt.
+                self.log.info("Echo-Referenz geleert",
+                              DAIMON_ACTION="echo_zyklus",
+                              DAIMON_PAKETE=self.echo_pakete)
 
         if listening != self._listening:
             self._listening = listening
@@ -347,6 +362,7 @@ class Ohren:
                 "segmente": self.segmente,
                 "runden": self.runden,
                 "verworfen_sperre": self.sperre.verworfen_sperre,
+                "echo_pakete": self.echo_pakete,
                 "letzte_latenz_ms": self.letzte_latenz}
 
     def start(self) -> None:
@@ -356,6 +372,50 @@ class Ohren:
             self._erkenner = vad.Erkenner()
         self._leser = threading.Thread(target=self._horchen, daemon=True)
         self._leser.start()
+        self._echo_oeffnen()
+
+    # -- Echo-Referenz (Vertrag: Echo-Referenz-Plan.md) --------------------
+
+    def _echo_oeffnen(self) -> None:
+        pfad = self.runtime_dir / ECHO_SOCKET
+        try:
+            pfad.unlink()          # RuntimeDirectoryPreserve laesst sie liegen
+        except OSError:
+            pass
+        self._echo_sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        self._echo_sock.bind(str(pfad))
+        self._echo_sock.settimeout(1.0)
+        self._echo_thread = threading.Thread(target=self._echo_lauf,
+                                             daemon=True)
+        self._echo_thread.start()
+
+    def _echo_lauf(self) -> None:
+        while not self._stop.is_set():
+            try:
+                daten = self._echo_sock.recv(ECHO_MAX_DGRAM)
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            self._echo_verarbeiten(daten)
+
+    def _echo_verarbeiten(self, daten: bytes) -> None:
+        """Ein Datagramm. Gueltig -> in die Sperre; alles andere wird
+        verworfen. Kein Audio in Logzeilen (Auflage aus dem Interlock)."""
+        import base64
+
+        try:
+            paket = json.loads(daten)
+            if (not isinstance(paket, dict) or paket.get("art") != "echo"
+                    or paket.get("rate") != 16000):
+                return
+            pcm = base64.b64decode(str(paket.get("pcm") or ""), validate=True)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            return
+        if not pcm:
+            return
+        self.sperre.echo_referenz(pcm)
+        self.echo_pakete += 1
 
     def _horchen(self) -> None:
         pfad = str(self.runtime_dir / EVENTS_SOCKET)
@@ -392,6 +452,11 @@ class Ohren:
 
     def stop(self) -> None:
         self._stop.set()
+        if self._echo_sock is not None:
+            try:
+                self._echo_sock.close()
+            except OSError:
+                pass
         self._aufnahme_schliessen()
 
 

@@ -59,6 +59,7 @@ import time
 from daimon.common.config import Config, load as load_config
 from daimon.common.logging import Logger, get_logger
 from daimon.face import mimic as mimic_client
+from daimon.face.echo import EchoSender
 
 TTS_SOCKET = "tts.sock"            # der Hub-Endpunkt (Validator + Abkuehlung)
 LISTEN_FDS_START = 3
@@ -316,6 +317,12 @@ class Sprecher:
         self._mimic_gen = -1
         self._warm_laeuft = False
         self.log = log or get_logger("daimon-tts")
+        # Echo-Referenz an die Rueckkopplungssperre der Ohren (T-3.9
+        # Kriterium 8, zweite Haelfte). Best effort und NACH dem
+        # TTFA-Stempel -- ein toter Ohren-Dienst verzoegert die Stimme nicht.
+        import os.path as _p
+        self._echo = EchoSender(_p.join(_p.dirname(hub_socket), "echo.sock"),
+                                log=self.log)
         # Erst die Stimme finden, dann ihre Lizenz pruefen -- und beides VOR
         # dem Laden. Eine Lizenz, die nach dem Laden geprueft wird, ist eine
         # Lizenz, die man schon benutzt hat.
@@ -648,6 +655,7 @@ class Sprecher:
             except (OSError, ValueError):
                 return False
             stand["bytes"] += len(block)
+            self._echo.senden(block, sitzung.rate)
             return True
 
         weiter = schreibe(sitzung.erster_block)
@@ -774,6 +782,7 @@ class Sprecher:
             except (OSError, ValueError):
                 return False            # Wiedergabe weg (Abbruch oder Fehler)
             stand["segmente"] += 1
+            self._echo.senden(pcm, self.samplerate)
             return True
 
         weiter = schreibe(stuecke[0]) if stuecke else False
