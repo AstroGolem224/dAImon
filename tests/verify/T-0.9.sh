@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Verifizierer fuer T-0.9: Hub, Bus und State.
 #
-# Der Plan verlangt ausdruecklich, per `ss -lx` und `ss -ltn` am LAUFENDEN
-# Prozess zu pruefen, dass er Unix-Sockets haelt und keinen TCP-Socket. Am
+# Die Socket-Inodes werden am LAUFENDEN Prozess mit /proc/<pid>/fd korreliert.
+# Eine reine ss-Ausgabe kann die PID wegen PR_SET_DUMPABLE=0 nicht nennen. Am
 # Quelltext waere das leicht zu uebersehen: eine Bibliothek koennte hinter
 # unserem Ruecken einen Debug-Port oeffnen. Der Punkt ist nicht Vorsicht,
 # sondern dass RestrictAddressFamilies=AF_UNIX in T-0.14 erfuellbar bleibt --
@@ -11,6 +11,7 @@
 set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PY="$REPO/.venv/bin/python"
+[[ -x "$PY" ]] || PY="$(command -v python3)"
 fail=0
 chk() { if [[ "$2" == "$3" ]]; then echo "  ok   $1"; else echo "  FAIL $1 (erwartet $3, war $2)"; fail=1; fi; }
 
@@ -37,20 +38,50 @@ chk "es laufen Tests" "$([[ $passed -gt 0 ]] && echo ja || echo nein)" ja
 
 # --- am laufenden Prozess -------------------------------------------------
 tmp="$(mktemp -d)"; rt="$tmp/rt"
-( cd "$REPO" && XDG_RUNTIME_DIR="$tmp" "$PY" -m daimon.hub.daemon --runtime-dir "$rt" ) >"$tmp/hub.log" 2>&1 &
+hub=""; kontrolle=""
+aufräumen() {
+  [[ -n "$hub" ]] && kill "$hub" 2>/dev/null || true
+  [[ -n "$kontrolle" ]] && kill "$kontrolle" 2>/dev/null || true
+  [[ -n "$hub" ]] && wait "$hub" 2>/dev/null || true
+  [[ -n "$kontrolle" ]] && wait "$kontrolle" 2>/dev/null || true
+  rm -rf -- "$tmp"
+}
+trap aufräumen EXIT INT TERM
+
+# Die Positivkontrolle benutzt denselben Inode-/fd-Abgleich. Ohne sie koennte
+# eine kaputte Korrelation sowohl Unix als auch TCP faelschlich leer melden.
+probe_dir="$REPO/tests/harness/t09_socket_probe"
+kontroll_sock="$tmp/positiv.sock"; kontroll_befund="$tmp/positiv.json"
+( env PYTHONPATH="$probe_dir${PYTHONPATH:+:$PYTHONPATH}" \
+    DAIMON_T09_SOCKET_BEFUND="$kontroll_befund" \
+    DAIMON_T09_POSITIV_SOCKET="$kontroll_sock" \
+    "$PY" -c 'import time; time.sleep(300)' ) >"$tmp/positiv.log" 2>&1 &
+kontrolle=$!
+for _ in $(seq 1 80); do [[ -s "$kontroll_befund" ]] && break; sleep 0.05; done
+positiv="$(jq -r --arg p "$kontroll_sock" '[.unix[] | select(.path == $p)] | length' "$kontroll_befund" 2>/dev/null)"
+chk "Positivkontrolle korreliert bekannten Unix-Listener mit seinem Prozess-fd" "${positiv:-0}" 1
+
+hub_befund="$tmp/hub-sockets.json"
+( cd "$REPO" && env XDG_RUNTIME_DIR="$tmp" \
+    PYTHONPATH="$probe_dir${PYTHONPATH:+:$PYTHONPATH}" \
+    DAIMON_T09_SOCKET_BEFUND="$hub_befund" \
+    DAIMON_T09_TCP_MUTANT="${DAIMON_T09_TCP_MUTANT:-0}" \
+    "$PY" -m daimon.hub.daemon --runtime-dir "$rt" ) >"$tmp/hub.log" 2>&1 &
 hub=$!
-for _ in $(seq 1 40); do [[ -S "$rt/state.sock" ]] && break; sleep 0.1; done
+for _ in $(seq 1 80); do [[ -S "$rt/state.sock" && -s "$hub_befund" ]] && break; sleep 0.05; done
 
 chk "Hub laeuft" "$(kill -0 $hub 2>/dev/null && echo ja || echo nein)" ja
 chk "state.sock existiert" "$([[ -S "$rt/state.sock" ]] && echo ja || echo nein)" ja
 chk "state.sock hat Modus 0600" "$(stat -c '%a' "$rt/state.sock" 2>/dev/null)" 600
 chk "hookbridge.sock hat Modus 0600" "$(stat -c '%a' "$rt/hookbridge.sock" 2>/dev/null)" 600
 
-unix_n="$(ss -lxp 2>/dev/null | grep -c "pid=$hub," || true)"
-chk "haelt mindestens einen horchenden Unix-Socket" \
-  "$([[ "${unix_n:-0}" -ge 1 ]] && echo ja || echo nein)" ja
+owner="$(jq -r '.pid // 0' "$hub_befund" 2>/dev/null)"
+chk "Socket-Befund stammt vom wirklichen Hub-Prozess" "${owner:-0}" "$hub"
+unix_n="$(jq -r --arg s "$rt/state.sock" --arg h "$rt/hookbridge.sock" \
+  '[.unix[] | select(.path == $s or .path == $h)] | length' "$hub_befund" 2>/dev/null)"
+chk "haelt beide horchenden Unix-Sockets laut Inode-/fd-Korrelation" "${unix_n:-0}" 2
 
-tcp_n="$(ss -ltnp 2>/dev/null | grep -c "pid=$hub," || true)"
+tcp_n="$(jq -r '.tcp | length' "$hub_befund" 2>/dev/null)"
 chk "haelt KEINEN horchenden TCP-Socket" "${tcp_n:-0}" 0
 
 # Zustellung ueber den echten Socket, nicht ueber importierten Code.
@@ -75,6 +106,4 @@ chk "Ereignis erreicht den State ueber den Socket" \
 chk "State liefert Schema v2" "$(jq -r '.v' <<<"$antwort" 2>/dev/null)" 2
 chk "Bubble ist gesetzt" "$(jq -r '.bubble' <<<"$antwort" 2>/dev/null)" true
 
-kill $hub 2>/dev/null; wait $hub 2>/dev/null
-rm -rf "$tmp"
 exit $fail

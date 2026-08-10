@@ -1,0 +1,26 @@
+# <aufrufer> <direkte repo-lokale Laufzeitabhaengigkeit>
+tests/verify/T-0.0.sh tests/verify/verify-frozen.sh
+tests/verify/T-0.0.sh tests/verify/T-0.8.sh
+tests/verify/verify-frozen.sh tests/verify/freeze-deps.py
+tests/verify/T-0.12.sh tests/harness/vollbildfenster.py
+tests/verify/T-1.1.sh tests/harness/pixelprobe.py
+tests/verify/T-1.1.sh tests/harness/vollbildfenster.py
+tests/verify/T-2.1.sh tests/harness/moodprobe.py
+tests/verify/T-2.1.sh tests/verify/T-1.5.sh
+tests/verify/T-2.4.sh tests/verify/T-1.5.sh
+tests/verify/T-3.11.sh tests/verify/t311_pruefstand.py
+tests/verify/t311_pruefstand.py tests/verify/t311_sandbox_probe.py
+tests/verify/t311_pruefstand.py tests/verify/T-3.8.sh
+tests/verify/t311_pruefstand.py tests/verify/T-3.9.sh
+tests/verify/t311_pruefstand.py tests/verify/T-3.10.sh
+tests/verify/T-3.12.sh tests/verify/t312_pruefstand.py
+tests/verify/t312_pruefstand.py tests/verify/T-3.8.sh
+tests/verify/t312_pruefstand.py tests/verify/T-3.9.sh
+tests/verify/t312_pruefstand.py tests/verify/T-3.10.sh
+tests/verify/t312_pruefstand.py tests/verify/T-3.11.sh
+tests/verify/T-3.13.sh tests/verify/t313_pruefstand.py
+tests/verify/t313_pruefstand.py tests/verify/T-3.8.sh
+tests/verify/t313_pruefstand.py tests/verify/T-3.9.sh
+tests/verify/t313_pruefstand.py tests/verify/T-3.10.sh
+tests/verify/t313_pruefstand.py tests/verify/T-3.11.sh
+tests/verify/t313_pruefstand.py tests/verify/T-3.12.sh

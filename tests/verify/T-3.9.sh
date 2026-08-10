@@ -128,9 +128,6 @@ chk "der Baum bringt den Hub mit (die Grenze liegt im Hub)" \
   "$([[ -f "$TARGET/daimon/hub/daemon.py" ]] && echo ja || echo nein)" ja
 chk "sherpa-onnx im Interpreter" \
   "$("$PY" -c 'import sherpa_onnx' 2>/dev/null && echo ja || echo nein)" ja
-# Grundlinie fuer 'kein zusaetzlicher Compute-Prozess' (K10): VOR jedem Start.
-NVIDIA_VORHER="$(nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null | tr -d ' ' | sort)"
-
 if [[ "$fail" -ne 0 ]]; then
   echo
   echo "T-3.9: FEHLGESCHLAGEN — Voraussetzungen fehlen, nichts gemessen."
@@ -1701,8 +1698,21 @@ chk "nvidia-smi ist abfragbar (POSITIVKONTROLLE)" \
   "$(nvidia-smi --query-compute-apps=pid --format=csv,noheader >/dev/null 2>&1 && echo ja || echo nein)" ja
 chk "der Dienst steht NICHT als Compute-Prozess in nvidia-smi" \
   "$(grep -q "^$DIENST_PID\$" <<<"$compute_nachher" && echo nein || echo ja)" ja
-chk "kein zusaetzlicher Compute-Prozess seit Laufbeginn" \
-  "$([[ "$compute_nachher" == "$NVIDIA_VORHER" ]] && echo ja || { echo "vorher: ${NVIDIA_VORHER:-leer} nachher: ${compute_nachher:-leer}"; echo nein; })" ja
+# T-3.9.v3: Die v2-Fassung verglich die GESAMTE Compute-Liste der Maschine
+# vorher/nachher -- jedes fremde GPU-Programm (Videoplayer, mimic-tts des
+# Nutzers), das waehrend des Laufs startete oder endete, machte die Pruefung
+# rot, ohne dass der Pruefling etwas getan haette (06.08.: vier rote Laeufe
+# durch fremde PIDs, Kaskade auf fuenf Nachbar-Tasks). Die Zusage lautet
+# aber: DER DIENST haelt 0 VRAM. Gemessen wird deshalb nur der eigene
+# Prozessbaum: die Prozessgruppe des Pruefstands (setsid, PGID == ACT_PID)
+# plus die bekannte Dienst-PID. Fremde PIDs werden ausdruecklich ignoriert.
+# Rot wird die Pruefung weiterhin, sobald ein EIGENER Prozess (Dienst oder
+# Kind, z.B. ein CUDA-ladender Helfer) in nvidia-smi auftaucht.
+gruppen_pids="$(pgrep -g "${ACT_PID:-0}" 2>/dev/null || true)"
+eigene_pids="$(printf '%s\n%s\n' "$gruppen_pids" "${DIENST_PID:-}" | grep -E '^[0-9]+$' | sort -u)"
+eigene_treffer="$(comm -12 <(printf '%s\n' $eigene_pids) <(printf '%s\n' $compute_nachher) | tr '\n' ' ')"
+chk "kein Compute-Prozess aus dem Prozessbaum des Pruefstands (fremde GPU-Prozesse ignoriert)" \
+  "$([[ -n "$eigene_pids" && -z "$eigene_treffer" ]] && echo ja || { echo "eigene PIDs in nvidia-smi: ${eigene_treffer:-keine-eigenen-PIDs-ermittelbar}"; echo nein; })" ja
 
 # =============================================================================
 # Die Unit-Dateien -- kommentarbereinigt (Erwaеhnung ist nicht Direktive)

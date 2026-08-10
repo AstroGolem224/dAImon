@@ -4,11 +4,29 @@
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FROZEN="$REPO/tests/verify/FROZEN"
+DEPS="$REPO/tests/verify/FROZEN.deps"
+DEPS_PRUEFER="$REPO/tests/verify/freeze-deps.py"
+PY="$REPO/.venv/bin/python"
+[[ -x "$PY" ]] || PY="$(command -v python3)"
 bootstrap=0
 if [[ "${1:-}" == "--bootstrap" ]]; then bootstrap=1; shift; fi
 [[ $# -eq 1 ]] || { echo "usage: freeze.sh [--bootstrap] <task-id>" >&2; exit 2; }
 task="$1"; rel="tests/verify/${task}.sh"
 [[ -f "$REPO/$rel" ]] || { echo "freeze: $rel fehlt" >&2; exit 1; }
+command -v strace >/dev/null 2>&1 || {
+    echo "freeze: FEHLER — strace fehlt; ohne Laufzeitspur wird nicht eingefroren." >&2
+    exit 1
+}
+
+# Erst die geschlossene Menge beweisen. Sonst koennte ein gruener Mutantenlauf
+# bereits seine eigentlichen Aussagen aus einem ungeschuetzten Helfer beziehen.
+tmp="$(mktemp -d)"
+trap 'rm -rf -- "$tmp"' EXIT
+if ! "$PY" "$DEPS_PRUEFER" pruefen --repo "$REPO" \
+        --deps "$DEPS" "$rel" >"$tmp/erlaubt"; then
+    echo "freeze: Abhaengigkeits-Entdeckung fehlgeschlagen, nicht eingefroren" >&2
+    exit 1
+fi
 
 if (( bootstrap )); then
     # Nur fuer T-0.0: der Verifizierer prueft den Durchsetzungsmechanismus selbst
@@ -22,29 +40,49 @@ else
     "$REPO/tests/verify/meta.sh" "$task" || { echo "freeze: Mutationstest fehlgeschlagen, nicht eingefroren" >&2; exit 1; }
 fi
 
+# Der statische Beweis verhindert unaufloesbare Pfade; die Spur belegt, welche
+# Dateien die tatsaechlichen Gut-, Mutanten- und Echtlaeufe mitsamt Kindern
+# geoeffnet haben. Produkt- und Fixture-Baeume sind dabei bewusst Gegenstand.
+spur_lauf() {
+        local name="$1" fixture="$2" erwartet="$3" log="$tmp/spur-$1.log" rc
+        set +e
+        if [[ -n "$fixture" ]]; then
+            strace -f -qq -s 4096 -e trace=openat -o "$log" \
+                env DAIMON_FIXTURE="$fixture" "$REPO/$rel" >/dev/null 2>&1
+        else
+            strace -f -qq -s 4096 -e trace=openat -o "$log" \
+                env -u DAIMON_FIXTURE "$REPO/$rel" >/dev/null 2>&1
+        fi
+        rc=$?
+        set -e
+        "$PY" "$DEPS_PRUEFER" spur --repo "$REPO" \
+            --erlaubt "$tmp/erlaubt" --log "$log" || return 1
+        if [[ "$erwartet" == gruen && $rc -ne 0 ]]; then
+            echo "freeze: Laufzeitspur '$name' scheiterte am Pruefling (Exit $rc)" >&2
+            return 1
+        fi
+        if [[ "$erwartet" == rot && $rc -eq 0 ]]; then
+            echo "freeze: Laufzeitspur '$name' erkannte die Mutante nicht" >&2
+            return 1
+        fi
+        echo "freeze: Laufzeitspur '$name' ohne undeklarierte Helfer."
+}
+spur_lauf gut "$REPO/tests/fixtures/known-good/$task" gruen || exit 1
+while read -r mutant; do
+    spur_lauf "mutant-$(basename "$mutant")" "$mutant" rot || exit 1
+done < <(find "$REPO/tests/mutants/$task" -mindepth 1 -maxdepth 1 -type d | sort)
+spur_lauf echt "" gruen || exit 1
+
 touch "$FROZEN"
 if grep -q " $rel\$" "$FROZEN"; then
     echo "freeze: $rel ist bereits eingefroren. Aenderung braucht einen neuen .v-Task." >&2
     exit 1
 fi
-printf '%s %s\n' "$(sha256sum "$REPO/$rel" | cut -d' ' -f1)" "$rel" >> "$FROZEN"
-
-# T-1.1.v2: Die Harness friert MIT ein.
-#
-# Bis hierher deckte FROZEN nur tests/verify/*.sh ab. T-1.1.sh und T-2.1.sh
-# delegieren die eigentliche Messung aber an tests/harness/*.py -- die
-# Pixelprobe, das Vollbildfenster, die Mood-Probe. Wer dort die Toleranz
-# hochdreht oder eine Pruefung ausbaut, weicht einen eingefrorenen Verifizierer
-# auf, ohne dass verify-frozen etwas merkt: der Hash der .sh bleibt gleich.
-#
-# Die Abhaengigkeiten werden aus dem Skript GELESEN, nicht gepflegt. Eine
-# Liste, die von Hand nachgezogen werden muss, ist beim naechsten neuen
-# Harness-Modul veraltet -- und veraltet heisst hier: ungeschuetzt.
 while read -r dep; do
     [[ -n "$dep" && -f "$REPO/$dep" ]] || continue
     grep -q " $dep\$" "$FROZEN" && continue
     printf '%s %s\n' "$(sha256sum "$REPO/$dep" | cut -d' ' -f1)" "$dep" >> "$FROZEN"
-    echo "freeze: $dep mit eingefroren (Harness von $rel)."
-done < <(grep -oE 'tests/harness/[A-Za-z0-9_./-]+' "$REPO/$rel" | sort -u)
+    [[ "$dep" == "$rel" ]] || echo "freeze: $dep mit eingefroren (Abhaengigkeit von $rel)."
+done < "$tmp/erlaubt"
 sort -k2 -o "$FROZEN" "$FROZEN"
 echo "freeze: $rel eingefroren."

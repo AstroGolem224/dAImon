@@ -10,6 +10,10 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FROZEN="$REPO/tests/verify/FROZEN"
+DEPS="$REPO/tests/verify/FROZEN.deps"
+DEPS_PRUEFER="$REPO/tests/verify/freeze-deps.py"
+PY="$REPO/.venv/bin/python"
+[[ -x "$PY" ]] || PY="$(command -v python3)"
 
 if [[ ! -f "$FROZEN" ]]; then
     echo "verify-frozen: $FROZEN fehlt. Kein Verifizierer ist eingefroren." >&2
@@ -61,4 +65,15 @@ if [[ $fail -ne 0 ]]; then
     exit 1
 fi
 
-echo "verify-frozen: $count Verifizierer unveraendert."
+# Der Hashvergleich kommt absichtlich zuerst: Mutanten mit gueltigem
+# Wrapper-Hash muessen danach nachweisbar an der Abhaengigkeits-Sperre fallen.
+mapfile -t wurzeln < <(awk '!/^#/ && $2 ~ /^tests\/verify\/T-.*\.sh$/ {print $2}' "$FROZEN")
+if (( ${#wurzeln[@]} > 0 )); then
+    if ! "$PY" "$DEPS_PRUEFER" pruefen --repo "$REPO" --deps "$DEPS" \
+            --manifest "$FROZEN" "${wurzeln[@]}" >/dev/null; then
+        echo "verify-frozen: Abhaengigkeits-Entdeckung fehlgeschlagen." >&2
+        exit 1
+    fi
+fi
+
+echo "verify-frozen: $count eingefrorene Dateien unveraendert; Abhaengigkeiten geschlossen."

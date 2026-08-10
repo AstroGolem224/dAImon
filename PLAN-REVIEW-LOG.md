@@ -261,3 +261,72 @@ Neu-Hashen nur bei Inhaltsänderung (3), Mutanten der Freeze-Erweiterung
 so gebaut, dass sie an der Abhängigkeits-Entdeckung scheitern müssen, nicht
 am alten Hash-Vergleich (4, 5). Die letzte Fassung hat Codex nicht mehr
 gesehen. Abnahme-Entscheidung liegt bei Matthias.
+
+---
+
+## Act 3 — Build (Codex baut, Claude prueft)
+
+Branch `reviewer/p4-verifizierer` von `e23a0cf`, eigener Worktree. Modell
+`gpt-5.6-sol`, effort `medium`, MAX_FIX_ROUNDS=2. Scope dieser Runde nach
+Owner-Entscheidung: Voraussetzungs-Task Freeze-Erweiterung + T-0.9, plus der
+als T-3.9.v2 autorisierte Transfer. Alles andere aus PLAN.md ausdruecklich
+NICHT begonnen.
+
+### Runde 1 — Codex build
+Geliefert: `freeze-deps.py` (geschlossene Deklarationsgrammatik, rekursive
+Entdeckung, Manifest-Abgleich, Laufzeitspur-Auswertung), `FROZEN.deps` als
+Kantenliste, Erweiterung von `freeze.sh` und `verify-frozen.sh`,
+`freeze-extension.sh` als Mutationstreiber mit drei Mutanten, T-0.9-Reparatur
+ueber Inode-/fd-Korrelation samt Positivkontrolle und TCP-Mutant,
+Bestandsmigration der sechs ungehashten Helfer, T-3.9-Transfer mit
+verifizierter Provenienz `8da66117…`.
+
+Befund von Codex, der die Aufgabenstellung korrigiert hat: `$hub` war NICHT
+die falsche PID. Die alte Pruefung war rot, weil `PR_SET_DUMPABLE=0` sowohl
+die PID-Angabe in `ss -p` als auch den externen Zugriff auf `/proc/<pid>/fd`
+unterdrueckt — genau die Falle, die HANDOVER.md schon kennt. Die Korrelation
+laeuft deshalb im Hub-Prozess selbst ueber `/proc/self/fd`; gelesen wird
+Kernel-Wahrheit, kein vom Pruefling gefuehrter Zaehler.
+
+### Claude's verdict (Runde 1)
+Alle vier Beweise unter dem ECHTEN venv nachgefahren (der Worktree hatte
+keins; Codex' eigener Lauf lief unter System-Python und war damit nicht
+aussagekraeftig — Symlink gesetzt, alles reproduziert). Dann drei eigene
+Angriffe auf die neue Sperre:
+
+* A1 `.probe-`-praefigierter Helfer — statisch abgelehnt.
+* A2 f-String-Verifiziererpfad mit einfachen Anfuehrungszeichen — abgelehnt.
+* A3 relativer Aufruf `./helfer.py` nach `cd` — **DURCHGELASSEN** von der
+  statischen Pruefung. Die Laufzeitspur fing ihn (nachgemessen), aber
+  `freeze.sh` behandelte fehlendes `strace` als blosse WARNUNG und fror
+  trotzdem ein. Auf einer Maschine ohne strace waere daraus ein
+  FROZEN-Eintrag geworden, der aussieht wie jeder andere und eine Zusage
+  behauptet, die nie gemessen wurde — die Signatur dieses Projekts.
+
+Drei Befunde zurueckgegeben: (1) A3 + strace-Warnung, (2) die unbegruendete
+`/.probe-`-Ausnahme in der Spurpruefung, (3) die quote-abhaengige Erkennung
+dynamischer Taskpfade (dieselbe Lehre wie T-1.7.v3: ein Verifizierer, der
+per Textsuche prueft, ist an der Schreibweise zu umgehen).
+
+### Runde 2 — Codex fix
+Fehlendes `strace` ist jetzt ein harter Abbruch VOR Mutationstest und
+Manifestschreiben; die statische Pruefung erkennt relative Helferpfade; die
+`.probe-`-Ausnahme ist ersatzlos gestrichen; die Taskerkennung laeuft ueber
+den AST statt ueber Anfuehrungszeichen. Vierter Mutant
+`relativer-pfad-helfer-fehlt` dauerhaft angelegt.
+
+### Claude's verdict (Runde 2) — angenommen
+Selbst nachgemessen, nicht uebernommen:
+* `verify-frozen.sh` → 32 Dateien unveraendert, Abhaengigkeiten geschlossen.
+* `meta.sh freeze-extension` → 4 Mutanten, alle erkannt.
+* A1/A2/A3 alle drei statisch abgelehnt.
+* Ohne strace: `freeze: FEHLER`, Exit 1, FROZEN byteidentisch vorher/nachher.
+* `T-0.9.sh` gruen; TCP-Mutante faellt an genau der TCP-Eigentumspruefung.
+* Diff beruehrt weder `daimon/`, `face/`, `kwin-script/`, `config/` noch die
+  kanonischen Plandokumente.
+
+Offen und benannt, kein Blocker dieser Runde: `freeze.sh` selbst steht nicht
+in FROZEN — der Pruefpfad (`verify-frozen.sh`, `freeze-deps.py`) ist
+geschuetzt, der Erzeugerpfad nicht. Und das Einfrieren ist jetzt deutlich
+teurer: die Spur faehrt den Verifizierer je Mutant plus Gut- und Echtlauf
+erneut.
