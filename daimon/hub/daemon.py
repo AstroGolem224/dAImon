@@ -66,9 +66,11 @@ AKTION_SOCKET = "aktion.sock"
 # Wie lange der Hub auf die Antwort des Menschen wartet. Laenger als ein
 # Blick, kuerzer als ein Kaffee -- und danach `cancelled`, nicht `declined`.
 RUECKFRAGE_FRIST_S = 120.0
-# Wohin ein Auftrag geht. Heute genau einer -- die anderen drei Broker haben
-# Units, aber noch keinen Weg vom Hub.
-BROKER_SOCKETS = {"dbus": "dbus-broker.sock"}
+# Wohin ein Auftrag geht. Die Namen sind Vertrag mit den Units unter
+# config/systemd/ -- exec und input laufen erst, wenn eine Aktion sie
+# braucht, aber der Weg gehoert dem Hub, nicht dem Auftrag.
+BROKER_SOCKETS = {"dbus": "dbus-broker.sock", "fs": "fs-broker.sock",
+                  "exec": "exec-broker.sock", "input": "input-broker.sock"}
 MAX_ZEILE = 1 << 20  # 1 MiB. Eine Hook-Nutzlast ist Kilobytes gross.
 
 # Wie oft der Push-Endpunkt nachsieht, ob sich `rev` bewegt hat. 50 ms deckelt
@@ -732,14 +734,20 @@ class Hub:
         gueltig = self.marken.initiator(turn_id) == "user"
         marke = {"id": turn_id, "gueltig_bis": float("inf")} if gueltig else None
 
+        teile = self._aktionsteile()
+        # Die audience kommt aus dem KATALOG, nicht aus der Anfrage -- sonst
+        # suchte sich der Absender seinen Broker aus, sobald es mehr als
+        # einen Weg gibt (dasselbe Prinzip wie beim Socketpfad oben).
+        audience = str(teile.policy.katalog.get(action_id, {})
+                       .get("audience") or "dbus")
         try:
-            lauf = self._aktionsteile().ausfuehren(
+            lauf = teile.ausfuehren(
                 action_id=action_id, params=params,
                 quelle=str(anfrage.get("quelle") or "modell"),
                 marke=marke, session_id=str(anfrage.get("session_id") or ""),
                 turn_id=turn_id,
                 tool_use_id=str(anfrage.get("tool_use_id") or ""),
-                audience=str(anfrage.get("audience") or "dbus"))
+                audience=audience)
         except Exception as fehler:
             self.log.error("Aktionspfad gescheitert",
                            DAIMON_ACTION="aktion_fehler",

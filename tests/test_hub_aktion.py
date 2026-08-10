@@ -140,6 +140,28 @@ def test_der_broker_pfad_steht_im_hub_nicht_im_auftrag(tmp_path, monkeypatch):
     assert set(D.BROKER_SOCKETS) <= {"dbus", "fs", "exec", "input"}
 
 
+def test_die_audience_kommt_aus_dem_katalog_nicht_aus_der_anfrage(tmp_path, monkeypatch):
+    """Ein Absender, der `audience` setzt, sucht sich seinen Broker aus.
+
+    Dasselbe Prinzip wie bei turn_id und Socketpfad: ein Feld, das der
+    Absender setzt, sagt nichts. Massgeblich ist der Katalogeintrag;
+    media.playpause traegt keinen, also gilt die Vorgabe dbus.
+    """
+    h = hub(tmp_path, monkeypatch)
+    a = h.aktion_anfrage(anfrage(audience="fs"))
+    assert a["ok"] and a["ausgefuehrt"]
+    assert h.zugestellt[0].audience == "dbus"
+
+
+def test_jede_audience_hat_einen_weg():
+    """Die vier Broker-Units existieren; der Hub kennt ihre Sockets."""
+    from daimon.common.order import AUDIENCES
+    assert set(D.BROKER_SOCKETS) == set(AUDIENCES)
+    assert D.BROKER_SOCKETS["fs"] == "fs-broker.sock"
+    assert D.BROKER_SOCKETS["exec"] == "exec-broker.sock"
+    assert D.BROKER_SOCKETS["input"] == "input-broker.sock"
+
+
 # --------------------------------------------------------------------------
 # Ein Buch: Freigabebuch und Consent zusammengelegt
 # --------------------------------------------------------------------------
