@@ -449,7 +449,18 @@ def unit_execstart(pfad: Path) -> list[str]:
     if not treffer:
         return []
     argv = shlex.split(treffer.group(1))
-    return [a.replace(str(REPO), str(TARGET)) for a in argv]
+    # systemd ersetzt %t vor exec; der direkte Popen-Start muss dieselbe
+    # Laufzeitadresse sehen, sonst misst der Prüfstand einen wörtlichen
+    # Fantasiepfad statt seiner eigenen lokalen Egress-Attrappe.
+    argv = [a.replace(str(REPO), str(TARGET)).replace("%t", str(RUNTIME))
+            for a in argv]
+    if "--egress-socket" in argv:
+        i = argv.index("--egress-socket")
+        if i + 1 < len(argv):
+            # Die Produkt-Unit zeigt auf den vorgeschalteten lokalen Broker;
+            # T-3.12 misst den Router bewusst an seiner eigenen Egress-Attrappe.
+            argv[i + 1] = str(DAIMON_RT / "egress.sock")
+    return argv
 
 
 MIND_UNIT = TARGET / "config/systemd/daimon-mind.service"
@@ -754,15 +765,21 @@ P.check("6", "fensterbezogene Äußerung geht an die API", (ans.get("ok"), ans.g
         (True, "api"))
 P.check("6", "ein Körper wurde an der Attrappe aufgezeichnet",
         egress.zaehler() > ebasis, True)
-koerper = egress.aufrufe[-1]
+# Ein fehlender Körper ist bereits rot; Folgeprüfungen müssen trotzdem sauber
+# abrechnen, ohne dass negative Aussagen am leeren Ersatzkörper hohl grün
+# werden oder der erste Transportfehler als IndexError verschwindet.
+koerper_fehlt = not egress.aufrufe
+koerper = egress.aufrufe[-1] if not koerper_fehlt else b""
 P.check("6", "Kanarien-Fenstertitel fehlt im gesendeten Körper",
-        FENSTER_KANARIE_A.encode() in koerper, False)
+        "nicht gemessen: Körper fehlt" if koerper_fehlt
+        else FENSTER_KANARIE_A.encode() in koerper, False)
 P.check("6", "Körper trägt eine opake Referenz (w_N)",
         bool(re.search(rb"w_\d+", koerper)), True)
 P.check("6", "Körper trägt die app_id aus der geschlossenen Aufzählung",
         b"discord" in koerper, True)
 P.check("6", "auch der zweite reale Titel fehlt im Körper",
-        "projekt — Konsole".encode() in koerper, False)
+        "nicht gemessen: Körper fehlt" if koerper_fehlt
+        else "projekt — Konsole".encode() in koerper, False)
 
 P.kapitel("7", "Gegenprobe: die Antwort an den Nutzer trägt die Titel")
 ans, _ = frage("welche fenster sind offen")
@@ -778,11 +795,13 @@ P.check("8", "Runde eins: Kanarie A in der Nutzerantwort (Aufbau)",
 ebasis = egress.zaehler()
 frage("was läuft in w_1", runde="runde-eins")
 P.check("8", "Runde eins: API-Aufruf fand statt", egress.zaehler(), ebasis + 1)
-k1 = egress.aufrufe[-1]
+k1_fehlt = not egress.aufrufe
+k1 = egress.aufrufe[-1] if not k1_fehlt else b""
 P.check("8", "Positivkontrolle: Runde eins trägt die app_id von Kanarie A",
         b"discord" in k1, True)
 P.check("8", "Runde eins trägt den Titel trotzdem nicht",
-        FENSTER_KANARIE_A.encode() in k1, False)
+        "nicht gemessen: Körper fehlt" if k1_fehlt
+        else FENSTER_KANARIE_A.encode() in k1, False)
 setze_fenster(FENSTER_B)
 ans, roh = frage("welche fenster sind offen", runde="runde-zwei")
 P.check("8", "Runde zwei: die neue Kanarie B erscheint",

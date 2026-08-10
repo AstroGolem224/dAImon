@@ -1,0 +1,1 @@
+Die Freitextfelder der Hook-Nutzlast (message, prompt, last_assistant_message, error, cwd, tool_name) werden als trusted statt tainted markiert (K7) — Text aus einem Agenten, der beliebige Inhalte verarbeitet hat, wird vertrauenswuerdig.

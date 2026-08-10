@@ -330,3 +330,56 @@ in FROZEN — der Pruefpfad (`verify-frozen.sh`, `freeze-deps.py`) ist
 geschuetzt, der Erzeugerpfad nicht. Und das Einfrieren ist jetzt deutlich
 teurer: die Spur faehrt den Verifizierer je Mutant plus Gut- und Echtlauf
 erneut.
+
+## Act 3 — Runde 2 (Spur-Verengung, T-3.13b, T-3.12-Diagnose)
+
+Owner-Entscheidungen vorab: die Laufzeitspur wird auf Gut- und Echtlauf
+verengt (das Tracen jeder Mutante haette T-3.13b unfreezbar gemacht), und
+der Rundenscope ist PLAN.md Schritt 1 + 3.
+
+### Codex build
+* **Spur verengt**, mit `ponytail:`-Kommentar samt Obergrenze: ein Helfer,
+  den NUR ein Mutantenpfad oeffnet, bleibt unsichtbar; Upgrade-Pfad benannt.
+  Neuer Mutant `laufzeit-helfer-fehlt` haelt fest, dass die verengte Spur
+  ihren Zweck noch erfuellt.
+* **T-3.13b uebernommen**, 149/149 Dateien bytegleich, beide gepinnten
+  Hashes bestaetigt, 7 Mutanten erkannt, eingefroren. Wandzeit 181 s.
+* **T-3.12 diagnostiziert: (a) Pruefstandsdefekt.** Der Prueftand fuehrte die
+  systemd-Kommandozeile direkt aus, ohne `%t` zu expandieren, und die Unit
+  zeigt seit T-3.11c mit `--egress-socket %t/daimon/lokal.sock` auf den
+  vorgeschalteten lokalen Broker -- die Messattrappe des Prueftands heisst
+  aber `egress.sock`. Mind sprach also nie mit ihr: K4 und K6 rot, danach
+  IndexError auf einer leeren Liste. Das Gut-Muster blieb gruen, weil seine
+  eingefrorene Unit-Kopie diese Zeile noch nicht hat -- daher auch die
+  identische Reproduktion auf f75e55b.
+
+### Claude's verdict (Runde 2) — drei Befunde zurueck
+1. **Hohles Gruen.** Der Ersatzkoerper `b""` liess die
+   ABWESENHEITS-Pruefungen (`Kanarie nicht im Koerper`) gruen melden, obwohl
+   nie ein Koerper existierte -- Fall 2 der Projektliste in neuer Gestalt.
+2. **Unangekuendigte Vertragsaenderung.** `spur_lauf echt "" beliebig`: der
+   Echtlauf musste nicht mehr gruen sein, damit eingefroren wird. Stand nur
+   als Codekommentar, nicht im Bericht.
+3. **Ungenaue Protokollierung.** K14/K15 wurden als "lokal fehlende Modelle"
+   bezeichnet; gemessen ist es worktree-spezifisch.
+
+### Codex fix + Claude's verdict — angenommen
+Fehlende Koerper melden jetzt `nicht gemessen: Koerper fehlt` und sind damit
+sichtbar rot; `spur_lauf echt "" gruen` ist wiederhergestellt (Option a, kein
+Ausnahmeflag); Ursache von K14/K15 praezisiert: `spikes/*/models/*` sind
+unversionierte Symlinks, die nur im Hauptbaum existieren.
+
+Selbst nachgemessen: `verify-frozen` 34 Dateien geschlossen; `meta.sh T-3.12`
+5 Mutanten alle erkannt; `T-3.12.sh` K1-K13 **0 rot** (vorher K4/K6 rot plus
+Absturz), K14/K15 rot aus der Worktree-Umgebung; `T-3.12.sh` byteidentisch
+zum eingefrorenen Hash, nur der Helfer neu gehasht; keine temporaeren
+Beweisaenderungen zurueckgeblieben.
+
+### Ledger dieser Runde
+| Posten | Ausgang |
+|---|---|
+| Spur-Verengung | gruen, Obergrenze dokumentiert |
+| T-3.13b | gruen, eingefroren, 7/7 Mutanten |
+| T-3.12 K1-K13 | gruen (Pruefstandsdefekt behoben) |
+| T-3.12 K14/K15 | umgebungs-blockiert (Worktree ohne Modell-Symlinks) |
+| T-3.13b-Snapshots | Befund: aelter als der Echtbaum (router.py-antwort-Feld); nichts regeneriert |

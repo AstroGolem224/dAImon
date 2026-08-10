@@ -191,7 +191,7 @@ def spur_pruefen(repo: Path, erlaubt: set[str], log: Path) -> None:
                     continue
             try:
                 rel = p.resolve(strict=False).relative_to(repo).as_posix()
-            except ValueError:
+            except (ValueError, OSError):
                 continue
             if rel.startswith(("tests/verify/", "tests/harness/")) and rel not in erlaubt:
                 if rel.endswith((".sh", ".py")):

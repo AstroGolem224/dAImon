@@ -1,0 +1,1 @@
+Die Senke fuer user_audio ist aufgehoben: gespooftes Audio erreicht Durchgang 1 (K3, K8) — lokale Auskuenfte und Aktionswuensche werden fuer eine spoofbare Aeusserung bearbeitet.

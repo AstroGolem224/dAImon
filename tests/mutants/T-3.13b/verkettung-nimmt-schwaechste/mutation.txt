@@ -1,0 +1,1 @@
+verketten nimmt die schwaechste statt der strengsten Marke (K5) — Ansteckung laeuft ins Leere: verketten(trusted, tainted) wird trusted.

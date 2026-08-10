@@ -1,0 +1,1 @@
+Die Vorschau nimmt eine rohe Zeichenkette ohne marke_fehlt-Protokoll und ohne tainted-Vorgabe an (K2, K10) — und wirft fuer user_audio keinen SenkenFehler mehr (K3).

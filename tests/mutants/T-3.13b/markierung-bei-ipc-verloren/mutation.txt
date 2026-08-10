@@ -1,0 +1,1 @@
+dumps() serialisiert einen markierten Wert als nackten Wert — die Marke ueberlebt die IPC-Serialisierung nicht (K6). Beim Leser kommt per Vorgabe `tainted` an, was immer die Absender-Marke war.

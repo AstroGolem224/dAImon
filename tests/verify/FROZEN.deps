@@ -24,3 +24,12 @@ tests/verify/t313_pruefstand.py tests/verify/T-3.9.sh
 tests/verify/t313_pruefstand.py tests/verify/T-3.10.sh
 tests/verify/t313_pruefstand.py tests/verify/T-3.11.sh
 tests/verify/t313_pruefstand.py tests/verify/T-3.12.sh
+tests/verify/T-3.13b.sh tests/verify/t313b_pruefstand.py
+tests/verify/t313b_pruefstand.py tests/verify/T-0.7.sh
+tests/verify/t313b_pruefstand.py tests/verify/T-0.11.sh
+tests/verify/t313b_pruefstand.py tests/verify/T-3.8.sh
+tests/verify/t313b_pruefstand.py tests/verify/T-3.9.sh
+tests/verify/t313b_pruefstand.py tests/verify/T-3.10.sh
+tests/verify/t313b_pruefstand.py tests/verify/T-3.11.sh
+tests/verify/t313b_pruefstand.py tests/verify/T-3.12.sh
+tests/verify/t313b_pruefstand.py tests/verify/T-3.13.sh

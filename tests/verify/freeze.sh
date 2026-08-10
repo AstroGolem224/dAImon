@@ -41,8 +41,14 @@ else
 fi
 
 # Der statische Beweis verhindert unaufloesbare Pfade; die Spur belegt, welche
-# Dateien die tatsaechlichen Gut-, Mutanten- und Echtlaeufe mitsamt Kindern
-# geoeffnet haben. Produkt- und Fixture-Baeume sind dabei bewusst Gegenstand.
+# Dateien Gut- und Echtlauf mitsamt Kindern geoeffnet haben. Produkt- und
+# Fixture-Baeume sind dabei bewusst Gegenstand.
+# ponytail: Verifizierer-Helfer variieren normalerweise nicht je Mutante; Gut-
+# und Echtlauf decken deshalb denselben Framework-Satz ohne die sehr teure
+# Verdopplung aller Mutantenlaeufe. Die ausdrueckliche Obergrenze: Ein Helfer,
+# den NUR ein Mutanten-Codepfad oeffnet, bleibt in dieser Spur unsichtbar. Wenn
+# Mutanten eines Verifizierers eigene Helfer einfuehren, ist der Upgrade-Pfad,
+# fuer genau diesen Verifizierer wieder alle Mutanten unter strace auszufuehren.
 spur_lauf() {
         local name="$1" fixture="$2" erwartet="$3" log="$tmp/spur-$1.log" rc
         set +e
@@ -68,9 +74,6 @@ spur_lauf() {
         echo "freeze: Laufzeitspur '$name' ohne undeklarierte Helfer."
 }
 spur_lauf gut "$REPO/tests/fixtures/known-good/$task" gruen || exit 1
-while read -r mutant; do
-    spur_lauf "mutant-$(basename "$mutant")" "$mutant" rot || exit 1
-done < <(find "$REPO/tests/mutants/$task" -mindepth 1 -maxdepth 1 -type d | sort)
 spur_lauf echt "" gruen || exit 1
 
 touch "$FROZEN"

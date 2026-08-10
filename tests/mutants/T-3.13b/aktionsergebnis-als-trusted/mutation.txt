@@ -1,0 +1,1 @@
+Ein Ergebnis mit Fenstertiteln wird als trusted markiert (K5, K9) — die Markierung folgt nicht mehr der Herkunft der Daten, sondern der Komponente, die sie geholt hat.
