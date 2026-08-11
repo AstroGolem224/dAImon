@@ -25,10 +25,21 @@ def hub(tmp_path: Path):
     h = Hub(runtime_dir=tmp_path / "rt")
     h.start()
     sock = h.runtime_dir / EVENTS_SOCKET
+    # Gewartet wird auf eine ANGENOMMENE Verbindung, nicht auf die Datei.
+    # `bind()` legt sie an, `listen()` kommt danach -- unter Last (K13 faehrt
+    # pytest, waehrend der T-3.14-Pruefstand Dienste treibt) verlor der erste
+    # `connect()` dieses Rennen und der Test fiel mit ConnectionRefused aus.
+    # Dieselbe Lehre wie in `tools/pet_zeigen.py`: Existenz ist keine
+    # Bereitschaft.
     for _ in range(100):
-        if sock.exists():
+        try:
+            probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            probe.settimeout(1.0)
+            probe.connect(str(sock))
+            probe.close()
             break
-        time.sleep(0.05)
+        except OSError:
+            time.sleep(0.05)
     yield h
     h.stop()
 
