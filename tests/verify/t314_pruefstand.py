@@ -459,6 +459,7 @@ class LiveSystem:
         self.dienste = Sitzungsdienste()
         self.hub: Prozessgruppe | None = None
         self.face: Prozessgruppe | None = None
+        self.aktive_marke: object | None = None
         venv_python = pruefling / ".venv/bin/python"
         self.python = venv_python if venv_python.is_file() and os.access(venv_python, os.X_OK) else Path(
             subprocess.check_output(["bash", "-lc", "command -v python3"], text=True).strip()
@@ -503,23 +504,63 @@ class LiveSystem:
             raise RuntimeError(f"tts {felder.get('art')}: Antwort ist kein Objekt")
         return antwort
 
-    def tts_beginnt(self, text: str) -> tuple[object, dict]:
-        freigabe = self.tts(art="freigabe", kanal="reaktion", text=text)
+    def tts_beginnt(
+        self, text: str, *, kanal: str, abkuehlung_abwarten: bool = True,
+    ) -> tuple[object, dict]:
+        if kanal not in {"ungefragt", "reaktion", "rueckfrage"}:
+            raise ValueError(f"ungepinnter TTS-Kanal: {kanal!r}")
+        freigabe = self.tts(art="freigabe", kanal=kanal, text=text)
+        abkuehlungen = 0
+        while (
+            "marke" not in freigabe
+            and freigabe.get("grund") == "abkuehlung"
+            and abkuehlung_abwarten
+        ):
+            abkuehlungen += 1
+            if abkuehlungen > 3:
+                raise RuntimeError(f"tts freigabe: Abkuehlung endet trotz rest_s nicht: {freigabe!r}")
+            rest = freigabe.get("rest_s")
+            if isinstance(rest, bool) or not isinstance(rest, (int, float)):
+                raise RuntimeError(f"tts freigabe: rest_s ist keine Zahl: {freigabe!r}")
+            if not math.isfinite(float(rest)) or rest < 0:
+                raise RuntimeError(f"tts freigabe: rest_s ist unzulaessig: {freigabe!r}")
+            print(f"TTS-Abkuehlung {kanal}: gemeldete {float(rest):.3f} s werden abgewartet")
+            time.sleep(float(rest) + 0.05)
+            freigabe = self.tts(art="freigabe", kanal=kanal, text=text)
         if "ok" not in freigabe:
             raise RuntimeError(f"tts freigabe: Antwortfeld ok fehlt: {freigabe!r}")
         if "marke" not in freigabe:
             raise RuntimeError(f"tts freigabe: Einmal-Marke fehlt: {freigabe!r}")
         marke = freigabe["marke"]
         antwort = self.tts(art="beginnt", marke=marke)
+        if antwort.get("ok") is not True:
+            raise RuntimeError(f"tts beginnt wurde abgewiesen: {antwort!r}")
+        self.aktive_marke = marke
         return marke, antwort
 
     def tts_gesprochen(self, marke: object) -> dict:
-        return self.tts(art="gesprochen", marke=marke)
+        antwort = self.tts(art="gesprochen", marke=marke)
+        if antwort.get("ok") is True and self.aktive_marke == marke:
+            self.aktive_marke = None
+        return antwort
 
     def normalisiere_idle(self) -> None:
         self.sende("auth.sock", ereignis("ptt", {"an": False}))
-        marke, _ = self.tts_beginnt("t314 normalisierung")
-        self.tts_gesprochen(marke)
+        snapshot = warten_auf(
+            self.state,
+            lambda x: x.get("voice", {}).get("state") != "listening",
+            "PTT-aus vor Normalisierung",
+        )
+        state = snapshot.get("voice", {}).get("state")
+        if state == "speaking" and self.aktive_marke is not None:
+            self.tts_gesprochen(self.aktive_marke)
+        elif state == "processing":
+            marke, _ = self.tts_beginnt(
+                "t314 normalisierung", kanal="rueckfrage", abkuehlung_abwarten=True,
+            )
+            self.tts_gesprochen(marke)
+        elif state != "idle":
+            raise RuntimeError(f"Normalisierung kennt Zustand {state!r} nicht")
         self.warte_state("idle")
 
     def starten(self) -> None:
@@ -653,7 +694,9 @@ def pruefe_k6_live(system: LiveSystem, bericht: Bericht) -> None:
         system.sende("ears.sock", ereignis("utterance", {"text": "t314 fristweg"}))
         bericht.pruefe("K6", system.warte_state("processing")["voice"]["denkt"] is True,
                        "utterance setzt processing am echten Hub")
-        marke, _ = system.tts_beginnt("t314 fristweg antwort")
+        marke, _ = system.tts_beginnt(
+            "t314 fristweg antwort", kanal="reaktion", abkuehlung_abwarten=True,
+        )
         snapshot = system.warte_state("speaking")
         bericht.pruefe("K6", snapshot["voice"]["denkt"] is False,
                        "tts beginnt beendet processing am echten Hub")
@@ -663,14 +706,18 @@ def pruefe_k6_live(system: LiveSystem, bericht: Bericht) -> None:
         bericht.fehler("K6", f"echter utterance-/tts-Weg fehlgeschlagen: {exc!r}")
 
 
-def volle_runde(system: LiveSystem, kriterium: str, bericht: Bericht) -> None:
+def volle_runde(
+    system: LiveSystem, kriterium: str, bericht: Bericht, *, kanal: str,
+) -> None:
     system.normalisiere_idle()
     system.sende("auth.sock", ereignis("ptt", {"an": True}))
     bericht.pruefe(kriterium, system.warte_state("listening")["voice"]["state"] == "listening", "PTT an")
     system.sende("ears.sock", ereignis("utterance", {"text": "t314 pruefung"}))
     system.sende("auth.sock", ereignis("ptt", {"an": False}))
     bericht.pruefe(kriterium, system.warte_state("processing")["voice"]["state"] == "processing", "Aeusserung eingegangen")
-    marke, antwort = system.tts_beginnt("t314 rundenantwort")
+    marke, antwort = system.tts_beginnt(
+        "t314 rundenantwort", kanal=kanal, abkuehlung_abwarten=True,
+    )
     bericht.pruefe(kriterium, "ok" in antwort, "tts beginnt lieferte das gepinnte Antwortfeld")
     bericht.pruefe(kriterium, system.warte_state("speaking")["voice"]["state"] == "speaking", "Sprechen beginnt")
     antwort = system.tts_gesprochen(marke)
@@ -680,7 +727,7 @@ def volle_runde(system: LiveSystem, kriterium: str, bericht: Bericht) -> None:
 
 def pruefe_k7(system: LiveSystem, bericht: Bericht) -> None:
     try:
-        volle_runde(system, "K7", bericht)
+        volle_runde(system, "K7", bericht, kanal="rueckfrage")
     except Exception as exc:
         bericht.fehler("K7", f"vollstaendige Runde fehlgeschlagen: {exc!r}")
 
@@ -725,7 +772,9 @@ def pruefe_k8(system: LiveSystem, bericht: Bericht) -> None:
         system.sende("ears.sock", ereignis("utterance", {"text": "t314 mood"}))
         system.warte_state("processing")
         zustandsdiag.append(system.warte_face("processing"))
-        marke, _ = system.tts_beginnt("t314 mood antwort")
+        marke, _ = system.tts_beginnt(
+            "t314 mood antwort", kanal="ungefragt", abkuehlung_abwarten=True,
+        )
         system.warte_state("speaking")
         zustandsdiag.append(system.warte_face("speaking"))
         system.tts_gesprochen(marke)
@@ -760,7 +809,9 @@ def pruefe_k9(system: LiveSystem, bericht: Bericht) -> None:
                        "processing wurde wirklich in den Sprite-Buffer gezeichnet")
         zaehler = processing["voice_indikator_gezeichnet"]
 
-        marke, _ = system.tts_beginnt("t314 indikator antwort")
+        marke, _ = system.tts_beginnt(
+            "t314 indikator antwort", kanal="rueckfrage", abkuehlung_abwarten=True,
+        )
         system.warte_state("speaking")
         speaking = system.warte_face("speaking", zaehler_groesser=zaehler)
         bericht.pruefe("K9", speaking["voice_indikator_gezeichnet"] > zaehler,
