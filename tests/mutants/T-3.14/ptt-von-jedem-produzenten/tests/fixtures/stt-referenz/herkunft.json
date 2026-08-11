@@ -1,0 +1,31 @@
+{
+  "v": 1,
+  "was": "21 Referenzaufnahmen fuer T-3.8. Pruefmaterial des Verifizierers und Quelle der deutschen WER-Grundlinie.",
+  "warum_im_repo": "Ein eingefrorener Verifizierer, dessen Pruefmaterial nur auf einer Maschine liegt, ist auf jeder anderen gruen ohne zu messen. Das ist Fall 7 der Fehlerliste in HANDOVER.md, und rund 4 MB WAV sind der billigere Preis.",
+  "aufgenommen_von": "Matthias, eigenes Mikrofon, 03.08.2026",
+  "format": "16 kHz mono s16, unbehandelt (kein Trimmen, kein Filter)",
+  "sekunden_gesamt": 120.6,
+  "bytes_gesamt": 3858888,
+  "grundlinie": {
+    "gemessen_am": "2026-08-03",
+    "modell": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+    "provider": "cpu",
+    "threads": 8,
+    "wer_de": 0.0517,
+    "wer_en": 0.0,
+    "wer_gesamt": 0.0457,
+    "latenz_median_ms": 117.15,
+    "latenz_p95_ms": 152.2,
+    "latenz_5s_median_ms": 114.0,
+    "rtf_median": 0.02,
+    "auf_stille_erkannt": "",
+    "schwelle_fuer_T-3.8": 0.0717,
+    "schwelle_begruendung": "Der Plan verlangt 'WER unter dem in T-1.2 gemessenen Wert plus zwei Prozentpunkte'. T-1.2 hat fuer DEUTSCH keinen Wert gemessen ('Keine belastbare WER ohne Satzreferenz', spikes/ort/results.json -- dort steht nur wer_en = 0.045455 fuer whisper-base). Die Grundlinie entsteht deshalb hier, und die Schwelle ist dieser Wert plus zwei Punkte. Wer sie senkt, senkt sie gegen eine Messung."
+  },
+  "was_diese_aufnahmen_NICHT_belegen": [
+    "Fremde Stimmen. Eine Stimme, ein Mikrofon, ein Raum -- die WER ist die dieses Sprechers und keine allgemeine.",
+    "Nebengeraeusche. Aufgenommen wurde in einem ruhigen Raum; Tastatur, Luefter und Musik im Hintergrund sind ungemessen.",
+    "Entfernung. Nahbesprechung am eigenen Mikrofon, nicht zwei Meter weg.",
+    "Spontansprache. Vorgelesene Saetze sind fliessender als echte Rueckfragen mit Aeh und Abbruch."
+  ]
+}

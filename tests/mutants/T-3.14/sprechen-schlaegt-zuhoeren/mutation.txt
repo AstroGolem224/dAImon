@@ -1,0 +1,1 @@
+Die Vorrangfolge in `daimon/hub/state.py` wurde an beiden Ableitungsstellen vertauscht: `tts_active` gewinnt nun vor `listening`. Der Einwurf des Nutzers verliert damit gegen laufende Ausgabe; diese Grenze muss K2 röten.

@@ -1,0 +1,68 @@
+[Unit]
+# T-4.9 — der Dateisystem-Broker. Löst einmal auf und mutiert über den
+# Deskriptor; siehe daimon/brokers/fs/broker.py.
+Description=dAImon Dateisystem-Broker (openat2, RESOLVE_BENEATH)
+PartOf=graphical-session.target
+After=daimon-hub.service
+Requires=daimon-hub.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
+    -m daimon.brokers.fs.daemon \
+    --socket %t/daimon/fs-broker.sock \
+    --wurzel %h/Dokumente \
+    --wurzel %h/Downloads
+Restart=on-failure
+RestartSec=2
+
+NoNewPrivileges=yes
+PrivateDevices=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=strict
+
+# ProtectHome=tmpfs
+# ProtectHome=tmpfs blendet $HOME komplett aus. Zwei Folgen, beide am 09.08.
+# als 226/NAMESPACE gemessen:
+#
+# 1. Auch das venv verschwindet, aus dem ExecStart startet -- und mit ihm der
+#    Interpreter, denn `.venv/bin/python` ist ein Symlink nach
+#    ~/.local/share/uv/python/. Beides muss eingeblendet werden, das Repo
+#    allein genügt nicht.
+# 2. `ReadWritePaths=` auf einen Pfad unter $HOME schlägt fehl: der Pfad ist
+#    zu diesem Zeitpunkt vom tmpfs verdeckt, es gibt ihn im Namespace nicht.
+#    Was schreibbar sein soll, wird mit `BindPaths=` eingeblendet -- das
+#    bringt das echte Verzeichnis mit, statt ein verstecktes zu suchen.
+#
+# Diese Liste ist die eigentliche Schranke des FS-Brokers, und sie ist
+# absichtlich kurz. Wer sie verlängert, verlängert die Reichweite des Pets.
+BindReadOnlyPaths=/home/itiger013/Dokumente/Github/dAImon
+BindReadOnlyPaths=/home/itiger013/.local/share/uv/python
+BindPaths=/home/itiger013/Dokumente
+BindPaths=/home/itiger013/Downloads
+BindPaths=/home/itiger013/.local/share/Trash
+BindPaths=/home/itiger013/.local/state/daimon
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+LimitCORE=0
+UMask=0077
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+# openat2 gehört zu @file-system und bleibt damit erlaubt; ein zusätzliches
+# Verbot hier würde den Broker um seine einzige TOCTOU-freie Auflösung
+# bringen.
+
+[Install]
+WantedBy=graphical-session.target

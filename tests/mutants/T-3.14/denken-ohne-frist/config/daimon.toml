@@ -1,0 +1,132 @@
+# Mitgelieferte Vorgaben. Nach $XDG_CONFIG_HOME/daimon/daimon.toml kopieren und
+# dort anpassen -- die Vorgaben in daimon/common/config.py bleiben der Rueckfall,
+# eine Teilangabe ersetzt also nicht den ganzen Abschnitt.
+
+[hub]
+state_ttl_s = 3600
+
+# T-2.7: Kontextmenue -> "Ohren aus" / "Augen aus". Das Face sendet nur den
+# Schluessel ("ears"/"eyes"); welche Unit gestoppt wird, steht ausschliesslich
+# hier. Ein Eintrag mehr ist eine Unit mehr, die ein Klick im Overlay stoppen
+# kann -- daimon-hub oder daimon-auth gehoeren hier nie hinein.
+# Es gibt kein Gegenstueck zum Einschalten.
+[hub.wahrnehmung_units]
+ears = "daimon-ears.service"
+eyes = "daimon-eyes.service"
+
+# T-3.2: die Hysterese ist ABSICHTLICH asymmetrisch. Einsatz bei 0,5, Ende erst,
+# wenn die Wahrscheinlichkeit `nachlauf_ms` lang unter `ende` bleibt -- und
+# dieser Nachlauf gehoert noch ins Segment. Deutsche Endsilben sind leise; ein
+# symmetrischer Schwellwert macht aus "…und dann ging er" ein "…und dann g".
+# `ende` gehoert unter `einsatz`, `nachlauf_ms` in 300--500. Wer das
+# unterschreitet, entfernt den Task, statt ihn einzustellen -- das Modul warnt
+# dann ins Journal.
+[ears.vad]
+einsatz     = 0.5
+ende        = 0.35
+nachlauf_ms = 400
+
+# T-3.3: wieviel Audio VOR dem Ausloeser mitgegeben wird. Der Ring schneidet
+# staendig 20 s mit; hiervon haengt ab, wieviel davon beim Ausloesen an das STT
+# geht. Zu wenig frisst die erste Silbe, zu viel gibt dem STT Rauschen als
+# Satzanfang. Plan: 1,0--1,5 s. Ausserhalb warnt das Modul ins Journal.
+# Die 20 s des Rings sind bewusst KEINE Einstellung: sie sind Speicher, der
+# vorab alloziert und per mlock festgenagelt wird.
+[ears.ring]
+vorlauf_s = 1.25
+
+# T-3.4: die Rueckkopplungssperre. Solange das Pet spricht, geht nichts zum STT
+# -- auch nicht bei gedrueckter PTT-Taste. `nachlauf_s` deckt den Raumhall der
+# letzten Silbe ab, der das Mikrofon nach dem Ende der Wiedergabe erreicht; auf
+# 0 gezogen ist der Task entfernt, nicht eingestellt. `echo_schwelle` gilt fuer
+# die normierte Korrelation gegen den eingespeisten Ausgabepuffer: hoeher heisst
+# weniger Treffer, und ein verpasstes Echo ist die Schleife, die dieser
+# Abschnitt verhindern soll.
+[ears.interlock]
+nachlauf_s     = 0.5
+echo_fenster_s = 1.0
+echo_schwelle  = 0.7
+
+# T-3.7: das GPU-Gate. Die Ladesperre liegt im Hub, weil ein Worker nur sich
+# selbst kennt -- zwei gleichzeitig ladende Worker belegen beide ihr volles
+# VRAM, nachdem beide Pruefungen gruen waren.
+# `sperrfrist_s`: danach VERFAELLT die Sperre von selbst. Fail-safe ist hier
+#   oeffnen: der Schaden einer verlorenen Sperre ist eine gleichzeitige Ladung,
+#   der Schaden einer ewigen Sperre ist ein totes Sprachsystem. Wer die Frist
+#   auf 0 zieht, hat die Serialisierung abgeschaltet, nicht eingestellt.
+# `reserve_mib`: soviel VRAM bleibt nach dem Laden frei. Der naechste, der
+#   nachfordert, ist sonst der Compositor.
+# `idle_s`: Leerlauf bis zum PROZESSENDE des Workers -- nicht bis zum Entladen.
+# `ladedauer_s`: der Platzhalter-Ladevorgang aus T-3.7.
+# `modelle.<name>`: vermuteter VRAM-Bedarf in MiB, fuer das Ladegatter.
+#   DER EINTRAG `stt` IST SEIT T-3.8 UNBENUTZT: der Erkenner laeuft auf der CPU
+#   (siehe [stt] unten) und fragt das Gatter nicht. Er bleibt als Beispiel
+#   stehen, damit der erste echte GPU-Verbraucher eine Vorlage hat -- geloescht
+#   waere er eine Frage mehr beim naechsten Modell.
+[gpu]
+sperrfrist_s = 120.0
+reserve_mib  = 1024
+idle_s       = 60.0
+ladedauer_s  = 0.5
+
+[gpu.modelle]
+stt = 2600
+
+[face]
+poll_ms = 250
+
+[face.palette]
+idle   = "#3a2418"
+active = "#ff6b1a"
+alert  = "#ffd24a"
+
+# T-3.8: der Erkenner. sherpa-onnx mit parakeet-tdt-0.6b-v3 auf der CPU, 0 VRAM.
+# Gemessen am 03.08. gegen 21 eigene Aufnahmen, 8 Threads: WER 5,17 % deutsch,
+# 0,0 % englisch, Latenz Median 117 ms, p95 152 ms, Modell laden 843 ms.
+# `modell_dir`: die Gewichte sind 665 MB und liegen NICHT im Repo. Holen mit
+#   spikes/stt-referenz/modell_holen.sh. Fehlen sie, sagt der Dienst
+#   `modell_fehlt` -- er laedt nichts aus dem Netz.
+# `threads`: Kalibrierknopf. Weniger Kerne im Rechner: Wert senken.
+# Es gibt bewusst KEINEN `provider`-Schluessel -- siehe daimon/gpu/stt.py.
+[stt]
+modell_dir = "~/.local/share/daimon/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
+threads    = 8
+
+# T-3.9: die Stimme. sherpa-onnx VITS auf der CPU, 0 VRAM.
+# `threads`: der Kalibrierknopf. Gemessen am 03.08. ueber die ganze Kette
+#   (Anfrage bis erste Samples beim Wiedergabeprozess), 20 Aeusserungen, p95:
+#   2 Threads 316 ms -- VERFEHLT, 4 Threads 187 ms, 8 Threads 148 ms.
+#   Acht ist die Vorgabe: vier erfuellt das Kriterium nur mit 13 ms Marge, und
+#   die ist beim naechsten Hintergrund-Build weg. Weniger Kerne: Wert senken.
+# `modell_dir`: liegt heute im Spike-Verzeichnis von T-1.12. Gehoert nach
+#   ~/.local/share/daimon/voices/, sobald T-3.10 die Persona-Dateien anlegt.
+# `freigabefrist_s`: wie lange eine Sprechfreigabe des Hubs gilt. Faengt einen
+#   gestorbenen Sprecher ab, schneidet keine langsame Wiedergabe ab.
+# `abkuehlung`: Design 8.4, je Kanal, persistiert unter $XDG_STATE_HOME/daimon.
+[tts]
+modell_dir      = "~/.local/share/daimon/voices"
+threads         = 8
+freigabefrist_s = 30.0
+
+# Nordom spricht durchgaengig mit der geklonten Stimme, auch bei kurzen
+# Ausgaben (Matthias, 09.08.). Die Schwelle 80 war ein Latenzkompromiss: kurze
+# Reaktionen gingen an sherpa, weil Mimic teurer ist. 0 hebt ihn auf.
+# `mimic_nur_warm` bleibt an und traegt die Zusage weiter -- ist Mimic kalt,
+# faellt der Satz auf sherpa zurueck statt zu warten.
+mimic_stimme     = "n0rd0m"
+mimic_ab_zeichen = 0
+
+[tts.abkuehlung]
+ungefragt  = 20.0
+reaktion   = 10.0
+rueckfrage = 3.0
+
+[persona]
+name = "Nordom"
+# Stimme aus der Persona (Design 10.1). Bis T-3.10 den Persona-Lader baut,
+# steht sie hier -- thorsten und kerstin sind CC0, pavoque scheidet aus
+# (CC-BY-NC-SA). Geprueft wird zur Laufzeit die MODEL_CARD, nicht dieser Name.
+voice = "de_DE-thorsten-high"
+
+[logging]
+identifier = "daimon"

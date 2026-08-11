@@ -1,0 +1,1 @@
+Ein sichtbarer Sprachzustand ersetzt in `face/src/main.rs` den vom Mood gewählten Sprite-Namen, statt nur über dessen Pixel gelegt zu werden. Damit verdrängt der Indikator die Mood-Zeile; genau diese Darstellungsgrenze muss K8 röten.

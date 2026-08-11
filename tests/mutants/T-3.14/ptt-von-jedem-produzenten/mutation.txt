@@ -1,0 +1,1 @@
+`ptt` wurde in `daimon/common/ipc.py` allen Produzentenmengen hinzugefügt. Fremde Rollen dürfen dadurch PTT melden und ihre Verbindung bleibt offen; genau diese Rollengrenze muss K5 röten.

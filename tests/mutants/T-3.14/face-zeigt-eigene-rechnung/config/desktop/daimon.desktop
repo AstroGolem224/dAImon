@@ -1,0 +1,33 @@
+# Startknopf fuer das Overlay. Absolute Pfade wie in den systemd-Units --
+# dieses Repo ist der einzige Betriebsweg (siehe config/systemd/*.service).
+#
+# Einrichten:
+#   install -Dm644 config/desktop/daimon.desktop \
+#     ~/.local/share/applications/daimon-face.desktop
+#   install -m755 config/desktop/daimon.desktop ~/Desktop/daimon-face.desktop
+#
+# Auf dem Schreibtisch braucht die Datei das Ausfuehrbit, sonst zeigt Plasma
+# sie als Text an. Das Icon liegt im Repo (face/assets/icon.png), damit die
+# Einrichtung nicht von einer Datei unter ~/.local/share abhaengt, die niemand
+# versioniert hat.
+[Desktop Entry]
+Type=Application
+Name=dAImon
+GenericName=Desktop-Familiar
+Comment=Das Pet-Overlay starten und hervorholen
+# NICHT bloss `systemctl --user start`: auf eine laufende Unit ist das
+# folgenlos, und bei `mood = sleeping` blendet sich das Pet ohnehin aus --
+# ein Knopf, der dann stumm bleibt, sieht aus wie ein kaputtes Programm.
+Exec=/home/itiger013/Dokumente/Github/dAImon/tools/pet_zeigen.py
+Icon=/home/itiger013/Dokumente/Github/dAImon/face/assets/icon.png
+Terminal=false
+Categories=Utility;
+Actions=Neustart;Beenden;
+
+[Desktop Action Neustart]
+Name=Neu starten
+Exec=systemctl --user restart daimon-face.service
+
+[Desktop Action Beenden]
+Name=Beenden
+Exec=systemctl --user stop daimon-face.service

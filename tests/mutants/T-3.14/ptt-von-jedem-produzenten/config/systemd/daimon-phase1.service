@@ -1,0 +1,29 @@
+# dAImon Phase-1-Alltagsmessung (T-1.10), ausschliesslich passiv.
+
+[Unit]
+Description=dAImon Phase-1-Alltagsmessung
+After=daimon-hub.service daimon-hookbridge.service daimon-focus.service daimon-face.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
+    /home/itiger013/Dokumente/Github/dAImon/tools/phase1_recorder.py
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/itiger013/Dokumente/Github/dAImon/tests/evidence
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+# "invisible" wuerde genau die zu messenden /proc/<pid>/stat-Dateien
+# verstecken. "ptraceable" laesst gleichbenutzereigene dAImon-Prozesse
+# sichtbar, verbirgt aber nicht ptracebare fremde Prozesse.
+ProtectProc=ptraceable
+ProcSubset=pid
+PrivateTmp=yes
+LimitCORE=0
+UMask=0077
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module

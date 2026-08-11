@@ -1,0 +1,1 @@
+Die `DENK_FRIST_S`-Auswertung wurde in `daimon/hub/state.py` entfernt. Ohne Abschlussmeldung bleibt `processing` dadurch unbegrenzt stehen; genau diese Ausfallgrenze muss K6 röten.

@@ -1,0 +1,79 @@
+# dAImon lokaler Broker (T-3.11c): das Modell laeuft auf dieser Maschine.
+#
+# Der Gegenentwurf zum CLI-Broker. Der zahlt fuer das Abo dreifach -- 7--25 s
+# Latenz, rund 0,11 USD Kontingent je Frage, und eine Unit, die ins Netz darf.
+# Hier faellt alles drei weg.
+#
+# DIE ZUSAGE DIESER UNIT: sie redet ausschliesslich mit dem eigenen Rechner.
+# Nicht als Absichtserklaerung im Code, sondern als Kernel-Regel --
+# `IPAddressDeny=any` plus `IPAddressAllow=localhost`. Auch ein kompromittierter
+# Broker kaeme damit nicht nach draussen.
+#
+# Installation: systemctl --user link <dieser Pfad>
+#               systemctl --user enable --now daimon-lokal-broker.service
+# Voraussetzung: ollama laeuft und das Modell ist gezogen.
+
+[Unit]
+Description=dAImon lokaler Broker (Ollama, kein Netz nach draussen)
+Wants=daimon-hub.service
+After=daimon-hub.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
+    -m daimon.brokers.lokal.broker
+
+Restart=on-failure
+RestartSec=2
+
+# --- Das Netz: eine Familie, ein Ziel ------------------------------------
+# AF_INET muss erlaubt sein -- Ollama horcht auf 127.0.0.1:11434, und ein
+# TCP-Socket braucht die Familie. Die Beschraenkung sitzt deshalb eine Ebene
+# tiefer, bei den ADRESSEN: alles verboten, localhost erlaubt. Das ist die
+# Zusage, die der CLI-Broker nicht geben kann, weil dort ein fremder Agent
+# ins offene Netz muss.
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=localhost
+# Proxy-Variablen fliegen raus wie beim Egress: ein Proxy vor einem LOKALEN
+# Ziel waere genau die Umleitung, die dieser Broker ausschliesst. Der Code
+# setzt zusaetzlich einen leeren ProxyHandler -- zwei Netze fuer eine Zusage.
+UnsetEnvironment=HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy
+
+# --- Haertung nach Design 7.5 --------------------------------------------
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=read-only
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+# Der API-Token geht diesen Prozess nichts an: er ruft kein fremdes Ziel.
+InaccessiblePaths=-%h/.config/daimon/anthropic-token
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+LimitCORE=0
+UMask=0077
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @obsolete @mount @swap @reboot @module
+MemoryDenyWriteExecute=yes
+# Kein Geraeteknoten: die GPU gehoert Ollama, nicht diesem Prozess. Er
+# schickt Text ueber einen Socket und bekommt Text zurueck.
+PrivateDevices=yes
+TimeoutStopSec=10
+
+# --- Was hier ABSICHTLICH FEHLT ------------------------------------------
+# Keine GPU-Torwache. Das Gate aus T-3.7 (VRAM-Pruefung, Vollbildsperre,
+#   Ladeserialisierung) sitzt vor den EIGENEN Workern, nicht vor Ollama. Wer
+#   verhindern will, dass das Pet mitten im Spiel ein Modell laedt,
+#   verdrahtet es -- benannt, nicht gebaut.
+# Kein `Requires=` auf ollama.service: der Broker soll ANLAUFEN und
+#   `modell_weg` sagen, nicht sterben. Eine tote Unit ist von einer stummen
+#   nicht zu unterscheiden.
+
+[Install]
+WantedBy=graphical-session.target

@@ -505,11 +505,26 @@ class LiveSystem:
         return antwort
 
     def tts_beginnt(
-        self, text: str, *, kanal: str, abkuehlung_abwarten: bool = True,
+        self, text: str | None, *, kanal: str, anlass: str | None = None,
+        abkuehlung_abwarten: bool = True,
     ) -> tuple[object, dict]:
         if kanal not in {"ungefragt", "reaktion", "rueckfrage"}:
             raise ValueError(f"ungepinnter TTS-Kanal: {kanal!r}")
-        freigabe = self.tts(art="freigabe", kanal=kanal, text=text)
+        if kanal == "ungefragt":
+            erlaubte_anlaesse = {
+                "begruessung", "lange_sitzung", "build_fertig", "tests_gruen",
+                "tests_rot", "leerlauf", "steht_am_bildschirm",
+            }
+            if text is not None:
+                raise ValueError("ungefragt akzeptiert keinen freien Text")
+            if anlass not in erlaubte_anlaesse:
+                raise ValueError(f"ungepinnter ungefragt-Anlass: {anlass!r}")
+            freigabe_felder = {"art": "freigabe", "kanal": kanal, "anlass": anlass}
+        else:
+            if text is None or anlass is not None:
+                raise ValueError(f"{kanal} verlangt freien Text und keinen Anlass")
+            freigabe_felder = {"art": "freigabe", "kanal": kanal, "text": text}
+        freigabe = self.tts(**freigabe_felder)
         abkuehlungen = 0
         while (
             "marke" not in freigabe
@@ -526,7 +541,7 @@ class LiveSystem:
                 raise RuntimeError(f"tts freigabe: rest_s ist unzulaessig: {freigabe!r}")
             print(f"TTS-Abkuehlung {kanal}: gemeldete {float(rest):.3f} s werden abgewartet")
             time.sleep(float(rest) + 0.05)
-            freigabe = self.tts(art="freigabe", kanal=kanal, text=text)
+            freigabe = self.tts(**freigabe_felder)
         if "ok" not in freigabe:
             raise RuntimeError(f"tts freigabe: Antwortfeld ok fehlt: {freigabe!r}")
         if "marke" not in freigabe:
@@ -773,7 +788,7 @@ def pruefe_k8(system: LiveSystem, bericht: Bericht) -> None:
         system.warte_state("processing")
         zustandsdiag.append(system.warte_face("processing"))
         marke, _ = system.tts_beginnt(
-            "t314 mood antwort", kanal="ungefragt", abkuehlung_abwarten=True,
+            None, kanal="ungefragt", anlass="tests_gruen", abkuehlung_abwarten=True,
         )
         system.warte_state("speaking")
         zustandsdiag.append(system.warte_face("speaking"))

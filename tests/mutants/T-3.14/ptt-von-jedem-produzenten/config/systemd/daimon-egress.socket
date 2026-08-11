@@ -1,0 +1,27 @@
+# dAImon Egress (T-3.11), Socket-Seite.
+#
+# Installation: systemctl --user link <dieser Pfad>
+#               systemctl --user enable --now daimon-egress.socket
+
+[Unit]
+Description=dAImon Egress Socket
+PartOf=graphical-session.target
+
+[Socket]
+ListenStream=%t/daimon/egress.sock
+# 0600: nur derselbe Nutzer. Wer hier hineinschreiben kann, kann Anfragen auf
+# Kosten dieses Tokens stellen -- ein Kontingent begrenzt den Schaden, hebt ihn
+# aber nicht auf.
+SocketMode=0600
+Accept=no
+RemoveOnStop=yes
+
+# %t/daimon muss EXISTIEREN, bevor systemd den Namespace baut -- sonst stirbt die
+# Unit nach jedem Neustart mit 226/NAMESPACE (am 02.08. real passiert, alle vier
+# Units bei Restart-Zaehler 97). Preserve=yes, weil sonst das Stoppen EINER Unit
+# das Verzeichnis loescht und den anderen die Sockets wegzieht.
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+
+[Install]
+WantedBy=sockets.target

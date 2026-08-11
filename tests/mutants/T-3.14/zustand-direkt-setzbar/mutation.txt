@@ -1,0 +1,1 @@
+`set_voice(state=...)` wird in `daimon/hub/state.py` nicht mehr verworfen. Dadurch kann ein behaupteter Zustand den abgeleiteten Schnappschuss überschreiben; genau diese Ableitungsgrenze muss K3 röten.

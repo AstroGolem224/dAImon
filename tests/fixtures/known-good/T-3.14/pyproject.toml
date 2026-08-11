@@ -1,0 +1,74 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "daimon"
+version = "0.0.0"
+description = "Desktop-Familiar: Wahrnehmung, Kognition und Aktionen, lokal auf einer Maschine"
+requires-python = "==3.12.*"
+license = { text = "MIT" }
+
+# Die Laufzeitabhaengigkeiten bleiben bewusst duenn. Phase 0 baut den Hub, und
+# der spricht nur ueber Unix-Sockets und DBus -- alles Schwere (ONNX, CUDA)
+# haengt an den GPU-Arbeitsprozessen und kommt erst in Phase 3.
+# PyYAML, und zwar genau eine Abhaengigkeit: das Format des Aktionskatalogs
+# ist im Implementierungsplan als YAML gesetzt (T-4.2), und ein selbstgebauter
+# Parser fuer eine sicherheitsrelevante Whitelist waere schlechter als eine
+# gelesene Bibliothek. Benutzt wird ausschliesslich `safe_load`.
+dependencies = ["PyYAML>=6"]
+
+[project.optional-dependencies]
+# Die Python-Version ist nicht frei gewaehlt. T-1.2 hat native sm_120a-Cubins
+# ausschliesslich fuer das cp312-Wheel von onnxruntime-gpu 1.27.0 belegt
+# (cuobjdump-Nachweis in spikes/ort/results.json). Eine andere Nebenversion
+# zieht ein anderes Wheel und damit einen ungeprueften Zustand nach sich --
+# deshalb steht oben `==3.12.*` und nicht `>=3.12`.
+#
+# onnxruntime-gpu ist NACKT gepinnt, ohne die nvidia-*-pip-Pakete: die
+# CUDA-Bibliotheken kommen vom System-CUDA 13.3.1. Das spart rund 2 GB und
+# steht so in T-3.8. Wer hier ein `nvidia-cuda-*` hinzufuegt, hebelt die
+# Begruendung aus.
+gpu = [
+    "onnxruntime-gpu==1.27.0",
+    # T-3.8 laedt parakeet-tdt-0.6b-v3 ueber onnx-asr. Versionen aus dem
+    # Spike T-1.2 uebernommen, nicht neu aufgeloest: dort ist die
+    # Kombination gegen das System-CUDA gemessen worden.
+    "numpy==2.5.1",
+    "onnx==1.22.0",
+    "onnx-asr==0.12.0",
+]
+
+# Phase 3, Ohren. Getrennt von `gpu`, weil die Aufnahme ohne GPU laeuft und
+# ein Rechner ohne CUDA trotzdem zuhoeren koennen soll.
+audio = [
+    "sounddevice>=0.5",
+    "soundfile>=0.13",
+    # T-3.2 schreibt pysilero-vad vor, nicht webrtcvad. Der Unterschied ist
+    # nicht Geschmack: Silero will exakt 512-Sample-Chunks bei 16 kHz -- genau
+    # die Blockgroesse aus T-3.1 -- und liefert eine Wahrscheinlichkeit statt
+    # eines Ja/Nein, worauf die Hysterese aus T-3.2 ueberhaupt erst aufsetzen
+    # kann. (webrtcvad war hier kurz drin, weil ich es installiert habe, bevor
+    # ich in den Plan gesehen habe. Wieder raus, ungenutzt.)
+    "pysilero-vad>=3.4.0",
+]
+
+dev = [
+    "pytest>=8",
+    "pytest-timeout>=2.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["daimon"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Mutanten und Gut-Muster sind PRUEFMATERIAL, kein Testcode. Sie enthalten
+# absichtlich kaputte Fassungen und mehrfach denselben Dateinamen -- pytest
+# bricht beim Sammeln daran ab. Ausgefuehrt werden sie ausschliesslich von
+# tests/verify/meta.sh, und zwar einzeln und in einem eigenen Baum.
+norecursedirs = ["mutants", "fixtures", ".venv", "*.egg-info"]
+# Ein Test, der haengt, blockiert die ganze Kette. Phase 0 hat Sockets und
+# Unterprozesse -- eine harte Obergrenze ist billiger als ein haengendes CI.
+timeout = 60
+addopts = "-q"

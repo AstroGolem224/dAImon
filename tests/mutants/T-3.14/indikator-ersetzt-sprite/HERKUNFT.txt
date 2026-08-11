@@ -1,0 +1,13 @@
+GUT-MUSTER fuer tests/verify/T-3.14.sh — gesichtete, unveraenderte Kopie
+des am 11.08.2026 akzeptierten Arbeitsbaumstands.
+
+Enthalten sind die vom Pruefstand direkt oder ueber K13 verwendeten Teile:
+`daimon/**`, die vollstaendige Face-Crate ohne `face/target`, `config/**`,
+die regulaeren Python-Tests samt STT-Referenz, `.claude/**`, `kwin-script/**`,
+die Mood-Referenz, `docs/TOKEN-ROTATION.md` und `pyproject.toml`.
+
+Die lokale Projektumgebung und die grossen Sprachmodelle bleiben ausserhalb
+des Git-Inventars. Relative beziehungsweise uebernommene Symlinks stellen sie
+fuer den langen lokalen Meta-Lauf bereit; Produktquellen werden dadurch nicht
+veraendert. Jeder Mutantenbaum entstand als bytegleiche Kopie dieses Musters
+und bricht danach genau die in seiner `mutation.txt` benannte Grenze.

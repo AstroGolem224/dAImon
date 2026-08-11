@@ -1,0 +1,45 @@
+# Rollen-Pfadlisten für die Agentenschleife.
+#
+# Durchgesetzt von .claude/hooks/role_guard.py (PreToolUse) und
+# .githooks/pre-commit. Ohne diese beiden Mechanismen ist die Datei wirkungslos —
+# siehe Implementierungsplan T-0.0.
+#
+# Die aktive Rolle kommt aus der Umgebungsvariable DAIMON_ROLE.
+# Fehlt sie, gilt "unknown": Schreiben ist dann überall verboten.
+# Fail closed, nicht fail open.
+
+[roles.builder]
+description = "Implementiert Tasks. Darf keine Abnahme schreiben."
+deny = [
+    "tests/verify/**",
+    "tests/mutants/**",
+    "tests/fixtures/known-good/**",
+    ".claude/roles.toml",
+    ".claude/hooks/**",
+    ".githooks/**",
+]
+allow = ["**"]
+
+[roles.reviewer]
+description = "Schreibt Verifizierer, Mutanten und Gut-Muster. Berührt keinen Produktivcode."
+deny = [
+    "daimon/**",
+    "face/**",
+    "kwin-script/**",
+    "config/systemd/**",
+]
+allow = ["**"]
+
+[roles.investigator]
+description = "Spikes und Messungen. Schreibt nur unter spikes/ und docs/."
+deny = ["**"]
+allow = [
+    "spikes/**",
+    "docs/**",
+    "tests/evidence/**",
+]
+
+[roles.unknown]
+description = "Keine Rolle gesetzt. Nur lesen."
+deny = ["**"]
+allow = []

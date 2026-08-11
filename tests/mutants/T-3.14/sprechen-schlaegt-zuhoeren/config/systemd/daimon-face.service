@@ -1,0 +1,68 @@
+# dAImon Face (T-1.9): Wayland-Layer-Surface fuer den Sitzungszustand.
+#
+# Haertung nach Design 7.5. AF_UNIX bleibt zwingend enthalten: sowohl der
+# Hub als auch Wayland werden ueber Unix-Sockets erreicht.
+#
+# Installation: systemctl --user link <dieser Pfad>; systemctl --user start daimon-face
+
+[Unit]
+Description=dAImon Face (Wayland-Overlay)
+After=graphical-session.target daimon-hub.service
+Wants=daimon-hub.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon/face
+
+# WICHTIG: kein Python-Interpreter. Das Face ist das im Release-Profil
+# gebaute Rust-Binary; der absolute Pfad verhindert einen PATH-Zufallstreffer.
+ExecStart=/home/itiger013/Dokumente/Github/dAImon/face/target/release/daimon-face \
+    --hub-socket %t/daimon/events.sock \
+    --diag-socket %t/daimon/face-diag.sock \
+    --control-socket %t/daimon/face-control.sock \
+    --pet-manifest /home/itiger013/Dokumente/Github/dAImon/face/assets/pet.json
+# Der Entwicklungs-Watchdog beendet das Binary nach Vorgabe nach 90 s.
+# Im systemd-Dauerbetrieb bleibt er praktisch deaktiviert; Prozessaufsicht
+# und Neustart uebernimmt systemd.
+Environment=DAIMON_MAX_SECS=315360000
+Restart=on-failure
+RestartSec=2
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+# Das Binary und die Sprite-Assets liegen derzeit im Home-Checkout. Read-only
+# laesst sie und ~/.config sichtbar, verhindert dort aber Schreibzugriffe.
+ProtectHome=read-only
+# Diagnose-, Steuer- und Hub-Sockets liegen im Sitzungs-Runtime-Verzeichnis.
+# %t/daimon muss EXISTIEREN, bevor systemd den Namespace baut -- sonst
+# stirbt die Unit mit 226/NAMESPACE, und zwar nach JEDEM Neustart, weil
+# /run/user/<uid> leer hochkommt. Real passiert am 02.08.: alle vier Units
+# im Restart-Karussell, Zaehler bei 97, und niemand hat es gemerkt, weil
+# ein totes Pet genauso aussieht wie ein ruhiges.
+# Preserve=yes, weil sonst das Stoppen EINER Unit das Verzeichnis loescht
+# und den anderen drei die Sockets unter den Fuessen wegzieht.
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+# %h/.local/state/daimon: dorthin schreibt die Personaauswahl aus dem
+# Kontextmenue ihre `persona.json`. ABSICHTLICH nicht %h/.config/daimon --
+# dort liegt der `anthropic-token` (docs/TOKEN-ROTATION.md), und ein
+# Overlay mit Schreibrecht daneben waere ein zu hoher Preis fuer einen
+# Menueeintrag. Der Mind liest die Auswahl beim Start vor der Konfiguration.
+ReadWritePaths=%t/daimon %h/.local/state/daimon
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+LimitCORE=0
+# Diagnose- und Steuersockets entstehen damit hoechstens als 0600.
+UMask=0077
+# AF_UNIX deckt Hub, Wayland und DBus ab. WAYLAND_DISPLAY und
+# XDG_RUNTIME_DIR kommen aus der Umgebung des User-Managers.
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+
+[Install]
+WantedBy=graphical-session.target

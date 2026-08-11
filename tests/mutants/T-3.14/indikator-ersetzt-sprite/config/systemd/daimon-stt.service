@@ -1,0 +1,88 @@
+# dAImon STT (T-3.8): Audio rein, Text raus. sherpa-onnx auf der CPU, 0 VRAM.
+#
+# Socket-aktiviert, aber OHNE Leerlauf-Exit -- der Unterschied zum GPU-Worker aus
+# T-3.7 und derselbe Grund wie beim TTS: dort war die belastbare Groesse die
+# VRAM-Rueckgabe nach dem Prozessende, hier gibt es kein VRAM, und ein Neustart
+# kostet 843 ms Ladezeit. Das Modell im Speicher IST die Latenzzusage
+# (gemessen: Median 117 ms je Aeusserung, p95 152 ms).
+#
+# Haertung nach Design 7.5. Jede Direktive ist begruendet, damit eine spaetere
+# "Vereinfachung" sichtbar macht, welche Schicht sie abtraegt.
+#
+# Installation: systemctl --user link <dieser Pfad>
+#               systemctl --user enable --now daimon-stt.socket
+
+[Unit]
+Description=dAImon STT (sherpa-onnx parakeet-tdt-0.6b-v3, CPU)
+# Ohne den Socket gibt es keinen Deskriptor zum Erben. Requires statt Wants:
+# ein Dienst ohne Socket waere gestartet und unerreichbar.
+Requires=daimon-stt.socket
+After=daimon-stt.socket
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+
+# Projekt-venv: sherpa-onnx liegt dort. System-Python ist 3.14 ohne das Paket --
+# dieselbe Zwei-Interpreter-Trennung wie beim Auth-Agenten, nur umgekehrt.
+ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
+    -m daimon.gpu.stt
+
+# Restart=on-failure, nicht `no`: ein Ende ist hier immer ein Fehler, dieser
+# Dienst hat keinen geordneten Ausgang. Ohne Restart waere das Pet nach einem
+# Absturz dauerhaft taub, und taub sieht aus wie "hoert nicht zu".
+Restart=on-failure
+RestartSec=2
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+# Read-only genuegt: die Gewichte werden GELESEN. Der Dienst schreibt nichts --
+# kein Zustand, keine Abkuehlung, kein Zwischenspeicher.
+ProtectHome=read-only
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+# Dieser Dienst sieht ALLES, was ins Mikrofon gesprochen wurde. Fremde Prozesse
+# und die Nicht-PID-Teile von /proc gehen ihn nichts an.
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+# Keine Core-Dumps: ein Dump enthielte den Audiopuffer und den Text.
+LimitCORE=0
+UMask=0077
+# Der Dienst spricht ausschliesslich ueber seinen Unix-Socket. Er laedt NICHTS
+# herunter: fehlen die Gewichte, kommt `modell_fehlt` -- ein Modell, das beim
+# ersten Wort aus dem Netz kaeme, waere eine Latenz, die niemand messen kann,
+# und ein Mikrofondienst mit Netzzugang ist ohnehin die falsche Kombination.
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+# @resources ist NICHT gefiltert, und das ist gemessen: mit `~@resources` laedt
+# das Modell noch (die Zeile "Modell geladen" steht im Journal), und der Prozess
+# stirbt dann mit `status=31/SYS`. onnxruntime heftet seine Rechenthreads an
+# Kerne (sched_setaffinity/sched_setattr liegen in @resources). "Laedt" ist hier
+# also kein Beweis fuer "laeuft" -- derselbe Fall wie beim TTS, dort war es der
+# PipeWire-Client.
+SystemCallFilter=~@privileged @obsolete @mount @swap @reboot @module
+# W+X wird nicht gebraucht: onnxruntime auf der CPU, kein JIT-Provider. Beim
+# GPU-Worker fehlt diese Direktive, weil der CUDA-JIT sie braucht -- hier ist
+# sie deshalb setzbar, und das ist der Gewinn des CPU-Pfads.
+MemoryDenyWriteExecute=yes
+# Kein Geraeteknoten: kein /dev/nvidia*, kein /dev/snd. Der Dienst bekommt eine
+# DATEI und gibt Text; das Mikrofon gehoert dem Ohren-Dienst.
+PrivateDevices=yes
+TimeoutStopSec=10
+
+# --- Was hier ABSICHTLICH FEHLT ------------------------------------------
+# Kein `[Install]`: gestartet wird ausschliesslich ueber den Socket. Ein
+#   `enable` waere ein Modell, das beim Anmelden 843 ms und rund 700 MB kostet,
+#   ohne dass jemand etwas gesagt hat.
+# Kein `Nice=`/`CPUWeight=`, obwohl der Dienst acht Threads nimmt: ein
+#   herabgesetzter Erkenner ist bei Last genau dann langsam, wenn die Antwort
+#   gebraucht wird. Wer die Kerne braucht, senkt `stt.threads` -- das ist der
+#   Kalibrierknopf, nicht die Scheduler-Prioritaet.
+# Kein `MemoryMax=`: der Encoder ist 652 MB int8, und ein zu knappes Limit
+#   erzeugt einen OOM-Kill mitten in einer Aeusserung. Wer hier eine Grenze
+#   setzt, messe vorher den Spitzenverbrauch.

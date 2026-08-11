@@ -1,0 +1,1 @@
+Das Face leitet den Sprachzustand in `face/src/hub.rs` selbst aus den drei Hub-Flags ab, statt `voice.state` zu lesen, und behält diese eigene Rechnung bei Verbindungsabbruch. Die zweite Zustandsmaschine muss K9 und der stehenbleibende Zustand nach Hub-Tod K11 röten.

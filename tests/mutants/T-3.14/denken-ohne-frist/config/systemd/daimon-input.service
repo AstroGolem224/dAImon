@@ -1,0 +1,53 @@
+[Unit]
+# T-4.13 — der Input-Broker. Eine Ereignisfolge, dann Ende.
+Description=dAImon Input-Broker (one-shot, libei über RemoteDesktop)
+PartOf=graphical-session.target
+After=daimon-hub.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
+    -m daimon.brokers.input.daemon \
+    --socket %t/daimon/input-broker.sock
+
+# Das Zwangsende. Der Broker beendet sich selbst nach seiner einen Folge --
+# diese Zeile ist für den Fall, dass er es nicht schafft. Ein Prozess, der
+# Tastenanschläge synthetisieren kann, darf nicht dauerhaft leben, auch nicht
+# durch einen Fehler.
+RuntimeMaxSec=30
+# KEIN Restart. Ein neu gestarteter Input-Broker wäre ein dauerhafter.
+Restart=no
+
+NoNewPrivileges=yes
+PrivateDevices=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=strict
+ProtectHome=tmpfs
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+LimitCORE=0
+UMask=0077
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+
+# ydotool ist NICHT eingeschaltet. Es verlangt einen dauerhaften
+# privilegierten ydotoold und widerspricht damit der One-shot-Zusage; und es
+# positioniert auf dieser Maschine nachweislich nicht (Spike T−1.3: absolute
+# Bewegung landet bei (0,0), Exit 0, keine Meldung). Wer es trotzdem will,
+# setzt hier DAIMON_YDOTOOL=1 -- und bekommt eine ungenaue relative Bewegung.
+Environment=DAIMON_YDOTOOL=0
+
+[Install]
+WantedBy=graphical-session.target
