@@ -383,3 +383,68 @@ Beweisaenderungen zurueckgeblieben.
 | T-3.12 K1-K13 | gruen (Pruefstandsdefekt behoben) |
 | T-3.12 K14/K15 | umgebungs-blockiert (Worktree ohne Modell-Symlinks) |
 | T-3.13b-Snapshots | Befund: aelter als der Echtbaum (router.py-antwort-Feld); nichts regeneriert |
+
+## Act 3 — Runde 3 (T-3.14.v, blind)
+
+PLAN.md Schritt 4. Der Vertrag verbietet dem Autor, `daimon/**` und `face/**`
+vor dem ersten Lauf zu oeffnen. Eine Anweisung erzwingt das nicht (Codex'
+eigener Befund 8 aus Runde 1), deshalb strukturell: der Autor lief in einem
+Verzeichnis, das den Produktcode gar nicht enthaelt — nur CONTRACT.md, spaeter
+ADDENDUM.md, und die generische Harness.
+
+**Blindheit ist erstmals gemessen, nicht behauptet.** Vier Werkzeug-Transkripte
+liegen als `tests/evidence/T-3.14.v-blindheit-phase{1..4}.jsonl` im Baum: null
+Lesezugriffe ausserhalb der Sandbox, null Produktpfad-Nennungen.
+
+### Der Befund, der die Runde traegt
+Phase 1 lieferte keinen fertigen Pruefstand, sondern ein Urteil ueber den
+Vertrag: er pinnt die Python-API und die Objektform, aber nicht die
+Socketpfade, die Rahmung, die Startbefehle oder einen Weg, den Mood zu
+bewegen. Der Autor hat **K4 bis K11 fail-closed** gelassen, je mit einer
+`CONTRACT GAP`-Meldung statt einer geratenen Annahme. Genau dafuer ist das
+Verfahren da.
+
+Daraufhin `T-3.14-Addendum-Schnittstellen.md` (§10, builder): ausschliesslich
+Mechanik, kein Verhalten — §10.7 sagt das ausdruecklich, und der blinde Autor
+hat unabhaengig bestaetigt, dass keine Verhaltensaussage durchgesickert ist.
+
+### Drei Laeufe, drei Fehler des Vertragsschreibers
+Jeder Lauf hat einen Fehler in MEINEM Addendum gefunden, keinen im Pruefstand:
+
+1. `cargo build --release` ohne Angabe, dass `Cargo.toml` in `face/` liegt →
+   K4–K11 und `cargo test` mechanisch blockiert.
+2. Das Face bekam das umgebogene `XDG_RUNTIME_DIR` → verliert `wayland-0`,
+   stirbt sofort, sieht von aussen aus wie „Diagnose antwortet nicht".
+   Dieselbe Falle wie `PIPEWIRE_RUNTIME_DIR`/`pw-cat`, anderer Dienst.
+   Ausserdem fehlten `--hub-socket` und das pflichtige `--pet-manifest`.
+3. `{"art":"beginnt","marke":"trusted"}` — falsch: `marke` ist die Einmalmarke
+   aus einer vorherigen `freigabe`, kein Markierungswort. Ohne `beginnt` wird
+   `tts_active` nie wahr, `speaking` nie erreicht, und `denkt` faellt erst
+   nach 30 s von selbst.
+
+Stand nach Lauf 3: K1, K2, K4, K5, K12 gruen; K3 1 rot, K6 3 rot, K7–K11 je
+1 rot, K13 2 rot.
+
+### Drei Produkt-/Vertragsbefunde, die der blinde Stand erzeugt hat
+Alle drei als PMTool-Backlog fuer die Rolle builder erfasst, keiner hier
+behoben (Rollengrenze):
+
+* **Die einspeisbare Uhr erreicht `snapshot()` nicht.**
+  `_voice_schnappschuss()` ruft `_voice_flags(None)`; `None` heisst immer
+  `time.monotonic()`. §4 sagt Einspeisbarkeit UND `rev`-Anstieg beim stillen
+  Ablauf zu — beides gilt nur fuer `voice_state()`. Die Meldung nennt es
+  woertlich: `voice_state(jetzt=100.0)='speaking', unmittelbar danach
+  snapshot()='idle'`.
+* **`SPRECH_FRIST_S = 30.0` steht in keinem Vertrag.** §2 nennt drei Flags und
+  zwei Fristen, §4 pinnt zwei Konstanten. Der Stand meldet es als
+  `CONTRACT-DIVERGENZ bei unerwarteter dritter Frist` — aus dem Vertrag
+  abgeleitet, ohne Namen oder Wert zu kennen.
+* **„Antwort ohne Sprechen" ist nirgends gepinnt.** §2 nennt den Weg aus
+  `denkt`, aber nicht, wie man ihn signalisiert.
+
+### Was offen bleibt
+Die drei Addendum-Korrekturen sind geschrieben; der vierte Lauf steht aus.
+Die sichtbare Phase (sechs Mutanten aus §8, Gut-Muster) hat noch nicht
+begonnen — sie leitet sich vom abgenommenen Stand ab und ist ausdruecklich
+nicht blind (Praezedenz T-3.9). `tests/evidence/T-3.14-ptt-latenz.json` steht
+ehrlich mit `n: 0`.
