@@ -35,8 +35,8 @@ MUTANTEN_GRENZEN = {
 REGRESSIONS_VERIFIZIERER = (
     "tests/verify/T-0.7.sh",
     "tests/verify/T-0.9.sh",
-    "tests/verify/T-2.4.sh",
     "tests/verify/T-2.5.sh",
+    "tests/verify/T-2.4.sh",
     "tests/verify/T-3.4.sh",
     "tests/verify/T-3.9.sh",
 )
@@ -993,6 +993,36 @@ def pruefe_prozesszaehler(pruefling: Path, bericht: Bericht) -> None:
         prozess.stop()
 
 
+def k13_element_mit_nachlauf(
+    name: str, befehl: Sequence[str], cwd: Path, env: dict[str, str],
+    muster: str, bericht: Bericht,
+) -> tuple[int, str]:
+    vorher = prozesszahl(muster)
+    rc_erstlauf, ausgabe_erstlauf = lauf_mit_aufraeumen(befehl, cwd, env)
+    nachher = prozesszahl(muster)
+    bericht.pruefe(
+        "K13", nachher == vorher,
+        f"Prozesszaehlung {name}, Erstlauf: vorher {vorher}, nachher {nachher}",
+    )
+    if rc_erstlauf == 0:
+        return rc_erstlauf, ausgabe_erstlauf
+
+    vorher_nachlauf = nachher
+    rc_nachlauf, ausgabe_nachlauf = lauf_mit_aufraeumen(befehl, cwd, env)
+    nachher_nachlauf = prozesszahl(muster)
+    bericht.pruefe(
+        "K13", nachher_nachlauf == vorher_nachlauf,
+        f"Prozesszaehlung {name}, Nachlauf: "
+        f"vorher {vorher_nachlauf}, nachher {nachher_nachlauf}",
+    )
+    print(
+        f"K13: {name} Erstlauf Exit {rc_erstlauf}, erlaubter Nachlauf Exit {rc_nachlauf}; "
+        "massgeblich ist der Nachlauf"
+    )
+    ausgabe = ausgabe_erstlauf + "\nNACHLAUF:\n" + ausgabe_nachlauf
+    return rc_nachlauf, ausgabe
+
+
 def pruefe_k13(pruefling: Path, verifier_repo: Path, bericht: Bericht) -> None:
     pruefe_prozesszaehler(pruefling, bericht)
     muster = re.escape(str(pruefling.resolve()))
@@ -1000,44 +1030,25 @@ def pruefe_k13(pruefling: Path, verifier_repo: Path, bericht: Bericht) -> None:
     env["DAIMON_FIXTURE"] = str(pruefling)
 
     for relativ in REGRESSIONS_VERIFIZIERER:
-        vorher = prozesszahl(muster)
         skript = verifier_repo / relativ
         if not skript.is_file():
             bericht.fehler("K13", f"eingefrorener Verifizierer fehlt: {relativ}")
             continue
-        rc, ausgabe = lauf_mit_aufraeumen([str(skript)], verifier_repo, env)
-        rc_erstlauf = rc
-        nachher = prozesszahl(muster)
-        bericht.pruefe("K13", nachher == vorher,
-                       f"Prozesszaehlung {relativ}, Erstlauf: vorher {vorher}, nachher {nachher}")
-        if relativ == "tests/verify/T-3.9.sh" and rc != 0:
-            vorher_nachlauf = nachher
-            rc2, ausgabe2 = lauf_mit_aufraeumen([str(skript)], verifier_repo, env)
-            nachher_nachlauf = prozesszahl(muster)
-            bericht.pruefe(
-                "K13", nachher_nachlauf == vorher_nachlauf,
-                f"Prozesszaehlung {relativ}, Nachlauf: "
-                f"vorher {vorher_nachlauf}, nachher {nachher_nachlauf}",
-            )
-            rc, ausgabe = rc2, ausgabe + "\nNACHLAUF:\n" + ausgabe2
-            print(
-                f"K13: T-3.9 Erstlauf Exit {rc_erstlauf}, erlaubter Nachlauf Exit {rc2}; "
-                f"massgeblich ist der Nachlauf"
-            )
+        name = Path(relativ).stem
+        rc, ausgabe = k13_element_mit_nachlauf(
+            name, [str(skript)], verifier_repo, env, muster, bericht,
+        )
         bericht.pruefe("K13", rc == 0, f"{relativ} Exit {rc}: {ausgabe}")
 
-    vorher = prozesszahl(muster)
-    rc, ausgabe = lauf_mit_aufraeumen([sys.executable, "-m", "pytest"], pruefling, env)
+    rc, ausgabe = k13_element_mit_nachlauf(
+        "pytest", [sys.executable, "-m", "pytest"], pruefling, env, muster, bericht,
+    )
     bericht.pruefe("K13", rc == 0, f"pytest Exit {rc}: {ausgabe}")
-    nachher = prozesszahl(muster)
-    bericht.pruefe("K13", nachher == vorher,
-                   f"Prozesszaehlung pytest: vorher {vorher}, nachher {nachher}")
-    vorher = prozesszahl(muster)
-    rc, ausgabe = lauf_mit_aufraeumen(["cargo", "test", "-p", "face"], pruefling / "face", env)
+    rc, ausgabe = k13_element_mit_nachlauf(
+        "cargo test -p face", ["cargo", "test", "-p", "face"],
+        pruefling / "face", env, muster, bericht,
+    )
     bericht.pruefe("K13", rc == 0, f"cargo test -p face Exit {rc}: {ausgabe}")
-    nachher = prozesszahl(muster)
-    bericht.pruefe("K13", nachher == vorher,
-                   f"Prozesszaehlung cargo test: vorher {vorher}, nachher {nachher}")
 
 
 def pruefe_k12(bericht: Bericht) -> None:
