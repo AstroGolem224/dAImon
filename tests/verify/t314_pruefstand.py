@@ -174,24 +174,26 @@ def pruefe_k3(modul: ModuleType, bericht: Bericht) -> None:
         positiv = neuer_zustand(modul)
         positiv.set_voice(tts_active=True, jetzt=100.0)
         positiv_direkt = positiv.voice_state(jetzt=100.0)
-        positiv_snapshot = positiv.snapshot()
+        positiv_snapshot = positiv.snapshot(voice_jetzt=100.0)
         bericht.pruefe(
             "K3",
             positiv_snapshot["voice"]["state"] == "speaking",
             "Positivkontrolle mit Uhrvergleich: "
             f"voice_state(jetzt=100.0)={positiv_direkt!r}, unmittelbar danach "
-            f"snapshot()={positiv_snapshot['voice']['state']!r}; erwartet snapshot='speaking'",
+            f"snapshot(voice_jetzt=100.0)={positiv_snapshot['voice']['state']!r}; "
+            "erwartet snapshot='speaking'",
         )
 
         zustand = neuer_zustand(modul)
         zustand.set_voice(state="speaking", jetzt=100.0)
-        snapshot = zustand.snapshot()
+        snapshot = zustand.snapshot(voice_jetzt=100.0)
         direkt = zustand.voice_state(jetzt=100.0)
         bericht.pruefe("K3", direkt == "idle", f"state= darf voice_state nicht setzen; erhalten {direkt!r}")
         bericht.pruefe(
             "K3", snapshot["voice"]["state"] == "idle",
             "state= darf den Schnappschuss nicht setzen; "
-            f"voice_state(jetzt=100.0)={direkt!r}, snapshot()={snapshot['voice']['state']!r}",
+            f"voice_state(jetzt=100.0)={direkt!r}, "
+            f"snapshot(voice_jetzt=100.0)={snapshot['voice']['state']!r}",
         )
     except Exception as exc:
         bericht.fehler("K3", f"API-/Schnappschusspruefung fehlgeschlagen: {exc!r}")
@@ -200,6 +202,8 @@ def pruefe_k3(modul: ModuleType, bericht: Bericht) -> None:
 def pruefe_k6(modul: ModuleType, bericht: Bericht) -> None:
     bericht.pruefe("K6", getattr(modul, "DENK_FRIST_S", None) == 30.0, "DENK_FRIST_S muss 30.0 sein")
     bericht.pruefe("K6", getattr(modul, "PTT_FRIST_S", None) == 150.0, "PTT_FRIST_S muss 150.0 sein")
+    bericht.pruefe("K6", getattr(modul, "SPRECH_FRIST_S", None) == 30.0,
+                   "SPRECH_FRIST_S muss 30.0 sein")
     try:
         denk = neuer_zustand(modul)
         denk.voice_denkt_an(jetzt=100.0)
@@ -219,19 +223,19 @@ def pruefe_k6(modul: ModuleType, bericht: Bericht) -> None:
         bericht.pruefe("K6", ptt_nachher == "idle",
                        f"PTT am injizierten Fristpunkt: erhalten {ptt_nachher!r}")
 
-        # §4 nennt genau zwei Fristen. Ein tts_active ohne listening/denkt
-        # darf deshalb auch bei weit vorgeschobener injizierter Uhr nicht
-        # verfallen; der erste Blick ist die Positivkontrolle des Apparats.
+        # §11.1 macht die dritte Ausfallgrenze messbar. Der Blick unmittelbar
+        # davor ist die Positivkontrolle, der Grenzpunkt gilt als abgelaufen.
         sprechen = neuer_zustand(modul)
         sprechen.set_voice(tts_active=True, jetzt=100.0)
-        sprechen_vorher = sprechen.voice_state(jetzt=100.0)
-        sprechen_spaeter = sprechen.voice_state(jetzt=1_000_000.0)
-        bericht.pruefe("K6", sprechen_vorher == "speaking",
-                       f"Positivkontrolle speaking bei Startzeit: erhalten {sprechen_vorher!r}")
+        sprechen_vorher = sprechen.voice_state(jetzt=129.999)
+        sprechen_nachher = sprechen.voice_state(jetzt=130.0)
         bericht.pruefe(
-            "K6", sprechen_spaeter == "speaking",
-            "CONTRACT-DIVERGENZ bei unerwarteter dritter Frist: "
-            f"tts_active ergab bei jetzt=1_000_000.0 {sprechen_spaeter!r} statt 'speaking'",
+            "K6", sprechen_vorher == "speaking",
+            f"Sprechen knapp vor injizierter Frist: erhalten {sprechen_vorher!r}",
+        )
+        bericht.pruefe(
+            "K6", sprechen_nachher == "idle",
+            f"Sprechen am injizierten Fristpunkt: erhalten {sprechen_nachher!r}",
         )
     except Exception as exc:
         bericht.fehler("K6", f"Injizierte Fristpruefung fehlgeschlagen: {exc!r}")
@@ -242,27 +246,58 @@ def pruefe_k6(modul: ModuleType, bericht: Bericht) -> None:
         aktuell = time.monotonic()
         positiv = neuer_zustand(modul)
         positiv.voice_denkt_an(jetzt=aktuell)
-        vorher = positiv.snapshot()
+        vorher = positiv.snapshot(voice_jetzt=aktuell)
         bericht.pruefe(
             "K6", vorher["voice"]["denkt"] is True,
             "Uhrvergleich vor Frist: "
-            f"voice_denkt_an(jetzt={aktuell:.6f}), snapshot().voice.denkt={vorher['voice']['denkt']!r}",
+            f"voice_denkt_an(jetzt={aktuell:.6f}), "
+            f"snapshot(voice_jetzt={aktuell:.6f}).voice.denkt={vorher['voice']['denkt']!r}",
         )
 
         zustand = neuer_zustand(modul)
-        ganz_vorher = zustand.snapshot()
+        ganz_vorher = zustand.snapshot(voice_jetzt=aktuell)
         zustand.voice_denkt_an(jetzt=aktuell - 31.0)
-        nachher = zustand.snapshot()
+        nachher = zustand.snapshot(voice_jetzt=aktuell)
         bericht.pruefe(
             "K6", nachher["voice"]["denkt"] is False,
             "Uhrvergleich nach Frist: "
             f"voice_denkt_an(jetzt={aktuell - 31.0:.6f}), "
-            f"snapshot().voice.denkt={nachher['voice']['denkt']!r}",
+            f"snapshot(voice_jetzt={aktuell:.6f}).voice.denkt={nachher['voice']['denkt']!r}",
         )
         bericht.pruefe(
             "K6", nachher["rev"] >= ganz_vorher["rev"] + 2,
             "rev bei injiziertem Beginn und snapshot-eigener Uhr: "
             f"vorher={ganz_vorher['rev']!r}, nachher={nachher['rev']!r}, erwartet mindestens +2",
+        )
+
+        sprechen = neuer_zustand(modul)
+        sprechen.set_voice(tts_active=True, jetzt=100.0)
+        sprechen_vorher = sprechen.snapshot(voice_jetzt=129.999)
+        sprechen_nachher = sprechen.snapshot(voice_jetzt=130.0)
+        bericht.pruefe(
+            "K6", sprechen_vorher["voice"]["state"] == "speaking",
+            "Positivkontrolle des Sprechzustands vor der Snapshot-Frist: "
+            f"state={sprechen_vorher['voice']['state']!r}",
+        )
+        bericht.pruefe(
+            "K6", sprechen_vorher["voice"]["tts_active"] is True,
+            "Positivkontrolle des tts_active-Flags vor der Snapshot-Frist: "
+            f"tts_active={sprechen_vorher['voice']['tts_active']!r}",
+        )
+        bericht.pruefe(
+            "K6", sprechen_nachher["voice"]["state"] == "idle",
+            "Sprechzustand am Snapshot-Grenzpunkt: "
+            f"state={sprechen_nachher['voice']['state']!r}",
+        )
+        bericht.pruefe(
+            "K6", sprechen_nachher["voice"]["tts_active"] is False,
+            "tts_active am Snapshot-Grenzpunkt: "
+            f"tts_active={sprechen_nachher['voice']['tts_active']!r}",
+        )
+        bericht.pruefe(
+            "K6", sprechen_nachher["rev"] > sprechen_vorher["rev"],
+            "Sprechfrist und rev verlassen denselben Snapshot: "
+            f"vorher={sprechen_vorher['rev']!r}, nachher={sprechen_nachher['rev']!r}",
         )
     except Exception as exc:
         bericht.fehler("K6", f"Schnappschuss-/rev-Fristpruefung fehlgeschlagen: {exc!r}")
@@ -307,8 +342,8 @@ def ereignis(typ: str, payload: dict) -> bytes:
     return (json.dumps({"v": 1, "type": typ, "payload": payload}, separators=(",", ":")) + "\n").encode()
 
 
-def tts_anfrage(art: str) -> bytes:
-    return (json.dumps({"v": 1, "art": art, "marke": "trusted"}, separators=(",", ":")) + "\n").encode()
+def tts_anfrage(**felder) -> bytes:
+    return (json.dumps({"v": 1, **felder}, separators=(",", ":")) + "\n").encode()
 
 
 def startzeit(pid: int) -> str | None:
@@ -455,23 +490,36 @@ class LiveSystem:
             sock.connect(str(self.rt / socketname))
             sock.sendall(daten)
 
-    def tts(self, art: str) -> dict:
+    def tts(self, **felder) -> dict:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.settimeout(BEOBACHTUNG_S)
             sock.connect(str(self.rt / "tts.sock"))
-            sock.sendall(tts_anfrage(art))
+            sock.sendall(tts_anfrage(**felder))
             zeile = sock.makefile("rb").readline()
         if not zeile:
-            raise RuntimeError(f"tts {art}: Antwort fehlt")
+            raise RuntimeError(f"tts {felder.get('art')}: Antwort fehlt")
         antwort = json.loads(zeile)
         if not isinstance(antwort, dict):
-            raise RuntimeError(f"tts {art}: Antwort ist kein Objekt")
+            raise RuntimeError(f"tts {felder.get('art')}: Antwort ist kein Objekt")
         return antwort
+
+    def tts_beginnt(self, text: str) -> tuple[object, dict]:
+        freigabe = self.tts(art="freigabe", kanal="reaktion", text=text)
+        if "ok" not in freigabe:
+            raise RuntimeError(f"tts freigabe: Antwortfeld ok fehlt: {freigabe!r}")
+        if "marke" not in freigabe:
+            raise RuntimeError(f"tts freigabe: Einmal-Marke fehlt: {freigabe!r}")
+        marke = freigabe["marke"]
+        antwort = self.tts(art="beginnt", marke=marke)
+        return marke, antwort
+
+    def tts_gesprochen(self, marke: object) -> dict:
+        return self.tts(art="gesprochen", marke=marke)
 
     def normalisiere_idle(self) -> None:
         self.sende("auth.sock", ereignis("ptt", {"an": False}))
-        self.tts("beginnt")
-        self.tts("gesprochen")
+        marke, _ = self.tts_beginnt("t314 normalisierung")
+        self.tts_gesprochen(marke)
         self.warte_state("idle")
 
     def starten(self) -> None:
@@ -605,11 +653,11 @@ def pruefe_k6_live(system: LiveSystem, bericht: Bericht) -> None:
         system.sende("ears.sock", ereignis("utterance", {"text": "t314 fristweg"}))
         bericht.pruefe("K6", system.warte_state("processing")["voice"]["denkt"] is True,
                        "utterance setzt processing am echten Hub")
-        system.tts("beginnt")
+        marke, _ = system.tts_beginnt("t314 fristweg antwort")
         snapshot = system.warte_state("speaking")
         bericht.pruefe("K6", snapshot["voice"]["denkt"] is False,
                        "tts beginnt beendet processing am echten Hub")
-        system.tts("gesprochen")
+        system.tts_gesprochen(marke)
         system.warte_state("idle")
     except Exception as exc:
         bericht.fehler("K6", f"echter utterance-/tts-Weg fehlgeschlagen: {exc!r}")
@@ -622,10 +670,10 @@ def volle_runde(system: LiveSystem, kriterium: str, bericht: Bericht) -> None:
     system.sende("ears.sock", ereignis("utterance", {"text": "t314 pruefung"}))
     system.sende("auth.sock", ereignis("ptt", {"an": False}))
     bericht.pruefe(kriterium, system.warte_state("processing")["voice"]["state"] == "processing", "Aeusserung eingegangen")
-    antwort = system.tts("beginnt")
+    marke, antwort = system.tts_beginnt("t314 rundenantwort")
     bericht.pruefe(kriterium, "ok" in antwort, "tts beginnt lieferte das gepinnte Antwortfeld")
     bericht.pruefe(kriterium, system.warte_state("speaking")["voice"]["state"] == "speaking", "Sprechen beginnt")
-    antwort = system.tts("gesprochen")
+    antwort = system.tts_gesprochen(marke)
     bericht.pruefe(kriterium, "ok" in antwort, "tts gesprochen lieferte das gepinnte Antwortfeld")
     bericht.pruefe(kriterium, system.warte_state("idle")["voice"]["state"] == "idle", "Runde faellt auf idle")
 
@@ -677,10 +725,10 @@ def pruefe_k8(system: LiveSystem, bericht: Bericht) -> None:
         system.sende("ears.sock", ereignis("utterance", {"text": "t314 mood"}))
         system.warte_state("processing")
         zustandsdiag.append(system.warte_face("processing"))
-        system.tts("beginnt")
+        marke, _ = system.tts_beginnt("t314 mood antwort")
         system.warte_state("speaking")
         zustandsdiag.append(system.warte_face("speaking"))
-        system.tts("gesprochen")
+        system.tts_gesprochen(marke)
         system.warte_state("idle")
         zustandsdiag.append(system.warte_face("idle"))
         for name, diag in zip(("listening", "processing", "speaking", "idle"), zustandsdiag):
@@ -712,12 +760,12 @@ def pruefe_k9(system: LiveSystem, bericht: Bericht) -> None:
                        "processing wurde wirklich in den Sprite-Buffer gezeichnet")
         zaehler = processing["voice_indikator_gezeichnet"]
 
-        system.tts("beginnt")
+        marke, _ = system.tts_beginnt("t314 indikator antwort")
         system.warte_state("speaking")
         speaking = system.warte_face("speaking", zaehler_groesser=zaehler)
         bericht.pruefe("K9", speaking["voice_indikator_gezeichnet"] > zaehler,
                        "speaking wurde wirklich in den Sprite-Buffer gezeichnet")
-        system.tts("gesprochen")
+        system.tts_gesprochen(marke)
         idle = system.warte_face("idle")
         zaehler_idle = idle["voice_indikator_gezeichnet"]
         time.sleep(BEOBACHTUNG_S)
