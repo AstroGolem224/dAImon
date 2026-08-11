@@ -295,14 +295,21 @@ class HubState:
             del self._sessions[sid]
         return bool(tot)
 
-    def _voice_schnappschuss(self) -> dict:
+    def _voice_schnappschuss(self, jetzt: float | None = None) -> dict:
         """Nur unter `self._lock` rufen.
 
         Laeuft eine Frist im Stillen ab, steigt hier `rev` -- sonst bekaeme das
         Face den Rueckfall auf `idle` erst beim naechsten fremden Ereignis zu
         sehen, und bis dahin stuende dort eine Aussage, die nicht mehr gilt.
+
+        `jetzt` ist dieselbe einspeisbare Uhr wie in `voice_state()`. Sie fehlte
+        hier, und damit galt die Zusage aus Vertrag T-3.14 §4 -- Fristen ohne
+        Warten pruefbar -- nur fuer `voice_state()`: der Schnappschuss las
+        immer `time.monotonic()`. Wer eine synthetische Zeit einspeiste und
+        danach hier las, mischte zwei Zeitbasen. Gefunden vom blinden
+        T-3.14.v-Pruefstand, der genau das tat, was der Vertrag anbot.
         """
-        flags = self._voice_flags(None)
+        flags = self._voice_flags(jetzt)
         if flags != self._voice:
             self._voice.update(flags)
             self._rev += 1
@@ -311,8 +318,14 @@ class HubState:
                    "processing" if flags["denkt"] else "idle")
         return {"state": zustand, **flags}
 
-    def snapshot(self) -> dict:
-        """State nach Design 9, Schema v2."""
+    def snapshot(self, *, voice_jetzt: float | None = None) -> dict:
+        """State nach Design 9, Schema v2.
+
+        `voice_jetzt` ist die monotone Uhr des Sprachzustands und NUR eine
+        Pruefhilfe -- ohne sie gilt `time.monotonic()` wie im Betrieb. Sie
+        heisst nicht `jetzt`, weil die Sitzungsalterung darunter die WANDUHR
+        braucht: zwei Zeitbasen in einem Namen waeren die naechste Falle.
+        """
         jetzt = time.time()
         with self._lock:
             if self._aufraeumen(jetzt):
@@ -331,6 +344,15 @@ class HubState:
                 focus = {"session_id": gewinner.session_id,
                          "project": gewinner.project}
 
+            # ERST den Sprachzustand rechnen, DANN `rev` lesen. Ein Dict wertet
+            # seine Werte in Reihenfolge aus, und `_voice_schnappschuss()`
+            # erhoeht `rev`, wenn eine Frist im Stillen abgelaufen ist. Stand
+            # `"rev": self._rev` davor, ging der neue Zustand mit dem ALTEN
+            # `rev` hinaus -- und ein Poller, der `rev` vergleicht, haelt das
+            # fuer "nichts passiert". Genau der Ausfall, gegen den die Zusage
+            # in Vertrag T-3.14 §4 steht. Gefunden ueber den blinden
+            # T-3.14.v-Pruefstand.
+            voice = self._voice_schnappschuss(voice_jetzt)
             return {
                 "v": 2,
                 "rev": self._rev,
@@ -338,7 +360,7 @@ class HubState:
                 "sessions": len(self._sessions),
                 "focus": focus,
                 "bubble": self._bubble,
-                "voice": self._voice_schnappschuss(),
+                "voice": voice,
                 "perception": dict(self._perception),
             }
 

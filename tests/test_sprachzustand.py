@@ -145,6 +145,59 @@ def test_rev_steigt_beim_denken():
     assert s.snapshot()["rev"] > vorher
 
 
+# -- Befund des blinden T-3.14.v-Pruefstands ------------------------------
+#
+# §4 sagt ZWEI Dinge zu: die Uhr sei einspeisbar, "damit die Frist ohne
+# Warten pruefbar ist", UND `rev` steige auch beim stillen Fristablauf.
+# Beides galt nur fuer `voice_state()`: `snapshot()` las immer
+# `time.monotonic()`. Wer also -- wie der Vertrag es anbietet -- eine
+# synthetische Zeit einspeiste und danach den Schnappschuss las, mischte
+# zwei Zeitbasen, und alles sah abgelaufen aus.
+
+def test_schnappschuss_nimmt_dieselbe_eingespeiste_uhr_wie_voice_state():
+    s = HubState()
+    s.set_voice(tts_active=True, jetzt=100.0)
+    assert s.voice_state(jetzt=101.0) == "speaking"
+    assert s.snapshot(voice_jetzt=101.0)["voice"]["state"] == "speaking"
+
+
+def test_rev_steigt_beim_stillen_fristablauf_mit_eingespeister_uhr():
+    """Die Zusage aus §4 -- ohne einspeisbare Uhr nur durch 30 s Warten
+    pruefbar, und was nur durch Warten pruefbar ist, wird nie geprueft."""
+    s = HubState()
+    s.voice_denkt_an(jetzt=1000.0)
+    vorher = s.snapshot(voice_jetzt=1000.1)["rev"]
+    assert s.snapshot(voice_jetzt=1000.1)["voice"]["state"] == "processing"
+    spaeter = s.snapshot(voice_jetzt=1000.0 + DENK_FRIST_S + 0.1)
+    assert spaeter["voice"]["state"] == "idle"
+    assert spaeter["rev"] > vorher
+
+
+def test_ohne_argument_bleibt_der_schnappschuss_bei_der_echten_uhr():
+    """Die Einspeisung ist eine Pruefhilfe, kein zweiter Betriebsweg."""
+    s = HubState()
+    s.set_voice(tts_active=True)
+    assert s.snapshot()["voice"]["state"] == "speaking"
+
+
+def test_rev_und_zustand_verlassen_den_schnappschuss_gemeinsam():
+    """Der neue Zustand darf nie mit dem alten `rev` hinausgehen.
+
+    Ein Dict wertet seine Werte in Reihenfolge aus; stand `rev` vor `voice`,
+    meldete ein stiller Fristablauf den Rueckfall auf `idle` zusammen mit dem
+    unveraenderten `rev`. Ein Poller, der `rev` vergleicht, sieht dann
+    "nichts passiert" -- und zeigt weiter "denkt nach".
+    """
+    s = HubState()
+    s.voice_denkt_an(jetzt=1000.0)
+    vor_ablauf = s.snapshot(voice_jetzt=1000.1)
+    nach_ablauf = s.snapshot(voice_jetzt=1000.0 + DENK_FRIST_S + 0.1)
+    assert vor_ablauf["voice"]["state"] == "processing"
+    assert nach_ablauf["voice"]["state"] == "idle"
+    # Der Zustandswechsel und sein `rev` stehen in DERSELBEN Antwort.
+    assert nach_ablauf["rev"] == vor_ablauf["rev"] + 1
+
+
 # -- §5.2/§3: das PTT-Ereignis am echten Socket ---------------------------
 
 def test_ptt_typ_gehoert_dem_auth_produzenten():
