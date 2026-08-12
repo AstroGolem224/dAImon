@@ -1794,6 +1794,212 @@ pytest -q
 
 ---
 
+# Phase 7 — Dauermitschnitt
+
+**Ergebnis:** dAImon schneidet Bildschirm und Ton durchgehend mit, redigiert
+**vor** dem Schreiben, lässt sich zuverlässig pausieren und ist durchsuchbar —
+ohne dass ein Treffer je am Deklassifizierungs-Gate vorbeikommt.
+
+**Abbruchkriterium:** Lässt sich der Pausenschalter nicht so belegen, dass
+danach nachweislich **kein** Aufnahmestrom mehr existiert, entfällt der
+Tonmitschnitt ersatzlos. Der Bildschirmteil bleibt. Ein Tonmitschnitt ohne
+belegbare Pause ist nach §201 StGB nicht vertretbar, und „belegbar" heißt hier
+gemessen, nicht konfiguriert.
+
+**Quelle:** Design §1.2 (Umfang, Aufbewahrung, Pausenschalter, Denylist),
+§7.2d (die vier Aufbewahrungsstufen), §4.x (der zweite Audiopfad), Dienst 14
+in §6 (`daimon-recorder`).
+
+> **Diese Phase kommt zuletzt, und das ist keine Reihenfolgefrage.** Sie hängt
+> an Phase 5 (ohne Augen gibt es nichts mitzuschneiden), an T-5.9 (das
+> Deklassifizierungs-Gate, durch das jeder Suchtreffer muss) und an T-6.1 (die
+> Persistenz, deren Schema sie erweitert). Wer sie vorzieht, baut ein Archiv
+> für Wahrnehmungen, die es noch nicht gibt.
+
+---
+
+### T-7.1 — Archivdienst und Schema
+- **Ziel:** Ein Ort für alles Mitgeschnittene, mit Verfallsdatum ab Zeile eins.
+- **Dateien:** `daimon/recorder/store.py` [neu], `daimon/recorder/daemon.py`
+  [neu], `config/systemd/daimon-recorder.service` [neu]
+- **Abhängigkeiten:** T-5.5, T-6.1, T-7.1.v
+- **Akzeptanz:**
+  - [ ] **Eigener Dienst.** `daimon-recorder` ist der **einzige** Prozess mit
+        Schreibrecht aufs Archiv; `eyes` bleibt lesend. Getrennte Units, damit
+        eine kompromittierte Live-Wahrnehmung nicht schreiben kann
+  - [ ] Härtung nach Design §6: `ProtectHome=tmpfs` plus `ReadWritePaths=`
+        **nur** fürs Archivverzeichnis, `RestrictAddressFamilies=AF_UNIX`,
+        kein Modelltext im Prozess
+  - [ ] SQLite unter `$XDG_DATA_HOME/daimon/archiv.db` mit Volltextindex,
+        Datei 0600, Verzeichnis 0700
+  - [ ] **Aufbewahrung je Art getrennt**, nicht einheitlich: OCR-Text,
+        Fenstertitel und Zeitstempel **30 Tage**; Transkripte **30 Tage**;
+        JPEG-Frames **48 Stunden**, danach überlebt nur der Text; **Rohaudio
+        gar nicht**
+  - [ ] Aufräumer stündlich, **plus harte Obergrenze in Gigabyte** mit
+        Verdrängung der ältesten Einträge. Eine volle Platte ist kein
+        Betriebszustand
+  - [ ] Jeder Eintrag trägt seine Aufbewahrungsstufe aus §7.2d
+        (`transient`/`metadata_only`/`redacted`/`full`), Vorgabe `redacted`
+  - [ ] **Alles im Archiv ist `tainted`** (§5.2) — als Typ, nicht als Spalte,
+        die man vergessen kann
+- **Verifikation:** `tests/verify/T-7.1.sh` — prüft Datei- und
+  Verzeichnismodus per `stat`; legt Einträge mit künstlich vorgerücktem
+  Zeitstempel an und belegt einzeln, dass Frames nach 48 h und Text nach 30
+  Tagen verschwinden, **der Text aber die Frames überlebt**; füllt über die
+  GB-Grenze und verlangt Verdrängung der ältesten statt eines Fehlers; liest
+  einen Eintrag zurück und prüft, dass die Markierung `tainted` den
+  Datenbank-Roundtrip als Typ überlebt; belegt am laufenden Dienst, dass
+  `eyes` **nicht** schreiben kann
+- **Agent:** builder · **Umfang:** L
+
+### T-7.2 — Redaktion vor dem Schreiben
+- **Ziel:** Was nicht auf die Platte soll, kommt gar nicht erst hin.
+- **Dateien:** `daimon/recorder/redaktion.py` [neu],
+  `config/redaktion.yaml` [neu]
+- **Abhängigkeiten:** T-7.1, T-7.2.v
+- **Akzeptanz:**
+  - [ ] **Die Redaktionsliste läuft VOR dem Schreiben**, nicht als
+        Nachbearbeitung. Screenpipe redigiert im Hintergrund und lässt
+        Rohdaten zuerst auf die Platte — das ist die falsche Reihenfolge, und
+        sie ist hier ausdrücklich ausgeschlossen
+  - [ ] **Anwendungs-Denylist**: Passwortmanager, Banking und was der Nutzer
+        ergänzt werden **gar nicht erfasst**. Die Prüfung sitzt **vor dem
+        Diff und vor dem Schreiben**, nicht danach
+  - [ ] Die Zuordnung Anwendung → Denylist geht über die `.desktop`-Kennung,
+        nicht über den Fenstertitel. Ein Programm, das eine fremde Anwendung
+        im Titel führt, darf sich nicht in die Erfassung hineinlügen — und
+        auch nicht aus ihr heraus
+  - [ ] DRM-Prüfung nach §4.4 greift zusätzlich
+  - [ ] Ein zeitlich begrenzter **Privatmodus** setzt alles auf `transient`
+        und schreibt nichts
+  - [ ] Ist die Bildschirmwahrnehmung abgeschaltet, fällt alles auf
+        `transient` (§7.2d)
+- **Verifikation:** `tests/verify/T-7.2.sh` — schreibt einen Kanarienvogel in
+  ein Fenster einer gelisteten Anwendung und belegt, dass er **nirgends** in
+  der Datenbank steht, **und** dass er auch nicht in einer Zwischendatei,
+  einem Log oder einem Temp-Verzeichnis auftaucht; Positivkontrolle mit
+  derselben Zeichenkette aus einer nicht gelisteten Anwendung, die ankommen
+  **muss** — ohne sie ist „nicht gefunden" auch dann grün, wenn die Erfassung
+  gar nicht lief. Zusätzlich: Privatmodus an, dieselbe Probe, Datenbank
+  unverändert (Zeilenzahl **und** Dateizeitstempel)
+- **Agent:** builder · **Umfang:** M
+
+### T-7.3 — Der Pausenschalter
+- **Ziel:** Anhalten, das man belegen kann.
+- **Dateien:** `daimon/recorder/pause.py` [neu], `daimon/auth/agent.py`
+  [ändern], `face/src/sprite.rs` [ändern]
+- **Abhängigkeiten:** T-7.1, T-3.15 (Muster), T-7.3.v
+- **Akzeptanz:**
+  - [ ] **Globaler Hotkey**, registriert im Auth-Agenten in **eigener**
+        kglobalaccel-Komponente — zwei Aktionen in einer Komponente überleben
+        auf diesem kglobalaccel nicht (belegt am 09.08.)
+  - [ ] **Automatische Pause**, sobald eine Konferenzanwendung den Fokus hat
+        **oder** ein Mikrofonstream einer fremden Anwendung aktiv ist. Liste
+        konfigurierbar, standardmäßig gefüllt
+  - [ ] **Die Pause schließt den Stream, sie schaltet ihn nicht stumm** (§4.2).
+        Ein stummer offener Stream ist ein Mikrofonsymbol in Plasma, das lügt
+  - [ ] **Sichtbarkeit am Sprite**, nicht in einem Einstellungsdialog:
+        solange der Tonmitschnitt läuft, zeigt das Pet es an
+  - [ ] Beide Pfade — Bild und Ton — werden **gemeinsam** abgeschaltet
+  - [ ] `Restart=on-failure`, nicht `always`: ein Stopp muss ein Ende bleiben
+- **Verifikation:** `tests/verify/T-7.3.sh` — `ok` heißt **nicht** „der
+  Aufruf gab 0 zurück", sondern „danach nimmt nichts mehr auf": gemessen
+  über `pw-dump` an der PID des Dienstes, mit Positivkontrolle, dass vorher
+  ein Strom da war. Eine **nicht gemessene** Stromzahl (`pw-dump` fehlt) ist
+  ebenfalls kein Erfolg. Dazu je einzeln: Hotkey, Konferenz-App im Fokus,
+  fremder Mikrofonstream — jeder muss allein auslösen; und der Nachweis, dass
+  der Sprite-Zustand sich ändert, über den Face-Diagnosezähler und nicht über
+  eine Selbstauskunft
+- **Agent:** builder · **Umfang:** L
+
+### T-7.4 — Tonmitschnitt in die Datenbank
+- **Ziel:** Gesprochenes wird auffindbar, ohne dass Rohaudio je liegen bleibt.
+- **Dateien:** `daimon/recorder/audio.py` [neu]
+- **Abhängigkeiten:** T-7.3, T-3.8, T-7.4.v
+- **Akzeptanz:**
+  - [ ] **Nur erkannte Sprachabschnitte** werden transkribiert, nicht die
+        Stille dazwischen — sonst liefe die GPU durchgehend, gegen die
+        Residenzpolitik aus §5.4
+  - [ ] Bei anhaltender Sprache bleibt der STT-Arbeitsprozess warm, bei Stille
+        beendet er sich wie gehabt
+  - [ ] **Rohaudio wird nie geschrieben.** Nur das Transkript überlebt den
+        Abschnitt
+  - [ ] Der Archivpfad hängt am **selben** Stream wie die Live-Wahrnehmung und
+        wird vom Pausenschalter gemeinsam mit ihr geschlossen
+  - [ ] Das Transkript ist `tainted` wie alles andere im Archiv
+- **Verifikation:** `tests/verify/T-7.4.sh` — spielt eine Referenzaufnahme
+  ein und belegt: das Transkript steht in der Datenbank, **und im gesamten
+  Archivverzeichnis existiert keine Audiodatei** (Suche nach Inhalt, nicht
+  nach Endung); Stille erzeugt keinen Eintrag und **keinen** STT-Aufruf
+  (gemessen am Prozess, nicht an einem Zähler des Prüflings); nach dem
+  Pausenschalter erzeugt dieselbe Einspielung nichts
+- **Agent:** builder · **Umfang:** M
+
+### T-7.5 — Suche mit Deklassifizierung
+- **Ziel:** Fragen an die eigene Vergangenheit, ohne die Vergangenheit zur
+  Angriffsfläche zu machen.
+- **Dateien:** `daimon/recorder/suche.py` [neu], `daimon/mind/router.py`
+  [ändern]
+- **Abhängigkeiten:** T-7.1, **T-5.9** (Deklassifizierungs-Gate), T-7.5.v
+- **Akzeptanz:**
+  - [ ] Volltextsuche über OCR-Text, Fenstertitel und Transkripte
+  - [ ] **Jeder Treffer geht durch dasselbe Deklassifizierungs-Gate wie
+        Live-Kontext** — nur unter frischer Rundenmarke, nur mit erkennbarem
+        Bezug, und **nur der Treffer, nicht die Umgebung**
+  - [ ] **Ein Suchtreffer ist kein vertrauenswürdiger Text**, nur weil er aus
+        der eigenen Datenbank kommt. Er stammt ursprünglich vom Bildschirm und
+        bleibt `tainted`
+  - [ ] **Proaktives Verhalten sieht das Archiv NICHT** (Design §1.1,
+        ausdrücklich abgewählt). Sonst wäre die Injektionsfläche die gesamte
+        aufgezeichnete Vergangenheit statt des aktuellen Bildschirms
+  - [ ] Die Suche läuft nur auf Nachfrage, nie von selbst
+- **Verifikation:** `tests/verify/T-7.5.sh` — legt einen Kanarienvogel ins
+  Archiv und belegt einzeln: er erreicht das Modell **nicht** ohne frische
+  Rundenmarke; er erreicht es mit Marke **nur als Treffer**, ohne die
+  umliegenden Einträge; ein proaktiver Anlass löst **keine** Suche aus
+  (gemessen an der Datenbank, nicht am Router); und die Marke am Treffer ist
+  `tainted`, nachgewiesen an der Senkentabelle aus T-3.13b. Positivkontrolle:
+  derselbe Kanarienvogel ist unter Marke **auffindbar** — ohne sie prüfte man
+  nur, dass die Suche kaputt ist
+- **Agent:** builder · **Umfang:** L
+
+### Gate P7
+```bash
+tests/verify/verify-frozen.sh
+tests/verify/T-7.3.sh     # Pause: danach nimmt nichts mehr auf
+tests/verify/T-7.2.sh     # Redaktion greift VOR dem Schreiben
+tests/verify/T-7.5.sh     # kein Treffer am Gate vorbei
+tests/verify/T-7.1.sh     # Verfall und Obergrenze
+pytest -q
+```
+
+### Was in Phase 7 ausdrücklich NICHT gebaut wird
+
+* **Kein automatisches Durchsuchen durch das Modell** (Design §1.1). Das ist
+  keine Sparmaßnahme, sondern die Grenze der Angriffsfläche.
+* **Keine Cloud-Verarbeitung des Mitschnitts.** Das Archiv liegt lokal und
+  wird nur auf Nachfrage durchsucht; die Netzsperre aus T-3.11 und das Gate
+  aus T-5.9 gelten beide.
+* **Kein Rohaudio auf der Platte**, auch nicht kurz, auch nicht in einem
+  Temp-Verzeichnis.
+
+### Offen und benannt
+
+* **§201 StGB ist keine Repository-Frage.** Die Aufnahme des nichtöffentlich
+  gesprochenen Worts ohne Einwilligung ist strafbar, unabhängig davon, wem der
+  Rechner gehört. Der Pausenschalter aus T-7.3 ist deshalb keine Bequemlichkeit
+  und sein Verifizierer keine Formalität. Wer T-7.4 baut, ohne dass T-7.3
+  gemessen grün ist, baut etwas, das nicht betrieben werden darf.
+* **Die Datenbank ist eine neue Angriffsfläche**, und der Preis steht im
+  Design: ein Angreifer mit derselben uid liest sie trotzdem (§1.3). Verzeichnis
+  0700 und Datei 0600 sind das Machbare, nicht das Ausreichende.
+* **Die Aufbewahrungsfristen sind Vorgabewerte**, keine Messwerte. Ob 30 Tage
+  und 48 Stunden im Alltag richtig liegen, weiß erst, wer eine Weile
+  mitgeschnitten hat.
+
+---
+
 ---
 
 # Anhang D — Die Verifizierer-Tasks
