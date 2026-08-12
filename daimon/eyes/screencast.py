@@ -74,7 +74,20 @@ def datentyp_pruefen(typ: str) -> bool:
 
 
 def _token_datei_vorgabe() -> Path:
-    basis = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    """Unter STATE, nicht unter CONFIG.
+
+    Zuerst stand der Token in `$XDG_CONFIG_HOME/daimon/`. Das war falsch,
+    und T-5.13 hat es aufgedeckt: die Augen-Unit laeuft mit
+    `ProtectHome=read-only` und darf ausser dem Zustandsverzeichnis nichts
+    beschreiben -- der Dienst haette den Token nach dem ersten `Start` nicht
+    ablegen koennen, und beim naechsten Mal saehe der Nutzer wieder einen
+    Dialog.
+
+    Der richtige Ort war es ohnehin nie: ein maschinell erzeugter Token ist
+    ZUSTAND, keine Konfiguration. Der Nutzer bearbeitet ihn nicht, er
+    entsteht und vergeht mit der Sitzung.
+    """
+    basis = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
     return Path(basis) / "daimon" / "screencast-token"
 
 
