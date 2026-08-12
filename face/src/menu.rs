@@ -68,6 +68,13 @@ use crate::{
 pub enum Aktion {
     EarsAus,
     EyesAus,
+    /// T-5.2: den Bildschirmzugriff widerrufen. Schreibt eine Marke nach
+    /// `~/.local/state/daimon/` und **sendet nichts** -- wie die
+    /// Personaauswahl. Der Weg ueber den Hub schiede aus: das Face darf
+    /// hoechstens `bubble_dismiss` und `wahrnehmung_aus` senden (T-1.7.v4),
+    /// und ein dritter Nachrichtentyp haette T-2.7 rot gemacht, das
+    /// `PRODUZENTEN["face"]` als exakte Menge prueft.
+    BildschirmWiderrufen,
     Beenden,
     /// Index in [`personas()`]. Der Index statt des Namens, damit `Aktion`
     /// `Copy` bleibt -- und weil ein Index nur dann existiert, wenn die Datei
@@ -88,6 +95,10 @@ impl Aktion {
         match self {
             Self::EarsAus => "ears_aus".to_owned(),
             Self::EyesAus => "eyes_aus".to_owned(),
+            // ABSICHTLICH nicht "eyes_aus": das stoppt die Unit. Der Widerruf
+            // nimmt die Portal-Erlaubnis zurueck, was etwas anderes ist --
+            // wer nur die Unit stoppt, laesst den Token liegen.
+            Self::BildschirmWiderrufen => "bildschirm_widerrufen".to_owned(),
             Self::Beenden => "beenden".to_owned(),
             Self::Persona(index) => match personas().get(index) {
                 Some(p) => format!("persona:{}", p.datei),
@@ -101,6 +112,7 @@ impl Aktion {
         match name {
             "ears_aus" => Some(Self::EarsAus),
             "eyes_aus" => Some(Self::EyesAus),
+            "bildschirm_widerrufen" => Some(Self::BildschirmWiderrufen),
             "beenden" => Some(Self::Beenden),
             _ => {
                 let datei = name.strip_prefix("persona:")?;
@@ -125,7 +137,10 @@ impl Aktion {
         match self {
             Self::EarsAus => Some("ears"),
             Self::EyesAus => Some("eyes"),
-            Self::Beenden | Self::Persona(_) => None,
+            // Kein Ziel: der Widerruf schaltet KEINE Unit ab. Stuende hier
+            // "eyes", wuerde ein Klick die Wahrnehmung stoppen und die
+            // Erlaubnis behalten -- genau andersherum als gemeint.
+            Self::Beenden | Self::Persona(_) | Self::BildschirmWiderrufen => None,
         }
     }
 }
@@ -183,6 +198,13 @@ pub fn eintraege() -> Vec<Eintrag> {
             aktion: (!ist_aktiv).then_some(Aktion::Persona(index)),
         });
     }
+    // Ans Ende, nicht zwischen die Wahrnehmungseintraege: der Widerruf ist
+    // die seltenste und folgenreichste Aktion im Menue, und die Positionen
+    // der ersten fuenf Eintraege sind in den Tests unten festgeschrieben.
+    liste.push(fest(
+        "Bildschirmzugriff widerrufen",
+        Some(Aktion::BildschirmWiderrufen),
+    ));
     liste.push(fest("Beenden", Some(Aktion::Beenden)));
     liste
 }
@@ -230,6 +252,9 @@ fn state_dir() -> PathBuf {
 
 /// Die Datei, die der Mind beim Start vor der Konfiguration liest.
 pub const AUSWAHL_DATEI: &str = "persona.json";
+
+/// T-5.2: die Marke fuer den widerrufenen Bildschirmzugriff.
+pub const WIDERRUF_DATEI: &str = "screencast-widerruf";
 
 /// Dieselbe Reihenfolge wie im Python-Lader (`daimon/mind/persona.py`):
 /// erst die eigene Datei unter XDG, dann die mitgelieferte. Wer eine eigene
@@ -389,6 +414,30 @@ pub fn persona_name_lesen(inhalt: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// T-5.2: vermerkt den Widerruf des Bildschirmzugriffs.
+///
+/// Schreibt eine leere Marke nach `~/.local/state/daimon/screencast-widerruf`
+/// und gibt ihren Pfad zurueck. Sie SAGT den Widerruf, sie vollzieht ihn
+/// nicht: die Tokendatei liegt unter `$XDG_CONFIG_HOME/daimon/`, wo das Face
+/// wegen `ProtectHome=read-only` nichts zu suchen hat -- und dort liegt auch
+/// der `anthropic-token`. Wer dem Overlay dieses Verzeichnis oeffnete, gaebe
+/// ihm Zugriff auf beides.
+///
+/// Wie bei der Persona ueber eine Nachbardatei mit `rename`: eine halbe Marke
+/// waere schlimmer als keine, weil sie den Widerruf behaupten wuerde.
+pub fn widerruf_vermerken() -> Result<String, String> {
+    let verzeichnis = state_dir();
+    std::fs::create_dir_all(&verzeichnis)
+        .map_err(|fehler| format!("{}: {fehler}", verzeichnis.display()))?;
+    let pfad = verzeichnis.join(WIDERRUF_DATEI);
+    let vorlaeufig = verzeichnis.join(format!("{WIDERRUF_DATEI}.neu"));
+    std::fs::write(&vorlaeufig, b"")
+        .map_err(|fehler| format!("{}: {fehler}", vorlaeufig.display()))?;
+    std::fs::rename(&vorlaeufig, &pfad)
+        .map_err(|fehler| format!("{}: {fehler}", pfad.display()))?;
+    Ok(pfad.display().to_string())
 }
 
 /// Schreibt die Wahl nach `~/.local/state/daimon/persona.json` und gibt den
@@ -674,11 +723,20 @@ mod tests {
     #[test]
     fn es_gibt_keine_aktion_die_einschaltet() {
         // Der Vertrag in einem Test: jede vorhandene Aktion schaltet ab,
-        // beendet, oder schreibt eine Persona in eine Datei. Ein `EarsAn`
-        // waere hier sofort rot.
+        // beendet, schreibt eine Persona in eine Datei -- oder vermerkt einen
+        // Widerruf, ebenfalls in einer Datei. Ein `EarsAn` waere hier sofort
+        // rot.
+        //
+        // `BildschirmWiderrufen` steht hier NICHT, weil es bequem waere: es
+        // schaltet nichts ein und nichts an, es NIMMT eine Erlaubnis zurueck.
+        // Wer hier je eine Aktion eintraegt, die etwas startet, hat den
+        // Vertrag dieses Moduls entfernt.
         for eintrag in eintraege() {
             match eintrag.aktion {
-                None | Some(Aktion::Beenden) | Some(Aktion::Persona(_)) => {}
+                None
+                | Some(Aktion::Beenden)
+                | Some(Aktion::Persona(_))
+                | Some(Aktion::BildschirmWiderrufen) => {}
                 Some(aktion) => assert!(
                     eintrag.text.ends_with("aus"),
                     "{} traegt eine Aktion {:?}, die nicht abschaltet",

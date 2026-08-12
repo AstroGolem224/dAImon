@@ -724,6 +724,7 @@ impl App {
                 }
             }
             menu::Aktion::Persona(index) => self.persona_waehlen(index),
+            menu::Aktion::BildschirmWiderrufen => self.bildschirm_widerrufen(),
             // Geordnet: die Hauptschleife laeuft aus, und erst dadurch
             // raeumen Diagnose- und Steuer-Socket ihre Dateien ab.
             menu::Aktion::Beenden => self.beendet = true,
@@ -733,6 +734,36 @@ impl App {
             Ok(mut zustand) => zustand.menu_aktion_gezaehlt(&name),
             Err(vergiftet) => vergiftet.into_inner().menu_aktion_gezaehlt(&name),
         }
+    }
+
+    /// T-5.2: den Bildschirmzugriff widerrufen.
+    ///
+    /// Geschrieben wird eine Marke, mehr nicht -- derselbe Weg wie bei der
+    /// Persona und aus demselben Grund: das Face darf hoechstens
+    /// `bubble_dismiss` und `wahrnehmung_aus` senden (T-1.7.v4), und ein
+    /// dritter Nachrichtentyp haette T-2.7 rot gemacht.
+    ///
+    /// Die Marke SAGT den Widerruf, sie vollzieht ihn nicht. Loeschen kann
+    /// die Tokendatei nur, wer sie besitzt -- sie liegt unter
+    /// `$XDG_CONFIG_HOME/daimon/`, und das Face hat dort `ProtectHome`.
+    /// Deshalb sagt die Blase auch ausdruecklich, wann es wirkt.
+    fn bildschirm_widerrufen(&mut self) {
+        let (titel, text) = match menu::widerruf_vermerken() {
+            Ok(pfad) => (
+                "Bildschirmzugriff widerrufen".to_owned(),
+                format!("Vermerkt in {pfad}; gilt beim naechsten Blick"),
+            ),
+            Err(fehler) => {
+                eprintln!("Widerruf nicht vermerkt: {fehler}");
+                ("Widerruf nicht vermerkt".to_owned(), fehler)
+            }
+        };
+        self.aktuelle_bubble = Some(Bubble {
+            title: titel,
+            body: text,
+            urgent: false,
+        });
+        self.bubble_aktualisieren();
     }
 
     /// Die Wahl wird geschrieben und sonst nichts: kein Unit-Neustart, kein
