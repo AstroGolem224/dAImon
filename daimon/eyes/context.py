@@ -1,10 +1,13 @@
 """T-5.7 -- der Kontextspeicher. Wahrgenommenes liegt fest und erreicht niemanden.
 
-Dieses Modul hat absichtlich KEINEN Ausgang. Es nimmt entgegen, es raeumt auf,
-es laesst sich leeren -- und es gibt nichts heraus. Das Deklassifizierungs-Gate
-entsteht in T-5.9, und bis dahin ist `freigeben()` eine Ausnahme mit
-Begruendung statt einer fehlenden Methode: „es gibt keinen Weg" und „ich habe
-den Weg noch nicht gefunden" sehen sonst gleich aus.
+Dieses Modul hat GENAU EINEN Ausgang, und der verlangt einen Freigabeschein
+aus `daimon.hub.declassify` (T-5.9). Dort entsteht er nur nach eingeloester
+Rundenmarke aus Push-to-Talk und erkennbarem Bildschirmbezug (Design 7.2b).
+
+Der Speicher prueft den Schein nicht nach -- er kann es nicht, er kennt keine
+Marken. Er VERLANGT ihn, und das ist der Punkt: eine zweite Lesemethode „nur
+fuer intern" waere genau die Tuer, die spaeter jemand benutzt, weil sie da
+ist. Wer ohne Schein liest, bekommt eine Ausnahme, die den Weg nennt.
 
 **Vier Aufbewahrungsstufen, nicht einheitlich zwanzig Eintraege.** Der Plan
 hatte einen Wert fuer alles; Design 7.2d korrigiert das, und der Grund ist
@@ -206,14 +209,22 @@ class Kontextspeicher:
         z["ausgelassen"] = self.ausgelassen
         return z
 
-    def freigeben(self, marke: object = None):
-        """Gibt es noch nicht. Absichtlich eine Ausnahme, keine Leerstelle.
+    def freigeben(self, schein: object = None) -> dict[str, list[Eintrag]]:
+        """Der EINZIGE Ausgang, und er verlangt einen Schein.
 
-        Das Deklassifizierungs-Gate entsteht in T-5.9 und verlangt dort eine
-        Rundenmarke aus Push-to-Talk. Bis dahin waere eine fehlende Methode
-        von einer vergessenen nicht zu unterscheiden.
+        Der Schein kommt aus `daimon.hub.declassify` und entsteht dort nur
+        nach einer eingeloesten Rundenmarke aus Push-to-Talk und einem
+        erkennbaren Bildschirmbezug (Design 7.2b). Diese Klasse prueft ihn
+        nicht selbst nach -- sie kann es nicht, sie kennt keine Marken.
+
+        Sie verlangt ihn aber, und das ist der Punkt: ein Aufrufer, der
+        einfach lesen will, bekommt eine Ausnahme, die den Weg nennt. Eine
+        zweite Lesemethode „nur fuer intern" waere genau die Tuer, die
+        spaeter jemand benutzt, weil sie da ist.
         """
-        raise QuarantaeneFehler(
-            "Kontext verlaesst die Quarantaene nur durch das "
-            "Deklassifizierungs-Gate (T-5.9), und nur unter einer "
-            "Rundenmarke aus Push-to-Talk. Diesen Weg gibt es noch nicht.")
+        if getattr(schein, "turn_id", "") == "":
+            raise QuarantaeneFehler(
+                "Kontext verlaesst die Quarantaene nur durch das "
+                "Deklassifizierungs-Gate (T-5.9), und nur unter einer "
+                "Rundenmarke aus Push-to-Talk. Ohne Freigabeschein nicht.")
+        return {art: list(ring) for art, ring in self._ringe.items()}
