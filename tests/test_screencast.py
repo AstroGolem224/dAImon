@@ -214,3 +214,23 @@ def test_start_bekommt_keine_optionen(tmp_path):
     p = PortalAttrappe()
     sitzung(tmp_path, p).oeffnen()
     assert p.optionen("Start") == {}
+
+
+def test_derselbe_token_landet_nicht_wieder_in_der_historie(tmp_path):
+    """KDE liefert bei jedem `Start` denselben zurueck (gemessen 12.08.).
+
+    Ohne diese Bedingung waechst die Historie bei jedem Lauf um eine Kopie
+    derselben Zeichenkette und ist als Aufzeichnung wertlos.
+    """
+    datei = tmp_path / "screencast-token"
+    for _ in range(3):
+        sc.PortalSitzung(token_datei=datei,
+                         portal=PortalAttrappe(token_zurueck="gleich")).oeffnen()
+    d = json.loads(datei.read_text())
+    assert d["current"] == "gleich"
+    assert d["history"] == []
+
+    # Ein wirklich anderer Token gehoert sehr wohl hinein.
+    sc.PortalSitzung(token_datei=datei,
+                     portal=PortalAttrappe(token_zurueck="neu")).oeffnen()
+    assert json.loads(datei.read_text())["history"] == ["gleich"]

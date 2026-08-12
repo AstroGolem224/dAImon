@@ -7,10 +7,13 @@ xdg-desktop-portal-kde belegt wurde -- einschliesslich der Erkenntnis, dass
 
 Drei Entscheidungen tragen dieses Modul:
 
-**Der Token wird nach JEDEM `Start` ueberschrieben.** Das Portal gibt bei
-jedem Start einen neuen aus und erklaert den alten fuer verbraucht. Wer den
-alten stehen laesst, hat beim naechsten Mal einen, den niemand mehr kennt --
-und bekommt wieder einen Dialog, ohne zu verstehen warum.
+**Der Token wird nach JEDEM `Start` ueberschrieben.** Das Portal DARF einen
+neuen ausgeben und den alten fuer verbraucht erklaeren; wer den alten stehen
+laesst, haette dann einen, den niemand mehr kennt, und bekaeme wieder einen
+Dialog, ohne zu verstehen warum. Hier stand einmal, das Portal TUE das bei
+jedem Start -- gemessen am 12.08. gegen xdg-desktop-portal-kde 5 tut es das
+nicht, es liefert zweimal denselben Token. Ueberschrieben wird trotzdem: die
+Zusage haengt nicht daran, welches Portal gerade laeuft.
 
 **Ein ungueltiger Token faellt INTERAKTIV zurueck, er haengt nicht.** Das ist
 die unangenehmere von zwei Moeglichkeiten: der Nutzer sieht wieder einen
@@ -125,7 +128,12 @@ class PortalSitzung:
         historie = alt.get("history")
         if not isinstance(historie, list):
             historie = []
-        if isinstance(alt.get("current"), str) and alt["current"]:
+        # Nur wirklich abgeloeste Token in die Historie. KDE liefert bei
+        # jedem `Start` denselben zurueck (gemessen 12.08.); ohne diese
+        # Bedingung stuenden dort nach zehn Laeufen neun Kopien derselben
+        # Zeichenkette, und die Historie waere als Aufzeichnung wertlos.
+        if (isinstance(alt.get("current"), str) and alt["current"]
+                and alt["current"] != neu):
             historie.append(alt["current"])
 
         self.token_datei.parent.mkdir(parents=True, exist_ok=True)
