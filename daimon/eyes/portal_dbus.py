@@ -183,6 +183,23 @@ class DbusPortal:
 
         raise PortalFehler(f"unbekannte Portal-Methode {methode!r}")
 
+    def pipewire_fd(self) -> int:
+        """Der Deskriptor, auf dem die Frames liegen (T-5.3).
+
+        `OpenPipeWireRemote` ist als einzige der Methoden KEIN Request: es
+        antwortet unmittelbar mit einem Deskriptor statt mit einem Pfad, auf
+        dessen Signal man wartet. Wer hier `_warten` benutzt, wartet ewig.
+        """
+        dbus, _, _ = _dbus()
+        if not self.session_handle:
+            raise PortalFehler("OpenPipeWireRemote ohne offene Sitzung")
+        roh = self.portal.OpenPipeWireRemote(
+            dbus.ObjectPath(self.session_handle), {})
+        # `take()` gibt den Besitz ab -- ohne das schliesst der Wrapper den
+        # Deskriptor beim Aufraeumen, und die Kette bricht mitten im Betrieb
+        # ab, ohne dass jemand etwas geschlossen hat.
+        return roh.take()
+
     def schliessen(self) -> None:
         dbus, _, _ = _dbus()
         if not self.session_handle:
