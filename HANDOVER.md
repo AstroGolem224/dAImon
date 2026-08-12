@@ -1,11 +1,158 @@
-# Übergabe — Stand 2026-08-09
+# Übergabe — Stand 2026-08-12
 
-Alles, was nicht aus dem Repo hervorgeht. Die vorige Fassung ist über zwölf Tasks
-gewachsen und war nicht mehr lesbar; diese ist neu geschrieben und ersetzt sie.
-Der Stand vom 05.08. steht unverändert darunter; der Nachtrag vom **09.08.**
-kommt zuerst.
+Alles, was nicht aus dem Repo hervorgeht. Die Nachträge stehen in umgekehrter
+Zeitfolge: der **12.08.** zuerst, darunter unverändert der 09.08. und der
+05.08. Ältere Aussagen gelten weiter, **soweit sie unten nicht ausdrücklich
+berichtigt sind** — drei sind es.
 
 ---
+
+# Stand 12.08. — Funktionalität zuerst
+
+## Die Prioritätsumkehr, und warum sie richtig ist
+
+**Entschieden am 12.08. von Matthias: erst die Funktionen, dann die
+Verifizierer.** Bis hierher lief es andersherum — eine ganze Sitzung ging in
+Prüfstände, und sie hat dabei zwei Produktdefekte und zwanzig Vertragslücken
+gefunden. Das war den Aufwand wert. Aber es hat auch sichtbar gemacht, was
+die Bilanz verdeckt: **die Anwendung kann zwei von neun Phasen noch gar
+nicht**, und kein Verifizierer der Welt ändert daran etwas.
+
+Die Unterscheidung, die ab jetzt gilt und die vorher verschwommen war:
+
+> Ein fehlender Verifizierer macht die Anwendung nicht unfertig.
+> Ein fehlender Dienst schon.
+
+Die siebzehn ausstehenden `.v`-Skripte, dazu T-4.17, T-4.18, T-5.10, T-5.11,
+T-6.8 und T-6.9, halten die **Gates** rot — nicht die Anwendung. Sie werden
+nachgezogen, nicht gestrichen. Wer sie vorzieht, baut Abnahme für etwas, das
+es noch nicht gibt.
+
+**Was das NICHT heißt:** kein Freibrief für ungeprüften Code. `pytest` bleibt
+grün, `verify-frozen` bleibt grün, und eingefrorene Zusagen bleiben
+eingefroren. Zurückgestellt sind die **neuen** Prüfstände, nicht die
+Disziplin.
+
+## AUFTRAG: Phase 7 ausarbeiten und in den Plan aufnehmen
+
+**Das ist die erste Bringschuld, und sie ist eine Planlücke, kein Task.**
+
+`docs/IMPLEMENTATION-PLAN.md` nennt in der Phasenübersicht (Z. 156) eine
+**Phase 7 — Dauermitschnitt: Archiv, Redaktion, Pausenschalter, Suche** mit
+fünf Tasks. Der Plan hat **keine Phase-7-Sektion**: die letzte ist
+`# Phase 6` in Z. 1642, und Anhang A listet P7 ebenfalls nicht. Fünf Tasks
+ohne Ziel, ohne Dateien, ohne Akzeptanzliste, ohne Verifikation.
+
+Wer sie ausarbeitet, schreibt sie im Format der übrigen Tasks — Ziel,
+Dateien, Abhängigkeiten, Akzeptanz als Kästchenliste, Verifikation, Agent,
+Umfang — und beantwortet dabei mindestens:
+
+* Was genau wird mitgeschnitten, und **was ausdrücklich nicht**? Ein
+  Dauermitschnitt ist die invasivste Fähigkeit dieses Projekts; Design §1.3
+  gilt hier schärfer als anderswo.
+* Wie sieht der **Pausenschalter** aus, und wer darf ihn bedienen? Nach dem
+  Muster des Ohren-Kill-Switch (T-3.15): messen statt glauben — „pausiert"
+  heißt „danach wird nichts mehr geschrieben", nicht „systemctl gab 0".
+* Was heißt **Redaktion** konkret, und woran wird geprüft, dass sie greift?
+  Die Lehre aus Fall 28 gilt: „kein Token im Log" war grün, weil überhaupt
+  nichts Geheimes drinstand.
+* Wie verhält sich das Archiv zum **Kontextspeicher unter Quarantäne**
+  (T-5.7) und zum Langzeitgedächtnis (T-6.3)? Drei Ablagen für Erlebtes
+  wären drei Wahrheiten.
+
+**Und die Zahlen im Plan stimmen nicht.** Die Phasenübersicht zählt 151
+Tasks, Anhang A 136, die ausgezählten `###`-Blöcke wieder anders. Wer P7
+schreibt, zieht die drei Zählungen bei der Gelegenheit zusammen.
+
+## Was zur funktionalen Vollständigkeit fehlt — 19 Builder-Tasks
+
+**Phase 5 — die Augen. Elf Tasks, null gebaut.**
+`daimon/eyes/__init__.py` ist **eine Zeile** lang. Es gibt keinen Dienst,
+keine Unit, keinen `eyes.sock` — obwohl `daimon/common/ipc.py:69` dem
+Produzenten `eyes` bereits das Ereignis `screen` erteilt. Ein Socketrecht
+ohne Dienst, dieselbe Sorte Behauptung, die bei `ears`/`intent_mark` am
+10.08. gestrichen wurde.
+
+T-5.1 Sprachdaten · T-5.2 Portal-ScreenCast · T-5.3 GStreamer-Pipeline ·
+T-5.4 Abtast-Timer · T-5.5 Änderungserkennung · T-5.6 OCR · T-5.7
+Kontextspeicher · T-5.8 VLM-Worker · T-5.9 Deklassifizierungs-Gate ·
+T-5.12 Kill-Switch · T-5.13 Sandbox.
+
+**Phase 6 — Gedächtnis und Charakter. Acht Tasks, null gebaut.**
+`sqlite` kommt im gesamten Produktcode **null mal** vor. Ohne Persistenz
+überlebt nichts einen Neustart.
+
+T-6.1 Persistenz · T-6.2 Kurzzeitgedächtnis · T-6.3 Langzeitgedächtnis ·
+T-6.4 Charakterstimme (optional) · T-6.5 Sprech-Schwellen · T-6.6 Proaktives
+Verhalten · T-6.7 eigene Stimme (optional) · T-6.10 Doku und Übergabe.
+
+**Ein Kandidat für den Anfang von P6:** `speech_threshold` wird seit T-3.10
+geladen, validiert (vier Stufen, ein fünfter Wert ist ein Fehler) und hat bis
+heute **keinen Verbraucher** — `daimon/mind/persona.py:59` und
+`daimon/mind/daemon.py:19` sagen das selbst. T-6.5 schließt das.
+
+## Drei Aussagen dieser Übergabe sind überholt
+
+1. **„Die drei anderen Broker haben keinen Weg vom Hub, `BROKER_SOCKETS`
+   kennt nur `dbus`."** — falsch seit `37ec6df`. `daimon/hub/daemon.py:72`
+   führt alle vier: `dbus`, `fs`, `exec`, `input`. Zugleich kommt die
+   `audience` jetzt aus dem **Katalog**, nicht aus der Anfrage — sonst suchte
+   sich der Absender seinen Broker aus.
+2. **„Was fehlt, ist die Echo-Referenz."** — verdrahtet seit `c5fbba3`. Der
+   TTS schickt, was er spricht, als 16-kHz-mono-int16-Datagramme an
+   `echo.sock`; der Ohren-Dienst speist sie in die Sperre und leert sie am
+   Wiedergabeende.
+3. **„Fünfundzwanzig Einträge in `FROZEN`."** — es sind **38 Zeilen / 37
+   Dateien**. Gewachsen durch T-3.13b, T-3.14 und vor allem durch die
+   Abhängigkeitshülle: elf Dateien, die die eigentlichen Messungen mehrerer
+   eingefrorener Verifizierer tragen, waren vorher **ungehasht**.
+
+## Was diese Sitzung sonst hinterlassen hat
+
+* **T-3.14.v ist eingefroren** (`3b9100c`): 13 von 13 Kriterien grün, 6 von 6
+  Mutanten erkannt, und die Plan-Zahl erstmals gemessen — **p95 60,35 ms**
+  gegen eine Zusage von unter 200 ms, n=20.
+* **Blindheit ist erstmals eine Messung, keine Behauptung.** Neun
+  Werkzeug-Transkripte liegen als `tests/evidence/T-3.14.v-blindheit-*.jsonl`
+  im Baum; null Zugriffe außerhalb der Sandbox, nachgreppbar. Das Verfahren:
+  der Autor läuft in einem Verzeichnis, das den Produktcode **nicht enthält**.
+  Eine Anweisung „lies das nicht" ist nicht durchsetzbar; ein leeres
+  Verzeichnis schon.
+* **Die Freeze-Erweiterung** (`cf38822`): Helfer werden mitgehasht,
+  geschlossene Deklarationsgrammatik, Laufzeitspur, und ein fehlendes
+  `strace` ist ein harter Abbruch statt einer Warnung.
+* **T-3.12 repariert** (`912c9b6`): der Prüfstand expandierte `%t` nicht und
+  traf seit T-3.11c `lokal.sock` statt seiner eigenen Attrappe. K1–K13 messen
+  jetzt 0 rot.
+* **K13-Nachlauf** (`94a045d`): ein **gemeldeter** Nachlauf je verschachteltem
+  Glied. Die Meldezeile hat sich sofort bewährt — sie hat ein vermutetes
+  Flackern als reproduzierbaren Reihenfolgefehler entlarvt.
+
+## Offene Befunde im PMTool-Backlog, Rolle builder
+
+| Befund | Kern |
+|---|---|
+| `1b689b9d` | **„Kein Mikrofon ohne PTT" hat ein Zeitfenster.** `_listening=False` wird VOR `_aufnahme_schliessen()` gesetzt, der Strom schließt erst in `Aufnahme.stop()`, und die Sperre ignoriert `ptt_gedrueckt` bewusst. Ein Callback im Fenster kann ein Segment mit `user_audio` beginnen. Verletzt §2/K5 aus Design 1.1 |
+| `b56f5512` | `t09_socket_probe/sitecustomize.py` ist ungehasht — als **Verzeichnis** auf `PYTHONPATH` gereicht, an der Grammatik vorbei. Und die Laufzeitspur schwieg dazu; warum, ist ungemessen |
+| `5eacc2a3` | T-3.15 K8 ist nicht messbar: `zustand()` ist In-Prozess, der Dienst hat absichtlich keinen Steuer-Socket |
+| `c12f7a8c` | T-3.14 §11.3: „Antwort ohne Sprechen" ist nicht implementiert — `voice_denkt_aus()` hat genau einen Aufrufer |
+
+## Der Reihenfolgevorschlag
+
+1. **Phase 7 ausarbeiten** (siehe Auftrag oben) — sonst ist der Plan
+   unvollständig, und niemand weiß, wogegen „fertig" gemessen wird.
+2. **Phase 5**, beginnend mit T-5.2 (Portal-ScreenCast). Sie schließt als
+   einzige eine fehlende **Fähigkeit**.
+3. **Phase 6**, beginnend mit T-6.1 (Persistenz) — alles darüber hängt daran.
+4. **Danach** die zurückgestellten Verifizierer, T-4.17/T-4.18 und die Gates.
+
+---
+
+# Stand 09.08. — der Gate-Überblick von damals
+
+> **Achtung:** die Zahlen dieses Abschnitts sind der Stand vom 09.08. und an
+> drei Stellen überholt — siehe „Drei Aussagen dieser Übergabe sind überholt"
+> weiter oben. Insbesondere hat `FROZEN` heute 37 Dateien, nicht 25.
 
 ## Wo wir stehen
 
