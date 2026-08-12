@@ -179,3 +179,38 @@ def test_die_widerrufsmarke_des_face_wird_erkannt_und_verbraucht(tmp_path):
     # Die Marke ist verbraucht -- sonst widerriefe der naechste Blick erneut.
     assert not marke.exists()
     assert s.widerruf_angefordert() is False
+
+
+# -- Der echte DBus-Weg ----------------------------------------------------
+
+def test_ohne_dbus_sagt_die_meldung_welcher_interpreter_fehlt():
+    """Unter dem venv-Python FEHLT `dbus` -- genau dieser Lauf hier.
+
+    Der Auth-Agent ist an derselben Stelle gestorben, und die Meldung war
+    `No module named 'dbus'`. Die sagt nicht, dass der Dienst unter
+    /usr/bin/python3 laufen muss. Diese hier sagt es.
+    """
+    from daimon.eyes import portal_dbus
+
+    try:
+        import dbus                                    # noqa: F401
+    except ImportError:
+        pass
+    else:
+        pytest.skip("dieser Interpreter HAT dbus -- nichts zu zeigen")
+
+    with pytest.raises(sc.PortalFehler) as fehler:
+        portal_dbus.DbusPortal()
+    text = str(fehler.value)
+    assert "venv" in text and "python3" in text
+
+
+def test_start_bekommt_keine_optionen(tmp_path):
+    """`cursor_mode` gehoert zu SelectSources, nicht zu Start.
+
+    Hier stand einmal ein `cursor_mode_gewuenscht`, das die Attrappe
+    klaglos schluckte und das echte Portal nie gesehen haette.
+    """
+    p = PortalAttrappe()
+    sitzung(tmp_path, p).oeffnen()
+    assert p.optionen("Start") == {}

@@ -174,9 +174,19 @@ class PortalSitzung:
             # und der Nutzer kann entscheiden.
             rueckfall = True
             self._select_sources(None)
+        # OFFEN, und zwar gemessen: gegen xdg-desktop-portal-kde 5 wirft
+        # `SelectSources` bei einem ungueltigen `restore_token` NICHT -- es
+        # nimmt ihn entgegen und laesst den Dialog bei `Start` erscheinen.
+        # Dieser Zweig bleibt dort also stumm, und `interaktiver_rueckfall`
+        # meldet `False`, obwohl der Nutzer einen Dialog gesehen hat. Das
+        # gehoert gemessen (Dauer von `Start`), nicht geraten -- und der Ort
+        # dafuer ist T-5.2.v, nicht dieser Zweig.
 
-        start = self._portal.anfrage(
-            "Start", {"cursor_mode_gewuenscht": self._cursor_mode})
+        # `Start` bekommt keine Optionen. `cursor_mode` gehoert zu
+        # `SelectSources` -- an dieser Stelle stand einmal ein
+        # `cursor_mode_gewuenscht`, das auf dem echten Bus niemand gelesen
+        # haette, weil die Attrappe alles annimmt, was man ihr gibt.
+        start = self._portal.anfrage("Start", {})
         neu = str(start.get("restore_token") or "")
         if not neu:
             raise PortalFehler("Start lieferte keinen restore_token")
