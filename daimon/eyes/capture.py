@@ -56,6 +56,14 @@ from typing import Any
 # jedes zusaetzliche Bild ist ein voller 22-MB-Puffer durch `videoconvert`.
 FRAMERATE = 1
 
+# Der Name, unter dem unser Lesestrom bei PipeWire erscheint. Ohne ihn heisst
+# der Knoten wie der Prozess -- gemessen `python3.14` -- und ist von der
+# Vorschau-Verrohrung der Arbeitsflaeche nicht zu unterscheiden. Der
+# Kill-Switch (T-5.12) zaehlt genau diesen Namen; ein systemweiter Zaehler
+# stuende dauerhaft auf "laeuft weiter", weil kwin_wayland und plasmashell
+# immer je einen Videostrom halten.
+KLIENT_NAME = "daimon-eyes"
+
 
 def pipeline_beschreibung(*, serial: str | None = None,
                           node_id: int | None = None,
@@ -75,7 +83,7 @@ def pipeline_beschreibung(*, serial: str | None = None,
         raise ValueError("weder Serial noch Node-ID -- ohne Ziel kein Stream")
 
     return (
-        f"pipewiresrc name=quelle {ziel} "
+        f"pipewiresrc name=quelle client-name={KLIENT_NAME} {ziel} "
         # `always-copy=false` waere sparsamer, gibt aber Puffer weiter, die
         # PipeWire wieder einzieht. Der Frame gehoert uns erst nach der Kopie.
         "always-copy=true ! "
