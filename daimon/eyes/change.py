@@ -73,6 +73,22 @@ GRUND_STARR = "starr"
 DIFF_BREITE, DIFF_HOEHE = 160, 90
 DIFF_SCHWELLE = 6
 
+# Der Diff weiss nicht nur OB, sondern WO. Diese Auskunft wurde in der ersten
+# Fassung weggeworfen -- OCR lief danach auf dem ganzen Fenster, gemessen am
+# 13.08. mit 57,6 % eines Kerns.
+#
+# Gepolstert wird grosszuegig: eine Textzeile reicht ueber die geaenderten
+# Punkte hinaus, und ein zu enger Ausschnitt schneidet Buchstaben an. Zwei
+# Diff-Punkte sind auf 5120x1440 rund 64 Pixel je Seite.
+DIFF_POLSTER = 2
+
+# UND ALLE N GEAENDERTEN RUNDEN EIN VOLLDURCHGANG. Ohne ihn bliebe eine
+# Aenderung, die unter DIFF_SCHWELLE lag, fuer immer ungelesen -- genau der
+# stille Fehler, an dem das gekachelte dHash gescheitert ist. Der
+# Volldurchgang kostet einmal, was sonst jede Runde kostete, und er macht den
+# Unterschied zwischen "billiger" und "unvollstaendig".
+VOLL_JEDE = 20
+
 
 @dataclass(frozen=True)
 class Fenster:
@@ -100,6 +116,28 @@ class Befund:
     abdeckung: float = 0.0
     boxen: int = 0
     kosten: dict[str, float] = field(default_factory=dict)
+
+
+def _aenderungsbereich(neu: np.ndarray, alt: np.ndarray, breite: int,
+                       hoehe: int) -> tuple[int, int, int, int] | None:
+    """Wo sich etwas geaendert hat, in VOLLBILD-Koordinaten. `None` = nirgends.
+
+    Ein Kasten um ALLE geaenderten Punkte, nicht je Punkt einer: zwei Kaesten
+    bedeuten zwei OCR-Aufrufe, und die Festkosten je Aufruf sind gemessen
+    60 ms. Ein Kasten, der beide umschliesst, ist fast immer billiger.
+    """
+    weicht = np.abs(neu.astype(np.int16) - alt.astype(np.int16)) > DIFF_SCHWELLE
+    if not weicht.any():
+        return None
+    zeilen = np.flatnonzero(weicht.any(axis=1))
+    spalten = np.flatnonzero(weicht.any(axis=0))
+    y0 = max(0, int(zeilen[0]) - DIFF_POLSTER)
+    y1 = min(DIFF_HOEHE, int(zeilen[-1]) + 1 + DIFF_POLSTER)
+    x0 = max(0, int(spalten[0]) - DIFF_POLSTER)
+    x1 = min(DIFF_BREITE, int(spalten[-1]) + 1 + DIFF_POLSTER)
+    fx, fy = breite / DIFF_BREITE, hoehe / DIFF_HOEHE
+    return (int(x0 * fx), int(y0 * fy),
+            max(1, int((x1 - x0) * fx)), max(1, int((y1 - y0) * fy)))
 
 
 def _verkleinern(rgb: np.ndarray) -> np.ndarray:
@@ -130,6 +168,7 @@ class Kette:
         self._generation = 0
         self._letzte_signatur = ""
         self._letztes_klein: np.ndarray | None = None
+        self._seit_voll = 0
 
     def _naechste_generation(self) -> int:
         self._generation += 1
@@ -170,14 +209,29 @@ class Kette:
         # -- Der billige Diff: 160x90, vor allem anderen Teuren -----------
         t = self._uhr()
         klein = _verkleinern(rgb)
-        starr = (self._letztes_klein is not None
-                 and int(np.abs(klein.astype(np.int16)
-                                - self._letztes_klein.astype(np.int16)).max())
-                 <= DIFF_SCHWELLE)
+        # Gezaehlt wird JEDE Runde, nicht nur die geaenderten. Der erste
+        # Entwurf zaehlte nur geaenderte -- und damit bewachte der Waechter
+        # nichts: gemessen am 13.08. blieb ein Block, der sich je Runde um 5
+        # aenderte, bei DIFF_SCHWELLE=6 dauerhaft „starr", 43 von 45 Runden.
+        # Eine langsam driftende Aenderung waere so nie gelesen worden, und
+        # das ist genau der stille Fehler, gegen den der Volldurchgang da ist.
+        self._seit_voll += 1
+        faellig = self._seit_voll >= VOLL_JEDE
+
+        bereich = None
+        if self._letztes_klein is not None and not faellig:
+            bereich = _aenderungsbereich(klein, self._letztes_klein,
+                                         rgb.shape[1], rgb.shape[0])
+            if bereich is None:
+                self._letztes_klein = klein
+                kosten["diff"] = self._uhr() - t
+                return self._abgewiesen(gen, GRUND_STARR, kosten)
         self._letztes_klein = klein
         kosten["diff"] = self._uhr() - t
-        if starr:
-            return self._abgewiesen(gen, GRUND_STARR, kosten)
+
+        if bereich is None:
+            # Volldurchgang: faellig, oder der allererste Frame.
+            self._seit_voll = 0
 
         # -- Zuschnitt aufs fokussierte Fenster: der eigentliche Gewinn -----
         t = self._uhr()
@@ -186,6 +240,18 @@ class Kette:
         y0 = max(0, min(fenster.y, hoehe))
         x1 = max(x0, min(fenster.x + fenster.breite, breite))
         y1 = max(y0, min(fenster.y + fenster.hoehe, hoehe))
+        if bereich is not None:
+            # Schnittmenge aus Fenster UND Aenderung. Was sich ausserhalb des
+            # fokussierten Fensters bewegt hat -- eine Uhr in der Leiste --
+            # geht diesen Dienst nichts an.
+            bx, by, bw, bh = bereich
+            nx0, ny0 = max(x0, bx), max(y0, by)
+            nx1, ny1 = min(x1, bx + bw), min(y1, by + bh)
+            if nx1 > nx0 and ny1 > ny0:
+                x0, y0, x1, y1 = nx0, ny0, nx1, ny1
+            else:
+                kosten["fensterzuschnitt"] = self._uhr() - t
+                return self._abgewiesen(gen, GRUND_STARR, kosten)
         fensterbild = rgb[y0:y1, x0:x1]
         grau = regionen.graustufen(fensterbild) if fensterbild.size else \
             np.zeros((0, 0), dtype=np.uint8)
@@ -193,20 +259,34 @@ class Kette:
         if grau.size == 0:
             return self._abgewiesen(gen, GRUND_KEIN_TEXT, kosten)
 
-        # -- Textregionen --------------------------------------------------
-        t = self._uhr()
-        kaesten = regionen.textregionen(grau)
-        kosten["textregionen"] = self._uhr() - t
-        if not kaesten:
-            return self._abgewiesen(gen, GRUND_KEIN_TEXT, kosten)
+        # -- Textregionen: NUR im Volldurchgang ----------------------------
+        #
+        # Auf dem Aenderungsausschnitt ist die Erkennung ueberfluessig UND
+        # schaedlich. Ueberfluessig, weil der Diff schon weiss, wo etwas
+        # passiert ist. Schaedlich, weil der Formfilter alles verwirft, was
+        # mehr als die halbe Flaeche fuellt (MAX_AREA_FRACTION) -- und auf
+        # einem engen Ausschnitt fuellt die geaenderte Zeile genau das. Am
+        # 13.08. gemessen: `kein_text` auf einem Ausschnitt, in dem
+        # ausschliesslich Text stand.
+        if bereich is None:
+            t = self._uhr()
+            kaesten = regionen.textregionen(grau)
+            kosten["textregionen"] = self._uhr() - t
+            if not kaesten:
+                return self._abgewiesen(gen, GRUND_KEIN_TEXT, kosten)
 
-        # -- Zuschnitt auf die Vereinigung (laut T--1.10 ein No-Op) ---------
-        t = self._uhr()
-        v = regionen.vereinigung(kaesten)
-        vx, vy, vw, vh = v
-        zuschnitt = grau[vy:vy + vh, vx:vx + vw]
-        abdeckung = (vw * vh) / grau.size if grau.size else 0.0
-        kosten["vereinigungszuschnitt"] = self._uhr() - t
+            t = self._uhr()
+            v = regionen.vereinigung(kaesten)
+            vx, vy, vw, vh = v
+            zuschnitt = grau[vy:vy + vh, vx:vx + vw]
+            abdeckung = (vw * vh) / grau.size if grau.size else 0.0
+            kosten["vereinigungszuschnitt"] = self._uhr() - t
+        else:
+            kaesten = []
+            vx = vy = 0
+            vh, vw = grau.shape[:2]
+            zuschnitt = grau
+            abdeckung = 1.0
 
         # -- Signatur ueber den GANZEN Zuschnitt, Luma auf 32 Stufen --------
         t = self._uhr()

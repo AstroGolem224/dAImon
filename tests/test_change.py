@@ -269,3 +269,77 @@ def test_der_erste_frame_wird_nie_als_starr_verworfen():
     ersten Blick verwirft, sieht nach einem Neustart nie etwas."""
     b = kette().verarbeiten(text_hinein(leer(), 40, 40), VOLLES_FENSTER)
     assert b.grund != ch.GRUND_STARR
+
+
+def test_ocr_bekommt_nur_die_geaenderte_stelle():
+    """Der grosse Hebel: OCR lief auf dem ganzen Fenster und kostete 57,6 %
+    eines Kerns. Der Diff weiss, WO sich etwas geaendert hat -- diese Auskunft
+    wurde vorher weggeworfen.
+    """
+    k = kette()
+    a = leer(640, 400)
+    text_hinein(a, 40, 40)
+    k.verarbeiten(a, ch.Fenster(0, 0, 640, 400, "editor"))
+
+    b = a.copy()
+    text_hinein(b, 40, 300)                  # eine Zeile GANZ unten dazu
+    zweite = k.verarbeiten(b, ch.Fenster(0, 0, 640, 400, "editor"))
+    assert zweite.veraendert is True
+    x, y, breite, hoehe = zweite.region
+    # Der Ausschnitt liegt unten und ist deutlich kleiner als das Fenster.
+    assert y > 200, zweite.region
+    assert hoehe < 200, zweite.region
+    assert zweite.ausschnitt.shape[0] == hoehe
+
+
+def test_auf_dem_aenderungsausschnitt_laeuft_keine_regionenerkennung():
+    """Ueberfluessig und schaedlich: der Formfilter verwirft, was mehr als die
+    halbe Flaeche fuellt -- und auf einem engen Ausschnitt ist das genau die
+    geaenderte Zeile."""
+    k = kette()
+    a = text_hinein(leer(), 40, 40)
+    k.verarbeiten(a, VOLLES_FENSTER)
+    b = a.copy()
+    text_hinein(b, 40, 120)
+    zweite = k.verarbeiten(b, VOLLES_FENSTER)
+    assert zweite.veraendert is True
+    assert "textregionen" not in zweite.kosten
+
+
+def test_der_volldurchgang_greift_AUCH_wenn_der_diff_blind_ist():
+    """Der Fall, gegen den der Volldurchgang wirklich schuetzt.
+
+    Hier aendert sich ein grosser Block je Runde um 5 -- die Diff-Schwelle
+    liegt bei 6. Der Diff meldet also dauerhaft „starr", waehrend sich der
+    Bildschirm sichtbar wandelt. Genau das ist der stille Fehler, an dem das
+    gekachelte dHash gescheitert ist.
+
+    Der erste Entwurf zaehlte nur GEAENDERTE Runden -- und bewachte damit
+    nichts: feuert der Diff nie, kommt der Volldurchgang nie. Gezaehlt wird
+    jetzt jede Runde.
+    """
+    k = kette()
+    voll = starr = 0
+    b = leer(640, 400)
+    for i in range(45):
+        b = b.copy()
+        b[100:160, 40:400] = 40 + (i * 5) % 200      # Drift unter der Schwelle
+        befund = k.verarbeiten(b, ch.Fenster(0, 0, 640, 400, "editor"))
+        if befund.grund == ch.GRUND_STARR:
+            starr += 1
+        if "textregionen" in befund.kosten:
+            voll += 1
+    assert starr > 30, f"nur {starr} starre Runden -- die Vorlage taugt nicht"
+    assert voll >= 2, f"nur {voll} Volldurchgaenge trotz {starr} starrer Runden"
+
+
+def test_eine_aenderung_ausserhalb_des_fensters_zaehlt_nicht():
+    """Eine Uhr in der Leiste geht diesen Dienst nichts an."""
+    k = kette()
+    a = leer(640, 400)
+    text_hinein(a, 40, 40)
+    f = ch.Fenster(0, 0, 300, 200, "editor")
+    k.verarbeiten(a, f)
+    b = a.copy()
+    text_hinein(b, 400, 350)                 # weit ausserhalb des Fensters
+    assert k.verarbeiten(b, f).veraendert is False
