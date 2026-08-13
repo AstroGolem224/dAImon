@@ -94,14 +94,15 @@ def test_ein_fehlendes_verzeichnis_ist_der_zielzustand(tmp_path):
 def test_rc0_mit_laufendem_strom_ist_KEIN_erfolg(tmp_path):
     """Der Fall, um den es geht: systemd meldet Erfolg, der Server hat den
     Strom noch."""
-    b = ks.stoppe(kontext=tmp_path, lauf=lauf_attrappe(),
+    b = ks.stoppe(kontext=tmp_path, lauf=lauf_attrappe(aktiv="inactive"),
                   stroeme=lambda: 1)
     assert b["ok"] is False
     assert "laufen weiter" in b["meldung"]
 
 
 def test_rc0_mit_unmessbarem_strom_ist_KEIN_erfolg(tmp_path):
-    b = ks.stoppe(kontext=tmp_path, lauf=lauf_attrappe(), stroeme=lambda: None)
+    b = ks.stoppe(kontext=tmp_path, lauf=lauf_attrappe(aktiv="inactive"),
+                  stroeme=lambda: None)
     assert b["ok"] is False
     assert "nicht messbar" in b["meldung"]
 
@@ -109,7 +110,8 @@ def test_rc0_mit_unmessbarem_strom_ist_KEIN_erfolg(tmp_path):
 def test_rc0_mit_uebrigen_kontextdateien_ist_KEIN_erfolg(tmp_path):
     """Das Sehen ist aus, der schon gelesene Bildschirmtext liegt noch da."""
     (tmp_path / "ocr.json").write_text("[]")
-    b = ks.stoppe(kontext=tmp_path, lauf=lauf_attrappe(), stroeme=lambda: 0)
+    b = ks.stoppe(kontext=tmp_path, lauf=lauf_attrappe(aktiv="inactive"),
+                  stroeme=lambda: 0)
     assert b["ok"] is False
     assert "Kontextverzeichnis" in b["meldung"]
 
@@ -234,3 +236,16 @@ def test_der_bericht_traegt_die_lampe_mit(tmp_path):
     b = ks.stoppe(kontext=tmp_path, lauf=lauf_attrappe(aktiv="inactive"),
                   stroeme=lambda: 0)
     assert b["lampe"] == "aus"
+
+
+def test_eine_noch_aktive_unit_ist_KEIN_erfolg(tmp_path):
+    """Am 13.08. am laufenden Dienst gemessen: die Strommessung allein reicht
+    nicht. Die Kette baut sich je Frame ab (T-5.3), zwischen zwei Blicken
+    gibt es gar keinen Strom -- der Zaehler stand auf 0, waehrend der Dienst
+    munter weiterlas.
+    """
+    b = ks.stoppe(kontext=tmp_path, lauf=lauf_attrappe(aktiv="active"),
+                  stroeme=lambda: 0)
+    assert b["ok"] is False
+    assert b["noch_aktiv"] is True
+    assert "weiter aktiv" in b["meldung"]

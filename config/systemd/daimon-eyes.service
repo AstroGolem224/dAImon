@@ -10,10 +10,10 @@
 # das Sehen abzuschalten -- kein Steuer-Socket, kein Signal, keine
 # Konfigurationsflagge. Ein zweiter Weg waere eine zweite Angriffsflaeche.
 #
-# OFFEN: `daimon/eyes/daemon.py` gibt es noch nicht. Der Implementierungsplan
-# nennt kein Task, das es erzeugt -- T-5.12 und T-5.13 setzen es beide voraus.
-# Bis dahin startet diese Unit nicht; die Sandbox-Direktiven darunter sind
-# trotzdem gegen `systemd-run --user` mit denselben Werten belegt.
+# `daimon/eyes/daemon.py` steht in KEINEM Task des Implementierungsplans --
+# T-5.12 und T-5.13 setzen es beide voraus, und die Luecke fiel erst beim
+# Schreiben dieser Unit auf, deren ExecStart ins Leere zeigte. Es ist
+# nachgebaut worden und traegt.
 #
 # Installation: systemctl --user link <dieser Pfad>
 #               systemctl --user enable --now daimon-eyes.service
@@ -94,6 +94,12 @@ SystemCallFilter=~@privileged @obsolete @mount @swap @reboot @module
 # laeuft im eigenen Worker (T-5.8), nicht hier.
 PrivateDevices=yes
 TimeoutStopSec=10
+# Der Busname wird vor dem Aufbau genommen, der Start ist also in
+# Millisekunden bereit. Die Frist deckt trotzdem den EINEN Fall ab, in dem sie
+# gebraucht wird: der allererste Start ohne gueltigen `restore_token`, bei dem
+# das Portal einen Dialog zeigt und auf einen Menschen wartet. Die Vorgabe von
+# 15 s hat genau daran den ersten Startversuch am 13.08. abgebrochen.
+TimeoutStartSec=180
 
 [Install]
 WantedBy=graphical-session.target

@@ -296,10 +296,14 @@ def serve(augen: Augen) -> None:  # pragma: no cover - braucht einen echten Bus
 
 def main(argv: list[str] | None = None) -> int:
     augen = Augen()
-    befund = augen.oeffnen()
-    print(json.dumps({"gestartet": True, **befund}, ensure_ascii=False),
-          flush=True)
 
+    # Der Busname ZUERST, vor dem Aufbau. `Type=dbus` wertet ihn als
+    # Bereitschaftszeichen, und bereit fuer Fokus-Ereignisse ist der Dienst
+    # tatsaechlich schon hier. Andersherum gemessen am 13.08.: der erste Start
+    # lief in die Startfrist von 15 s, obwohl `oeffnen()` reproduzierbar
+    # 0,17 s braucht -- eine einzige langsame erste Runde reichte, und systemd
+    # sah bis dahin gar nichts. Ein Ereignis, das vor `oeffnen()` eintrifft,
+    # laeuft in die Ausnahme in `einmal_sehen` und wird protokolliert.
     try:
         serve(augen)
     except Exception as exc:
@@ -309,6 +313,10 @@ def main(argv: list[str] | None = None) -> int:
         # Rueckgabewert.
         print(f"kein Busname ({exc}) -- nur der Timer traegt",
               file=sys.stderr, flush=True)
+
+    befund = augen.oeffnen()
+    print(json.dumps({"gestartet": True, **befund}, ensure_ascii=False),
+          flush=True)
 
     def halt(*_a):
         augen._laeuft.clear()

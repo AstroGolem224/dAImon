@@ -23,6 +23,12 @@ Kette auf `NULL` beendet die Frames; die SITZUNG bleibt offen, und mit ihr
 die Erlaubnis. Wer nur die Kette anhaelt, hat das Sehen abgeschaltet und den
 Ausweis behalten.
 
+**Der Strom allein beweist nichts.** Die Kette baut sich je Frame ab (T-5.3);
+zwischen zwei Blicken laeuft kein Strom, und ein Zaehler von 0 kam am 13.08.
+auch dann heraus, waehrend der Dienst munter weiterlas. Deshalb wird ZUSAETZLICH
+gefragt, ob die Unit noch aktiv ist -- das ist die erste Frage des Pruefstands,
+und sie wurde vorher nicht gestellt.
+
 **Die Tray-Lampe spiegelt den echten Unit-Zustand.** Nicht das, was dieser
 Schalter zuletzt getan hat: eine Lampe, die den letzten BEFEHL zeigt, leuchtet
 gruen, waehrend der Dienst nach einem Absturz wieder hochgekommen ist.
@@ -185,10 +191,19 @@ def stoppe(unit: str = EYES_UNIT, *, timeout_s: float = 10.0,
 
     nachher = stroeme()
     dateien = kontextdateien(kontext)
+    noch_aktiv = _ist_aktiv(unit, lauf)
     dauer_ms = round((time.monotonic() - begonnen) * 1000, 3)
 
     if rc != 0:
         ok, meldung = False, (getattr(e, "stderr", "") or "").strip()[:200]
+    elif noch_aktiv:
+        # Am 13.08. am laufenden Dienst gemessen: die Strommessung ALLEIN
+        # reicht nicht. Die Kette baut sich je Frame ab (T-5.3), zwischen zwei
+        # Blicken gibt es also gar keinen Strom -- ein Zaehler von 0 kam
+        # deshalb auch heraus, waehrend der Dienst munter weiterlas. Die
+        # erste Frage des Pruefstands lautet "Unit inaktiv", und die wurde
+        # vorher nicht gestellt.
+        ok, meldung = False, "Unit ist nach dem Stopp weiter aktiv"
     elif nachher is None:
         ok, meldung = False, "Videostroeme nicht messbar (pw-dump fehlt?)"
     elif nachher > 0:
@@ -203,6 +218,7 @@ def stoppe(unit: str = EYES_UNIT, *, timeout_s: float = 10.0,
     return {"v": 1, "ok": ok, "unit": unit, "rc": rc, "war_aktiv": war_aktiv,
             "videostroeme_vorher": vorher, "videostroeme_nachher": nachher,
             "kontextdateien": dateien, "geleert": geleert,
+            "noch_aktiv": noch_aktiv,
             "sitzung_geschlossen": sitzung_zu,
             "lampe": lampe(unit, lauf), "dauer_ms": dauer_ms,
             "meldung": meldung}
