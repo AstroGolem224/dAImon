@@ -308,6 +308,9 @@ class Sprecher:
         self.mimic_stimme = mimic_stimme
         self.mimic_ab_zeichen = int(mimic_ab_zeichen)
         self.mimic_nur_warm = bool(mimic_nur_warm)
+        # T-6.4: gezaehlt, nicht nur geloggt.
+        self._mimic_rueckfaelle = 0
+        self._mimic_letzter_grund = ""
         # Leer heisst: Mimic ist nutzbar. Gesetzt wird das von der
         # Startpruefung -- und dann bleibt es gesetzt, bis jemand den Dienst
         # neu startet. Ein Pfad, der beim Start nicht antwortet, soll nicht bei
@@ -609,6 +612,14 @@ class Sprecher:
                             **self.kennung()}
                 return self._mimic_ausgeben(sitzung, satz, kanal=kanal,
                                             marke=marke, gen=gen, t0=t_start)
+        if mimic_grund:
+            # T-6.4: der Rueckfall muss im Zustand STEHEN, nicht nur in der
+            # Antwort dieser einen Aeusserung. Der Pruefstand belegt VRAM
+            # kuenstlich und sieht danach im `/diag` nach -- eine Logzeile,
+            # die inzwischen durchgerollt ist, beantwortet das nicht.
+            with self._lock:
+                self._mimic_rueckfaelle += 1
+                self._mimic_letzter_grund = mimic_grund
         antwort = self._sherpa_ausgeben(satz, kanal=kanal, marke=marke, gen=gen,
                                         mimic_grund=mimic_grund)
         if mimic_grund:
@@ -892,6 +903,12 @@ class Sprecher:
             "mimic_ab_zeichen": self.mimic_ab_zeichen,
             "mimic_nur_warm": self.mimic_nur_warm,
             "mimic_sitzung": self._mimic_sitzung is not None,
+            # T-6.4: wie oft die Charakterstufe still auf die Vorgabe
+            # zurueckgefallen ist, und warum zuletzt. Still heisst nicht
+            # unsichtbar -- der Nutzer soll nichts merken, der Betreiber
+            # schon.
+            "mimic_rueckfaelle": self._mimic_rueckfaelle,
+            "mimic_letzter_grund": self._mimic_letzter_grund,
         }
 
 
