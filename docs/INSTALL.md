@@ -87,3 +87,72 @@ Inhaltsfilter. Die Hook-Bridge behält absichtlich IPv4 für ihren
 Loopback-Port; `IPAddressDeny=/IPAddressAllow=` und `SocketBindAllow=` engen
 diesen Sonderfall ein. Das Dateisystem-Hardening schützt außerdem nicht vor
 Dateien, die für denselben Benutzer außerhalb der Unit ohnehin lesbar sind.
+
+---
+
+# Von null auf lauffähig
+
+Die Abschnitte oben installieren die Dienste. Was sie zum Arbeiten brauchen,
+steht hier — in der Reihenfolge, in der es fehlt, wenn man es vergisst.
+
+## 1. Sprachdaten für OCR (T-5.1)
+
+```bash
+tesseract --list-langs
+```
+
+Stehen dort nur `afr` und `osd`, fehlen sie:
+
+```bash
+sudo pacman -S tesseract-data-deu tesseract-data-eng
+```
+
+**Besser ist `tessdata_fast`.** Gemessen (T−1.10) auf demselben Ausschnitt:
+267,9 ms gegen 545,1 ms beim Standard-`tessdata`, bei 620 gegen 619 Zeichen.
+Minus 277 ms für einen Zeichenunterschied. Der Augendienst sucht der Reihe nach
+in `$DAIMON_TESSDATA`, `~/.local/share/daimon/tessdata`, dem Spike-Verzeichnis
+und zuletzt im System — das Systemverzeichnis kommt **zuletzt**, und das ist
+Absicht.
+
+## 2. Modellgewichte
+
+| Was | Woher | Größe |
+|---|---|---|
+| STT (Parakeet) | `spikes/stt-referenz/modell_holen.sh` | 665 MB |
+| VLM (`qwen3-vl:8b`) | `ollama pull qwen3-vl:8b` | 6,1 GB |
+| Charakterstimme | eigener Mimic-Dienst | 6,2 GB VRAM zur Laufzeit |
+
+**Das VLM braucht zusätzlich eine `mmproj`-Datei**, die Ollama nicht mitliefert
+— dort läuft das Modell über eine eigene Engine. Ohne sie meldet `/props`
+`modalities.vision = false`, und der Worker bricht beim **Start** ab statt bei
+der ersten Bildanfrage. Das ist gewollt: ein Server, der läuft, VRAM hält und
+bei jedem Bild HTTP 500 sagt, sieht aus wie ein kaputtes Modell und nicht wie
+eine fehlende Datei.
+
+## 3. Der eine Klick
+
+```bash
+systemctl --user enable --now daimon-eyes.service
+```
+
+Beim **allerersten** Start zeigt das Portal einen Auswahldialog. Einen Monitor
+wählen und bestätigen — danach nie wieder. Der `restore_token` liegt unter
+`~/.local/state/daimon/screencast-token`, Modus 0600.
+
+Gemessen: erster Lauf 6,03 s (mit Dialog), zweiter Lauf 0,01 s (ohne). Die Unit
+gibt dafür `TimeoutStartSec=180`; wer den Dialog wegklickt, bekommt einen
+Startfehler und keinen stillen Ausfall.
+
+**Rückgängig:** Kontextmenü → *Bildschirmzugriff widerrufen*. Das löscht den
+Token und schließt die Sitzung.
+
+## 4. Prüfen, dass es steht
+
+```bash
+systemctl --user list-units 'daimon-*' --all
+python -m daimon.hub.diag
+python -m pytest
+```
+
+Läuft etwas nicht: [TROUBLESHOOTING.md](TROUBLESHOOTING.md). Jeder Eintrag dort
+ist einmal wirklich passiert.

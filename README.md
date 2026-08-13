@@ -2,7 +2,9 @@
 
 Ein Desktop-Familiar für Linux/Wayland. Eine kleine Figur am Bildschirmrand, die zeigt, was die laufenden Claude-Code-Sessions tun, auf Ansprache antwortet, den Bildschirm mitliest und auf ausdrückliche Bestätigung den PC steuert.
 
-**Status: Planung abgeschlossen, Implementierung nicht begonnen.**
+**Status: Phasen −1 bis 6 gebaut.** 1285 Tests, 37 eingefrorene Verifizierer,
+19 systemd-Units. Was fehlt, steht unten unter *Bekannte Einschränkungen* --
+und in [HANDOVER.md](HANDOVER.md) mit Datum.
 
 Zielsystem: CachyOS (Arch), KDE Plasma 6.7 auf Wayland, KWin 6.7, RTX 5090, PipeWire. Kein Anspruch auf Portabilität.
 
@@ -57,6 +59,9 @@ Vollständig: [docs/DESIGN.md §1.2](docs/DESIGN.md).
 | [HANDOVER.md](HANDOVER.md) | **Stand, laufende Prozesse, Fallen — für die nächste Sitzung** |
 | [docs/PRIOR-ART.md](docs/PRIOR-ART.md) | was es schon gibt: übernehmen, lesen oder meiden |
 | [docs/PHASE3-original.md](docs/PHASE3-original.md) | der ursprüngliche, engere Plan |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | **wenn etwas nicht tut** — jeder Eintrag ist einmal wirklich passiert |
+| [docs/DEBT.md](docs/DEBT.md) | die bewussten Vereinfachungen, aus den `ponytail:`-Kommentaren geerntet |
+| [docs/INSTALL.md](docs/INSTALL.md) | von null auf lauffähig |
 
 ### Der Review ist nicht konvergiert
 
@@ -106,17 +111,91 @@ Was dAImon von den fünfzehn unterscheidet, gibt es nirgends: lokale Wahrnehmung
 
 Details, inklusive der Lizenzfallen: [docs/PRIOR-ART.md](docs/PRIOR-ART.md).
 
-## Nächster Schritt
+## Bedienung
 
-Phase −1 sind Machbarkeits-Spikes. Zwei davon können die Architektur kippen und laufen deshalb vor allem anderen:
-
-- **T−1.1** Erkennt das Wake-Word einen deutschen Namen? Es gibt kein deutsches KWS-Modell.
-- **T−1.2** Ist ONNX Runtime mit `sm_120` aus einem cp312-venv erreichbar? Arch' Paket bringt keine Python-Bindings mit.
+### Installieren und starten
 
 ```bash
-export DAIMON_ROLE=investigator
-mkdir -p spikes/wakeword && cd spikes/wakeword
+git config core.hooksPath .githooks
+uv sync
+sudo pacman -S tesseract-data-deu tesseract-data-eng
+for u in config/systemd/*.service; do systemctl --user link "$PWD/$u"; done
+systemctl --user daemon-reload
+systemctl --user enable --now daimon-hub.service daimon-face.service
 ```
+
+Vollständig, mit den Modellgewichten und dem einen Portal-Klick:
+[docs/INSTALL.md](docs/INSTALL.md).
+
+### Die Kill-Switches
+
+Es gibt keinen zweiten Weg. Kein Steuer-Socket, kein Signal, keine
+Konfigurationsflagge — ein zweiter Weg wäre eine zweite Angriffsfläche.
+
+| Was | Befehl | Was er belegt |
+|---|---|---|
+| Ohren aus | `python -m daimon.ears.killswitch` | Unit inaktiv **und** null Aufnahmeströme |
+| Augen aus | `python -m daimon.eyes.killswitch` | Unit inaktiv, null eigene Videoströme, Kontextverzeichnis leer |
+| Alles aus | `systemctl --user stop 'daimon-*'` | — |
+| Alles vergessen | `python -m daimon.mind.store --loeschen` | Zeilen **und** Datei |
+| Bildschirmzugriff widerrufen | Kontextmenü → *Bildschirmzugriff widerrufen* | Token gelöscht, Portal-Sitzung geschlossen |
+
+Beide Schalter geben JSON zurück und setzen `ok` erst, wenn die **Wirkung**
+gemessen ist — nicht, wenn `systemctl` mit 0 endet. Ein Dienst, der beim
+Beenden seinen Strom nicht schließt, hätte sonst ein grünes `rc=0`.
+
+### Prüfbefehle
+
+```bash
+tests/verify/verify-frozen.sh   # kein Verifizierer wurde nach dem Einfrieren geändert
+tests/verify/T-0.0.sh           # die Rollentrennung greift wirklich (19 Assertions)
+python -m pytest                # 1285 Tests
+python -m daimon.hub.diag       # Live-Zustand aller Dienste
+```
+
+### Persona anpassen
+
+`~/.config/daimon/persona/<name>.toml`. Name, Wake-Words, Stimme, Farben,
+Charakterzüge und der System-Prompt stehen dort — Format in
+[DESIGN.md §10.1](docs/DESIGN.md).
+
+Der eine Schlüssel, den man verstehen muss:
+
+```toml
+speech_threshold = "helpful"   # silent | urgent | helpful | chatty
+```
+
+Er regelt **ungefragtes** Reden. Auf eine Frage antwortet auch `silent` — sonst
+wäre das kein Assistent, sondern ein abgeschaltetes Gerät, und dafür gibt es
+den Kill-Switch.
+
+| Stufe | spricht von selbst |
+|---|---|
+| `silent` | nie |
+| `urgent` | wenn etwas kaputt ist oder auf eine Freigabe wartet |
+| `helpful` | zusätzlich, wenn Schweigen Zeit kostet |
+| `chatty` | auch beiläufig |
+
+---
+
+## Bekannte Einschränkungen
+
+Nicht Vorhaben, sondern Stand.
+
+| Einschränkung | Warum |
+|---|---|
+| **KDE-Bug 503121** | betrifft das Overlay; Umgehung im Design beschrieben |
+| **Kein Cursor-Tracking** | auf Wayland nicht implementierbar. Kommt nie |
+| **Kein deutsches KWS-Modell** | das Wake-Word erkennt einen deutschen Namen schlechter als einen englischen |
+| **Keine Passwortfeld-Erkennung** | ein Passwortfeld sieht für OCR aus wie Text. Deshalb die Anwendungs-Denylist statt einer Feldheuristik |
+| **Egress-Beschränkung nur auf Anwendungsebene** | die Domain-Prüfung liegt im Egress-Broker, nicht im Kernel. Die Netzsperre selbst (`RestrictAddressFamilies=AF_UNIX`) ist eine Kernelgrenze, die Ziel-Domain ist es nicht |
+| **VLM ohne `mmproj`** | Ollama liefert für `qwen3-vl:8b` keine mit. Der Worker bricht beim Start ab statt bei der ersten Bildanfrage |
+| **`daimon/eyes/daemon.py` steht in keinem Task** | die Lücke fiel erst beim Schreiben der Unit auf. Nachgebaut, aber nicht geplant |
+| **T-5.10, T-5.11, T-6.7b, T-6.8, T-6.9 offen** | die Angriffs- und Abnahmetests. Zurückgestellt, nicht erledigt |
+| **17 Verifizierer fehlen** | bewusste Umkehrung: Funktionalität zuerst, Abnahme wird nachgezogen |
+
+Die bewussten Vereinfachungen im Code stehen einzeln in
+[docs/DEBT.md](docs/DEBT.md) — 21 Stück, jede mit benannter Obergrenze.
 
 ---
 
