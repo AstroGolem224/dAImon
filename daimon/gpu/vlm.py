@@ -72,6 +72,30 @@ LANGE_KANTE = 1920
 # Herunterskalieren tatsaechlich hereinkommt.
 MAX_PIXELS = 1920 * 1080
 
+# Der Kontext wird GESETZT, nicht geerbt. qwen3-vl kann 256k, und
+# `llama-server` legt den KV-Cache fuer das Maximum an: gemessen am 12.08.
+# belegte das Modell 18 GB, obwohl die Gewichte 6,1 GB sind. Am 13.08. hat
+# genau das den Projektor nicht mehr hineingelassen -- 18,8 GB frei, und
+# `cudaMalloc failed: out of memory` beim Laden von 1105 MiB.
+#
+# 8192 Token reichen fuer eine Bildbeschreibung um Groessenordnungen. Dieselbe
+# Falle wie bei `max_pixels`: die mitgelieferte Vorgabe ist die
+# Architekturobergrenze und nicht ein brauchbarer Wert.
+KONTEXT_TOKEN = 8192
+
+# Das Budget muss das DENKEN mittragen. qwen3-vl denkt, bevor es antwortet,
+# und das laesst sich nicht abschalten -- gemessen am 13.08.: weder
+# `chat_template_kwargs={"enable_thinking": false}` noch ein vorangestelltes
+# `/no_think` aendern etwas, in allen drei Faellen 850 bis 1180 Zeichen
+# Denkteil. Mit 256 Token war das Budget im Denken aufgebraucht:
+# finish_reason `length`, `content` leer, und im Denkteil stand eine voellig
+# richtige Beschreibung, die niemand mehr bekam.
+#
+# 1024 traegt einen Bildschirmausschnitt. Reicht es doch nicht, sagt die
+# Fehlermeldung es -- ein leerer Befund waere von "nichts zu sehen" nicht zu
+# unterscheiden.
+MAX_TOKENS = 1024
+
 MODELL_VORGABE = "qwen3-vl:8b"
 VRAM_MIB = 7000                      # 6,1 GB Gewichte plus Luft
 LADEFRIST_S = 180.0
@@ -116,6 +140,28 @@ def modell_aus_ollama(name: str = MODELL_VORGABE) -> tuple[str, str | None]:
     # laesst dieses Modell ueber seine eigene Engine laufen und braucht darum
     # keins. Wer `llama-server` benutzt, muss es getrennt beschaffen.
     return gewichte, blob("image.projector")
+
+
+def mmproj_suchen() -> str | None:
+    """Wo der Projektor liegt. `None`, wenn nirgends.
+
+    Dieselbe Bauart wie `tessdata_verzeichnis` in T-5.6, und aus demselben
+    Grund: das Systemverzeichnis kann ihn nicht haben. Ollama liefert fuer
+    dieses Modell keinen mit, weil es dort ueber eine eigene Engine laeuft --
+    wer `llama-server` benutzt, muss ihn getrennt beschaffen.
+
+    Gefunden wird der ERSTE Treffer, nicht der beste: mehrere Projektoren im
+    selben Verzeichnis sind ein Zustand, den niemand herbeifuehrt, ohne zu
+    wissen was er tut, und dann soll er auch `DAIMON_VLM_MMPROJ` setzen.
+    """
+    aus_umgebung = os.environ.get("DAIMON_VLM_MMPROJ")
+    if aus_umgebung and Path(aus_umgebung).exists():
+        return aus_umgebung
+    basis = Path(os.environ.get("XDG_DATA_HOME")
+                 or os.path.expanduser("~/.local/share")) / "daimon" / "models"
+    for kandidat in sorted(basis.glob("mmproj*.gguf")):
+        return str(kandidat)
+    return None
 
 
 # -- Bild vorbereiten ------------------------------------------------------
@@ -210,9 +256,12 @@ class VlmServer:
         mmproj = self._mmproj
         if modell is None:
             modell, aus_manifest = modell_aus_ollama()
-            mmproj = mmproj or aus_manifest
+            # Erst das Manifest, dann das Benutzerverzeichnis. Beides kann
+            # leer sein -- dann faengt `_sehen_pruefen()` es beim Start ab.
+            mmproj = mmproj or aus_manifest or mmproj_suchen()
         argumente = [self._binaer, "-m", modell,
                      "--host", self.socket_pfad,
+                     "-c", str(KONTEXT_TOKEN),
                      "-ngl", "99", "--no-webui"]
         if mmproj:
             argumente += ["--mmproj", mmproj]
@@ -312,7 +361,8 @@ class VlmServer:
         return daten
 
     def beschreiben(self, rgb: np.ndarray, aufforderung: str,
-                    *, max_tokens: int = 256, frist_s: float = 120.0) -> str:
+                    *, max_tokens: int = MAX_TOKENS,
+                    frist_s: float = 120.0) -> str:
         """Ein Bild, eine Frage, eine Antwort.
 
         `max_tokens` ist gedeckelt und nicht offen: T--1.10 hat gemessen, dass
@@ -336,9 +386,22 @@ class VlmServer:
             "temperature": 0.2,
         }, frist_s=frist_s)
         try:
-            return antwort["choices"][0]["message"]["content"]
+            wahl = antwort["choices"][0]
+            text = wahl["message"]["content"] or ""
         except (KeyError, IndexError, TypeError) as exc:
             raise VlmFehler(f"unerwartete Antwort: {str(antwort)[:200]}") from exc
+
+        if not text.strip():
+            # NICHT still leer zurueckgeben. Ein leerer Bildschirmbefund ist
+            # von „nichts zu sehen" nicht zu unterscheiden, und dann sucht
+            # jemand den Fehler im Bildschirm statt im Budget.
+            gedacht = len(str(wahl.get("message", {}).get(
+                "reasoning_content") or ""))
+            raise VlmFehler(
+                f"leere Antwort (finish_reason={wahl.get('finish_reason')}, "
+                f"{gedacht} Zeichen im Denkteil). Bei `length` reicht das "
+                "Token-Budget nicht bis zur Antwort.")
+        return text
 
     def beenden(self) -> None:
         if self._prozess is None:

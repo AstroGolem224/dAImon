@@ -295,3 +295,45 @@ def test_eine_antwort_ohne_statuszeile_wird_gemeldet(monkeypatch):
     with pytest.raises(vlm.VlmFehler) as fehler:
         s.anfrage("GET", "/health")
     assert "Statuszeile" in str(fehler.value)
+
+
+# -- Der Projektor und der Kontext -----------------------------------------
+
+def test_der_kontext_wird_gesetzt_und_nicht_geerbt():
+    """qwen3-vl kann 256k, und `llama-server` legt den KV-Cache fuer das
+    Maximum an: gemessen belegte das Modell 18 GB, obwohl die Gewichte 6,1 GB
+    sind. Am 13.08. hat genau das den Projektor nicht mehr hineingelassen --
+    18,8 GB frei, und `cudaMalloc failed: out of memory` beim Laden von
+    1105 MiB. Mit gesetztem Kontext: 7,7 GB statt 18.
+    """
+    s = vlm.VlmServer(socket_pfad="/run/user/1000/x.sock", modell="/m.gguf")
+    b = s.befehl()
+    assert "-c" in b
+    assert b[b.index("-c") + 1] == str(vlm.KONTEXT_TOKEN)
+    assert vlm.KONTEXT_TOKEN == 8192
+
+
+def test_der_projektor_wird_im_benutzerverzeichnis_gefunden(tmp_path, monkeypatch):
+    """Ollama liefert fuer dieses Modell keinen mit -- wer `llama-server`
+    benutzt, muss ihn getrennt beschaffen."""
+    modelle = tmp_path / "daimon" / "models"
+    modelle.mkdir(parents=True)
+    (modelle / "mmproj-F16.gguf").write_bytes(b"x")
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    monkeypatch.delenv("DAIMON_VLM_MMPROJ", raising=False)
+    assert vlm.mmproj_suchen().endswith("mmproj-F16.gguf")
+
+
+def test_die_umgebung_schlaegt_das_verzeichnis(tmp_path, monkeypatch):
+    eigen = tmp_path / "eigener.gguf"
+    eigen.write_bytes(b"x")
+    monkeypatch.setenv("DAIMON_VLM_MMPROJ", str(eigen))
+    assert vlm.mmproj_suchen() == str(eigen)
+
+
+def test_ein_gesetzter_aber_fehlender_pfad_wird_uebergangen(tmp_path, monkeypatch):
+    """Ein Pfad, der ins Leere zeigt, ist kein Projektor. Wer ihn zurueckgibt,
+    verwandelt einen Tippfehler in einen Ladefehler ohne Erklaerung."""
+    monkeypatch.setenv("DAIMON_VLM_MMPROJ", str(tmp_path / "gibtsnicht.gguf"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "leer"))
+    assert vlm.mmproj_suchen() is None
