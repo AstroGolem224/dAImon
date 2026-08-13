@@ -50,6 +50,20 @@ IFACE = "de.daimon.Eyes"
 
 # Was der Augendienst nie ansieht. Bewusst hier und nicht nur in der
 # Konfiguration: eine Vorgabe, die man einschalten muss, schuetzt niemanden.
+# OCR bekommt eine EIGENE Abkuehlung, getrennt vom Ausloeser. Gemessen am
+# 13.08. unter systemd: der Dienst mit 5-s-Takt kostete 1,7 Kerne -- 71,9 %
+# im Hauptprozess, 101 % im OCR-Arbeiter. Design 13 veranschlagt fuer den
+# Bildschirmweg 0,001 % ("Bildschirm-Diff, 2-s-Takt"); OCR steht in der
+# Dauerlast-Tabelle GAR NICHT, es gehoert zu "auf Abruf".
+#
+# Der Widerspruch ist im Design selbst: das Latenzziel verlangt "Bildschirm-
+# aenderung -> Kontext aktuell < 3 s (OCR-gebunden)", und auf einer lebenden
+# Arbeitsflaeche aendert sich fast jede Runde etwas. Beides zugleich ist nicht
+# haltbar. Diese Zahl waehlt: der Diff bleibt billig und laeuft weiter, OCR
+# laeuft hoechstens alle 30 s. Ein Kontext, der eine halbe Minute alt ist, ist
+# fuer eine Rueckfrage brauchbar; 1,7 Kerne den ganzen Tag sind es nicht.
+OCR_ABKUEHLUNG_S = 30.0
+
 DENYLIST_VORGABE = (
     "org.keepassxc.KeePassXC", "keepassxc",
     "org.gnome.Seahorse", "bitwarden", "1password",
@@ -81,6 +95,7 @@ class Augen:
     def __init__(self, *, verzeichnis: Path | None = None,
                  denylist=DENYLIST_VORGABE,
                  periode_s: float = trigger.PERIODE_S,
+                 ocr_abkuehlung_s: float = OCR_ABKUEHLUNG_S,
                  ocr_arbeiter: int = 2) -> None:
         self._tor = trigger.SystemTor()
         self._ausloeser = trigger.Ausloeser(tor=self._tor, periode_s=periode_s)
@@ -89,6 +104,9 @@ class Augen:
                                                  denylist=denylist)
         self._speicher.laden()
         self._ocr_arbeiter = ocr_arbeiter
+        self._ocr_abkuehlung = float(ocr_abkuehlung_s)
+        self._letztes_ocr = float("-inf")
+        self.ocr_verschoben = 0
 
         self._sitzung: PortalSitzung | None = None
         self._portal: Any = None
@@ -102,6 +120,17 @@ class Augen:
         self._fenster_sperre = threading.Lock()
 
         self._laeuft = threading.Event()
+        # Ein ZWEITES Ereignis, und zwar invers: `_halt` ist geloescht,
+        # solange gearbeitet wird. Gewartet wird darauf, nicht auf `_laeuft`.
+        #
+        # Der Grund ist teuer bezahlt: `Event.wait(frist)` kehrt SOFORT
+        # zurueck, wenn das Ereignis gesetzt ist. Die Schleife hat mit
+        # `self._laeuft.wait(takt_s)` also nie geschlafen und drehte mit
+        # 100 % eines Kerns leer -- gemessen am 13.08. unter systemd, zwanzig
+        # Proben in fuenf Sekunden, alle zwischen 96 und 104 %. Kein Test hat
+        # es gesehen: dort ist `_laeuft` geloescht, und dann wartet `wait()`
+        # tatsaechlich.
+        self._halt = threading.Event()
         self.runden = 0
         self.erfasst = 0
         self.gelesen = 0
@@ -184,6 +213,16 @@ class Augen:
             return {"grund": grund, "abgewiesen": befund.grund,
                     "generation": befund.generation}
 
+        jetzt = time.monotonic()
+        if jetzt - self._letztes_ocr < self._ocr_abkuehlung:
+            # Der Diff hat gearbeitet und etwas gefunden -- OCR nicht. Das
+            # wird GEZAEHLT: ein verschobener Blick, den niemand zaehlt, ist
+            # von einem unveraenderten Bildschirm nicht zu unterscheiden.
+            self.ocr_verschoben += 1
+            return {"grund": grund, "abgewiesen": "ocr_abkuehlung",
+                    "generation": befund.generation, "region": befund.region}
+        self._letztes_ocr = jetzt
+
         zukunft = self._pool.einreichen(
             befund.region, befund.ausschnitt.tobytes(),
             befund.ausschnitt.shape[1], befund.ausschnitt.shape[0])
@@ -211,8 +250,9 @@ class Augen:
 
     def lauf(self, *, takt_s: float = 0.5) -> int:
         """Blockiert bis `beenden()`. Gibt die Zahl der Runden zurueck."""
+        self._halt.clear()
         self._laeuft.set()
-        while self._laeuft.is_set():
+        while not self._halt.is_set():
             if self._widerruf_pruefen():
                 break
             grund = self._ausloeser.tick()
@@ -225,7 +265,8 @@ class Augen:
                     # Hinsehen fuer den Rest des Tages einzustellen.
                     print(f"Runde gescheitert: {exc}", file=sys.stderr,
                           flush=True)
-            self._laeuft.wait(takt_s)
+            self._halt.wait(takt_s)
+        self._laeuft.clear()
         return self.runden
 
     def fokus_ereignis(self, fenster: Fenster) -> None:
@@ -248,6 +289,7 @@ class Augen:
         Die Kette baut sich ohnehin je Frame ab (T-5.3); was hier zaehlt, ist
         die SITZUNG. Wer nur den Prozess beendet, laesst die Erlaubnis stehen.
         """
+        self._halt.set()
         self._laeuft.clear()
         bericht = {"sitzung": None, "pool": None}
         if self._portal is not None:
@@ -266,7 +308,8 @@ class Augen:
 
     def zustand(self) -> dict:
         return {"v": 1, "runden": self.runden, "erfasst": self.erfasst,
-                "gelesen": self.gelesen,
+                "gelesen": self.gelesen, "ocr_verschoben": self.ocr_verschoben,
+                "ocr_abkuehlung_s": self._ocr_abkuehlung,
                 "ausloeser": self._ausloeser.zaehler(),
                 "kontext": self._speicher.zaehler()}
 
@@ -358,7 +401,7 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr, flush=True)
 
     def halt(*_a):
-        augen._laeuft.clear()
+        augen._halt.set()
 
     signal.signal(signal.SIGTERM, halt)
     signal.signal(signal.SIGINT, halt)

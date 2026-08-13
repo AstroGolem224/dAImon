@@ -138,7 +138,7 @@ def test_eine_gescheiterte_runde_beendet_den_dienst_nicht(tmp_path, capsys):
     a._ausloeser = type("A", (), {"tick": lambda self: "timer"})()
 
     def stoppen():
-        a._laeuft.clear()
+        a._halt.set()
     threading.Timer(0.15, stoppen).start()
     a.lauf(takt_s=0.01)
     assert a._aufnahme.aufrufe > 1              # es wurde weiter versucht
