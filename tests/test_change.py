@@ -96,8 +96,12 @@ def test_zwei_frames_die_sich_nur_an_einer_stelle_unterscheiden():
     erste = k.verarbeiten(a, VOLLES_FENSTER)
     assert erste.veraendert is True
 
-    # Derselbe Bildschirm noch einmal: nichts Neues.
-    assert k.verarbeiten(a.copy(), VOLLES_FENSTER).grund == ch.GRUND_UNVERAENDERT
+    # Derselbe Bildschirm noch einmal: der BILLIGE Diff faengt ihn ab, bevor
+    # die Regionenerkennung ueberhaupt laeuft. Genau dafuer ist er da.
+    zweite = k.verarbeiten(a.copy(), VOLLES_FENSTER)
+    assert zweite.grund == ch.GRUND_STARR
+    assert "textregionen" not in zweite.kosten
+    assert "signatur" not in zweite.kosten
 
     # EINE Zeile aendert sich -- ein Balken wird laenger.
     b = a.copy()
@@ -230,3 +234,38 @@ def test_die_abdeckung_der_vereinigung_wird_mitgeliefert():
     sagt es, statt dass man es erbt."""
     b = kette().verarbeiten(text_hinein(leer(), 40, 40), VOLLES_FENSTER)
     assert 0.0 < b.abdeckung <= 1.0
+
+
+# -- Der billige Diff aus Design 4.4 --------------------------------------
+
+def test_ein_starrer_bildschirm_kostet_nur_den_diff(tmp_path=None):
+    """Design 13 veranschlagt den Bildschirmweg mit 0,001 % -- das gilt nur,
+    wenn die teuren Stufen bei einem starren Bild GAR NICHT laufen."""
+    k = kette()
+    b = text_hinein(leer(), 40, 40)
+    k.verarbeiten(b, VOLLES_FENSTER)
+    zweite = k.verarbeiten(b.copy(), VOLLES_FENSTER)
+    assert zweite.grund == ch.GRUND_STARR
+    assert set(zweite.kosten) == {"denylist", "drm", "tor", "diff"}
+
+
+def test_der_diff_verpasst_eine_einzelne_zeile_NICHT():
+    """Die Gefahr bei jeder groben Vorstufe -- und der Grund, warum das
+    gekachelte dHash zweimal verworfen wurde. Die Schwelle ist deshalb streng:
+    verworfen wird nur, was WIRKLICH unveraendert ist.
+    """
+    k = kette()
+    a = text_hinein(leer(), 40, 40)
+    k.verarbeiten(a, VOLLES_FENSTER)
+    b = a.copy()
+    b[60:68, 40:100] = 230               # eine zweite Zeile, sonst nichts
+    zweite = k.verarbeiten(b, VOLLES_FENSTER)
+    assert zweite.grund != ch.GRUND_STARR
+    assert zweite.veraendert is True
+
+
+def test_der_erste_frame_wird_nie_als_starr_verworfen():
+    """Ohne Vorgaenger gibt es keinen Vergleich -- und ein Dienst, der seinen
+    ersten Blick verwirft, sieht nach einem Neustart nie etwas."""
+    b = kette().verarbeiten(text_hinein(leer(), 40, 40), VOLLES_FENSTER)
+    assert b.grund != ch.GRUND_STARR

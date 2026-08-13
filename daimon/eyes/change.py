@@ -56,6 +56,22 @@ GRUND_DRM = "drm"
 GRUND_TOR = "tor"
 GRUND_UNVERAENDERT = "unveraendert"
 GRUND_KEIN_TEXT = "kein_text"
+GRUND_STARR = "starr"
+
+# Die BILLIGE Vorstufe aus Design 4.4, die in der ersten Fassung dieses Moduls
+# fehlte: ein Graustufenbild auf 160x90 und ein Vergleich mit dem vorigen.
+# Design 13 veranschlagt genau diesen Posten mit 0,001 % ("Bildschirm-Diff,
+# 2-s-Takt") -- ohne ihn laeuft jede Runde sofort in den teuren Teil, und
+# gemessen am 13.08. kostete der Dienst 6 % statt der veranschlagten 1,2 %.
+#
+# Die Schwelle ist ABSICHTLICH streng. Ein grober Vergleich, der „aehnlich
+# genug" sagt, ist genau der Fehler, an dem das gekachelte dHash gescheitert
+# ist -- er verpasst eine geaenderte Textzeile still. Hier wird deshalb nur
+# verworfen, was WIRKLICH unveraendert ist: kein einziger der 14400 Punkte
+# weicht um mehr als DIFF_SCHWELLE ab. Das filtert den haeufigen Fall
+# (nichts passiert) und keinen einzigen anderen.
+DIFF_BREITE, DIFF_HOEHE = 160, 90
+DIFF_SCHWELLE = 6
 
 
 @dataclass(frozen=True)
@@ -86,6 +102,19 @@ class Befund:
     kosten: dict[str, float] = field(default_factory=dict)
 
 
+def _verkleinern(rgb: np.ndarray) -> np.ndarray:
+    """Auf 160x90 Graustufen. Nearest-Neighbour ueber Indexfelder.
+
+    Keine Mittelung: eine Mittelung glaettet gerade die duennen Striche weg,
+    auf die es ankommt -- und dann meldet der Diff „unveraendert", waehrend
+    eine Textzeile sich geaendert hat.
+    """
+    hoehe, breite = rgb.shape[:2]
+    ys = (np.arange(DIFF_HOEHE) * (hoehe / DIFF_HOEHE)).astype(np.int64)
+    xs = (np.arange(DIFF_BREITE) * (breite / DIFF_BREITE)).astype(np.int64)
+    return regionen.graustufen(rgb[ys][:, xs])
+
+
 class Kette:
     """Die Gatterkette. Vergibt Generationen und misst jede Stufe."""
 
@@ -100,6 +129,7 @@ class Kette:
         self._uhr = uhr
         self._generation = 0
         self._letzte_signatur = ""
+        self._letztes_klein: np.ndarray | None = None
 
     def _naechste_generation(self) -> int:
         self._generation += 1
@@ -136,6 +166,18 @@ class Kette:
         kosten[GRUND_TOR] = self._uhr() - t
         if not offen:
             return self._abgewiesen(gen, GRUND_TOR, kosten)
+
+        # -- Der billige Diff: 160x90, vor allem anderen Teuren -----------
+        t = self._uhr()
+        klein = _verkleinern(rgb)
+        starr = (self._letztes_klein is not None
+                 and int(np.abs(klein.astype(np.int16)
+                                - self._letztes_klein.astype(np.int16)).max())
+                 <= DIFF_SCHWELLE)
+        self._letztes_klein = klein
+        kosten["diff"] = self._uhr() - t
+        if starr:
+            return self._abgewiesen(gen, GRUND_STARR, kosten)
 
         # -- Zuschnitt aufs fokussierte Fenster: der eigentliche Gewinn -----
         t = self._uhr()
