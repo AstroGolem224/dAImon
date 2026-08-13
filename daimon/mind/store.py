@@ -208,6 +208,17 @@ class Store:
                 "turn_id": z["turn_id"] if "turn_id" in z.keys() else "",
                 "wert": Marked.from_wire(roh)}
 
+    def loeschen(self, eintrag_id: int) -> bool:
+        """Ein einzelner Eintrag. `True`, wenn es ihn gab.
+
+        Einzeln loeschbar ist eine Zusage von T-6.3: wer sich etwas merken
+        laesst, muss es auch wieder loswerden koennen, ohne alles zu
+        verlieren.
+        """
+        db = self.oeffnen()
+        cur = db.execute("DELETE FROM eintraege WHERE id = ?", (int(eintrag_id),))
+        return cur.rowcount > 0
+
     # -- Ein Befehl loescht alles ------------------------------------------
 
     def alles_loeschen(self) -> int:
