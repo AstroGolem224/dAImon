@@ -181,6 +181,33 @@ class FocusReceiver:
         with self._lock:
             return dict(self._zaehler)
 
+    def fenster(self) -> dict[str, Any]:
+        """Das zuletzt fokussierte Fenster -- OHNE Titel.
+
+        Gebraucht vom Augendienst (T-5.5): ohne Geometrie schneidet er auf das
+        Vollbild zu und braucht 3,2 s je Runde statt 0,09 s auf einem Fenster.
+        Der Weg ist eine ABFRAGE und keine Weiterleitung: `callDBus` aus dem
+        KWin-Script trifft genau einen Empfaenger, und zwei Dienste koennen
+        sich einen Busnamen nicht teilen.
+
+        Der `caption` fehlt hier ABSICHTLICH. Er ist Angreifertext -- er steht
+        in einem Browsertab, den irgendwer benannt hat. Weitergereicht wird
+        `resource_class`, und die vergibt die Anwendung ueber ihre
+        Desktop-Datei, nicht ihr Inhalt.
+        """
+        with self._lock:
+            ev = self._letztes
+            if ev is None:
+                return {"v": 1, "bekannt": False}
+            x, y, breite, hoehe = ev.geometrie
+            return {
+                "v": 1, "bekannt": True, "uuid": ev.uuid,
+                "resource_class": ev.resource_class.value,
+                "fullscreen": bool(ev.fullscreen),
+                "x": x, "y": y, "breite": breite, "hoehe": hoehe,
+                "alter_s": max(0.0, time.time() - ev.ts),
+            }
+
     def zustand(self) -> tuple[bool, float]:
         """(fullscreen, Alter der Meldung in Sekunden) fuer das GPU-Gate.
 
@@ -209,6 +236,14 @@ class FocusReceiver:
                                  out_signature="")
             def Event(self, nutzlast):
                 empfaenger.handle_json(str(nutzlast))
+
+            @dbus.service.method(IFACE, in_signature="", out_signature="s")
+            def Fenster(self):
+                # T-5.5: der Augendienst fragt hier nach der Geometrie. JSON
+                # und keine feste Signatur -- ein neues Feld verlaengert dann
+                # den String statt die Argumentliste, und genau daran ist der
+                # Watcher schon einmal gescheitert (KWin kappt bei 13).
+                return json.dumps(empfaenger.fenster(), ensure_ascii=False)
 
             @dbus.service.method(IFACE, in_signature="",
                                  out_signature=ZUSTAND_SIGNATUR)

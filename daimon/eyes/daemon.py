@@ -125,9 +125,41 @@ class Augen:
 
     # -- Eine Runde --------------------------------------------------------
 
+    def fenster_abfragen(self) -> Fenster | None:
+        """Fragt `de.daimon.Focus` nach dem aktuellen Fenster.
+
+        Eine ABFRAGE und keine Weiterleitung, und der Grund ist strukturell:
+        `callDBus` aus dem KWin-Script trifft genau einen Empfaenger, und zwei
+        Dienste koennen sich einen Busnamen nicht teilen. Der Augendienst
+        haelt `de.daimon.Eyes` -- dorthin sendet niemand. Genau deshalb stand
+        der Zaehler beim ersten Lauf auf `fokus: 0`, und jede Runde schnitt
+        aufs Vollbild zu: 3,2 s statt 0,09 s.
+
+        Einmal je Runde, nicht dauernd: der Timer traegt ohnehin den
+        Grossteil (T-5.4), und eine Abfrage alle fuenf Sekunden kostet nichts.
+        """
+        try:
+            import dbus
+            bus = dbus.SessionBus()
+            objekt = bus.get_object("de.daimon.Focus", "/Focus")
+            roh = json.loads(str(objekt.Fenster(
+                dbus_interface="de.daimon.Focus")))
+        except Exception:
+            # Kein Watcher, kein Fenster. Der Rueckfall aufs Vollbild ist
+            # teuer, aber er sieht wenigstens hin.
+            return None
+        if not roh.get("bekannt") or roh.get("breite", 0) <= 0:
+            return None
+        return Fenster(x=int(roh["x"]), y=int(roh["y"]),
+                       breite=int(roh["breite"]), hoehe=int(roh["hoehe"]),
+                       klasse=str(roh.get("resource_class", "")),
+                       drm=False)
+
     def _aktuelles_fenster(self, breite: int, hoehe: int) -> Fenster:
         with self._fenster_sperre:
             f = self._fenster
+        if f is None:
+            f = self.fenster_abfragen()
         if f is not None:
             return f
         # Ohne Fokus-Ereignis der ganze Bildschirm: 125 ms statt 14 ms. Teuer,

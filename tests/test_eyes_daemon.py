@@ -237,3 +237,31 @@ def test_der_zustand_nennt_zahlen_und_keinen_inhalt(tmp_path):
     z = a.zustand()
     assert z["gelesen"] == 1
     assert "streng geheim" not in json.dumps(z)
+
+
+# -- Die Fensterabfrage bei de.daimon.Focus --------------------------------
+
+def test_ohne_watcher_faellt_die_abfrage_auf_none(tmp_path, monkeypatch):
+    """Kein Watcher, kein Fenster. Der Rueckfall aufs Vollbild ist teuer, aber
+    er sieht wenigstens hin."""
+    a = augen(tmp_path)
+    monkeypatch.setitem(__import__("sys").modules, "dbus", None)
+    assert a.fenster_abfragen() is None
+
+
+def test_ein_unbekanntes_fenster_zaehlt_nicht_als_fenster(tmp_path):
+    """`bekannt: false` heisst „seit dem Start kein Fensterwechsel" -- und
+    nicht „ein Fenster der Groesse null"."""
+    a = augen(tmp_path)
+    a._fenster = None
+    f = a._aktuelles_fenster(8, 6)
+    assert (f.breite, f.hoehe) == (8, 6)        # Vollbild-Rueckfall
+
+
+def test_die_abfrage_wird_nur_ohne_gemeldetes_fenster_gestellt(tmp_path):
+    """Ein Fokus-Ereignis, das schon da ist, schlaegt die Abfrage -- sonst
+    fragte der Dienst jede Runde nach etwas, das er gerade bekommen hat."""
+    a = augen(tmp_path)
+    a._fenster = Fenster(x=1, y=2, breite=3, hoehe=4, klasse="editor")
+    a.fenster_abfragen = lambda: pytest.fail("haette nicht fragen duerfen")
+    assert a._aktuelles_fenster(8, 6).klasse == "editor"
