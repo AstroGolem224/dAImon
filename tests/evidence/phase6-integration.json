@@ -1,0 +1,239 @@
+{
+  "v": 1,
+  "task": "T-6.8",
+  "erzeugt": "2026-08-13T19:26:22+0200",
+  "rolle": "builder",
+  "szenarien": [
+    {
+      "szenario": "alle_units_gleichzeitig",
+      "gestartet": [
+        "daimon-hub.service",
+        "daimon-hookbridge.service",
+        "daimon-focus.service",
+        "daimon-face.service",
+        "daimon-auth.service",
+        "daimon-ears.service",
+        "daimon-eyes.service",
+        "daimon-mind.service",
+        "daimon-dbus.service",
+        "daimon-fs.service",
+        "daimon-cli-broker.service",
+        "daimon-lokal-broker.service",
+        "daimon-stt.service",
+        "daimon-tts.service",
+        "Sonderfälle mit Grundnachweis: daimon-exec.service, daimon-egress.service, daimon-input.service",
+        "daimon-phase1.timer (nur Zustand)"
+      ],
+      "budget": {},
+      "gemessen": {},
+      "ergebnis": "fehlgeschlagen",
+      "grund": "Timeout (>60.0s) from pytest-timeout.",
+      "dauer_s": 29.88
+    },
+    {
+      "szenario": "sprachanfrage_und_folgeaktion",
+      "gestartet": [
+        "mind.sock frage (fensterliste)",
+        "auth.sock intent_mark",
+        "aktion.sock ausfuehren (audio.volume)"
+      ],
+      "budget": {},
+      "gemessen": {
+        "fenster_eigen": 22,
+        "fenster_genannt": 22,
+        "aktion_antwort": {
+          "v": 1,
+          "ok": true,
+          "verdikt": "allow",
+          "ausgefuehrt": true,
+          "direkt": true,
+          "grund": "",
+          "gesprochen": "",
+          "dauer_ms": {
+            "policy": 0.032,
+            "broker": 5.374,
+            "audit": 2.95
+          }
+        },
+        "lautstaerke_vorher": 0.47,
+        "lautstaerke_nachher": 0.52
+      },
+      "ergebnis": "gemessen",
+      "grund": "",
+      "dauer_s": 0.66
+    },
+    {
+      "szenario": "ressourcen_design_13",
+      "gestartet": [
+        "/proc-Sampler (20 × 1 s)",
+        "CPU-Kanarienbrenner (1 s Vollast)"
+      ],
+      "budget": {
+        "idle_cpu_p95_prozent_eines_kerns": 1.2,
+        "idle_rss_mb": 420.0,
+        "quelle": "docs/DESIGN.md §13, Dauerlast-Summe"
+      },
+      "gemessen": {
+        "sampler_kanarie_prozent": 98.9,
+        "einbezogen": [
+          "daimon-auth.service",
+          "daimon-cli-broker.service",
+          "daimon-dbus.service",
+          "daimon-ears.service",
+          "daimon-eyes.service",
+          "daimon-face.service",
+          "daimon-focus.service",
+          "daimon-fs.service",
+          "daimon-hookbridge.service",
+          "daimon-hub.service",
+          "daimon-lokal-broker.service",
+          "daimon-mind.service"
+        ],
+        "fehlend": [
+          "daimon-exec.service"
+        ],
+        "idle_cpu_p95": 1.0,
+        "idle_rss_mb": 258.6,
+        "proben_cpu_prozent": [
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "je_unit_cpu_max": {
+          "daimon-hub.service": 1.0,
+          "daimon-hookbridge.service": 0.0,
+          "daimon-focus.service": 0.0,
+          "daimon-face.service": 0.0,
+          "daimon-auth.service": 0.0,
+          "daimon-ears.service": 0.0,
+          "daimon-eyes.service": 0.0,
+          "daimon-mind.service": 0.0,
+          "daimon-dbus.service": 0.0,
+          "daimon-fs.service": 0.0,
+          "daimon-cli-broker.service": 0.0,
+          "daimon-lokal-broker.service": 0.0
+        },
+        "je_unit_rss_mb": {
+          "daimon-hub.service": 11.5,
+          "daimon-hookbridge.service": 6.8,
+          "daimon-focus.service": 15.9,
+          "daimon-face.service": 34.8,
+          "daimon-auth.service": 15.8,
+          "daimon-ears.service": 24.4,
+          "daimon-eyes.service": 44.4,
+          "daimon-mind.service": 20.7,
+          "daimon-dbus.service": 21.3,
+          "daimon-fs.service": 20.3,
+          "daimon-cli-broker.service": 21.2,
+          "daimon-lokal-broker.service": 21.4
+        },
+        "auf_abruf_rss_mb": {
+          "daimon-stt.service": 1042.1,
+          "daimon-tts.service": 186.5,
+          "daimon-egress.service": null
+        }
+      },
+      "ergebnis": "gemessen",
+      "grund": "",
+      "dauer_s": 21.06
+    },
+    {
+      "szenario": "vollbild_gate",
+      "gestartet": [
+        "tests/harness/vollbildfenster.py (tkinter, Vollbild)",
+        "gpu.sock Ladesonde (1 MiB)"
+      ],
+      "budget": {},
+      "gemessen": {
+        "gate_ohne_vollbild": "offen",
+        "gate_bei_vollbild": {
+          "v": 1,
+          "ok": false,
+          "grund": "fullscreen"
+        },
+        "diag_gpu_fullscreen_vorher": 11,
+        "diag_gpu_fullscreen_nachher": 12,
+        "gate_nach_vollbild": "offen",
+        "vram_vorher_mib": 13478,
+        "vram_nachher_mib": 13508,
+        "vram_delta_mib": 30
+      },
+      "ergebnis": "gemessen",
+      "grund": "",
+      "dauer_s": 0.23
+    },
+    {
+      "szenario": "killswitch_ohren",
+      "gestartet": [
+        "PTT über auth.sock (Mikrofonstrom)",
+        "daimon.ears.killswitch.stoppe()"
+      ],
+      "budget": {},
+      "gemessen": {
+        "kanarie_stroeme_bei_ptt": 1,
+        "schalter_bericht": {
+          "v": 1,
+          "ok": true,
+          "unit": "daimon-ears.service",
+          "rc": 0,
+          "war_aktiv": true,
+          "aufnahmestroeme_vorher": 1,
+          "aufnahmestroeme_nachher": 0,
+          "dauer_ms": 23.336,
+          "meldung": ""
+        },
+        "stroeme_nachher": 0
+      },
+      "ergebnis": "gemessen",
+      "grund": "",
+      "dauer_s": 0.36
+    },
+    {
+      "szenario": "killswitch_augen",
+      "gestartet": [
+        "python -m daimon.eyes.killswitch (Hotkey-Weg)"
+      ],
+      "budget": {},
+      "gemessen": {},
+      "ergebnis": "uebersprungen",
+      "grund": "daimon-eyes läuft nicht (Szenario 1)",
+      "dauer_s": 0.0
+    },
+    {
+      "szenario": "killswitch_gedaechtnis",
+      "gestartet": [
+        "python -m daimon.mind.store --loeschen",
+        "Store-Kanarieneintrag"
+      ],
+      "budget": {},
+      "gemessen": {
+        "kanarie_eintrag_id": 1,
+        "schalter_bericht": {
+          "geloescht": 1,
+          "datei": "/home/itiger013/.local/state/daimon/memory.db"
+        },
+        "reste_nachher": []
+      },
+      "ergebnis": "gemessen",
+      "grund": "",
+      "dauer_s": 0.14
+    }
+  ]
+}

@@ -329,26 +329,33 @@ def serve(augen: Augen) -> None:  # pragma: no cover - braucht einen echten Bus
 def main(argv: list[str] | None = None) -> int:
     augen = Augen()
 
-    # Der Busname ZUERST, vor dem Aufbau. `Type=dbus` wertet ihn als
-    # Bereitschaftszeichen, und bereit fuer Fokus-Ereignisse ist der Dienst
-    # tatsaechlich schon hier. Andersherum gemessen am 13.08.: der erste Start
-    # lief in die Startfrist von 15 s, obwohl `oeffnen()` reproduzierbar
-    # 0,17 s braucht -- eine einzige langsame erste Runde reichte, und systemd
-    # sah bis dahin gar nichts. Ein Ereignis, das vor `oeffnen()` eintrifft,
-    # laeuft in die Ausnahme in `einmal_sehen` und wird protokolliert.
+    # Reihenfolge: ERST das Portal, DANN der Busname. Am 13.08. stand es
+    # andersherum, weil `Type=dbus` den Namen als Bereitschaftszeichen wertet
+    # und der erste Start in die Frist von 15 s lief. Der Tausch hat einen
+    # Startfehler gegen einen HAENGER eingetauscht:
+    #
+    #   `serve()` startet eine GLib-Schleife auf dem Vorgabekontext.
+    #   `portal_dbus._warten()` startet danach eine ZWEITE auf demselben.
+    #   Zwei Schleifen auf einem Kontext blockieren einander -- die
+    #   Portal-Antwort wird nie zugestellt, `oeffnen()` kehrt nicht zurueck,
+    #   und der Dienst steht `active` da und tut nichts.
+    #
+    # Gemessen daran, dass `runden: 0` blieb und die Startmeldung im Journal
+    # fehlte, waehrend systemd "Started" schrieb. Die Startfrist loest
+    # `TimeoutStartSec=180` in der Unit -- eine Frist ist das kleinere Uebel
+    # als ein Dienst, der laeuft und nicht arbeitet.
+    befund = augen.oeffnen()
+    print(json.dumps({"gestartet": True, **befund}, ensure_ascii=False),
+          flush=True)
+
     try:
         serve(augen)
     except Exception as exc:
         # Ohne Busnamen laeuft der Dienst weiter -- der Timer traegt ohnehin
         # den Grossteil (T-5.4). Aber `Type=dbus` sieht dann keinen Namen und
-        # beendet ihn; deshalb steht die Meldung im Journal und nicht nur im
-        # Rueckgabewert.
+        # beendet ihn; deshalb steht die Meldung im Journal.
         print(f"kein Busname ({exc}) -- nur der Timer traegt",
               file=sys.stderr, flush=True)
-
-    befund = augen.oeffnen()
-    print(json.dumps({"gestartet": True, **befund}, ensure_ascii=False),
-          flush=True)
 
     def halt(*_a):
         augen._laeuft.clear()
