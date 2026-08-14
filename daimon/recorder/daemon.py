@@ -309,19 +309,34 @@ class Recorder:
 
 
 def _wahrnehmung_an() -> bool:
-    """Sehen die Augen gerade? Gelesen am Unit-Zustand, nicht an einer Flagge.
+    """Sehen die Augen gerade? Gemessen an der WIRKUNG, nicht am Etikett.
 
-    Der Import steht hier und nicht oben: `daimon.eyes.killswitch` ist der
-    Kill-Switch der Augen, und dieser Dienst soll ihn benutzen koennen, ohne
-    ihn beim Start zu laden. Faellt die Messung aus, gilt „an" -- die
-    Redaktion sperrt dann weiter ueber Denylist und Kennung, statt still
-    alles zu verwerfen.
+    ZWEI FEHLER UEBEREINANDER, beide am 14.08. live gefunden, und deshalb
+    steht hier jetzt etwas anderes als vorher:
+
+    **Der erste war der Messweg.** Die erste Fassung rief
+    `daimon.eyes.killswitch.lampe()`, und die ruft `systemctl --user
+    is-active`. Im Sandkasten dieses Dienstes scheitert das:
+    „Failed to connect to user scope bus via local transport" -- der
+    Unit-Zustand ist ein Etikett, das dieser Prozess gar nicht lesen kann.
+
+    **Der zweite war meiner.** `lampe()` kennt DREI Werte und begruendet das
+    selbst: „Unbekannt ist nicht ‚aus'. Eine Lampe, die bei einem
+    Werkzeugfehler Entwarnung gibt, ist schlimmer als gar keine."
+    `lampe() == "an"` faltet drei auf zwei -- und zwar so, dass ein
+    Werkzeugfehler wie „abgeschaltet" aussieht. Ergebnis im Betrieb: die
+    Redaktion sperrte JEDE Meldung mit `wahrnehmung_aus`, bei laufenden
+    Augen, und das Archiv blieb leer, waehrend alle Tests gruen waren.
+
+    Gemessen wird deshalb der ScreenCast-Strom: er entsteht mit der
+    Portal-Sitzung und verschwindet mit ihr (T-7.3, nachgemessen: Augen an
+    -> 1, Augen aus -> 0). Ist er nicht messbar, gilt „an": ein Gatter, das
+    bei unlesbarer Messung alles verwirft, schaltet die Funktion still ab --
+    und der Absender selbst ist bereits ein Beleg dafuer, dass wahrgenommen
+    wird.
     """
-    from daimon.eyes.killswitch import lampe
-    try:
-        return lampe() == "an"
-    except OSError:
-        return True
+    stroeme = pause.bildschirmstroeme()
+    return True if stroeme is None else stroeme > 0
 
 
 def main(argv: list[str] | None = None) -> int:

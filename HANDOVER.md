@@ -44,35 +44,68 @@ schreibender Verben beschränken statt auf den ganzen Text. Das ist eine
 Entscheidung am Wächter und gehört nicht in einen Task, der nebenbei an ihm
 vorbeikommt.
 
-## BEFUND: Der Fokus-Empfang ist im Betrieb tot — und trägt drei Zusagen
+## BERICHTIGT: „Der Fokus-Empfang ist tot" war falsch — meine Messung war es
 
-**`de.daimon.Focus.Fenster()` antwortet `{"bekannt": false}`, dauerhaft.**
-Gemessen am 14.08., und zwar nicht aus dem Ruhezustand heraus:
+**Der Befund aus `ee2be0f` gilt nicht.** Er steht so in der Commit-Botschaft
+jenes Commits und stand bis hierher auch in dieser Datei. Was tatsächlich der
+Fall war, am 14.08. nachgemessen:
 
-* `isScriptLoaded daimon-watcher` → **true**
-* Ein echtes Vollbildfenster wurde geöffnet und aktiviert
-  (`tests/harness/vollbildfenster.py`) — `windowActivated` muss gefeuert haben
-* Das installierte Script ist **byte-gleich** mit `kwin-script/daimon-watcher/`,
-  `SERVICE`/`PATH`/`IFACE` stimmen, der Dienst ist `active`
-* Danach weiterhin `bekannt: false`
+**`tests/harness/vollbildfenster.py` braucht DREI Argumente** — Farbe,
+Logdatei, Zeitlimit. Ich habe eines übergeben, das Script starb an
+`sys.argv[2]`, und ich hatte die Ausgabe nach `/dev/null` geleitet. **Es ist
+nie ein Fenster aufgegangen.** `bekannt: false` hieß danach genau das, was es
+sagt: „seit dem Neustart des Dienstes kein Ereignis" — und Ereignisse gab es
+keine, weil ich keines erzeugt habe.
 
-**Was daran hängt, in der Reihenfolge der Kosten:**
+Mit einem Fenster, das wirklich aufgeht, trägt die Kette:
 
-1. **Die Augen schneiden jede Runde aufs Vollbild zu** — 3,2 s statt 0,09 s,
-   die teuerste bekannte Runde des Projekts. Der Modulkopf von
-   `daimon/eyes/daemon.py` nennt genau diesen Rückfall.
-2. **Der Archiv-Absender aus T-7.1b archiviert nichts.** Ohne Fensterklasse
-   greift die Redaktion fail-closed: `kennung_fehlt`, gemessen im Journal des
-   Recorders. Das ist die richtige Richtung — aber der Bildschirmteil des
-   Archivs ist damit im Betrieb leer, während alle Tests grün sind.
-3. **Das Vollbild-Gate** (T-3.7) fragt denselben Dienst.
+* `dbus-monitor` zeigt **2** `member=Event`-Aufrufe je Öffnen/Schließen
+* `Fenster()` liefert `resource_class: "Tk"`, `fullscreen: true`
+* Auch **nach** einem Neustart von `daimon-focus.service` — die Hypothese
+  „KWin verliert den Empfänger" ist geprüft und **widerlegt**
 
-**Das ist nicht neu und war schon einmal geschlossen** (`9973dc7`, „Die Augen
-bekamen nie ein Fokus-Ereignis"). Es ist wieder offen, und der Verdacht liegt
-auf dem Weg Script → `callDBus` → Dienst: `callDBus` ist fire-and-forget, KWin
-meldet nichts, und ein zweites geladenes Script (`daimon-focusprobe`) liegt
-ebenfalls in `~/.local/share/kwin/scripts/`. Nicht weiterverfolgt — das ist
-T-0.12-Gebiet und ein eigener Task, kein Nebenprodukt von Phase 7.
+**Die Lehre, und sie ist teuer bezahlt:** ein Prüfschritt ohne
+Positivkontrolle beweist nichts. Zwei Sitzungen lang stand ein Befund im
+Repo, der nur die eigene kaputte Vorrichtung beschrieb.
+
+## BEFUND: Das Fenster der Runde erreichte OCR nie
+
+Der echte Grund, warum der Bildschirmteil des Archivs leer blieb — und er
+liegt in Phase 5, nicht in Phase 7:
+
+`_aktuelles_fenster()` fragt den Fokusdienst ab und gab sein Ergebnis **nur
+an die Gatterkette**. Der OCR-Zweig las danach `self._fenster` nach, und das
+setzt ausschließlich der Push-Weg auf `de.daimon.Eyes` — **an den sendet
+niemand** (der Befund aus `9973dc7`). Folge:
+
+1. Der **Kontextspeicher** bekam seit T-5.6/T-5.7 eine leere Fensterklasse.
+   Seine Denylist-Prüfung — laut Modulkopf ausdrücklich „keine Verdopplung
+   aus Versehen", weil dort auch Titel ankommen, die nie durch die Kette
+   liefen — lief damit ins Leere.
+2. Der **Archiv-Absender** aus T-7.1b bekam sie ebenfalls, und die Redaktion
+   sperrte fail-closed mit `kennung_fehlt`.
+
+Das Fenster wird jetzt einmal je Runde bestimmt und weitergereicht. Live
+danach: OCR-Text und Fenstertitel im Archiv, `redacted`, `tainted`.
+
+## BEFUND: `lampe() == "an"` faltete drei Werte auf zwei
+
+Der Wahrnehmungs-Gatter aus T-7.2 rief `daimon.eyes.killswitch.lampe()`.
+Zwei Fehler übereinander:
+
+* **`systemctl --user` läuft im Sandkasten des Recorders nicht** —
+  „Failed to connect to user scope bus via local transport", mit den echten
+  Direktiven der Unit nachgestellt. Der Unit-Zustand ist ein Etikett, das
+  dieser Prozess gar nicht lesen kann.
+* **`lampe()` kennt drei Werte** und begründet das selbst: „Unbekannt ist
+  nicht ‚aus'." `== "an"` macht daraus zwei, und zwar so, dass ein
+  Werkzeugfehler wie „abgeschaltet" aussieht. Im Betrieb sperrte die
+  Redaktion damit **jede** Meldung mit `wahrnehmung_aus`, bei laufenden
+  Augen.
+
+Gemessen wird jetzt die Wirkung statt des Etiketts: der ScreenCast-Strom
+(`bildschirmstroeme()`, aus T-7.3). Nicht messbar heißt „an" — ein Gatter,
+das bei unlesbarer Messung alles verwirft, schaltet die Funktion still ab.
 
 ## BEFUND: `pw-dump` starb im Recorder an SIGSYS
 

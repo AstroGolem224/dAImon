@@ -263,8 +263,16 @@ class Augen:
         rgb = np.frombuffer(frame["rohdaten"], np.uint8).reshape(
             frame["hoehe"], frame["breite"], 3)
 
-        befund = self._kette.verarbeiten(
-            rgb, self._aktuelles_fenster(frame["breite"], frame["hoehe"]))
+        # DAS Fenster dieser Runde, EINMAL bestimmt und weitergereicht.
+        # Vorher las der OCR-Zweig `self._fenster` nach -- und das wird
+        # ausschliesslich vom Push-Weg auf `de.daimon.Eyes` gesetzt, an den
+        # niemand sendet. `_aktuelles_fenster()` fragt den Fokusdienst ab
+        # und gab sein Ergebnis nur an die Kette; der Kontextspeicher und
+        # (seit T-7.1b) das Archiv bekamen deshalb eine leere Klasse.
+        # Gemessen am 14.08.: der Recorder wies jede OCR-Meldung mit
+        # `kennung_fehlt` ab, waehrend der Fokusdienst das Fenster kannte.
+        fenster = self._aktuelles_fenster(frame["breite"], frame["hoehe"])
+        befund = self._kette.verarbeiten(rgb, fenster)
         if not befund.veraendert:
             return {"grund": grund, "abgewiesen": befund.grund,
                     "generation": befund.generation}
@@ -285,9 +293,12 @@ class Augen:
         text = zukunft.result(timeout=60.0)
         self.gelesen += 1
 
-        with self._fenster_sperre:
-            klasse = self._fenster.klasse if self._fenster else ""
-            drm = bool(self._fenster.drm) if self._fenster else False
+        klasse = fenster.klasse
+        drm = bool(fenster.drm)
+        # Der Kontextspeicher prueft die Denylist ein zweites Mal (T-5.7,
+        # ausdruecklich keine Verdopplung aus Versehen). Mit leerer Klasse
+        # lief diese zweite Reihe ins Leere -- jetzt bekommt sie, was die
+        # Kette auch bekommen hat.
         self._speicher.hinzufuegen(context.ART_OCR, klasse, text)
         # T-7.1b: DIESELBE Zeile geht ins Archiv, und die doppelte Ablage
         # ist gewollt. Der Kontextspeicher ist der LIVE-Kontext mit

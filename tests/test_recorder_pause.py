@@ -223,3 +223,30 @@ def test_nicht_messbares_mikrofon_pausiert_nicht(tmp_path):
     d = _dienst(tmp_path, fokus_klasse=lambda: "", mikrofone=lambda: None,
                 pausieren=lambda **kw: {"ok": True})
     assert d.automatik() == ""
+
+
+# -- Der Wahrnehmungs-Gatter (T-7.2, korrigiert am 14.08.) ----------------
+
+def test_wahrnehmung_wird_am_strom_gemessen_nicht_am_etikett():
+    """Zwei Fehler, beide live gefunden, beide hier festgenagelt.
+
+    `lampe()` kennt drei Werte; `lampe() == "an"` faltet sie auf zwei und
+    macht aus einem Werkzeugfehler ein "abgeschaltet". Und `systemctl
+    --user` laeuft im Sandkasten des Recorders gar nicht. Gemessen wird
+    deshalb der ScreenCast-Strom.
+    """
+    from daimon.recorder.daemon import _wahrnehmung_an
+    from daimon.recorder import pause as p
+
+    alt = p.bildschirmstroeme
+    try:
+        p.bildschirmstroeme = lambda: 1
+        assert _wahrnehmung_an() is True
+        p.bildschirmstroeme = lambda: 0
+        assert _wahrnehmung_an() is False
+        # Nicht messbar heisst NICHT "aus": sonst schaltet ein
+        # Werkzeugfehler die ganze Funktion still ab.
+        p.bildschirmstroeme = lambda: None
+        assert _wahrnehmung_an() is True
+    finally:
+        p.bildschirmstroeme = alt
