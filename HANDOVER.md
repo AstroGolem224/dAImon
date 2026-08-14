@@ -1,13 +1,35 @@
-# Übergabe — Stand 2026-08-13
+# Übergabe — Stand 2026-08-14
 
 Alles, was nicht aus dem Repo hervorgeht. Die Nachträge stehen in umgekehrter
-Zeitfolge: der **13.08.** zuerst, darunter unverändert der 12.08., der 09.08.
+Zeitfolge: der **14.08.** zuerst, darunter unverändert der 12.08., der 09.08.
 und der 05.08. Ältere Aussagen gelten weiter, **soweit sie unten nicht
 ausdrücklich berichtigt sind**.
 
 ---
 
-# Stand 13.08. — der Wächter, und zwei überholte Aufträge
+# Stand 14.08. — Phase 7, der Abschlussreview, und drei Falschbefunde
+
+## Wo es steht, in fünf Zeilen
+
+* **Phase 7 ist gebaut** — T-7.1 bis T-7.5 plus zwei nachgetragene Tasks
+  (T-7.1b Absender, T-5.9b Gate verdrahtet). Alles gepusht bis `06aa75f`.
+* **Das Deklassifizierungs-Gate ist verdrahtet** und hatte vorher keinen
+  Aufrufer. Live-Kontext und Archivtreffer kommen aus demselben `freigeben()`.
+* **T-6.9 liegt vor** (`docs/final-security-review.md`), misst statt
+  abzuhaken — und ist **nicht unabhängig**: gebaut und geprüft von derselben
+  Einheit.
+* **`pytest` 1407 passed + 4 xfail**, `cargo test` 95 passed.
+* **`verify-frozen` ist nie gelaufen.** Siehe der Wächter-Befund unten.
+
+## Was als Erstes zu tun ist
+
+1. **`verify-frozen` fahren.** `ipc.py`, `config.py`, `declassify.py`,
+   `focus.py`, `eyes/daemon.py` wurden angefasst, seit er zuletzt lief.
+2. **Ein zweites Augenpaar auf Phase 7 und T-6.9.** Das ist der Zweck von
+   T-6.9 und der einzige Punkt, den diese Sitzung strukturell nicht liefern
+   konnte.
+3. **Die Naht messen:** Push-to-Talk → gesprochene Bildschirmfrage → Kontext
+   im Modell. Jeder Abschnitt ist gemessen, die Kette nie.
 
 ## BEFUND: Der Rollenwächter unterscheidet Ausführen nicht von Schreiben
 
@@ -44,25 +66,22 @@ schreibender Verben beschränken statt auf den ganzen Text. Das ist eine
 Entscheidung am Wächter und gehört nicht in einen Task, der nebenbei an ihm
 vorbeikommt.
 
-## BEFUND: Das Deklassifizierungs-Gate hat keinen Aufrufer
+## BEHOBEN: Das Deklassifizierungs-Gate hat jetzt einen Aufrufer
 
-`daimon.hub.declassify.Deklassifizierung` wird in der gesamten Anwendung
-**nirgends instanziiert** — nur in vier Prüfständen. Gemessen am 14.08. mit
-`grep -rn "Deklassifizierung(" daimon/`.
+Es war gebaut, geprüft und **von keinem Prozess instanziiert** — nur in vier
+Prüfständen. Passiv Wahrgenommenes erreichte das Modell also nicht, weil das
+Gate es verweigerte, sondern weil niemand fragte. Dieselbe Sorte Lücke wie
+beim Ticketbuch in T-3.11.
 
-Folge: **passiv Wahrgenommenes erreicht das Modell heute überhaupt nicht.**
-Nicht, weil das Gate es verweigert, sondern weil niemand es fragt. Der
-Kontextspeicher füllt sich (T-5.7), das Gate steht geprüft daneben (T-5.9),
-und dazwischen fehlt die Zeile, die beides verbindet.
+Geschlossen als **T-5.9b** (`62f3686`), nachgetragen im Plan:
 
-Das trifft T-7.5 unmittelbar: die Archivsuche hängt jetzt im Gate, mit
-denselben Bedingungen und derselben Marke. Aber `daimon/mind/router.py` aus
-ihrer Akzeptanzliste ist **nicht** geändert worden — es gibt keinen Aufrufer,
-an den sich etwas anschließen ließe. Wer das Gate verdrahtet, schließt beides
-in einem: Live-Kontext und Archiv kommen aus demselben `freigeben()`.
-
-Dieselbe Klasse von Lücke wie „`speech_threshold` wird geladen, validiert und
-hat keinen Verbraucher" weiter unten. Gebaut, geprüft, nicht angeschlossen.
+* Der Hub fragt sich selbst über `MarkenBuch.aktuelle()`, welche Runde offen
+  ist. **Die `turn_id` wandert nicht** — eine mitgeschickte wird ignoriert.
+* Eigener Socket `kontext.sock`, 0600, Unit-Allowlist auf `daimon-mind`.
+  Nicht auf `aktion.sock` (trägt Tickets), nicht auf `state.sock` (der
+  lesende Diagnoseweg, den mehrere kennen).
+* **Der Mind fragt immer, das Gate entscheidet.** Eine Bezugsliste im Prozess
+  mit dem Modell wäre eine zweite Wahrheit.
 
 ## BERICHTIGT: „Der Fokus-Empfang ist tot" war falsch — meine Messung war es
 
@@ -233,30 +252,54 @@ einen Menschen, der die Taste drückt und spricht — dieselbe Lücke, die
    ≤ 2,0 %, Spitze als p95 ≤ 8,0 %. Der eingefrorene Verifizierer zu T-6.8
    kennt `idle_cpu_mittel` noch nicht — Rolle `reviewer`.
 
-## T-7.1 ist gebaut, aber bewusst ohne Zulauf
+## Das Archiv hat Absender — und was noch fehlt
 
-`daimon-recorder` läuft, ist `linked` und **nicht `enabled`**. `daimon-eyes`
-schickt nichts: der Absender gehört zu T-7.2, weil vorher jede Zeile im Archiv
-eine unredigierte wäre. Wer die Unit vorzeitig aktiviert, hebt die Reihenfolge
-„erst redigieren, dann schreiben" auf.
+`daimon-recorder` läuft, ist `linked` und **nicht `enabled`**. Es füllt sich
+live: OCR-Text von den Augen, Fenstertitel vom Fokusdienst, Transkripte von
+den Ohren. Alle drei melden über `recorder.sock`; geschrieben wird nur im
+Recorder.
+
+**Kein Produzent für Frames.** Schema und 48-Stunden-Verfall stehen (T-7.1),
+ein Absender ist ein eigener Task.
 
 **Zwei Sandbox-Befunde, die jede weitere Unit betreffen:**
 
 * `ReadWritePaths=` kann nichts einhängen, was unter einem frisch gemounteten
   `ProtectHome=tmpfs` liegt — `226/NAMESPACE`, auch wenn das Verzeichnis
-  existiert. `BindPaths=` hängt aus dem Wirt ein und ist der einzige Weg.
+  existiert. `BindPaths=` hängt aus dem Wirt ein.
 * `.venv/bin/python` ist ein Symlink auf `~/.local/share/uv/python/…`. **Der
-  Interpreter liegt in `$HOME`** und ist unter `ProtectHome=tmpfs` weg. Das
-  ist derselbe Grund, aus dem `daimon-input` mit 203/EXEC stirbt — und er gilt
-  auch dann, wenn das Repo außerhalb von `$HOME` liegt. Units mit
-  `ProtectHome=tmpfs` nehmen `/usr/bin/python3` plus `PYTHONPATH`.
+  Interpreter liegt in `$HOME`** und ist unter `ProtectHome=tmpfs` weg
+  (203/EXEC) — auch dann, wenn das Repo außerhalb von `$HOME` liegt. Units
+  mit `ProtectHome=tmpfs` nehmen `/usr/bin/python3` plus `PYTHONPATH`.
 
-Und der Nachweis, dass `daimon-eyes` nicht ins Archiv schreiben kann, ist
-bisher **an den Direktiven** geführt, nicht an einem Schreibversuch aus dem
-Namensraum der Augen. Der Unterschied ist derselbe wie zwischen Unit-Text und
-Wirkung; der echte Nachweis gehört in `T-7.1.v`.
+## T-6.9 liegt vor — und ist nicht unabhängig
 
----
+`docs/final-security-review.md`, Belege in `tests/evidence/final-findings.json`,
+erzeugt von `tools/final_security.py`. Neun Feststellungen, acht davon
+`gemessen` am laufenden System, null offen in `high`/`critical`.
+
+**Der Befund:** `/proc/<pid>/environ` von `daimon-mind` enthielt zwei fremde
+API-Schlüssel, geerbt aus der Umgebung des Benutzermanagers. §7.2c sagt „mind
+hat weder Token noch AF_INET" — die Netzsperre hielt, der Satz zum Token galt
+nur für **einen**. Geschlossen mit `UnsetEnvironment=`; **das ist eine
+Denylist und damit die schwächere Hälfte**. Der strukturelle Weg ist, solche
+Werte nicht in die Umgebung des Benutzermanagers zu geben.
+
+**Zwei Zusagen im Entwurf waren zu weit formuliert und sind berichtigt:**
+§7.2a („alle Broker" — drei Units tragen das Netz mit Absicht) und §1.2
+(„Bildschirm und Ton durchgehend" — der Ton läuft nur unter Push-to-Talk,
+siehe `DDs/dAImon/Phase-7-Tonmitschnitt-Entscheidung.md`).
+
+**Das Werkzeug hat sich dreimal selbst geirrt**, und alle drei stehen im
+Dokument. Der dritte ist der lehrreichste: es suchte `RIFF` im Archiv und
+fand es — die Augen hatten den Bildschirm gelesen, auf dem der Satz über die
+ersten beiden Falschbefunde stand. Gesucht wird jetzt nach `RIFF`+`WAVE`,
+also nach der Struktur.
+
+**Was T-6.9 nicht ist: unabhängig.** Der Plan weist es der Rolle `reviewer`
+zu. Wer den Maßstab dessen setzt, was er selbst gebaut hat, benotet sich
+selbst — deshalb trägt jede Feststellung ein Feld `herkunft`
+(`gemessen` | `direktive` | `pruefstand`).
 
 # Stand 12.08. — Funktionalität zuerst
 
