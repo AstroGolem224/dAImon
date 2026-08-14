@@ -34,14 +34,40 @@ import signal
 import socket
 import time
 from pathlib import Path
+from typing import Callable, Iterable
 
 from daimon.common import ipc
 from daimon.common.config import denylist_laden, denylist_pfade, load
 from daimon.common.logging import get_logger
+from daimon.recorder import pause
 from daimon.recorder.redaktion import Redaktion
 from daimon.recorder.store import Archiv, ArchivFehler
 
 PRODUZENT = "recorder"
+
+# Takt der automatischen Pause. Gemessen am 13.08.: `pw-dump` kostet 6--9 ms
+# und liefert 283 KiB, dazu das Auswerten. Bei 5 s waeren das ~0,24 % eines
+# Kerns -- ein Fuenftel des Dauerlastbudgets aus Design 13.1 fuer eine
+# Abfrage. Bei 15 s sind es ~0,08 %. Eine Konferenz, die kuerzer dauert als
+# fuenfzehn Sekunden, gibt es nicht; ein Kalibrierknopf ist es trotzdem.
+AUTOMATIK_INTERVALL_S = 15.0
+
+
+def _fokus_klasse() -> str:
+    """Die Fensterklasse des fokussierten Fensters, ueber `de.daimon.Focus`.
+
+    Derselbe Weg, den die Augen gehen (T-5.5) -- eine ABFRAGE, weil
+    `callDBus` aus dem KWin-Script genau einen Empfaenger trifft und der
+    Fokusdienst ihn schon hat. Faellt sie aus, ist die Klasse leer: dann
+    traegt der zweite Ausloeser, der fremde Mikrofonstrom.
+    """
+    try:
+        import dbus
+        objekt = dbus.SessionBus().get_object("de.daimon.Focus", "/Focus")
+        roh = json.loads(str(objekt.Fenster(dbus_interface="de.daimon.Focus")))
+        return str(roh.get("resource_class", ""))
+    except Exception:      # noqa: BLE001 -- kein Watcher, keine Klasse
+        return ""
 
 # Wer an diesem Socket sprechen darf. Eine Liste und kein Feld in der
 # Nachricht -- sonst suchte sich der Absender seine Rolle selbst aus.
@@ -56,6 +82,12 @@ class Recorder:
     def __init__(self, *, runtime_dir: Path, archiv: Archiv,
                  redaktion: Redaktion | None = None,
                  aufraeum_intervall_s: float = 3600.0,
+                 automatik_intervall_s: float = AUTOMATIK_INTERVALL_S,
+                 konferenz: Iterable[str] = pause.KONFERENZ_VORGABE,
+                 fokus_klasse: Callable[[], str] = _fokus_klasse,
+                 mikrofone: Callable[[], int | None] =
+                 pause.fremde_mikrofonstroeme,
+                 pausieren: Callable[..., dict] = pause.stoppe,
                  erlaubte_units=ERLAUBTE_UNITS, log=None) -> None:
         self.runtime_dir = runtime_dir
         self.archiv = archiv
@@ -65,6 +97,12 @@ class Recorder:
         self.redaktion = redaktion or Redaktion(runtime_dir=runtime_dir,
                                                 kennungen={})
         self.intervall = float(aufraeum_intervall_s)
+        self.automatik_intervall = float(automatik_intervall_s)
+        self.konferenz = tuple(konferenz)
+        self._fokus_klasse = fokus_klasse
+        self._mikrofone = mikrofone
+        self._pausieren = pausieren
+        self._letzte_automatik = 0.0
         # `None` heisst "jede Unit" und ist der Weg, den ein Prueflauf ohne
         # systemd nimmt. Im Betrieb steht hier die Liste.
         self.erlaubte_units = (None if erlaubte_units is None
@@ -129,6 +167,40 @@ class Recorder:
                           DAIMON_BYTES=bericht["bytes"])
         return bericht
 
+    # -- Automatische Pause (T-7.3) ----------------------------------------
+
+    def pause_grund(self) -> str:
+        """Warum jetzt pausiert werden muss -- leer heisst: kein Grund.
+
+        Zwei Ausloeser, und JEDER muss allein reichen: eine
+        Konferenzanwendung im Fokus, oder ein Mikrofonstrom, der nicht uns
+        gehoert. Das zweite faengt den Fall, den das erste nicht sieht --
+        ein Anruf im Browser hat keine eigene Fensterklasse.
+        """
+        klasse = self._fokus_klasse()
+        if pause.ist_konferenz(klasse, self.konferenz):
+            return f"konferenz:{klasse[:60]}"
+        fremd = self._mikrofone()
+        if fremd:
+            return f"fremdes_mikrofon:{fremd}"
+        return ""
+
+    def automatik(self) -> str:
+        """Ein Durchgang der Automatik. Gibt den Grund zurueck, wenn
+        pausiert wurde."""
+        grund = self.pause_grund()
+        if not grund:
+            return ""
+        self.log.warn("automatisch pausiert", DAIMON_GRUND=grund)
+        bericht = self._pausieren(runtime_dir=self.runtime_dir)
+        if not bericht.get("ok"):
+            # Eine Pause, die nicht greift, ist der gefaehrlichste Zustand
+            # dieses Dienstes: er glaubt, er sei still.
+            self.log.warn("Pause NICHT belegt",
+                          DAIMON_MELDUNG=str(bericht.get("meldung"))[:200])
+        self._halt = True
+        return grund
+
     # -- Schleife ----------------------------------------------------------
 
     def start(self) -> None:
@@ -152,8 +224,17 @@ class Recorder:
     def _schleife(self) -> None:
         self.aufraeumen()          # einmal beim Start, nicht erst nach 1 h
         while not self._halt:
-            if self.aufraeumen_faellig(time.monotonic()):
+            # Der Herzschlag je Runde: das Sprite soll zeigen, dass gerade
+            # mitgeschnitten wird, und zwar den echten Zustand. Ein Schreiben
+            # ins tmpfs je Sekunde kostet nichts.
+            pause.herzschlag(self.runtime_dir)
+            jetzt = time.monotonic()
+            if self.aufraeumen_faellig(jetzt):
                 self.aufraeumen()
+            if jetzt - self._letzte_automatik >= self.automatik_intervall:
+                self._letzte_automatik = jetzt
+                if self.automatik():
+                    break
             try:
                 conn, peer = ipc.accept(
                     self._srv, PRODUZENT,

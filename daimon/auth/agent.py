@@ -88,6 +88,16 @@ KG_AKTION = ["daimon-auth", "dAImon Auth", "ptt", "dAImon Push-to-Talk"]
 # aendert, liest danach `allShortcutInfos` und glaubt nicht dem Rueckgabewert.
 KG_AKTION_OHREN_AUS = ["daimon-ears", "dAImon Ohren", "ohren_aus",
                        "dAImon Ohren abschalten"]
+# T-7.3: der Pausenschalter des Mitschnitts -- und wieder eine EIGENE
+# Komponente, aus demselben gemessenen Grund wie oben. Der dritte Eintrag in
+# einer gemeinsamen Komponente haette die beiden anderen verdraengt.
+#
+# Umschalter und nicht zwei Tasten: laeuft der Mitschnitt, haelt er an; steht
+# er, laeuft er wieder an. Was gerade gilt, liest der Agent am Herzschlag des
+# Recorders und nicht an einer eigenen Merkvariablen -- ein Schalter, der sich
+# merkt, was er zuletzt getan hat, luegt nach jedem Absturz des Dienstes.
+KG_AKTION_MITSCHNITT = ["daimon-recorder", "dAImon Mitschnitt",
+                        "mitschnitt_pause", "dAImon Mitschnitt pausieren"]
 # Flags fuer setShortcut (kglobalacceld.h, enum SetShortcutFlag):
 # SetPresent=2 macht den Shortcut scharf, NoAutoloading=4 verhindert, dass
 # die gespeicherte kglobalaccelrc ihn beim naechsten Start ueberschreibt.
@@ -173,6 +183,7 @@ class AuthAgent:
         self.freigaben_gesendet = 0
         self.marken_gesendet = 0
         self.ohren_abschaltungen = 0
+        self.mitschnitt_umschaltungen = 0
         # T-4.12 im Betrieb: welche Rueckfragen dieser Agent schon gezeigt
         # hat. Ohne diese Menge zeigte jede Abfrage denselben Dialog erneut --
         # und ein Dialog, der von selbst wiederkommt, wird weggeklickt.
@@ -496,6 +507,8 @@ class AuthAgent:
             self._ptt_ausloesen()
         elif komponente == KG_AKTION_OHREN_AUS[0]:
             self._ohren_abschalten()
+        elif komponente == KG_AKTION_MITSCHNITT[0]:
+            self._mitschnitt_umschalten()
         else:
             self.log.warn("Kuerzel von unbekannter Komponente",
                           DAIMON_KOMPONENTE=str(komponente)[:40],
@@ -519,8 +532,35 @@ class AuthAgent:
                       DAIMON_OK=ergebnis["ok"], DAIMON_RC=ergebnis["rc"],
                       DAIMON_STROEME=str(ergebnis["aufnahmestroeme_nachher"]))
 
+    def _mitschnitt_umschalten(self) -> None:
+        """T-7.3: Mitschnitt anhalten oder fortsetzen -- der Umschalter.
+
+        Wie beim Ohren-Kill-Switch lokal importiert: der Auth-Agent laeuft
+        unter System-Python ohne das venv, und `pause` ist reines stdlib.
+        """
+        try:
+            from daimon.common.config import runtime_dir
+            from daimon.recorder.pause import fortsetzen, schneidet_mit, stoppe
+            rt = runtime_dir()
+            if schneidet_mit(rt):
+                ergebnis = stoppe(runtime_dir=rt)
+                was = "pause"
+            else:
+                ergebnis = fortsetzen()
+                was = "fortsetzen"
+        except Exception as exc:  # noqa: BLE001 -- ein Schalter stirbt nicht
+            print(f"Mitschnitt-Schalter fehlgeschlagen ({exc})",
+                  file=sys.stderr)
+            return
+        self.mitschnitt_umschaltungen += 1
+        self.log.info("Mitschnitt umgeschaltet", DAIMON_ACTION=was,
+                      DAIMON_OK=ergebnis["ok"],
+                      DAIMON_MELDUNG=str(ergebnis.get("meldung", ""))[:200])
+
     def _kglobalaccel_registrieren(self, kuerzel: str,
-                                   ohren_kuerzel: str = "Meta+Shift+M") -> None:
+                                   ohren_kuerzel: str = "Meta+Shift+M",
+                                   mitschnitt_kuerzel: str = "Meta+Shift+P"
+                                   ) -> None:
         """Meta+Space (Vorgabe) ueber org.kde.kglobalaccel. Scheitert die
         Registrierung (keine Plasma-Sitzung, Name belegt, unbekannte
         Taste), ist das EINE stderr-Zeile und sonst nichts: der
@@ -573,6 +613,14 @@ class AuthAgent:
                 eintragen(KG_AKTION_OHREN_AUS, kuerzel_nach_qt(ohren_kuerzel))
             except Exception as exc:  # noqa: BLE001
                 print(f"Ohren-Kuerzel nicht gesetzt ({exc})", file=sys.stderr)
+            # Und derselbe eigene try fuer den dritten: scheitert er, laufen
+            # die beiden anderen weiter.
+            try:
+                eintragen(KG_AKTION_MITSCHNITT,
+                          kuerzel_nach_qt(mitschnitt_kuerzel))
+            except Exception as exc:  # noqa: BLE001
+                print(f"Mitschnitt-Kuerzel nicht gesetzt ({exc})",
+                      file=sys.stderr)
             self._bus = bus  # haelt Verbindung und Subscriptions am Leben
             self.log.info("Tastenkuerzel registriert",
                           DAIMON_KUERZEL=kuerzel)
@@ -606,6 +654,7 @@ class AuthAgent:
                 "freigaben_gesendet": self.freigaben_gesendet,
                 "marken_gesendet": self.marken_gesendet,
                 "ohren_abschaltungen": self.ohren_abschaltungen,
+                "mitschnitt_umschaltungen": self.mitschnitt_umschaltungen,
                 "letzte_entscheidung": self.letzte_entscheidung}
 
     def _diag_bedienen(self) -> None:

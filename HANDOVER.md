@@ -44,6 +44,28 @@ schreibender Verben beschränken statt auf den ganzen Text. Das ist eine
 Entscheidung am Wächter und gehört nicht in einen Task, der nebenbei an ihm
 vorbeikommt.
 
+## BEFUND: Der Augen-Kill-Switch belegt seine Wirkung nicht
+
+`daimon.eyes.killswitch.videostroeme()` zählt Knoten mit dem Klientnamen
+`daimon-eyes` — **und davon gibt es keinen.** Der Augendienst liest über den
+PipeWire-Dateideskriptor des Portals; in `pw-dump` erscheint nur der Knoten,
+den **kwin_wayland** dafür erzeugt. Gemessen am 14.08. bei laufendem Dienst:
+
+    KLIENT_NAME: daimon-eyes  |  eigene Videostroeme: 0
+    Stream/Output/Video | node: kwin_wayland | client: ('kwin_wayland', …)
+
+Die Zahl ist damit **immer** 0 — auch bei voller Erfassung. `stroeme == 0`
+nach dem Schalter ist deshalb keine Aussage. In T-6.8 trägt den Beweis die
+DBus-Kanarie (`runden`, `erfasst`), nicht diese Zahl; das Szenario ist grün
+und war es nie wegen dieser Prüfung.
+
+**Die messbare Größe steht jetzt in `daimon/recorder/pause.py` als
+`bildschirmstroeme()`:** `Stream/Output/Video` entsteht mit der
+Portal-Sitzung und verschwindet mit ihr — nachgemessen, Augen an → 1, Augen
+aus → 0. Wer T-5.12 nachzieht, nimmt sie; ich habe den Kill-Switch selbst
+**nicht angefasst**, weil das eine eigene Entscheidung an einer
+Sicherheitszusage ist.
+
 ## Zwei Aufträge dieser Übergabe sind erledigt
 
 1. **„AUFTRAG: Phase 7 ausarbeiten"** (unten, Stand 12.08.) — **erledigt.**

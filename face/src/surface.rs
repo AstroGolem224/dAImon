@@ -23,7 +23,7 @@ use crate::{
     bubble::{position_klemmen, Raster as BubbleRaster},
     input::{sichtbare_laeufe, Box2D, InputRegion},
     render::{frame_toenen, Toenung},
-    sprite::{indikator_malen, zustand_abbilden, SpriteAtlas},
+    sprite::{indikator_malen, mitschnitt_malen, zustand_abbilden, SpriteAtlas},
 };
 
 struct SpriteSurface {
@@ -231,6 +231,7 @@ impl OverlaySurface {
         atlas: &SpriteAtlas,
         zustand: &str,
         voice: &str,
+        mitschnitt: bool,
         toenung: Toenung,
         sichtbar: bool,
         qh: &QueueHandle<crate::App>,
@@ -246,7 +247,8 @@ impl OverlaySurface {
         // mit dem Sprachzustand -- und das Ziehen aus T-2.4 haette je nach
         // Zustand eine andere Trefferflaeche. Deshalb hier eine Kopie des
         // Standes davor, und zwar nur, wenn ueberhaupt gemalt wird.
-        let ohne_indikator = (sichtbar && voice != "idle").then(|| frame.clone());
+        let ohne_indikator =
+            (sichtbar && (voice != "idle" || mitschnitt)).then(|| frame.clone());
         let indikator_gemalt = sichtbar
             && indikator_malen(
                 &mut frame,
@@ -254,6 +256,16 @@ impl OverlaySurface {
                 atlas.layout.cell_w,
                 atlas.layout.cell_h,
             );
+        // T-7.3: der zweite Punkt, links oben. Bewusst getrennt gemalt und
+        // getrennt gezaehlt -- er sagt etwas anderes als der erste.
+        let mitschnitt_gemalt = sichtbar
+            && mitschnitt_malen(
+                &mut frame,
+                mitschnitt,
+                atlas.layout.cell_w,
+                atlas.layout.cell_h,
+            );
+        let _ = mitschnitt_gemalt;
         let breite = i32::try_from(atlas.layout.cell_w)
             .map_err(|_| "Sprite-Breite passt nicht in i32".to_string())?;
         let hoehe = i32::try_from(atlas.layout.cell_h)

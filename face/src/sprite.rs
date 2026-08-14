@@ -178,6 +178,42 @@ fn indikator_farbe(zustand: &str) -> Option<[u8; 4]> {
     }
 }
 
+/// T-7.3: der Mitschnitt-Indikator, LINKS oben -- der Sprachindikator sitzt
+/// rechts. Zwei Zusagen, zwei Punkte: „es hoert gerade zu" und „es zeichnet
+/// auf" sind verschiedene Dinge, und ein Punkt, der beides bedeutet, sagt im
+/// Zweifel keines von beiden.
+///
+/// Design 1.2 nennt die Sichtbarkeit als eine von drei nicht optionalen
+/// Folgen des Dauermitschnitts -- und ausdruecklich am Sprite, nicht in einem
+/// Einstellungsdialog.
+const MITSCHNITT_FARBE: [u8; 4] = [60, 60, 235, 255]; // rot, premultipliziert
+
+/// Malt den Mitschnitt-Punkt. Gibt zurueck, ob gemalt wurde.
+pub fn mitschnitt_malen(frame: &mut [u8], aktiv: bool, breite: u32, hoehe: u32) -> bool {
+    if !aktiv {
+        return false;
+    }
+    let kante = breite / INDIKATOR_ANTEIL;
+    let rand = breite / INDIKATOR_RAND;
+    if kante == 0 || breite == 0 || hoehe == 0 {
+        return false;
+    }
+    let (x0, y0) = (rand, rand);
+    if x0 + kante > breite || y0 + kante > hoehe / 2 {
+        return false;
+    }
+    if frame.len() < (breite * hoehe * 4) as usize {
+        return false;
+    }
+    for y in y0..y0 + kante {
+        for x in x0..x0 + kante {
+            let i = ((y * breite + x) * 4) as usize;
+            frame[i..i + 4].copy_from_slice(&MITSCHNITT_FARBE);
+        }
+    }
+    true
+}
+
 /// Malt den Indikator in einen BGRA-Zellpuffer. Gibt zurueck, ob gemalt wurde.
 ///
 /// `false` heisst: nichts angefasst -- entweder ist der Zustand `idle` oder
@@ -502,11 +538,61 @@ mod indikator_tests {
         assert!(linke_spalte.iter().all(|b| *b == 0));
     }
 
+    // -- T-7.3: der Mitschnitt-Punkt --------------------------------------
+
+    #[test]
+    fn ohne_mitschnitt_wird_nichts_gemalt() {
+        let mut frame = leerer_frame();
+        assert!(!mitschnitt_malen(&mut frame, false, W, H));
+        assert!(frame.iter().all(|b| *b == 0));
+    }
+
+    #[test]
+    fn der_mitschnitt_punkt_sitzt_links_der_sprachpunkt_rechts() {
+        // Zwei Zusagen, zwei Punkte -- und sie duerfen sich nicht ueberdecken,
+        // sonst waere "es zeichnet auf" von "es hoert zu" nicht zu trennen.
+        let mut nur_mitschnitt = leerer_frame();
+        assert!(mitschnitt_malen(&mut nur_mitschnitt, true, W, H));
+        let mut nur_voice = leerer_frame();
+        assert!(indikator_malen(&mut nur_voice, "listening", W, H));
+
+        let ueberlappung = nur_mitschnitt
+            .iter()
+            .zip(nur_voice.iter())
+            .any(|(a, b)| *a != 0 && *b != 0);
+        assert!(!ueberlappung, "die beiden Punkte ueberdecken sich");
+
+        // Beide zusammen in EINEN Puffer: danach stehen beide da.
+        let mut beide = leerer_frame();
+        indikator_malen(&mut beide, "listening", W, H);
+        mitschnitt_malen(&mut beide, true, W, H);
+        for (i, byte) in nur_mitschnitt.iter().enumerate() {
+            if *byte != 0 {
+                assert_eq!(beide[i], *byte, "Mitschnitt-Punkt fehlt");
+            }
+        }
+        for (i, byte) in nur_voice.iter().enumerate() {
+            if *byte != 0 {
+                assert_eq!(beide[i], *byte, "Sprachpunkt fehlt");
+            }
+        }
+    }
+
+    #[test]
+    fn der_mitschnitt_punkt_bleibt_in_der_oberen_haelfte() {
+        let mut frame = leerer_frame();
+        mitschnitt_malen(&mut frame, true, W, H);
+        let zeilenbytes = (W * 4) as usize;
+        let untere_haelfte = &frame[(H / 2) as usize * zeilenbytes..];
+        assert!(untere_haelfte.iter().all(|b| *b == 0));
+    }
+
     #[test]
     fn ein_zu_kleiner_frame_wird_nicht_bemalt() {
         // Kein Panic an einer Zelle, die kleiner ist als der Indikator --
         // ein abgestuerztes Overlay ist schlimmer als ein fehlender Punkt.
         let mut winzig = vec![0u8; 4];
         assert!(!indikator_malen(&mut winzig, "listening", 1, 1));
+        assert!(!mitschnitt_malen(&mut winzig, true, 1, 1));
     }
 }

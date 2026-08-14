@@ -148,6 +148,13 @@ class Hub:
         self.runtime_dir = runtime_dir or self.cfg.runtime_dir
         self.log = log or get_logger("daimon-hub")
         self.state = HubState(ttl_s=float(self.cfg.get("hub.state_ttl_s", 3600)))
+        # T-7.3: das Sprite soll zeigen, wenn mitgeschnitten wird. Der Hub
+        # liest dafuer den Herzschlag des Recorders -- eine winzige Datei im
+        # Laufzeitverzeichnis. Kein Import des Recorders: nur der Pfad und
+        # die Frist, beide in `pause` benannt.
+        from daimon.recorder.pause import schneidet_mit
+        self.state.set_mitschnitt_quelle(
+            lambda: schneidet_mit(self.runtime_dir))
         self.diag = Diagnose()
         self.bus = Bus()
         # T-1.7: Marken- und Freigabebuch leben im Hub (Design 2.4: "Die

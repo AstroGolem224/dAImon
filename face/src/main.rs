@@ -250,6 +250,9 @@ struct App {
     /// T-3.14: der zuletzt vom Hub GERECHNETE Sprachzustand. Das Face leitet
     /// ihn nicht ab, es traegt ihn nur bis zum Puffer.
     aktueller_voice: String,
+    /// T-7.3: laeuft gerade ein Mitschnitt? Nur zum Zeichnen -- abgeleitet
+    /// wird hier nichts, der Wert kommt aus dem Hub-Schnappschuss.
+    aktueller_mitschnitt: bool,
     aktueller_mood: String,
     sichtbarkeit: Sichtbarkeit,
     aktuelle_bubble: Option<Bubble>,
@@ -463,11 +466,15 @@ impl App {
             self.aktueller_voice = zustand.voice.clone();
             self.diagnose_voice_setzen(&zustand.voice);
         }
+        let mitschnitt_geaendert = self.aktueller_mitschnitt != zustand.mitschnitt;
+        if mitschnitt_geaendert {
+            self.aktueller_mitschnitt = zustand.mitschnitt;
+        }
 
         let sichtbarkeit_geaendert =
             self.sichtbarkeit_setzen(Sichtbarkeit::fuer_mood(&zustand.mood));
         if self.sichtbarkeit.0 && !sichtbarkeit_geaendert {
-            if pose_geaendert || voice_geaendert || self.render.dirty {
+            if pose_geaendert || voice_geaendert || mitschnitt_geaendert || self.render.dirty {
                 self.sprite_rendern();
             }
             if bubble_geaendert {
@@ -550,6 +557,7 @@ impl App {
         let qh = self.qh.clone();
         let name = self.aktueller_zustand.clone();
         let voice = self.aktueller_voice.clone();
+        let mitschnitt = self.aktueller_mitschnitt;
         let ergebnis = {
             let Self {
                 overlay,
@@ -567,6 +575,7 @@ impl App {
                     atlas,
                     &name,
                     &voice,
+                    mitschnitt,
                     toenung,
                     sichtbar,
                     &qh,
@@ -1092,6 +1101,7 @@ impl LayerShellHandler for App {
                     atlas,
                     aktueller_zustand,
                     aktueller_voice,
+                    aktueller_mitschnitt,
                     render,
                     qh,
                     ..
@@ -1107,6 +1117,7 @@ impl LayerShellHandler for App {
                         atlas,
                         aktueller_zustand,
                         aktueller_voice,
+                        *aktueller_mitschnitt,
                         toenung,
                         sichtbar,
                         qh,
@@ -1283,6 +1294,7 @@ fn main() {
         diagnose,
         aktueller_zustand: "ruhig".into(),
         aktueller_voice: "idle".into(),
+        aktueller_mitschnitt: false,
         aktueller_mood: "idle".into(),
         sichtbarkeit: Sichtbarkeit(true),
         aktuelle_bubble: None,
@@ -1385,6 +1397,8 @@ fn main() {
                             // gehoert dem Hub, und ein Steuerpfad, der ihn
                             // nebenbei aendert, waere eine zweite Quelle.
                             voice: app.voice_state(),
+                            // Ebenso der Mitschnitt: er gehoert dem Hub.
+                            mitschnitt: app.aktueller_mitschnitt,
                         };
                         app.hub_zustand_uebernehmen(&zustand);
                     }

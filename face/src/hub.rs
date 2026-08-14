@@ -35,6 +35,11 @@ pub struct HubZustand {
     /// laufen auseinander, und dann ist nicht mehr feststellbar, welche
     /// recht hat. Einer aus `idle|listening|processing|speaking`.
     pub voice: String,
+    /// T-7.3: laeuft gerade ein Mitschnitt? Der Hub liest den Herzschlag des
+    /// Recorders; das Face leitet auch hier nichts ab. Fehlt das Feld, gilt
+    /// `false` -- eine Aufnahmeanzeige, die ohne Grundlage leuchtet, waere
+    /// schlimmer als eine, die fehlt.
+    pub mitschnitt: bool,
 }
 
 /// Die vier bekannten Sprachzustaende. Ein fuenfter ist ein Fehler und keine
@@ -66,6 +71,7 @@ impl HubZustand {
             mood: "sleeping".into(),
             bubble: None,
             voice: "idle".into(),
+            mitschnitt: false,
         }
     }
 }
@@ -106,6 +112,10 @@ pub fn snapshot_lesen(zeile: &str) -> Option<HubZustand> {
             }),
         },
         voice: voice_lesen(&wert),
+        mitschnitt: wert
+            .get("mitschnitt")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
     })
 }
 

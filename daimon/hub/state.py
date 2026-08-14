@@ -29,7 +29,7 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 # Mood-Prioritaet. needs_input schlaegt alles -- das ist die Funktion, um die
 # es geht: am Rand des Blickfelds sehen, dass ein Agent wartet.
@@ -143,6 +143,13 @@ class HubState:
         self._listening_seit: float | None = None
         self._sprechen_seit: float | None = None
         self._perception = {"ears": False, "eyes": False, "gpu_loaded": []}
+        # T-7.3: `None` heisst "kein Mitschnitt moeglich" und ergibt False.
+        # Gesetzt wird er vom Hub-Dienst, der den Herzschlag des Recorders
+        # liest -- siehe `daimon/recorder/pause.py`.
+        self._mitschnitt: Callable[[], bool] | None = None
+
+    def set_mitschnitt_quelle(self, quelle: "Callable[[], bool] | None") -> None:
+        self._mitschnitt = quelle
 
     # -- Schreiben ---------------------------------------------------------
 
@@ -362,6 +369,12 @@ class HubState:
                 "bubble": self._bubble,
                 "voice": voice,
                 "perception": dict(self._perception),
+                # T-7.3: laeuft gerade ein Mitschnitt? Gelesen und nicht
+                # gemerkt -- die Anzeige soll den ECHTEN Zustand zeigen und
+                # nicht den letzten Befehl. Der Aufruf wird eingespeist,
+                # damit der Hub den Recorder nicht importieren muss.
+                "mitschnitt": bool(self._mitschnitt()) if self._mitschnitt
+                              else False,
             }
 
     @property
