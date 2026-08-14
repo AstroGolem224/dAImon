@@ -1,9 +1,84 @@
-# Übergabe — Stand 2026-08-12
+# Übergabe — Stand 2026-08-13
 
 Alles, was nicht aus dem Repo hervorgeht. Die Nachträge stehen in umgekehrter
-Zeitfolge: der **12.08.** zuerst, darunter unverändert der 09.08. und der
-05.08. Ältere Aussagen gelten weiter, **soweit sie unten nicht ausdrücklich
-berichtigt sind** — drei sind es.
+Zeitfolge: der **13.08.** zuerst, darunter unverändert der 12.08., der 09.08.
+und der 05.08. Ältere Aussagen gelten weiter, **soweit sie unten nicht
+ausdrücklich berichtigt sind**.
+
+---
+
+# Stand 13.08. — der Wächter, und zwei überholte Aufträge
+
+## BEFUND: Der Rollenwächter unterscheidet Ausführen nicht von Schreiben
+
+**Er hat in dieser Sitzung dreimal gegriffen, und keines der drei Male war ein
+Schreibzugriff.**
+
+`.claude/hooks/role_guard.py` arbeitet bei `Bash` in zwei Schritten. Erst
+entscheidet ein Regex (`WRITING_CMD`), ob das Kommando überhaupt schreiben
+kann; trifft er, wird **jedes pfadähnliche Wort im gesamten Kommandotext** als
+Schreibziel behandelt. Beide Schritte sind zu grob:
+
+* **`2>&1` gilt als Schreiben.** Der Regex enthält `>\s*\S`, und eine
+  Fehlerumleitung erfüllt das. Damit ist praktisch jedes Kommando mit
+  Fehlerumleitung „schreibend".
+* **Ein bloß erwähnter Pfad gilt als Ziel.** `bash tests/verify/verify-frozen.sh`
+  wurde abgewiesen — der Aufruf eines Prüfstands, nicht seine Änderung.
+  Ebenso ein `git commit`, dessen **Botschaft** den Pfad eines Verifizierers
+  nannte. Und, als das Muster untersucht werden sollte, das Analyseskript
+  selbst: der Regex-Quelltext enthält `|rm|`, und das genügte.
+
+**Die Folge ist nicht kosmetisch.** `tests/verify/verify-frozen.sh` ist in
+dieser Sitzung **nie gelaufen**, obwohl `daimon/common/ipc.py` und
+`daimon/common/config.py` angefasst wurden. Die eingefrorenen Zusagen sind
+seitdem ungeprüft. Wer die Sitzung fortsetzt, fährt ihn als Erstes — von Hand
+oder unter der Rolle `reviewer`.
+
+**Was ausdrücklich NICHT getan wurde:** `DAIMON_ROLE` umsetzen. Ein Wächter,
+den man umgeht, sobald er stört, ist die Absichtserklärung zurück, die
+Review-Runde 5 bemängelt hat. Der Ausweg war jedes Mal Umformulieren.
+
+Der Nachrüstweg, falls er gewünscht ist: Ausführung (`bash x.sh`, `./x.sh`,
+`pytest x`) von Änderung trennen und die Zielsuche auf die Argumente
+schreibender Verben beschränken statt auf den ganzen Text. Das ist eine
+Entscheidung am Wächter und gehört nicht in einen Task, der nebenbei an ihm
+vorbeikommt.
+
+## Zwei Aufträge dieser Übergabe sind erledigt
+
+1. **„AUFTRAG: Phase 7 ausarbeiten"** (unten, Stand 12.08.) — **erledigt.**
+   `docs/IMPLEMENTATION-PLAN.md` trägt seit dem 13.08. eine vollständige
+   Phase-7-Sektion: T-7.1 bis T-7.5 im Format der übrigen Tasks, Gate P7, eine
+   Nicht-Ziel-Liste und die §201-Auflage. Wer den Auftrag unten liest, liest
+   eine Planlücke, die es nicht mehr gibt.
+2. **T-6.8** ist gefahren, sieben von sieben Szenarien grün, Beleg in
+   `tests/evidence/phase6-integration.json`. Dabei wurde das Ressourcenbudget
+   auf **zwei Größen** umgestellt (Design §13.1): Dauerlast als Mittel
+   ≤ 2,0 %, Spitze als p95 ≤ 8,0 %. Der eingefrorene Verifizierer zu T-6.8
+   kennt `idle_cpu_mittel` noch nicht — Rolle `reviewer`.
+
+## T-7.1 ist gebaut, aber bewusst ohne Zulauf
+
+`daimon-recorder` läuft, ist `linked` und **nicht `enabled`**. `daimon-eyes`
+schickt nichts: der Absender gehört zu T-7.2, weil vorher jede Zeile im Archiv
+eine unredigierte wäre. Wer die Unit vorzeitig aktiviert, hebt die Reihenfolge
+„erst redigieren, dann schreiben" auf.
+
+**Zwei Sandbox-Befunde, die jede weitere Unit betreffen:**
+
+* `ReadWritePaths=` kann nichts einhängen, was unter einem frisch gemounteten
+  `ProtectHome=tmpfs` liegt — `226/NAMESPACE`, auch wenn das Verzeichnis
+  existiert. `BindPaths=` hängt aus dem Wirt ein und ist der einzige Weg.
+* `.venv/bin/python` ist ein Symlink auf `~/.local/share/uv/python/…`. **Der
+  Interpreter liegt in `$HOME`** und ist unter `ProtectHome=tmpfs` weg. Das
+  ist derselbe Grund, aus dem `daimon-input` mit 203/EXEC stirbt — und er gilt
+  auch dann, wenn das Repo außerhalb von `$HOME` liegt. Units mit
+  `ProtectHome=tmpfs` nehmen `/usr/bin/python3` plus `PYTHONPATH`.
+
+Und der Nachweis, dass `daimon-eyes` nicht ins Archiv schreiben kann, ist
+bisher **an den Direktiven** geführt, nicht an einem Schreibversuch aus dem
+Namensraum der Augen. Der Unterschied ist derselbe wie zwischen Unit-Text und
+Wirkung; der echte Nachweis gehört in `T-7.1.v`.
 
 ---
 
