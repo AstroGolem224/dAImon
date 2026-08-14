@@ -110,6 +110,20 @@ PRODUZENTEN: dict[str, frozenset[str]] = {
     #   3. SCHLIMMSTER MISSBRAUCH: das Overlay zeigt "hoert zu", obwohl niemand
     #      zuhoert. Sichtbar falsch, folgenlos fuer jede Schranke.
     "auth": frozenset({"intent_mark", "freigabe", "ptt"}),
+    # T-7.1: HIER BENENNT DER SCHLUESSEL DEN SOCKET, NICHT DEN SPRECHER.
+    # `recorder.sock` gehoert dem Archivdienst, und wer dort spricht, ist
+    # `daimon-eyes` -- festgenagelt ueber `erlaubte_units` in `accept`, nicht
+    # ueber diesen Namen. Der Grund fuer die Ausnahme: der Recorder ist der
+    # EINZIGE Prozess mit Schreibrecht aufs Archiv (Plan T-7.1), und die
+    # Augen sollen melden statt schreiben. Ein zweiter Weg ins Archiv waere
+    # genau die Tuer, die dieser Zuschnitt zumacht.
+    #
+    # Ein Typ, und er kann nur ablegen: `archiv`. Was er ausdruecklich NICHT
+    # kann -- lesen, suchen, loeschen, eine Frist aendern. Wer hier `suche`
+    # oder `loeschen` ergaenzt, gibt dem Bildschirmleser Zugriff auf die
+    # aufgezeichnete Vergangenheit; das ist T-7.5 und geht durch das
+    # Deklassifizierungs-Gate, nicht durch diesen Socket.
+    "recorder": frozenset({"archiv"}),
 }
 
 

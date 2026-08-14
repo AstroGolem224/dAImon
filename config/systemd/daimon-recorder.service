@@ -1,0 +1,97 @@
+# dAImon Archivdienst (T-7.1): der EINZIGE Prozess mit Schreibrecht aufs Archiv.
+#
+# Die Zusage dieser Unit steht in zwei Zeilen, und beide sind Mountoptionen,
+# keine Anwendungslogik:
+#
+#   ProtectHome=tmpfs      $HOME ist fuer diesen Prozess leer
+#   ReadWritePaths=        genau ein Verzeichnis kommt zurueck: das Archiv
+#
+# Damit kann ein kompromittierter Archivdienst nicht im Konfigurationsverzeichnis
+# lesen, nicht im Zustandsverzeichnis schreiben und nicht an den Token. Und
+# umgekehrt: `daimon-eyes` hat KEIN Schreibrecht auf das Archivverzeichnis --
+# die Augen melden ueber `recorder.sock`, geschrieben wird hier. Das ist der
+# Grund fuer den eigenen Dienst; ein Modul in den Augen haette dieselbe
+# Angriffsflaeche wie der Bildschirmleser.
+#
+# KEIN VENV, SONDERN /usr/bin/python3. Gemessen am 13.08.: `.venv/bin/python`
+# ist ein Symlink auf ~/.local/share/uv/python/... -- der Interpreter selbst
+# liegt in $HOME und ist unter ProtectHome=tmpfs weg (203/EXEC). Das ist
+# derselbe Befund, an dem `daimon-input` haengt, und er trifft auch dann zu,
+# wenn das Repo ausserhalb von $HOME liegt. Der Dienst braucht ohnehin nur
+# die Standardbibliothek; die Abhaengigkeiten des venv haetten hier nichts
+# zu suchen.
+#
+# WorkingDirectory und PYTHONPATH gehen ueber den ECHTEN Repo-Pfad, nicht
+# ueber /home/itiger013/Dokumente/Github/dAImon (ein Symlink darauf), den die
+# aelteren Units benutzen: jeder Weg durch $HOME ist hier leer.
+#
+# Installation: systemctl --user link <dieser Pfad>
+#               systemctl --user enable --now daimon-recorder.service
+
+[Unit]
+Description=dAImon Archivdienst (Dauermitschnitt, einziger Schreiber)
+# Ohne Augen gibt es nichts abzulegen -- aber `Wants` statt `Requires`: ein
+# Archiv, das mit den Augen stirbt, verliert seinen Aufraeumer.
+Wants=daimon-eyes.service
+After=daimon-eyes.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/data/AI/repos/dAImon
+# Das `+` haengt diesen Schritt AUSSERHALB der Sandbox ein. Er muss dort
+# laufen: `ReadWritePaths=` verlangt ein vorhandenes Verzeichnis, und im
+# Namensraum ist $HOME zu diesem Zeitpunkt schon ein leeres tmpfs. Ohne diese
+# Zeile stirbt der Dienst beim ersten Start mit 226/NAMESPACE -- gemessen.
+ExecStartPre=+/usr/bin/install -d -m 0700 %h/.local/share/daimon
+ExecStart=/usr/bin/python3 -m daimon.recorder.daemon
+Environment=PYTHONPATH=/mnt/data/AI/repos/dAImon
+
+# Restart=on-failure, NICHT always: der Pausenschalter aus T-7.3 stoppt diesen
+# Dienst, und ein Stopp muss ein Ende bleiben. `always` hoebe die Pause nach
+# RestartSec von selbst wieder auf.
+Restart=on-failure
+RestartSec=2
+
+# --- DIE Zusage dieses Tasks ---------------------------------------------
+ProtectHome=tmpfs
+# Das Archiv, und sonst nichts aus $HOME. `BindPaths=` und NICHT
+# `ReadWritePaths=`: gemessen am 13.08. scheitert der Start mit
+# 226/NAMESPACE, weil ReadWritePaths seine Quelle im NEUEN Namensraum sucht
+# -- und dort liegt sie unter dem tmpfs, das ProtectHome gerade eingehaengt
+# hat. `BindPaths=` haengt aus dem Wirt ein und ist damit der einzige Weg,
+# ein Verzeichnis aus $HOME zurueckzuholen.
+BindPaths=%h/.local/share/daimon
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon
+# Der Archivdienst spricht ausschliesslich ueber seinen Unix-Socket. Kein
+# Netz, in keiner Familie -- ein Mitschnitt, der telefonieren kann, ist das
+# Gegenteil dieses Projekts.
+RestrictAddressFamilies=AF_UNIX
+
+# --- Haertung nach Design 7.5 --------------------------------------------
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+PrivateDevices=yes
+# Kein Core-Dump: er enthielte den Mitschnitt.
+LimitCORE=0
+UMask=0077
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+MemoryDenyWriteExecute=yes
+TimeoutStopSec=10
+
+[Install]
+WantedBy=graphical-session.target
+
+# --- Was hier ABSICHTLICH FEHLT ------------------------------------------
+# Kein StateDirectory=: das Archiv gehoert nach $XDG_DATA_HOME, nicht in den
+#   Zustand. Zustand ist wegwerfbar, ein Mitschnitt gehoert in die Sicherung.
+# Kein ReadWritePaths auf %h/.config/daimon -- dort liegt der anthropic-token.
+# Kein LoadCredential=, kein Modellpfad, kein Persona-Prompt: dieser Prozess
+#   hat mit Modelltext nichts zu tun (Plan T-7.1).

@@ -93,6 +93,13 @@ VORGABEN: dict[str, Any] = {
     # Aufrufer.
     "persona": {"name": "Ember", "voice": "de_DE-thorsten-high"},
     "logging": {"identifier": "daimon"},
+    # T-7.1: das Archiv. `grenze_gb` ist die HARTE Obergrenze -- wird sie
+    # erreicht, verdraengt der Aufraeumer die aeltesten Eintraege, statt einen
+    # Fehler zu melden. Eine volle Platte ist kein Betriebszustand.
+    # `aufraeum_intervall_s` ist der Takt des Aufraeumers im Dienst; die
+    # Fristen je Art stehen NICHT hier, sondern in daimon/recorder/store.py:
+    # sie kommen aus Design §7.2d und sind eine Zusage, keine Einstellung.
+    "archiv": {"grenze_gb": 5.0, "aufraeum_intervall_s": 3600.0},
 }
 
 
@@ -129,6 +136,13 @@ def config_dir() -> Path:
 
 def state_dir() -> Path:
     return _xdg("XDG_STATE_HOME", Path.home() / ".local" / "state") / APP
+
+
+def data_dir() -> Path:
+    """T-7.1: das Archiv. NICHT `state_dir` -- Zustand ist wegwerfbar, ein
+    Mitschnitt ist es nicht: er gehoert in die Sicherung des Nutzers und in
+    `$XDG_DATA_HOME`, wo Sicherungswerkzeuge ihn finden."""
+    return _xdg("XDG_DATA_HOME", Path.home() / ".local" / "share") / APP
 
 
 def runtime_dir() -> Path:
