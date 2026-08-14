@@ -1,7 +1,7 @@
 {
   "v": 1,
   "task": "T-6.9",
-  "erzeugt": "2026-08-14T15:20:17+0200",
+  "erzeugt": "2026-08-14T15:32:53+0200",
   "rolle": "builder",
   "unabhaengig": false,
   "hinweis": "Erzeugt von derselben Einheit, die den Code gebaut hat. Der Plan weist T-6.9 der Rolle `reviewer` zu. Feld `herkunft` je Befund: gemessen | direktive | pruefstand.",
@@ -68,7 +68,7 @@
       "status": "closed",
       "herkunft": "gemessen",
       "titel": "Keine Zeile steht auf `full` ohne ausdrueckliche Anforderung",
-      "beleg": "Stufen: {'redacted': 542}, Arten: {'ocr': 190, 'titel': 352}"
+      "beleg": "Stufen: {'redacted': 617}, Arten: {'ocr': 210, 'titel': 407}"
     },
     {
       "id": "7.2d-kein-rohaudio",
@@ -76,7 +76,7 @@
       "status": "closed",
       "herkunft": "gemessen",
       "titel": "Kein Rohaudio im Archiv",
-      "beleg": "Audio-Arten: [], RIFF in ['archiv.db', 'archiv.db-wal', 'archiv.db-shm']: 0"
+      "beleg": "Audio-Arten: [], WAVE-Koepfe (RIFF+WAVE) in ['archiv.db', 'archiv.db-wal', 'archiv.db-shm']: 0"
     }
   ],
   "offen_high_critical": []

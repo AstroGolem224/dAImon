@@ -248,15 +248,31 @@ def archiv() -> list[dict]:
     # RIFF-Treffer waren die mitgelieferten Test-WAVs des STT-Modells und ein
     # Zufall in den ONNX-Gewichten, nicht ein Byte Mitschnitt. Gesucht wird
     # im ARCHIV, und das sind drei Dateien.
+    # ZWEIMAL berichtigt, und die zweite Runde ist die lehrreichere.
+    #
+    # Erst durchsuchte diese Pruefung das ganze Datenverzeichnis -- dort
+    # liegen models/ und voices/, also echte Test-WAVs.
+    # Dann zaehlte sie `RIFF` im Archiv und schlug wieder an: die Augen
+    # hatten den Bildschirm gelesen, auf dem der Satz ueber die ersten
+    # Falschbefunde stand. Das Wort RIFF ist kein Audio.
+    #
+    # Ein WAVE-Kopf ist `RIFF`, vier Bytes Groesse, dann `WAVE`. Danach wird
+    # gesucht -- nach der STRUKTUR, nicht nach vier Buchstaben.
     audio = [a for a in arten if a in ("audio", "wav", "pcm", "rohaudio")]
     dateien = [Path(str(pfad) + e) for e in ("", "-wal", "-shm")]
-    treffer = sum(d.read_bytes().count(b"RIFF") for d in dateien if d.exists())
+    treffer = 0
+    for d in dateien:
+        if not d.exists():
+            continue
+        roh = d.read_bytes()
+        treffer += sum(1 for i in range(len(roh) - 12)
+                       if roh[i:i + 4] == b"RIFF" and roh[i + 8:i + 12] == b"WAVE")
     heraus.append(befund(
         "7.2d-kein-rohaudio", "critical",
         "closed" if not audio and treffer == 0 else "open", "gemessen",
         "Kein Rohaudio im Archiv",
-        f"Audio-Arten: {audio}, RIFF in {[d.name for d in dateien if d.exists()]}"
-        f": {treffer}"))
+        f"Audio-Arten: {audio}, WAVE-Koepfe (RIFF+WAVE) in "
+        f"{[d.name for d in dateien if d.exists()]}: {treffer}"))
     return heraus
 
 

@@ -44,14 +44,20 @@ Der Nutzwert steht und fällt mit Punkt 1: am Rand des Blickfelds zu sehen, dass
 
 ### 1.2 Dauermitschnitt
 
-Ausdrücklich gewollt: dAImon schneidet Bildschirm und Ton durchgehend mit, damit später gesucht werden kann. Das kehrt eine Entscheidung aus v1.0 um und zieht Folgen nach sich, die hier stehen, damit sie nicht später überraschen.
+Ausdrücklich gewollt: dAImon schneidet den **Bildschirm** durchgehend mit, damit später gesucht werden kann. Das kehrt eine Entscheidung aus v1.0 um und zieht Folgen nach sich, die hier stehen, damit sie nicht später überraschen.
+
+> **Berichtigt am 14.08. (T-7.4).** Hier stand „Bildschirm **und Ton** durchgehend". Das widersprach §1.1 und T-3.15, und zwar nicht in der Auslegung, sondern im Mechanismus: dort gilt *kein Mikrofon ohne Push-to-Talk* — nicht „wir verwerfen, was ohne PTT hereinkommt", sondern **es kommt nichts herein**; ohne `voice.listening` existiert im Ohren-Dienst kein `Aufnahme`-Objekt.
+>
+> Aufgelöst **zugunsten von §1.1**, weil sie die ältere und die schärfere Zusage ist. Archiviert werden deshalb **nur Transkripte von PTT-Abschnitten** — von dem also, was der Nutzer ohnehin gesprochen und transkribiert hat. Das ist **kein Dauermitschnitt des Tons**, und der Unterschied ist der ganze Punkt: §201 StGB entschärft sich, weil der Nutzer die Taste hält, statt dass ein Rechner im Raum mithört.
+>
+> Wer den Ton wörtlich durchgehend will, ändert **zuerst §1.1** — und beantwortet dabei §201. Begründung, verworfene Alternativen und Kosten: `~/Dokumente/UMBRA-Notes/DDs/dAImon/Phase-7-Tonmitschnitt-Entscheidung.md`.
 
 **Umfang und Aufbewahrung**
 
 | Was | Wie lange | Wo |
 |---|---|---|
 | OCR-Text, Fenstertitel, Zeitstempel | **30 Tage** | SQLite mit Volltextindex |
-| Transkript gesprochener Abschnitte | **30 Tage** | dieselbe Datenbank |
+| Transkript gesprochener Abschnitte **unter Push-to-Talk** | **30 Tage** | dieselbe Datenbank |
 | Frames als JPEG | **48 Stunden**, danach nur noch der Text | Verzeichnis unter `$XDG_DATA_HOME` |
 | Rohaudio | **gar nicht** — nur das Transkript überlebt den Abschnitt | — |
 
@@ -889,7 +895,17 @@ Kommandosubstitution (`echo "$(rm -rf /x)"` — argv0 ist `echo`), Variablenexpa
 
 ### 7.2 Die Zusage, in drei Teilen
 
-**(a) Netzsperre.** `RestrictAddressFamilies=AF_UNIX` für `hub`, `auth`, `ears`, `eyes`, `mind`, `face`, alle Broker und alle GPU-Worker.
+**(a) Netzsperre.** `RestrictAddressFamilies=AF_UNIX` für `hub`, `auth`, `ears`, `eyes`, `mind`, `face`, `focus`, `recorder`, die Broker **dbus, fs, exec, input** und alle GPU-Worker.
+
+> **Berichtigt am 14.08. (T-6.9).** Hier stand „alle Broker". Gemessen am laufenden System tragen **drei Units das Netz**, und zwar mit Absicht:
+>
+> | Unit | `RestrictAddressFamilies` | Warum |
+> |---|---|---|
+> | `daimon-egress` | `AF_INET AF_INET6 AF_UNIX` | hält den Token, ist der einzige API-Weg |
+> | `daimon-lokal-broker` | `AF_INET AF_UNIX` | spricht mit ollama auf dieser Maschine |
+> | `daimon-cli-broker` | *(keine)* | startet `claude -p`; die Unit sagt selbst: „die CLI MUSS ins Netz" |
+>
+> Der Zuschnitt war immer so gemeint — die Zusage war zu weit formuliert. Wer sie wörtlich las, hielt eine Kernelgrenze für vorhanden, die es an drei Stellen nicht gibt. **Die Grenze ist nicht „kein Prozess kann ins Netz", sondern „nur diese drei können, und keiner davon wertet Modellinhalt aus."**
 
 > **`IPAddressDeny=any` ist in `--user`-Units wirkungslos.** Live getestet: `curl https://example.com` kam mit HTTP 200 durch **[V]**; es braucht cgroup-BPF-Delegation, die User-Units nicht bekommen. Mit `RestrictAddressFamilies=AF_UNIX` beendet sich `curl` mit 7 **[V]**.
 

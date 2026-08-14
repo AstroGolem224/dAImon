@@ -21,8 +21,8 @@ trägt ein Feld `herkunft`.**
 Acht der neun Feststellungen sind `gemessen`. Die eine `direktive` ist unten
 benannt.
 
-**Und das Werkzeug hat sich zweimal selbst geirrt**, beides beim ersten Lauf,
-beides hier stehen gelassen statt weggewischt:
+**Und das Werkzeug hat sich dreimal selbst geirrt** — hier stehen gelassen
+statt weggewischt:
 
 1. Es durchsuchte für „kein Rohaudio" das **ganze** Datenverzeichnis — dort
    liegen auch `models/` und `voices/`. Die 13 `RIFF`-Treffer waren die
@@ -31,9 +31,21 @@ beides hier stehen gelassen statt weggewischt:
 2. Es las ein `ConnectionResetError` am Kontext-Socket als offenen Befund.
    Ein RST **ist** die Abweisung — der Dienst schließt, während ungelesene
    Bytes im Puffer stehen.
+3. **Und dann schlug es an seinem eigenen Text an.** Nach der ersten
+   Korrektur suchte es `RIFF` nur noch im Archiv — und fand es. Die Augen
+   hatten den Bildschirm gelesen, auf dem der Satz über die Falschbefunde
+   stand:
+
+   > `BEOBACHTUNG: das Werkzeug hat sich zweimal selbst geirrt — die 13
+   > RIFF-Treffer waren die Test-WA…`
+
+   Das Wort `RIFF` ist kein Audio. Ein WAVE-Kopf ist `RIFF`, vier Bytes
+   Größe, dann `WAVE`. Danach wird jetzt gesucht — nach der **Struktur**,
+   nicht nach vier Buchstaben. Nebenbei ist das der beste Beleg dafür, dass
+   der Bildschirmmitschnitt tut, was er soll.
 
 Ein Prüfer, der seine eigenen Falschbefunde nicht findet, findet auch keine
-echten. Beide Male war das System in Ordnung und das Werkzeug nicht.
+echten. Alle drei Male war das System in Ordnung und das Werkzeug nicht.
 
 ## §7.2a — Netzsperre
 
@@ -48,8 +60,8 @@ Diese Schwäche ist benannt und nicht geschlossen.
 
 ### Offen: der Zusagentext ist zu weit
 
-> §7.2a: „für `hub`, `auth`, `ears`, `eyes`, `mind`, `face`, **alle Broker**
-> und alle GPU-Worker."
+> §7.2a (alte Fassung): „für `hub`, `auth`, `ears`, `eyes`, `mind`, `face`,
+> **alle Broker** und alle GPU-Worker."
 
 Gemessen:
 
@@ -60,8 +72,15 @@ Gemessen:
 | `daimon-cli-broker` | `~` (gar keine Beschränkung) |
 
 Der Zuschnitt ist **gewollt** — die Unit sagt es selbst: „Kein
-`RestrictAddressFamilies=AF_UNIX`: die CLI MUSS ins Netz." Falsch ist der
-Satz im Entwurf, nicht die Unit. **Zu berichtigen ist §7.2a.**
+`RestrictAddressFamilies=AF_UNIX`: die CLI MUSS ins Netz." Falsch war der
+Satz im Entwurf, nicht die Unit.
+
+**Berichtigt am 14.08.:** §7.2a nennt die gesperrten Units jetzt einzeln und
+führt die drei Netzträger in einer Tabelle. Die Grenze lautet nicht mehr
+„kein Prozess kann ins Netz", sondern **„nur diese drei können, und keiner
+davon wertet Modellinhalt aus."** Gleich mit berichtigt: §1.2 sagte
+„Bildschirm **und Ton** durchgehend" und widersprach damit §1.1 — siehe
+`Phase-7-Tonmitschnitt-Entscheidung.md`.
 
 ## §7.2b — Deklassifizierungs-Gate
 
@@ -105,9 +124,9 @@ Kontingent des Egress. Ohne Token startet der Dienst nicht — er sagt ehrlich
 Am echten Archiv gemessen, nicht an einer Attrappe:
 
 * `archiv.db` 0600, Verzeichnis 0700
-* 520 Zeilen, alle auf Stufe `redacted` — **keine einzige auf `full`**
-* Arten: 184 `ocr`, 336 `titel`; **kein Rohaudio**, weder als Art noch als
-  Byte-Folge in `archiv.db`, `-wal` oder `-shm`
+* alle Zeilen auf Stufe `redacted` — **keine einzige auf `full`**
+* Arten `ocr` und `titel`; **kein Rohaudio**, weder als Art noch als
+  WAVE-Kopf (`RIFF`+`WAVE`) in `archiv.db`, `-wal` oder `-shm`
 
 ## Was dieses Review nicht abdeckt
 
