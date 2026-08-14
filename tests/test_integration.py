@@ -83,8 +83,11 @@ ABRUF_UNITS = ("daimon-stt.service", "daimon-tts.service",
 SONDERFALL_UNITS = ("daimon-exec.service", "daimon-egress.service",
                     "daimon-input.service")
 
-# Design §13, Zeile „Summe" der Dauerlast-Tabelle.
-BUDGET_CPU_P95_PROZENT = 1.2     # eines Kerns
+# Design §13.1, „Zwei Größen, nicht eine": OCR ist stoßweise, und ein
+# einziger Deckel wäre entweder für die Dauerlast zu lasch oder für die
+# Spitze unerfüllbar. Beide werden geprüft.
+BUDGET_CPU_MITTEL_PROZENT = 2.0  # eines Kerns, Mittel über das Messband
+BUDGET_CPU_P95_PROZENT = 8.0     # eines Kerns, p95 einzelner 1-s-Fenster
 BUDGET_RSS_MB = 420.0
 
 
@@ -516,9 +519,13 @@ def test_sprachanfrage_mit_bildschirmbezug_und_folgeaktion(sitzung, evidenz):
 # ---------------------------------------------------------------------------
 
 def test_ressourcen_im_budget_design_13(sitzung, evidenz):
-    """idle_cpu_p95 und idle_rss_mb der Dauerlast-Units, selbst gemessen.
+    """Dauerlast (Mittel), Spitze (p95) und RSS der Units, selbst gemessen.
 
-    Zwanzig Proben im Halbsekundentakt, CPU aus /proc-<pid>-Deltas, RSS aus
+    Zwei CPU-Größen gegen zwei Deckel, nach Design §13.1: OCR läuft
+    stoßweise, deshalb misst ein Mittelwert die Dauerlast und ein p95 die
+    Spitze — und beide brauchen ihren eigenen Deckel.
+
+    Zwanzig Proben im Sekundentakt, CPU aus /proc-<pid>-Deltas, RSS aus
     VmRSS. Der Sampler bekommt zuerst einen bekannten Lastzeugnis-Kanarien:
     ein Brennerprozess, den er mit deutlich über einem halben Kern sehen muss
     — sonst beweist ein leeres Messband gar nichts.
@@ -526,10 +533,12 @@ def test_ressourcen_im_budget_design_13(sitzung, evidenz):
     with protokoll(evidenz, szenario="ressourcen_design_13",
                    gestartet=["/proc-Sampler (20 × 1 s)",
                               "CPU-Kanarienbrenner (1 s Vollast)"],
-                   budget={"idle_cpu_p95_prozent_eines_kerns":
+                   budget={"idle_cpu_mittel_prozent_eines_kerns":
+                           BUDGET_CPU_MITTEL_PROZENT,
+                           "idle_cpu_p95_prozent_eines_kerns":
                            BUDGET_CPU_P95_PROZENT,
                            "idle_rss_mb": BUDGET_RSS_MB,
-                           "quelle": "docs/DESIGN.md §13, Dauerlast-Summe"}
+                           "quelle": "docs/DESIGN.md §13.1, zwei Größen"}
                    ) as satz:
         # Kanarienvogel für den Sampler: ein Kern, eine Sekunde Vollast.
         brenner = subprocess.Popen(
@@ -584,7 +593,9 @@ def test_ressourcen_im_budget_design_13(sitzung, evidenz):
             alt = neu
 
         idle_cpu_p95 = round(_p95(proben_cpu), 3)
+        idle_cpu_mittel = round(sum(proben_cpu) / len(proben_cpu), 3)
         idle_rss_mb = round(max(proben_rss_kb) / 1024.0, 1)
+        satz["gemessen"]["idle_cpu_mittel"] = idle_cpu_mittel
         satz["gemessen"]["idle_cpu_p95"] = idle_cpu_p95
         satz["gemessen"]["idle_rss_mb"] = idle_rss_mb
         satz["gemessen"]["proben_cpu_prozent"] = [round(p, 2)
@@ -604,9 +615,12 @@ def test_ressourcen_im_budget_design_13(sitzung, evidenz):
             abruf[unit] = None if rss is None else round(rss / 1024.0, 1)
         satz["gemessen"]["auf_abruf_rss_mb"] = abruf
 
+        assert idle_cpu_mittel <= BUDGET_CPU_MITTEL_PROZENT, (
+            f"idle_cpu_mittel {idle_cpu_mittel} % > "
+            f"{BUDGET_CPU_MITTEL_PROZENT} % (Design §13.1, Dauerlast)")
         assert idle_cpu_p95 <= BUDGET_CPU_P95_PROZENT, (
             f"idle_cpu_p95 {idle_cpu_p95} % > {BUDGET_CPU_P95_PROZENT} % "
-            "(Design §13)")
+            "(Design §13.1, Spitze)")
         assert idle_rss_mb <= BUDGET_RSS_MB, (
             f"idle_rss_mb {idle_rss_mb} MB > {BUDGET_RSS_MB} MB (Design §13)")
 

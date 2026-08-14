@@ -1,7 +1,7 @@
 {
   "v": 1,
   "task": "T-6.8",
-  "erzeugt": "2026-08-13T19:26:22+0200",
+  "erzeugt": "2026-08-13T22:45:43+0200",
   "rolle": "builder",
   "szenarien": [
     {
@@ -25,10 +25,19 @@
         "daimon-phase1.timer (nur Zustand)"
       ],
       "budget": {},
-      "gemessen": {},
-      "ergebnis": "fehlgeschlagen",
-      "grund": "Timeout (>60.0s) from pytest-timeout.",
-      "dauer_s": 29.88
+      "gemessen": {
+        "inaktiv_nach_start": [],
+        "nicht_startbar": {
+          "daimon-exec.service": "activating/exit-code — verweigert ohne freigegebene Anwendung im Katalog",
+          "daimon-egress.service": "activating/exit-code — LoadCredential-Token fehlt (~/.config/daimon/anthropic-token)",
+          "daimon-input.service": "failed/exit-code — 203/EXEC: ProtectHome=tmpfs verdeckt den Interpreter (.venv liegt in $HOME)"
+        },
+        "phase1_timer": "active",
+        "diag_laufzeit_s": 8937.3
+      },
+      "ergebnis": "gemessen",
+      "grund": "",
+      "dauer_s": 3.19
     },
     {
       "szenario": "sprachanfrage_und_folgeaktion",
@@ -39,8 +48,8 @@
       ],
       "budget": {},
       "gemessen": {
-        "fenster_eigen": 22,
-        "fenster_genannt": 22,
+        "fenster_eigen": 18,
+        "fenster_genannt": 18,
         "aktion_antwort": {
           "v": 1,
           "ok": true,
@@ -50,9 +59,9 @@
           "grund": "",
           "gesprochen": "",
           "dauer_ms": {
-            "policy": 0.032,
-            "broker": 5.374,
-            "audit": 2.95
+            "policy": 0.182,
+            "broker": 10.803,
+            "audit": 3.979
           }
         },
         "lautstaerke_vorher": 0.47,
@@ -60,7 +69,7 @@
       },
       "ergebnis": "gemessen",
       "grund": "",
-      "dauer_s": 0.66
+      "dauer_s": 0.67
     },
     {
       "szenario": "ressourcen_design_13",
@@ -69,9 +78,10 @@
         "CPU-Kanarienbrenner (1 s Vollast)"
       ],
       "budget": {
-        "idle_cpu_p95_prozent_eines_kerns": 1.2,
+        "idle_cpu_mittel_prozent_eines_kerns": 2.0,
+        "idle_cpu_p95_prozent_eines_kerns": 8.0,
         "idle_rss_mb": 420.0,
-        "quelle": "docs/DESIGN.md §13, Dauerlast-Summe"
+        "quelle": "docs/DESIGN.md §13.1, zwei Größen"
       },
       "gemessen": {
         "sampler_kanarie_prozent": 98.9,
@@ -92,29 +102,30 @@
         "fehlend": [
           "daimon-exec.service"
         ],
-        "idle_cpu_p95": 1.0,
-        "idle_rss_mb": 258.6,
+        "idle_cpu_mittel": 0.9,
+        "idle_cpu_p95": 3.0,
+        "idle_rss_mb": 340.4,
         "proben_cpu_prozent": [
-          0.0,
-          0.0,
           1.0,
-          0.0,
-          1.0,
-          0.0,
-          0.0,
-          1.0,
+          3.0,
           0.0,
           0.0,
           0.0,
           1.0,
-          0.0,
-          0.0,
+          3.0,
           0.0,
           1.0,
           0.0,
           0.0,
+          3.0,
+          1.0,
+          1.0,
           0.0,
-          1.0
+          0.0,
+          3.0,
+          1.0,
+          0.0,
+          0.0
         ],
         "je_unit_cpu_max": {
           "daimon-hub.service": 1.0,
@@ -123,7 +134,7 @@
           "daimon-face.service": 0.0,
           "daimon-auth.service": 0.0,
           "daimon-ears.service": 0.0,
-          "daimon-eyes.service": 0.0,
+          "daimon-eyes.service": 3.0,
           "daimon-mind.service": 0.0,
           "daimon-dbus.service": 0.0,
           "daimon-fs.service": 0.0,
@@ -131,22 +142,22 @@
           "daimon-lokal-broker.service": 0.0
         },
         "je_unit_rss_mb": {
-          "daimon-hub.service": 11.5,
-          "daimon-hookbridge.service": 6.8,
-          "daimon-focus.service": 15.9,
-          "daimon-face.service": 34.8,
-          "daimon-auth.service": 15.8,
-          "daimon-ears.service": 24.4,
-          "daimon-eyes.service": 44.4,
-          "daimon-mind.service": 20.7,
+          "daimon-hub.service": 17.8,
+          "daimon-hookbridge.service": 14.1,
+          "daimon-focus.service": 15.5,
+          "daimon-face.service": 34.9,
+          "daimon-auth.service": 26.2,
+          "daimon-ears.service": 11.5,
+          "daimon-eyes.service": 114.6,
+          "daimon-mind.service": 20.8,
           "daimon-dbus.service": 21.3,
           "daimon-fs.service": 20.3,
           "daimon-cli-broker.service": 21.2,
           "daimon-lokal-broker.service": 21.4
         },
         "auf_abruf_rss_mb": {
-          "daimon-stt.service": 1042.1,
-          "daimon-tts.service": 186.5,
+          "daimon-stt.service": 1030.7,
+          "daimon-tts.service": 185.9,
           "daimon-egress.service": null
         }
       },
@@ -168,16 +179,16 @@
           "ok": false,
           "grund": "fullscreen"
         },
-        "diag_gpu_fullscreen_vorher": 11,
-        "diag_gpu_fullscreen_nachher": 12,
+        "diag_gpu_fullscreen_vorher": 1,
+        "diag_gpu_fullscreen_nachher": 2,
         "gate_nach_vollbild": "offen",
-        "vram_vorher_mib": 13478,
-        "vram_nachher_mib": 13508,
-        "vram_delta_mib": 30
+        "vram_vorher_mib": 13164,
+        "vram_nachher_mib": 13213,
+        "vram_delta_mib": 49
       },
       "ergebnis": "gemessen",
       "grund": "",
-      "dauer_s": 0.23
+      "dauer_s": 0.22
     },
     {
       "szenario": "killswitch_ohren",
@@ -196,7 +207,7 @@
           "war_aktiv": true,
           "aufnahmestroeme_vorher": 1,
           "aufnahmestroeme_nachher": 0,
-          "dauer_ms": 23.336,
+          "dauer_ms": 24.489,
           "meldung": ""
         },
         "stroeme_nachher": 0
@@ -211,10 +222,51 @@
         "python -m daimon.eyes.killswitch (Hotkey-Weg)"
       ],
       "budget": {},
-      "gemessen": {},
-      "ergebnis": "uebersprungen",
-      "grund": "daimon-eyes läuft nicht (Szenario 1)",
-      "dauer_s": 0.0
+      "gemessen": {
+        "kanarie_seh_zaehler": {
+          "v": 1,
+          "runden": 1375,
+          "erfasst": 1375,
+          "gelesen": 167,
+          "ocr_verschoben": 730,
+          "ocr_abkuehlung_s": 30.0,
+          "ausloeser": {
+            "fokus": 0,
+            "timer": 1375,
+            "tor_zu": 0,
+            "zu_dicht": 0
+          },
+          "kontext": {
+            "titel": 0,
+            "ocr": 5,
+            "vlm": 0,
+            "ausgelassen": 0
+          }
+        },
+        "schalter_bericht": {
+          "dauer_ms": 86.381,
+          "geleert": 5,
+          "kontextdateien": 0,
+          "lampe": "aus",
+          "meldung": "",
+          "noch_aktiv": false,
+          "ok": true,
+          "rc": 0,
+          "sitzung_geschlossen": null,
+          "unit": "daimon-eyes.service",
+          "v": 1,
+          "videostroeme_nachher": 0,
+          "videostroeme_vorher": 0,
+          "war_aktiv": true
+        },
+        "stroeme_nachher": 0,
+        "kontextdateien_nachher": 0,
+        "lampe": "aus",
+        "wiederanlauf": "active"
+      },
+      "ergebnis": "gemessen",
+      "grund": "",
+      "dauer_s": 0.49
     },
     {
       "szenario": "killswitch_gedaechtnis",
@@ -233,7 +285,7 @@
       },
       "ergebnis": "gemessen",
       "grund": "",
-      "dauer_s": 0.14
+      "dauer_s": 0.06
     }
   ]
 }

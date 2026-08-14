@@ -1753,10 +1753,11 @@ pytest -q
 - **Akzeptanz:**
   - [ ] Alle Units laufen gleichzeitig
   - [ ] Sprachanfrage mit Bildschirmbezug und Folgeaktion durchgespielt
-  - [ ] Ressourcenverbrauch gegen Design §13 geprüft
+  - [ ] Ressourcenverbrauch gegen Design §13 geprüft — **zwei Größen getrennt**: Dauerlast als **Mittel** über das Messband (≤ 2,0 % eines Kerns) und **Spitze** als p95 einzelner 1-s-Fenster (≤ 8,0 %), dazu RSS-Maximum ≤ 420 MB. Ein einziger Deckel für beide wäre entweder für die Dauerlast zu lasch oder für die stoßweise OCR unerfüllbar — Begründung, Messauflösung und Herkunft der Zahlen in Design §13.1
+  - [ ] `phase6-integration.json` führt beide Größen samt Rohproben, damit die Zahl nachrechenbar ist und nicht geglaubt werden muss
   - [ ] Verhalten bei laufendem Spiel geprüft
   - [ ] Alle Kill-Switches wirken
-- **Verifikation:** `tests/verify/T-6.8.sh` — **startet jedes Szenario selbst** und erzeugt die Messwerte selbst (`pidstat`, `nvidia-smi`, Audit-Auswertung); vorgefundene `pass`-Labels werden ignoriert. Exit 0 nur, wenn jedes selbst gefahrene Szenario seine Nachbedingung erfüllt und `idle_cpu_p95` sowie `idle_rss_mb` im Budget aus Design §13 liegen.
+- **Verifikation:** `tests/verify/T-6.8.sh` — **startet jedes Szenario selbst** und erzeugt die Messwerte selbst (`pidstat`, `nvidia-smi`, Audit-Auswertung); vorgefundene `pass`-Labels werden ignoriert. Exit 0 nur, wenn jedes selbst gefahrene Szenario seine Nachbedingung erfüllt und `idle_cpu_mittel`, `idle_cpu_p95` sowie `idle_rss_mb` im Budget aus Design §13.1 liegen.
 - **Agent:** reviewer · **Umfang:** L
 
 ### T-6.9 — Abschluss-Sicherheitsreview

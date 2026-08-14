@@ -1437,9 +1437,49 @@ Der Charakter ist austauschbar; die Persona-Datei ist der einzige Ort, an dem er
 | silero-vad | 0,24 % eines Kerns | geteilt | 0 |
 | PipeWire-Capture | ~0,15 % **[U]** | ~10 MB | 0 |
 | Bildschirm-Diff, 2-s-Takt | ~0,001 % | ~40 MB | 0 |
+| **OCR auf der Änderungsregion, 2-s-Takt** | **0,9 % im Mittel [V]**, stoßweise — siehe unten | 108–145 MB (Eyes gesamt) **[V]** | 0 |
 | Face (layer-shell, idle) | <1 % **[U]** | ~20 MB | 0 |
 | Hub, Auth, Bridge, Broker (idle) | vernachlässigbar | ~200 MB | 0 |
-| **Summe** | **≈1,2 % eines Kerns** | **≈420 MB** | **0 GB** |
+| **Summe** | **≈2,0 % eines Kerns** | **≈420 MB** | **0 GB** |
+
+### 13.1 Zwei Größen, nicht eine
+
+OCR ist **stoßweise**: nichts, nichts, nichts, ein Auftrag über einen
+Änderungsausschnitt, wieder nichts. Ein Mittelwert und ein p95 messen an so
+einem Signal verschiedene Dinge, und eine einzige Zahl für beide ist entweder
+für die Dauerlast zu lasch oder für die Spitze unerfüllbar. Das Budget nennt
+deshalb **zwei** Größen, und der Systemtest T-6.8 prüft **beide**:
+
+| Größe | Deckel | Messband A (6/13 Units) | Messband B (12/13 Units) |
+|---|---|---|---|
+| **Dauerlast** — Mittel über das ganze Messband | **≤ 2,0 % eines Kerns** | 1,25 % | **0,9 %** |
+| **Spitze** — p95 einzelner 1-s-Fenster | **≤ 8,0 % eines Kerns** | **6,0 %** (Eyes-OCR) | 3,0 % (Eyes-OCR) |
+| **Arbeitsspeicher** — Maximum über das Messband | **≤ 420 MB** | 275,9 MB | **340,4 MB** |
+
+Beide Bänder vom 13.08., je n=20 × 1 s. Proben A
+`[1,1,0,0,4,0,0,1,0,6,0,0,0,2,3,0,0,1,0,6]`, Proben B
+`[1,3,0,0,0,1,3,0,1,0,0,3,1,1,0,0,3,1,0,0]`. Band B steht in
+`tests/evidence/phase6-integration.json`.
+
+Herkunft der Deckel: gemessen plus Marge, nicht hergeleitet. Maßgeblich ist je
+Größe der **schlechtere** Wert aus beiden Bändern — Dauerlastdeckel ~60 % über
+den 1,25 % aus A, Spitzendeckel ~33 % über den 6,0 % aus A, RSS-Deckel ~25 %
+über den 334,7 MB aus B.
+
+> **Vier Einschränkungen, die zur Zahl gehören.** (a) Die Messauflösung ist
+> **1 % je 1-s-Fenster** — ein Jiffy sind 10 ms bei `HZ=100`. Alle Proben sind
+> ganzzahlig; ein p95-Deckel unter ~2 % wäre gar nicht auflösbar, ein
+> Dauerlastdeckel darunter nur über den Mittelwert vieler Fenster.
+> (b) Bei n=20 ist p95 der **zweitgrößte** Wert. Ein einzelner OCR-Auftrag
+> mehr im Messband verschiebt ihn.
+> (c) **Die Spitze hängt am Bildschirm, nicht an der Unitzahl.** Band B hatte
+> sechs Units mehr und trotzdem den halben p95 — weil während A mehr
+> Bildschirmänderung anlag. Ein einzelnes Band belegt deshalb keinen Deckel,
+> es belegt eine Stichprobe. Wer den Deckel härten will, misst über eine
+> definierte Alltagslast statt über den zufälligen Bildschirm.
+> (d) In beiden Bändern fehlt **`daimon-exec`**: der Broker verweigert den
+> Dienst, solange der Aktionskatalog keine freigegebene Anwendung enthält.
+> Band B enthält die übrigen zwölf.
 
 **Auf Abruf:**
 
