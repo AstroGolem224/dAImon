@@ -12,6 +12,7 @@ im Adressraum steht, und die Haertung beider Units am Prozess. Ein Unittest kann
 
 import io
 import json
+import pathlib
 import os
 import socket
 import threading
@@ -472,11 +473,64 @@ def ohne_kommentare(text: str) -> str:
 
 
 def test_mind_hat_nur_unix_und_keinen_token():
+    """BERICHTIGT am 14.08. (T-6.9). Vorher verlangte diese Pruefung, dass
+    `ANTHROPIC_API_KEY` im Unit-TEXT nirgends vorkommt -- und riss an
+    `UnsetEnvironment=ANTHROPIC_API_KEY`, also an einer Zeile, die ihre
+    eigene Absicht ERFUELLT.
+
+    Genau das Muster, vor dem die Uebergabe warnt: wer Quelltext per Suche
+    prueft, prueft die Schreibweise. Getrennt wird jetzt nach SETZEN und
+    ENTFERNEN, wie es die Egress-Pruefung darunter schon tat.
+    """
     text = ohne_kommentare(
         (REPO / "config/systemd/daimon-mind.service").read_text())
     assert "RestrictAddressFamilies=AF_UNIX" in text
-    for verboten in ("AF_INET", "LoadCredential", "ANTHROPIC_API_KEY"):
+    for verboten in ("AF_INET", "LoadCredential"):
         assert verboten not in text, verboten
+
+    # Kein Environment= setzt irgendetwas mit einem Schluessel darin.
+    gesetzt = [z for z in text.splitlines() if z.startswith("Environment=")]
+    for zeile in gesetzt:
+        for name in ("ANTHROPIC", "API_KEY", "TOKEN", "SECRET"):
+            assert name not in zeile.upper(), zeile
+
+    # Und der Anthropic-Token wird ausdruecklich ENTFERNT.
+    unset = [z for z in text.splitlines() if z.startswith("UnsetEnvironment=")]
+    assert any("ANTHROPIC_API_KEY" in z for z in unset), unset
+
+
+def test_mind_traegt_keinen_fremden_schluessel_in_der_umgebung():
+    """T-6.9, und diesmal am LAUFENDEN Prozess statt am Unit-Text.
+
+    Gemessen am 14.08.: `/proc/<pid>/environ` von daimon-mind enthielt
+    `ELEVENLABS_API_KEY` und `MISTRAL_API_KEY`, geerbt aus der Umgebung des
+    systemd-Benutzermanagers. Der anthropic-token war gesperrt, fremde
+    Schluessel waren es nicht -- und der Egress traegt Prompt-Koerper, ohne
+    sie zu deuten.
+
+    Geprueft werden NAMEN, nie Werte: ein Pruefstand, der ein Geheimnis in
+    seine eigene Fehlermeldung schreibt, ist der Angriff, den er sucht.
+    """
+    import shutil
+    import subprocess
+    if shutil.which("systemctl") is None:
+        pytest.skip("kein systemd")
+    roh = subprocess.run(["systemctl", "--user", "show",
+                          "daimon-mind.service", "-p", "MainPID", "--value"],
+                         capture_output=True, text=True, timeout=10)
+    pid = int((roh.stdout or "0").strip() or 0)
+    if pid <= 0:
+        pytest.skip("daimon-mind laeuft nicht -- nicht messbar")
+    try:
+        umgebung = pathlib.Path(f"/proc/{pid}/environ").read_bytes()
+    except OSError as exc:
+        pytest.skip(f"environ nicht lesbar: {exc}")
+    namen = [v.split(b"=", 1)[0].decode("utf-8", "replace")
+             for v in umgebung.split(b"\0") if b"=" in v]
+    verdacht = [n for n in namen
+                if any(m in n.upper()
+                       for m in ("KEY", "TOKEN", "SECRET", "ANTHROPIC"))]
+    assert verdacht == [], verdacht
 
 
 def test_egress_hat_netz_und_den_token_ueber_credentials():

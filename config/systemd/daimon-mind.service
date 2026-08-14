@@ -64,6 +64,27 @@ RestrictAddressFamilies=AF_UNIX
 InaccessiblePaths=-%h/.config/daimon/anthropic-token
 InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
 
+# T-6.9, gemessen am 14.08.: der anthropic-token ist gesperrt -- FREMDE
+# Schluessel waren es nicht. `/proc/<pid>/environ` des laufenden Dienstes
+# enthielt `ELEVENLABS_API_KEY` (51 Zeichen) und `MISTRAL_API_KEY` (32),
+# geerbt aus der Umgebung des systemd-Benutzermanagers. Design 7.2c sagt
+# "mind hat weder Token noch AF_INET"; die Netzsperre haelt, der Satz zum
+# Token galt nur fuer einen einzigen.
+#
+# Ausnutzbar waere das nicht direkt -- AF_UNIX laesst den Prozess nicht ins
+# Netz --, aber der Egress traegt Prompt-Koerper, ohne sie zu deuten. Ein
+# kompromittierter Mind koennte einen fremden Schluessel als TEXT hinausgeben.
+#
+# DIESE ZEILE IST EINE DENYLIST UND DAMIT DIE SCHWAECHERE HAELFTE. Sie faengt
+# die gemessenen Namen und die ueblichen Verdaechtigen; ein Schluessel, der
+# morgen anders heisst, steht wieder drin. Der strukturelle Weg ist, solche
+# Werte gar nicht erst in die Umgebung des Benutzermanagers zu geben
+# (`systemctl --user unset-environment`, bzw. sie nicht in der Shell-Rc zu
+# exportieren) -- das ist Sitzungskonfiguration und gehoert nicht ins Repo.
+UnsetEnvironment=ANTHROPIC_API_KEY ELEVENLABS_API_KEY MISTRAL_API_KEY
+UnsetEnvironment=OPENAI_API_KEY GEMINI_API_KEY GOOGLE_API_KEY HF_TOKEN
+UnsetEnvironment=GITHUB_TOKEN GH_TOKEN AWS_SECRET_ACCESS_KEY
+
 # --- Haertung nach Design 7.5 --------------------------------------------
 NoNewPrivileges=yes
 CapabilityBoundingSet=

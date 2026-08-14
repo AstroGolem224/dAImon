@@ -1,0 +1,83 @@
+{
+  "v": 1,
+  "task": "T-6.9",
+  "erzeugt": "2026-08-14T15:20:17+0200",
+  "rolle": "builder",
+  "unabhaengig": false,
+  "hinweis": "Erzeugt von derselben Einheit, die den Code gebaut hat. Der Plan weist T-6.9 der Rolle `reviewer` zu. Feld `herkunft` je Befund: gemessen | direktive | pruefstand.",
+  "befunde": [
+    {
+      "id": "7.2a-kernel",
+      "severity": "critical",
+      "status": "closed",
+      "herkunft": "gemessen",
+      "titel": "RestrictAddressFamilies=AF_UNIX verhindert AF_INET auf dieser Maschine",
+      "beleg": "systemd-run mit der Direktive, AF_INET-Socket: rc=1 Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n    import socket;socket.socket(socket.AF_INET,socket.SOCK_STREAM)\n                  ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
+    },
+    {
+      "id": "7.2a-units",
+      "severity": "high",
+      "status": "closed",
+      "herkunft": "direktive",
+      "titel": "Alle 12 gesperrten Units tragen RestrictAddressFamilies=AF_UNIX",
+      "beleg": "ohne Sperre: keine"
+    },
+    {
+      "id": "7.2a-text",
+      "severity": "medium",
+      "status": "open",
+      "herkunft": "gemessen",
+      "titel": "Design 7.2a sagt 'alle Broker' -- drei Units tragen das Netz",
+      "beleg": "{'daimon-egress.service': 'AF_INET AF_INET6 AF_UNIX', 'daimon-lokal-broker.service': 'AF_INET AF_UNIX', 'daimon-cli-broker.service': '~'}. Der Zuschnitt ist gewollt (die CLI muss ins Netz, der Egress haelt den Token), die ZUSAGE im Text ist zu weit formuliert. Zu berichtigen ist der Entwurf, nicht die Unit."
+    },
+    {
+      "id": "7.2b-fremde-unit",
+      "severity": "critical",
+      "status": "closed",
+      "herkunft": "gemessen",
+      "titel": "Eine fremde Unit bekommt keinen Bildschirmkontext",
+      "beleg": "Antwort auf /run/user/1000/daimon/kontext.sock (Modus 0o600): 'ConnectionResetError: [Errno 104] Connection reset by peer' -- leer heisst: Verbindung ohne Antwort geschlossen"
+    },
+    {
+      "id": "7.2c-mind-token",
+      "severity": "critical",
+      "status": "closed",
+      "herkunft": "gemessen",
+      "titel": "Kein Token in der Umgebung von daimon-mind",
+      "beleg": "/proc/126424/environ, 93 Variablen, verdaechtige NAMEN (ohne Werte): [] "
+    },
+    {
+      "id": "7.2c-egress-token",
+      "severity": "medium",
+      "status": "closed",
+      "herkunft": "gemessen",
+      "titel": "Der Egress-Broker sagt ohne Token ehrlich ab",
+      "beleg": "/home/itiger013/.config/daimon/anthropic-token vorhanden=False, Unit=inactive -- ohne Token ist die Domain-Beschraenkung nicht im Betrieb pruefbar"
+    },
+    {
+      "id": "7.2d-rechte",
+      "severity": "high",
+      "status": "closed",
+      "herkunft": "gemessen",
+      "titel": "Archiv 0600, Verzeichnis 0700",
+      "beleg": "/home/itiger013/.local/share/daimon/archiv.db=0o600, /home/itiger013/.local/share/daimon=0o700"
+    },
+    {
+      "id": "7.2d-stufen",
+      "severity": "high",
+      "status": "closed",
+      "herkunft": "gemessen",
+      "titel": "Keine Zeile steht auf `full` ohne ausdrueckliche Anforderung",
+      "beleg": "Stufen: {'redacted': 542}, Arten: {'ocr': 190, 'titel': 352}"
+    },
+    {
+      "id": "7.2d-kein-rohaudio",
+      "severity": "critical",
+      "status": "closed",
+      "herkunft": "gemessen",
+      "titel": "Kein Rohaudio im Archiv",
+      "beleg": "Audio-Arten: [], RIFF in ['archiv.db', 'archiv.db-wal', 'archiv.db-shm']: 0"
+    }
+  ],
+  "offen_high_critical": []
+}
