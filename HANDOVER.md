@@ -44,6 +44,26 @@ schreibender Verben beschränken statt auf den ganzen Text. Das ist eine
 Entscheidung am Wächter und gehört nicht in einen Task, der nebenbei an ihm
 vorbeikommt.
 
+## BEFUND: Das Deklassifizierungs-Gate hat keinen Aufrufer
+
+`daimon.hub.declassify.Deklassifizierung` wird in der gesamten Anwendung
+**nirgends instanziiert** — nur in vier Prüfständen. Gemessen am 14.08. mit
+`grep -rn "Deklassifizierung(" daimon/`.
+
+Folge: **passiv Wahrgenommenes erreicht das Modell heute überhaupt nicht.**
+Nicht, weil das Gate es verweigert, sondern weil niemand es fragt. Der
+Kontextspeicher füllt sich (T-5.7), das Gate steht geprüft daneben (T-5.9),
+und dazwischen fehlt die Zeile, die beides verbindet.
+
+Das trifft T-7.5 unmittelbar: die Archivsuche hängt jetzt im Gate, mit
+denselben Bedingungen und derselben Marke. Aber `daimon/mind/router.py` aus
+ihrer Akzeptanzliste ist **nicht** geändert worden — es gibt keinen Aufrufer,
+an den sich etwas anschließen ließe. Wer das Gate verdrahtet, schließt beides
+in einem: Live-Kontext und Archiv kommen aus demselben `freigeben()`.
+
+Dieselbe Klasse von Lücke wie „`speech_threshold` wird geladen, validiert und
+hat keinen Verbraucher" weiter unten. Gebaut, geprüft, nicht angeschlossen.
+
 ## BERICHTIGT: „Der Fokus-Empfang ist tot" war falsch — meine Messung war es
 
 **Der Befund aus `ee2be0f` gilt nicht.** Er steht so in der Commit-Botschaft
@@ -67,6 +87,19 @@ Mit einem Fenster, das wirklich aufgeht, trägt die Kette:
 **Die Lehre, und sie ist teuer bezahlt:** ein Prüfschritt ohne
 Positivkontrolle beweist nichts. Zwei Sitzungen lang stand ein Befund im
 Repo, der nur die eigene kaputte Vorrichtung beschrieb.
+
+**Offen, und zwar für die Rolle `reviewer`:** `tests/harness/vollbildfenster.py`
+sollte seine Argumente prüfen und laut scheitern, statt still an `sys.argv[2]`
+zu sterben. Die Änderung war geschrieben und ist **zurückgenommen worden** —
+die Datei steht in `tests/verify/FROZEN`, und der `pre-commit`-Haken verlangt
+dafür einen eigenen `.v`-Task mit Mutationstest. Richtig so; die Falle steht
+aber weiterhin für den nächsten bereit. Vier Zeilen:
+
+```python
+if len(sys.argv) != 4:
+    sys.exit(f"Aufruf: {sys.argv[0]} '#rrggbb' <logdatei> <sekunden>\n"
+             f"        bekommen: {len(sys.argv) - 1} Argument(e)")
+```
 
 ## BEFUND: Das Fenster der Runde erreichte OCR nie
 

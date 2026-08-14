@@ -64,6 +64,38 @@ _BEZUG = re.compile(
     r")\b", re.IGNORECASE)
 
 
+# T-7.5: derselbe Zuschnitt wie `_BEZUG`, fuer die VERGANGENHEIT. Ebenso eng
+# und aus demselben Grund: ein `False` kostet eine Nachfrage, ein `True` zu
+# viel gibt dreissig Tage heraus statt einer Runde.
+#
+# „vorhin", „gestern", „letzte Woche" sind Zeitangaben, mit denen ein Mensch
+# nach etwas Gesehenem fragt. NICHT drin: „nochmal", „wieder", „schon" -- sie
+# stehen in jedem zweiten Satz und wuerden aus jeder Frage eine Archivsuche
+# machen.
+_ZEITBEZUG = re.compile(
+    r"\b("
+    r"vorhin|vorher|eben|gerade eben|"
+    r"gestern|vorgestern|"
+    r"letzte[nrs]? (?:woche|monat|tage?)|"
+    r"heute (?:morgen|frueh|mittag)|"
+    r"neulich|damals|"
+    r"was stand|was war|was hatte ich|"
+    r"gesagt hatte|gelesen hatte"
+    r")\b", re.IGNORECASE)
+
+
+def zeitbezug(aeusserung: str) -> bool:
+    """Fragt diese Aeusserung erkennbar nach der VERGANGENHEIT?
+
+    Getrennt von `bildschirmbezug`, weil beides verschiedene Dinge sind:
+    „was steht auf dem Bildschirm" fragt nach jetzt, „was stand da vorhin"
+    nach dem Archiv. Beides zugleich ist der Normalfall einer Archivfrage --
+    die Suche laeuft deshalb nur, wenn AUCH der Bildschirmbezug erfuellt ist,
+    denn die aeussere Bedingung des Gates gilt unveraendert weiter.
+    """
+    return bool(_ZEITBEZUG.search(aeusserung or ""))
+
+
 class GateFehler(PermissionError):
     """Freigabe verweigert. Nennt IMMER den Grund."""
 
@@ -90,6 +122,11 @@ class Freigabe:
     umfang: dict[str, int]
     eintraege: list[Any] = field(default_factory=list)
     senke: str = "durchgang2"
+    # T-7.5: Treffer aus dem Archiv, GETRENNT vom Live-Kontext. Ein eigenes
+    # Feld und keine Vermischung: der Empfaenger soll sagen koennen, ob ein
+    # Satz von jetzt oder von vorgestern stammt -- und das Audit soll den
+    # Umfang beider Quellen einzeln nennen.
+    archiv: list[Any] = field(default_factory=list)
 
 
 def bildschirmbezug(aeusserung: str) -> bool:
@@ -104,10 +141,14 @@ def bildschirmbezug(aeusserung: str) -> bool:
 class Deklassifizierung:
     """Der eine Weg aus der Quarantaene. Es gibt keinen zweiten."""
 
-    def __init__(self, *, marken, speicher, audit=None,
+    def __init__(self, *, marken, speicher, audit=None, archiv=None,
                  uhr: Callable[[], float] = time.time) -> None:
         self._marken = marken
         self._speicher = speicher
+        # T-7.5: `None` heisst „kein Archiv" und ergibt eine leere
+        # Trefferliste. Der Weg dorthin ist derselbe wie zum Live-Kontext --
+        # dieselbe Reihenfolge, dieselbe Marke, derselbe Schein.
+        self._archiv = archiv
         self._audit = audit
         self._uhr = uhr
         self.abgelehnt: dict[str, int] = {}
@@ -170,13 +211,35 @@ class Deklassifizierung:
         except MarkenFehler:
             raise self._ablehnen(GRUND_MARKE_UNGUELTIG, turn_id) from None
 
-        eintraege = self._speicher.freigeben(Freigabeschein(turn_id=turn_id))
+        schein = Freigabeschein(turn_id=turn_id)
+        eintraege = self._speicher.freigeben(schein)
         umfang = {art: len(liste) for art, liste in eintraege.items()}
         markiert = [markiere(e, Mark.TAINTED)
                     for liste in eintraege.values() for e in liste]
+
+        # T-7.5: das Archiv, mit DEMSELBEN Schein und in DERSELBEN Runde.
+        # Eine Handlung, eine Freigabe: der Nutzer druecke einmal die Taste
+        # und frage einmal. Eine zweite Einloesung waere ein zweiter
+        # Tastendruck fuer eine Frage, ohne dass er erfuehre warum.
+        #
+        # Gesucht wird nur bei erkennbarem ZEITBEZUG. Der Bildschirmbezug
+        # oben gilt unveraendert weiter -- die Suche lockert die Bedingung
+        # nicht, sie verengt sie ein zweites Mal.
+        archiv: list[Any] = []
+        if self._archiv is not None and zeitbezug(aeusserung):
+            try:
+                archiv = list(self._archiv.freigeben(schein, aeusserung))
+            except Exception:  # noqa: BLE001
+                # Ein klemmendes Archiv darf die Freigabe des Live-Kontexts
+                # nicht mitreissen -- und schon gar nicht in eine Ablehnung
+                # verwandeln, die der Nutzer sich nicht erklaeren kann.
+                archiv = []
+            umfang["archiv"] = len(archiv)
+
         self._schreiben(outcome="ok", grund="freigabe", turn_id=turn_id,
                         umfang=umfang)
-        return Freigabe(turn_id=turn_id, umfang=umfang, eintraege=markiert)
+        return Freigabe(turn_id=turn_id, umfang=umfang, eintraege=markiert,
+                        archiv=archiv)
 
 
 # -- Durchgang 1: opake Referenzen -----------------------------------------
