@@ -40,6 +40,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from daimon.common.config import ConfigError, denylist_laden, denylist_pfade
 from daimon.eyes import capture, context, trigger
 from daimon.eyes.change import Fenster, Kette
 from daimon.eyes.screencast import PortalSitzung
@@ -64,10 +65,29 @@ IFACE = "de.daimon.Eyes"
 # fuer eine Rueckfrage brauchbar; 1,7 Kerne den ganzen Tag sind es nicht.
 OCR_ABKUEHLUNG_S = 30.0
 
+# Der Rueckfall, wenn `config/redaktion.yaml` fehlt oder unlesbar ist. Die
+# gepflegte Liste steht dort und wird von ZWEI Stellen gelesen: hier vor dem
+# Diff (Design 4.4) und in der Redaktion vor dem Schreiben (T-7.2). Bis
+# T-7.2 standen hier fuenf Eintraege und dort sechzehn -- wer seine Bank in
+# die Datei eintrug, hatte sie trotzdem im Quarantaene-Kontext.
 DENYLIST_VORGABE = (
     "org.keepassxc.KeePassXC", "keepassxc",
     "org.gnome.Seahorse", "bitwarden", "1password",
 )
+
+
+def _denylist_aus_datei() -> tuple[str, ...]:
+    """Die gepflegte Liste, sonst die Vorgabe. Nie eine leere Liste.
+
+    Eine fehlende Datei darf nicht dazu fuehren, dass ein Passwortmanager
+    gelesen wird -- sie faellt auf die eingebauten fuenf zurueck, nicht auf
+    gar nichts.
+    """
+    try:
+        eintraege, _ = denylist_laden(denylist_pfade())
+    except ConfigError:
+        return DENYLIST_VORGABE
+    return tuple(eintraege) or DENYLIST_VORGABE
 
 
 def serial_zu_node(node: int, *, timeout_s: float = 10.0) -> str | None:
@@ -93,10 +113,12 @@ class Augen:
     """Ein Dienst, der hinsieht -- und zwischen den Blicken nichts tut."""
 
     def __init__(self, *, verzeichnis: Path | None = None,
-                 denylist=DENYLIST_VORGABE,
+                 denylist=None,
                  periode_s: float = trigger.PERIODE_S,
                  ocr_abkuehlung_s: float = OCR_ABKUEHLUNG_S,
                  ocr_arbeiter: int = 2) -> None:
+        if denylist is None:
+            denylist = _denylist_aus_datei()
         self._tor = trigger.SystemTor()
         self._ausloeser = trigger.Ausloeser(tor=self._tor, periode_s=periode_s)
         self._kette = Kette(tor=self._tor, denylist=denylist)

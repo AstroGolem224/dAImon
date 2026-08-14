@@ -36,8 +36,9 @@ import time
 from pathlib import Path
 
 from daimon.common import ipc
-from daimon.common.config import load
+from daimon.common.config import denylist_laden, denylist_pfade, load
 from daimon.common.logging import get_logger
+from daimon.recorder.redaktion import Redaktion
 from daimon.recorder.store import Archiv, ArchivFehler
 
 PRODUZENT = "recorder"
@@ -53,10 +54,16 @@ MAX_ZEILE = 256 * 1024
 
 class Recorder:
     def __init__(self, *, runtime_dir: Path, archiv: Archiv,
+                 redaktion: Redaktion | None = None,
                  aufraeum_intervall_s: float = 3600.0,
                  erlaubte_units=ERLAUBTE_UNITS, log=None) -> None:
         self.runtime_dir = runtime_dir
         self.archiv = archiv
+        # Ohne Redaktion keine Ablage. Eine Vorgabe „dann eben ungefiltert"
+        # waere genau die Reihenfolge, die T-7.2 umdreht -- deshalb steht
+        # hier eine leere Denylist und KEIN Weg an ihr vorbei.
+        self.redaktion = redaktion or Redaktion(runtime_dir=runtime_dir,
+                                                kennungen={})
         self.intervall = float(aufraeum_intervall_s)
         # `None` heisst "jede Unit" und ist der Weg, den ein Prueflauf ohne
         # systemd nimmt. Im Betrieb steht hier die Liste.
@@ -78,12 +85,25 @@ class Recorder:
             ipc.pruefe_typ(PRODUZENT, typ)
         except ipc.MessageTypeError as exc:
             return {"v": 1, "ok": False, "grund": "typ", "meldung": str(exc)}
+        # T-7.2: DIE REDAKTION STEHT VOR DEM SCHREIBEN, nicht dahinter. Es
+        # gibt in diesem Prozess keinen anderen Aufruf von
+        # `Archiv.schreiben` -- wer einen ergaenzt, hebt den Task auf.
+        urteil = self.redaktion.urteil(
+            str(nachricht.get("klasse", "")),
+            drm=bool(nachricht.get("drm", False)),
+            stufe=str(nachricht.get("stufe", "redacted")))
+        if not urteil.schreibt:
+            self.log.info("nicht mitgeschnitten",
+                          DAIMON_GRUND=urteil.grund,
+                          DAIMON_KLASSE=str(nachricht.get("klasse", ""))[:120])
+            return {"v": 1, "ok": True, "id": 0, "stufe": urteil.stufe,
+                    "grund": urteil.grund}
         try:
             eintrag_id = self.archiv.schreiben(
                 str(nachricht.get("art", "")),
                 str(nachricht.get("text", "")),
                 fenster=str(nachricht.get("fenster", "")),
-                stufe=str(nachricht.get("stufe", "redacted")))
+                stufe=urteil.stufe)
         except ArchivFehler as exc:
             # Eine abgewiesene Ablage ist ein Befund und kein Rauschen: sie
             # heisst, dass jemand etwas schreiben wollte, was nicht ins
@@ -183,6 +203,22 @@ class Recorder:
             self._srv = None
 
 
+def _wahrnehmung_an() -> bool:
+    """Sehen die Augen gerade? Gelesen am Unit-Zustand, nicht an einer Flagge.
+
+    Der Import steht hier und nicht oben: `daimon.eyes.killswitch` ist der
+    Kill-Switch der Augen, und dieser Dienst soll ihn benutzen koennen, ohne
+    ihn beim Start zu laden. Faellt die Messung aus, gilt „an" -- die
+    Redaktion sperrt dann weiter ueber Denylist und Kennung, statt still
+    alles zu verwerfen.
+    """
+    from daimon.eyes.killswitch import lampe
+    try:
+        return lampe() == "an"
+    except OSError:
+        return True
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="dAImon Archivdienst (T-7.1)")
     ap.add_argument("--runtime-dir", type=Path, default=None)
@@ -197,11 +233,24 @@ def main(argv: list[str] | None = None) -> int:
     cfg = load(make_dirs=False)
     rt = args.runtime_dir or cfg.runtime_dir
     grenze = float(cfg.get("archiv.grenze_gb", 5.0)) * 1024 ** 3
+
+    log = get_logger("daimon-recorder")
+    denylist, herkunft = denylist_laden(denylist_pfade())
+    if herkunft is None:
+        # Keine Liste ist KEIN Grund, alles mitzuschneiden -- aber auch kein
+        # Grund, den Dienst zu verweigern: unbekannte Fenster sperrt die
+        # Redaktion ohnehin. Laut im Journal, damit es auffaellt.
+        log.warn("keine Denylist gefunden -- nur der Fail-closed-Pfad greift")
     dienst = Recorder(
         runtime_dir=rt,
         archiv=Archiv(args.archiv, grenze_bytes=int(grenze)),
+        redaktion=Redaktion(denylist=denylist, runtime_dir=rt,
+                            wahrnehmung_an=_wahrnehmung_an),
         aufraeum_intervall_s=float(cfg.get("archiv.aufraeum_intervall_s",
-                                           3600.0)))
+                                           3600.0)),
+        log=log)
+    log.info("Denylist geladen", DAIMON_QUELLE=str(herkunft or ""),
+             DAIMON_EINTRAEGE=len(denylist))
 
     def halt(*_: object) -> None:
         dienst.stop()

@@ -5,6 +5,10 @@ Testprozess IST keine `daimon-eyes.service`. Wer mit der scharfen Unit-Liste
 verbindet, muss abgewiesen werden -- und wer ohne sie verbindet, muss
 durchkommen. Ohne das zweite waere das erste auch dann gruen, wenn der
 Dienst gar nicht horcht.
+
+Jede Meldung traegt `klasse`: seit T-7.2 sperrt die Redaktion ein Fenster
+ohne Kennung, und ohne dieses Feld pruefte dieser Modul nur noch, dass die
+Redaktion greift.
 """
 from __future__ import annotations
 
@@ -81,7 +85,8 @@ def _sende(rt, nachricht: dict) -> dict:
 def test_ablage_ueber_den_socket(dienst):
     antwort = _sende(dienst.runtime_dir,
                      {"v": 1, "typ": "archiv", "art": ART_OCR,
-                      "text": "Kanarienvogel", "fenster": "Mail"})
+                      "klasse": "kate", "text": "Kanarienvogel",
+                      "fenster": "Mail"})
     assert antwort["ok"] is True and antwort["id"] > 0
     (eintrag,) = _lesen(dienst, ART_OCR)
     assert eintrag["wert"].value == "Kanarienvogel"
@@ -97,7 +102,8 @@ def test_fremder_typ_wird_abgewiesen(dienst):
 
 def test_rohaudio_ueber_den_socket_abgewiesen(dienst):
     antwort = _sende(dienst.runtime_dir,
-                     {"v": 1, "typ": "archiv", "art": "audio", "text": "x"})
+                     {"v": 1, "typ": "archiv", "art": "audio",
+                      "klasse": "kate", "text": "x"})
     assert antwort["ok"] is False and antwort["grund"] == "abgewiesen"
     assert _lesen(dienst) == []
 

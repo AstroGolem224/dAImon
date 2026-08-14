@@ -15,7 +15,7 @@ import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 APP = "daimon"
 
@@ -156,6 +156,41 @@ def runtime_dir() -> Path:
             "nutzereigenes tmpfs; /tmp waere fuer andere Nutzer einsehbar."
         )
     return Path(wert) / APP
+
+
+def denylist_laden(pfade: Iterable[Path]) -> tuple[list[str], Path | None]:
+    """T-7.2: die Anwendungs-Denylist. Erste lesbare Datei gewinnt.
+
+    Hier und nicht im Recorder, weil sie ZWEI Leser hat: die Gatterkette der
+    Augen prueft sie vor dem Diff (Design 4.4), die Redaktion vor dem
+    Schreiben (T-7.2). Zwei Listen waeren zwei Wahrheiten -- und die
+    gefaehrliche Haelfte faellt erst auf, wenn etwas mitgeschnitten ist.
+
+    Die Herkunft kommt mit zurueck, damit ein Dienst sie ins Journal
+    schreiben kann: eine Denylist, von der niemand weiss, welche Datei sie
+    war, ist im Zweifel die falsche.
+    """
+    import yaml
+
+    for pfad in pfade:
+        try:
+            daten = yaml.safe_load(Path(pfad).read_text(encoding="utf-8"))
+        except OSError:
+            continue
+        except yaml.YAMLError as exc:
+            # Eine kaputte Denylist ist gefaehrlicher als eine fehlende: sie
+            # sieht aus, als schuetze sie. Laut scheitern.
+            raise ConfigError(f"{pfad}: {exc}") from exc
+        eintraege = (daten or {}).get("denylist") or []
+        return [str(e) for e in eintraege], Path(pfad)
+    return [], None
+
+
+def denylist_pfade() -> list[Path]:
+    """Eigene Datei vor mitgelieferter -- wer ergaenzt, verliert die Vorgabe
+    beim naechsten `git pull` nicht."""
+    return [config_dir() / "redaktion.yaml",
+            Path(__file__).resolve().parents[2] / "config" / "redaktion.yaml"]
 
 
 def _mische(vorgabe: dict, drueber: dict) -> dict:
