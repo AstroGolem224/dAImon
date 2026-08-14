@@ -273,6 +273,31 @@ class Ohren:
                 w.writeframes(memoryview(chunk).cast("B"))
         return pfad
 
+    def _archivieren(self, text: str, marke: str) -> None:
+        """T-7.4: das Transkript ins Archiv -- und NUR das Transkript.
+
+        Der Ohren-Dienst hat den Text ohnehin in der Hand; ein zweiter
+        STT-Aufruf im Recorder waere ein zweites Modell im Speicher, ein
+        eigener Mikrofonpfad dort waere ein zweiter offener Strom. Das
+        Rohaudio verlaesst diesen Prozess nicht: `melde_transkript` hat gar
+        keinen Parameter dafuer.
+
+        Faellt der Recorder aus oder ist er pausiert (T-7.3), laeuft der
+        Aufruf ins Leere und der Sprachpfad merkt nichts davon. Ein Archiv,
+        das eine Antwort verzoegert, waere ein schlechter Handel -- deshalb
+        eine Sekunde Zeitlimit und kein Weiterreichen von Ausnahmen.
+        """
+        try:
+            from daimon.recorder.audio import melde_transkript
+            ergebnis = melde_transkript(self.runtime_dir, text, marke=marke)
+        except Exception as exc:  # noqa: BLE001 -- der Sprachpfad steht nie
+            self.log.warn("Archivmeldung fehlgeschlagen",
+                          DAIMON_GRUND=str(exc)[:120])
+            return
+        if not ergebnis.get("ok"):
+            self.log.info("nicht archiviert", DAIMON_ACTION="ears_archiv",
+                          DAIMON_GRUND=str(ergebnis.get("grund", ""))[:60])
+
     def _runde(self, stuecke: list[Any], *, listening_bei_beginn: bool) -> None:
         t_segment = self._uhr()
         wav = self._wav_schreiben(stuecke)
@@ -295,10 +320,12 @@ class Ohren:
                           DAIMON_GRUND=str(stt.get("grund", "leer"))[:60])
             return
 
+        marke = marke_fuer(listening_bei_beginn=listening_bei_beginn)
+        self._archivieren(text, marke)
+
         antwort = self._ruf(str(self.runtime_dir / MIND_SOCKET),
                             {"v": 1, "art": "frage", "text": text,
-                             "marke": marke_fuer(
-                                 listening_bei_beginn=listening_bei_beginn)})
+                             "marke": marke})
         t2 = self._uhr()
         # Gesprochen wird, was der Mind als `antwort` mitgibt -- AUCH bei
         # ok=False: eine Absage mit kuratierter Rueckmeldung (T-4.19,

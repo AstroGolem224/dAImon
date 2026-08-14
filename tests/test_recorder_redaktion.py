@@ -16,6 +16,7 @@ import time
 import pytest
 
 from daimon.common import ipc
+from tests.recorder_hilfen import starte as _starte
 from daimon.recorder.daemon import PRODUZENT, Recorder
 from daimon.common.config import ConfigError, denylist_laden
 from daimon.recorder.redaktion import (
@@ -136,19 +137,6 @@ def test_mitgelieferte_denylist_ist_lesbar():
 
 # -- Am laufenden Dienst: der Kanarienvogel landet nirgends ----------------
 
-def _starte(d: Recorder) -> threading.Thread:
-    def fahren() -> None:
-        d.start()
-        d.lauf()
-
-    faden = threading.Thread(target=fahren, daemon=True)
-    faden.start()
-    pfad = ipc.socket_path(d.runtime_dir, PRODUZENT)
-    frist = time.monotonic() + 5.0
-    while not pfad.exists() and time.monotonic() < frist:
-        time.sleep(0.02)
-    assert pfad.exists(), "Dienst horcht nicht"
-    return faden
 
 
 def _sende(rt, nachricht: dict) -> dict:

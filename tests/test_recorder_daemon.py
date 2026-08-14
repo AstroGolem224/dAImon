@@ -20,30 +20,11 @@ import time
 import pytest
 
 from daimon.common import ipc
+from tests.recorder_hilfen import starte as _starte
 from daimon.recorder.daemon import PRODUZENT, Recorder
 from daimon.recorder.store import ART_OCR, Archiv
 
 
-def _starte(d: Recorder) -> threading.Thread:
-    """Dienst in EINEM Faden starten und fahren.
-
-    Der Dienst ist einfaedig, und seine SQLite-Verbindung gehoert dem Faden,
-    der sie geoeffnet hat. Wer `start()` hier und `lauf()` dort aufruft,
-    prueft nicht den Dienst, sondern baut sich einen Fehler, den es im
-    Betrieb nicht gibt.
-    """
-    def fahren() -> None:
-        d.start()
-        d.lauf()
-
-    faden = threading.Thread(target=fahren, daemon=True)
-    faden.start()
-    pfad = ipc.socket_path(d.runtime_dir, PRODUZENT)
-    frist = time.monotonic() + 5.0
-    while not pfad.exists() and time.monotonic() < frist:
-        time.sleep(0.02)
-    assert pfad.exists(), "Dienst horcht nicht"
-    return faden
 
 
 @pytest.fixture

@@ -41,7 +41,7 @@ from daimon.common.config import denylist_laden, denylist_pfade, load
 from daimon.common.logging import get_logger
 from daimon.recorder import pause
 from daimon.recorder.redaktion import Redaktion
-from daimon.recorder.store import Archiv, ArchivFehler
+from daimon.recorder.store import ART_TRANSKRIPT, Archiv, ArchivFehler
 
 PRODUZENT = "recorder"
 
@@ -71,7 +71,11 @@ def _fokus_klasse() -> str:
 
 # Wer an diesem Socket sprechen darf. Eine Liste und kein Feld in der
 # Nachricht -- sonst suchte sich der Absender seine Rolle selbst aus.
-ERLAUBTE_UNITS = ("daimon-eyes.service",)
+# T-7.4 laesst diese Menge um genau einen Eintrag wachsen: der Ohren-Dienst
+# meldet das Transkript, das er ohnehin in der Hand hat. Er bekommt damit
+# KEIN Leserecht und keine zweite Faehigkeit -- derselbe Socket, derselbe
+# eine Typ, dieselbe Redaktion davor.
+ERLAUBTE_UNITS = ("daimon-eyes.service", "daimon-ears.service")
 
 # Ein Zeilenzulauf ist eine Meldung. Groesser als das ist kein OCR-Text mehr,
 # sondern ein Versuch, den Dienst mit einer Zeile vollzuschreiben.
@@ -126,10 +130,18 @@ class Recorder:
         # T-7.2: DIE REDAKTION STEHT VOR DEM SCHREIBEN, nicht dahinter. Es
         # gibt in diesem Prozess keinen anderen Aufruf von
         # `Archiv.schreiben` -- wer einen ergaenzt, hebt den Task auf.
-        urteil = self.redaktion.urteil(
-            str(nachricht.get("klasse", "")),
-            drm=bool(nachricht.get("drm", False)),
-            stufe=str(nachricht.get("stufe", "redacted")))
+        #
+        # T-7.4: ein Transkript hat kein Fenster. Es bekommt deshalb sein
+        # eigenes Urteil -- nicht die Fensterpruefung mit leerer Klasse, die
+        # es als „Kennung fehlt" verwerfen wuerde.
+        stufe = str(nachricht.get("stufe", "redacted"))
+        if str(nachricht.get("art", "")).strip().lower() == ART_TRANSKRIPT:
+            urteil = self.redaktion.urteil_ton(stufe=stufe)
+        else:
+            urteil = self.redaktion.urteil(
+                str(nachricht.get("klasse", "")),
+                drm=bool(nachricht.get("drm", False)),
+                stufe=stufe)
         if not urteil.schreibt:
             self.log.info("nicht mitgeschnitten",
                           DAIMON_GRUND=urteil.grund,
@@ -235,9 +247,17 @@ class Recorder:
                 self._letzte_automatik = jetzt
                 if self.automatik():
                     break
+            # Den Server EINMAL greifen: `stop()` darf aus einem anderen
+            # Faden kommen (Signalgriff, Test) und setzt `_srv` auf None --
+            # zwischen der Pruefung oben und dem `accept()` hier. Ohne die
+            # lokale Referenz stirbt die Schleife dann an einem
+            # AttributeError statt sauber zu enden.
+            srv = self._srv
+            if srv is None:
+                break
             try:
                 conn, peer = ipc.accept(
-                    self._srv, PRODUZENT,
+                    srv, PRODUZENT,
                     erlaubte_units=self.erlaubte_units,
                     audit=lambda was, p: self.log.info(
                         "ipc", DAIMON_ACTION=was, DAIMON_PEER_PID=p.pid,

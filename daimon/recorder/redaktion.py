@@ -166,6 +166,25 @@ class Redaktion:
 
     # -- Das Urteil --------------------------------------------------------
 
+    def urteil_ton(self, *, stufe: str = STUFE_REDACTED) -> Urteil:
+        """T-7.4: das Urteil fuer ein Transkript. Kein Fenster, keine Klasse.
+
+        Die Anwendungs-Denylist greift hier nicht, und das ist kein Versehen:
+        sie sperrt FENSTER, und ein gesprochener Satz hat keines. Wer sie
+        trotzdem anlegte -- „der Passwortmanager war im Fokus, also nichts
+        aufzeichnen" --, koppelte den Ton an den Bildschirm und liesse ihn
+        genau dann durch, wenn kein Fenster vorn ist.
+
+        Was greift: der Privatmodus und die abgeschaltete Wahrnehmung. Die
+        Pause aus T-7.3 braucht hier nichts, denn sie stoppt den Dienst --
+        und ein gestoppter Recorder nimmt keine Meldung mehr an.
+        """
+        if self._uhr() < privat_bis(self.runtime_dir):
+            return Urteil(STUFE_TRANSIENT, GRUND_PRIVAT)
+        if not self.wahrnehmung_an():
+            return Urteil(STUFE_TRANSIENT, GRUND_WAHRNEHMUNG_AUS)
+        return Urteil(stufe)
+
     def urteil(self, klasse: str, *, drm: bool = False,
                stufe: str = STUFE_REDACTED) -> Urteil:
         """Reihenfolge wie in Design 4.4: Denylist zuerst, dann DRM.

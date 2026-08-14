@@ -66,6 +66,38 @@ aus → 0. Wer T-5.12 nachzieht, nimmt sie; ich habe den Kill-Switch selbst
 **nicht angefasst**, weil das eine eigene Entscheidung an einer
 Sicherheitszusage ist.
 
+## BEFUND: T-7.4 steht auf zwei falschen Prämissen
+
+**Erstens: Design §1.1 und §1.2 widersprechen sich beim Ton.** §1.1 und
+T-3.15 sagen „kein Mikrofon ohne Push-to-Talk" — nicht „wir verwerfen, was
+ohne PTT hereinkommt", sondern „es kommt nichts herein": ohne `voice.listening`
+existiert **kein `Aufnahme`-Objekt**. §1.2 verlangt einen durchgehenden
+Tonmitschnitt. Beides zugleich geht nicht.
+
+Aufgelöst **zugunsten von §1.1**, entschieden am 14.08.: T-7.4 archiviert nur
+Transkripte von PTT-Abschnitten. Das ist kein Dauermitschnitt des Tons, und
+§1.2 ist an dieser Stelle **zu berichtigen**, nicht zu erfüllen. Wer §1.2
+wörtlich will, ändert zuerst §1.1 und beantwortet dabei §201 StGB — eine
+Designentscheidung, kein Task.
+
+**Zweitens: „bei Stille beendet er sich wie gehabt" beschreibt einen
+Mechanismus, den es nicht gibt.** Der STT-Dienst hat **keinen Leerlauf-Exit**,
+ausdrücklich seit T-3.8: kein VRAM zurückzugeben, 843 ms Ladezeit, das Modell
+im Speicher *ist* die Latenzzusage (`daimon/gpu/stt.py`, „Kein Leerlauf-Exit").
+„Bleibt warm" ist damit immer erfüllt, und die zweite Hälfte der Zeile ist
+falsch. Es wurde dort **nichts gebaut**.
+
+**Und der Live-Pfad schreibt Rohaudio auf die Platte.** `ears-<pid>-<n>.wav`
+im Laufzeitverzeichnis, 0600, im `finally` gelöscht — die Übergabe an den STT
+geht über eine Datei. T-7.4 sagt „kein Rohaudio, auch nicht kurz, auch nicht
+in einem Temp-Verzeichnis". Für den **Archivpfad** gilt das und ist geprüft;
+der **Live-Pfad** ist unangetastet, weil eine Änderung der STT-Schnittstelle
+T-3.8 und 26 Tests berührt. Eigener Task.
+
+**Nicht live belegt:** die Kette Mikrofon → Transkript → Archiv. Sie braucht
+einen Menschen, der die Taste drückt und spricht — dieselbe Lücke, die
+`phase3-latency.json` mit `n: 0` ehrlich ausweist.
+
 ## Zwei Aufträge dieser Übergabe sind erledigt
 
 1. **„AUFTRAG: Phase 7 ausarbeiten"** (unten, Stand 12.08.) — **erledigt.**
