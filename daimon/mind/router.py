@@ -35,6 +35,7 @@ import json
 import os
 import re
 import socket
+from pathlib import Path
 import subprocess
 import time
 
@@ -288,6 +289,32 @@ class EchteQuellen:
             raise OSError(f"kwin: {type(exc).__name__}") from exc
         return fenster_lesen(roh)
 
+    def kontext(self, text: str) -> dict:
+        """T-5.9b: der Bildschirmkontext, ueber das Gate im Hub.
+
+        Gefragt wird IMMER -- das Gate entscheidet. Eine Bezugsliste hier
+        waere eine zweite Kopie im Prozess mit dem Modell, und zwei Erkenner
+        an zwei Orten sind zwei Wahrheiten.
+
+        Die `turn_id` wird NICHT mitgeschickt: sie entsteht im Hub und
+        verlaesst ihn nie. Wer sie nennen muesste, koennte sie nur raten.
+        """
+        pfad = str(Path(self.hub_socket).with_name("kontext.sock"))
+        c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        c.settimeout(5.0)
+        try:
+            c.connect(pfad)
+            c.sendall(json.dumps({"v": 1, "art": "deklassifizieren",
+                                  "text": text}).encode() + b"\n")
+            roh = c.makefile("rb").readline(1 << 20)
+        finally:
+            c.close()
+        try:
+            antwort = json.loads(roh)
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise OSError("hub: Kontextantwort unlesbar") from exc
+        return antwort if isinstance(antwort, dict) else {}
+
     def sitzung(self) -> dict:
         c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         c.settimeout(5.0)
@@ -343,6 +370,9 @@ class Router:
             getattr(quellen, "testprofil", False))
         self.runden = 0
         self.api_aufrufe = 0
+        # T-5.9b: wie oft das Gate Kontext freigegeben hat. Eine Absage ist
+        # der Normalfall (keine Rundenmarke), deshalb zaehlt nur der Erfolg.
+        self.deklassifiziert = 0
         self._referenzen: dict[str, dict] = {}
 
     # -- Referenztabelle ---------------------------------------------------
@@ -510,6 +540,28 @@ class Router:
             except (OSError, KeyError, TypeError, ValueError) as exc:
                 return self._nein("quelle_weg", f"{type(exc).__name__}",
                                   weg="api")
+
+        # T-5.9b: DURCHGANG 2, und nur hier. Freigegebener Kontext ist
+        # `tainted`; die Senkentabelle aus T-3.13b verbietet ihn im
+        # werkzeugfaehigen Durchgang 1 und erlaubt ihn hier.
+        #
+        # Gefragt wird IMMER. Das Gate im Hub prueft Rundenmarke und
+        # Bildschirmbezug -- eine Vorpruefung an dieser Stelle waere eine
+        # zweite Kopie der Bezugsliste im Prozess mit dem Modell.
+        #
+        # Eine Absage ist KEIN Fehler: sie ist der Normalfall, sobald jemand
+        # ohne Push-to-Talk fragt. Der Mind antwortet dann ohne Bildschirm.
+        holen = getattr(self._quellen, "kontext", None)
+        if holen is not None:
+            try:
+                frei = holen(text) or {}
+            except (OSError, KeyError, TypeError, ValueError):
+                frei = {}
+            if frei.get("ok") and (frei.get("eintraege") or frei.get("archiv")):
+                kontext = dict(kontext or {})
+                kontext["bildschirm"] = list(frei.get("eintraege") or [])
+                kontext["archiv"] = list(frei.get("archiv") or [])
+                self.deklassifiziert += 1
 
         antwort = self._mind.frage_api(text, kontext)
         if not antwort.get("ok"):

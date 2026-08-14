@@ -221,13 +221,27 @@ class Recorder:
 
     def start(self) -> None:
         self.archiv.migrieren()
+        # ERST aufraeumen und die Automatik einmal fahren, DANN horchen.
+        # Umgekehrt existiert der Socket bereits, waehrend der Dienst noch
+        # `pw-dump` startet und den Fokus abfragt -- ein Klient verbindet
+        # sich dann erfolgreich und wartet auf eine Antwort, die erst nach
+        # dieser Arbeit kommt. Unter Last hat das am 14.08. drei Pruefungen
+        # in Zeitueberschreitungen laufen lassen, waehrend dieselben
+        # Pruefungen einzeln gruen waren. Wer horcht, bevor er bereit ist,
+        # verteilt Zeitueberschreitungen.
+        self.aufraeumen()
+        if self.automatik():
+            return
         self._srv = ipc.listen(self.runtime_dir, PRODUZENT)
         self._srv.settimeout(1.0)
         self.log.info("bereit", DAIMON_ARCHIV=str(self.archiv.pfad),
                       DAIMON_GRENZE_BYTES=self.archiv.grenze_bytes)
 
     def lauf(self) -> None:
-        assert self._srv is not None, "start() zuerst"
+        if self._srv is None:
+            # `start()` hat schon pausiert -- es gibt nichts zu bedienen.
+            self.archiv.schliessen()
+            return
         try:
             self._schleife()
         finally:
@@ -238,7 +252,6 @@ class Recorder:
             self.archiv.schliessen()
 
     def _schleife(self) -> None:
-        self.aufraeumen()          # einmal beim Start, nicht erst nach 1 h
         while not self._halt:
             # Der Herzschlag je Runde: das Sprite soll zeigen, dass gerade
             # mitgeschnitten wird, und zwar den echten Zustand. Ein Schreiben

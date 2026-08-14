@@ -63,6 +63,14 @@ TICKET_SOCKET = "ticket.sock"
 # Mind schickt eine Zeile und bekommt eine zurueck; er sendet damit nichts
 # in den Ereignisstrom und bekommt keine Rolle darin.
 AKTION_SOCKET = "aktion.sock"
+# T-5.9b: der Weg des Minds zum Deklassifizierungs-Gate. EIGENER Socket mit
+# eigener Unit-Allowlist, dieselbe Bauart wie `recorder.sock`: ein Socket,
+# ein Typ, ein erlaubter Absender. Nicht auf `aktion.sock` -- der traegt
+# Tickets und Freigaben, und Bildschirmkontext hat dort nichts zu suchen.
+# Nicht auf `state.sock` -- der ist der lesende Diagnoseweg, den mehrere
+# Dienste kennen, und damit die schwaechste Tuer im Haus.
+KONTEXT_SOCKET = "kontext.sock"
+KONTEXT_UNITS = ("daimon-mind.service",)
 # Wie lange der Hub auf die Antwort des Menschen wartet. Laenger als ein
 # Blick, kuerzer als ein Kaffee -- und danach `cancelled`, nicht `declined`.
 RUECKFRAGE_FRIST_S = 120.0
@@ -162,6 +170,16 @@ class Hub:
         # bestaetigt wird hier.
         self.marken = MarkenBuch(log=self.log)
         self.freigaben = FreigabeBuch(log=self.log)
+        # T-5.9b: das Gate aus T-5.9, hier zum ERSTEN MAL verdrahtet. Es war
+        # gebaut und geprueft (vier Pruefstaende), aber kein Prozess hat es
+        # instanziiert -- also erreichte passiv Wahrgenommenes das Modell
+        # nicht, weil niemand fragte, und nicht, weil das Gate verweigerte.
+        # Dieselbe Sorte Luecke wie beim Ticketbuch in T-3.11.
+        #
+        # Erst beim ersten Aufruf gebaut: der Kontextspeicher liest beim
+        # Anlegen nichts, aber die Archivsuche braucht `data_dir()`, und der
+        # Hub soll ohne Archiv starten koennen.
+        self._gate = None
         # T-3.7: die Ladesperre. Hoechstens ein Ladevorgang gleichzeitig, und
         # zwar HIER, weil ein Worker nur sich selbst kennt. `_gpu_sperre` ist
         # (Marke, Ablauf in monotoner Zeit) -- monoton, weil eine
@@ -968,8 +986,72 @@ class Hub:
             except OSError:
                 pass
 
+    # -- T-5.9b: Deklassifizierung ------------------------------------------
+
+    def _gate_teile(self):
+        """Marken, Kontextspeicher, Archiv -- beim ersten Aufruf gebaut."""
+        if self._gate is None:
+            from daimon.eyes.context import Kontextspeicher
+            from daimon.hub.declassify import Deklassifizierung
+            from daimon.recorder.suche import Archivsuche
+            self._gate = Deklassifizierung(
+                marken=self.marken,
+                speicher=Kontextspeicher(),
+                archiv=Archivsuche(),
+                audit=getattr(self, "audit", None))
+        return self._gate
+
+    def kontext_anfrage(self, anfrage: object) -> dict:
+        """Der eine Weg des Minds an den Bildschirmkontext.
+
+        DIE `turn_id` KOMMT NICHT AUS DER ANFRAGE. Sie entsteht im Hub aus
+        `secrets.token_hex` und verlaesst ihn nie; der Hub fragt sich selbst
+        ueber `MarkenBuch.aktuelle()`, welche Runde offen ist. Ein Absender,
+        der sie nennen muesste, koennte sie nur raten -- oder sie waere ihm
+        gesagt worden, und dann waere sie ein Feld, das der Absender setzt.
+
+        Der Mind fragt IMMER; das Gate entscheidet. Eine zweite Kopie der
+        Bezugsliste im Prozess mit dem Modell waere eine zweite Wahrheit --
+        genau der Riss, der bei der Denylist aufgefallen ist.
+        """
+        from daimon.hub.declassify import GateFehler
+
+        if not isinstance(anfrage, dict):
+            return {"v": 1, "ok": False, "grund": "unlesbar"}
+        if anfrage.get("art") != "deklassifizieren":
+            return {"v": 1, "ok": False, "grund": "unbekannte_art"}
+        text = anfrage.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return {"v": 1, "ok": False, "grund": "kein_text"}
+
+        try:
+            gate = self._gate_teile()
+            freigabe = gate.freigeben(aeusserung=text,
+                                      turn_id=self.marken.aktuelle())
+        except GateFehler as exc:
+            self.diag.verworfen(f"kontext_{exc.grund}")
+            return {"v": 1, "ok": False, "grund": exc.grund}
+        except Exception as exc:  # noqa: BLE001
+            # Ein klemmender Kontextspeicher darf den Sprachpfad nicht
+            # mitreissen: der Mind bekommt eine Absage und antwortet ohne
+            # Bildschirm, statt gar nicht zu antworten.
+            self.log.warn("Deklassifizierung gescheitert",
+                          DAIMON_GRUND=f"{type(exc).__name__}: {exc}"[:200])
+            return {"v": 1, "ok": False, "grund": "gate_weg"}
+
+        # Herausgegeben wird TEXT, nicht das Objekt: `Marked` ueberlebt keine
+        # JSON-Grenze, und der Empfaenger markiert selbst neu. Deshalb steht
+        # `senke` mit dabei -- der Mind darf das nur in Durchgang 2 verwenden.
+        return {"v": 1, "ok": True, "turn_id": freigabe.turn_id,
+                "umfang": freigabe.umfang, "senke": freigabe.senke,
+                "eintraege": [str(getattr(e, "value", e))
+                              for e in freigabe.eintraege],
+                "archiv": [str(getattr(e, "value", e))
+                           for e in freigabe.archiv]}
+
     def _horche_einfach(self, dateiname: str, liefere, *,
-                        liest: bool = False, nebenlaeufig: bool = False) -> None:
+                        liest: bool = False, nebenlaeufig: bool = False,
+                        erlaubte_units: tuple[str, ...] | None = None) -> None:
         """Ein Socket, eine Zeile JSON, fertig. Fuer State und Diagnose --
         beide sind lesend und brauchen kein Protokoll.
 
@@ -995,6 +1077,21 @@ class Hub:
                 continue
             except OSError:
                 break
+            # T-5.9b: nur der Kontextsocket setzt `erlaubte_units`. Die
+            # Peer-Pruefung ist ein Wegweiser und keine Authentifizierung
+            # (Design 1.3) -- sie haelt einen falsch verdrahteten eigenen
+            # Dienst auf und macht im Nachhinein sichtbar, wer gefragt hat.
+            if erlaubte_units is not None:
+                try:
+                    peer = ipc.peer_of(conn, dateiname)
+                    if peer.unit not in erlaubte_units:
+                        raise ipc.PeerError(f"Unit {peer.unit!r}")
+                except ipc.PeerError as exc:
+                    self.log.warn("Kontextanfrage von fremder Unit",
+                                  DAIMON_SOCKET=dateiname,
+                                  DAIMON_GRUND=str(exc)[:120])
+                    conn.close()
+                    continue
             if nebenlaeufig:
                 # Ein Thread je Verbindung -- und zwar NUR fuer den
                 # Aktionsendpunkt. Grund, am 10.08. als Haenger gemessen: der
@@ -1108,6 +1205,13 @@ class Hub:
         t = threading.Thread(target=self._horche_einfach,
                              args=(AKTION_SOCKET, self.aktion_anfrage),
                              kwargs={"liest": True, "nebenlaeufig": True},
+                             daemon=True)
+        t.start()
+        self._threads.append(t)
+        t = threading.Thread(target=self._horche_einfach,
+                             args=(KONTEXT_SOCKET, self.kontext_anfrage),
+                             kwargs={"liest": True,
+                                     "erlaubte_units": KONTEXT_UNITS},
                              daemon=True)
         t.start()
         self._threads.append(t)

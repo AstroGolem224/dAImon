@@ -1573,6 +1573,20 @@ pytest -q
 - **Verifikation:** `tests/verify/T-5.9.sh` (eingefroren) — prüft einzeln: ohne Marke keine Freigabe; **mit Kontingent aus Wake-Word keine Freigabe**; mit Marke aber ohne Bildschirmbezug keine; mit beidem schon; abgelaufene Marke keine. Zusätzlich wird die Quarantäne aus T-5.7 hier **aktiv angegriffen**: direkte Leseversuche am Gate ohne Marke müssen scheitern
 - **Agent:** builder · **Umfang:** L
 
+### T-5.9b — Das Gate verdrahten
+- **Ziel:** Freigegebener Kontext erreicht das Modell — heute erreicht ihn niemand.
+- **Dateien:** `daimon/hub/daemon.py` [ändern], `daimon/mind/router.py` [ändern], `daimon/mind/mind.py` [ändern]
+- **Abhängigkeiten:** T-5.9, T-7.5
+  > **Nachgetragen am 14.08.** `Deklassifizierung` wird in der gesamten Anwendung **nirgends instanziiert** — nur in vier Prüfständen. Das Gate ist gebaut und geprüft, der Kontextspeicher füllt sich, und dazwischen fehlt die Zeile, die beides verbindet. Passiv Wahrgenommenes erreicht das Modell deshalb nicht, weil niemand fragt — nicht, weil das Gate verweigert.
+- **Akzeptanz:**
+  - [ ] **Die `turn_id` wandert nicht.** Der Hub fragt sich selbst über `MarkenBuch.aktuelle()`, welche Runde offen ist — die Kennung entsteht aus `secrets.token_hex` und verlässt den Hub nie. Ein Absender, der sie nennen müsste, könnte sie nur raten oder hätte sie gesagt bekommen; dann wäre sie ein Feld, das der Absender setzt
+  - [ ] **Eigener Socket `kontext.sock`, 0600, mit Unit-Allowlist** — nur `daimon-mind`. Dieselbe Bauart wie `recorder.sock`: ein Socket, ein Typ, ein erlaubter Absender. Nicht auf `aktion.sock` (der trägt Tickets) und nicht auf `state.sock` (der ist der lesende Diagnoseweg, den mehrere kennen)
+  - [ ] **Mind fragt IMMER, das Gate entscheidet.** Keine zweite Kopie der Bezugsliste im Prozess mit dem Modell — zwei Erkenner an zwei Orten sind zwei Wahrheiten
+  - [ ] **Durchgang 2, nicht Durchgang 1.** Freigegebener Kontext ist `tainted`; die Senkentabelle aus T-3.13b verbietet ihn im werkzeugfähigen Durchgang und erlaubt ihn hier
+  - [ ] Live-Kontext (T-5.7) und Archivtreffer (T-7.5) kommen aus **demselben** `freigeben()` — eine Handlung, eine Freigabe, eine Einlösung
+- **Verifikation:** `tests/verify/T-5.9b.sh` — legt einen Kanarienvogel in den Kontextspeicher und belegt einzeln: ohne Rundenmarke erreicht er das Modell nicht; mit Marke, aber ohne Bildschirmbezug ebenfalls nicht; mit beidem **muss** er ankommen; ein proaktiver Anlass löst keine Freigabe aus; und eine fremde Unit wird am Socket abgewiesen
+- **Agent:** builder · **Umfang:** M
+
 ### T-5.10 — Test auf indirekte Exfiltration
 - **Ziel:** Der Beweis für die Privacy-Zusage aus Design §7.2.
 - **Dateien:** `tests/test_exfiltration.py` [neu]
