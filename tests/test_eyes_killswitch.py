@@ -9,6 +9,7 @@ sind.
 from __future__ import annotations
 
 import json
+import pathlib
 from types import SimpleNamespace
 
 import pytest
@@ -42,23 +43,34 @@ def test_ein_geraet_ist_kein_strom():
     assert ks.videostroeme(dump_text=dump("Video/Source")) == 0
 
 
-def test_fremde_videostroeme_zaehlen_NICHT():
-    """Gemessen am 12.08.: die Arbeitsflaeche haelt dauerhaft zwei
-    Videostroeme -- `kwin_wayland` als Ausgang, `plasmashell` als Eingang.
-    Ein systemweiter Zaehler stuende nach dem Abschalten fuer immer auf
-    „laeuft weiter", und ein Pruefer, der immer rot ist, ist so wertlos wie
-    einer, der immer gruen ist.
+def test_der_kwin_knoten_IST_unsere_erfassung():
+    """BERICHTIGT am 14.08. Hier stand das Gegenteil: der kwin-Knoten galt
+    als fremd, gezaehlt wurde ein Klient namens `daimon-eyes`.
+
+    DEN GIBT ES NICHT. Der Augendienst liest ueber den PipeWire-Deskriptor
+    des Portals; in `pw-dump` erscheint nur der Knoten, den kwin_wayland fuer
+    die ScreenCast-Sitzung erzeugt. Zweimal am laufenden System gemessen:
+    Augen an -> genau ein `Stream/Output/Video` von kwin_wayland, Augen aus
+    -> null Video-Knoten. Die alte Zahl war IMMER 0, auch bei voller
+    Erfassung -- "0 Stroeme nach dem Schalter" war damit keine Aussage.
     """
-    fremd = dump(("Stream/Output/Video", "kwin_wayland"),
-                 ("Stream/Input/Video", "plasmashell"))
-    assert ks.videostroeme(dump_text=fremd) == 0
+    assert ks.videostroeme(
+        dump_text=dump(("Stream/Output/Video", "kwin_wayland"))) == 1
 
 
-def test_der_eigene_strom_wird_zwischen_den_fremden_gefunden():
-    gemischt = dump(("Stream/Output/Video", "kwin_wayland"),
-                    ("Stream/Input/Video", "plasmashell"),
-                    ("Stream/Input/Video", "daimon-eyes"))
-    assert ks.videostroeme(dump_text=gemischt) == 1
+def test_ein_eingangsstrom_ist_keine_erfassung():
+    """`plasmashell` als `Stream/Input/Video` sieht nicht zu -- es zeigt an."""
+    assert ks.videostroeme(
+        dump_text=dump(("Stream/Input/Video", "plasmashell"))) == 0
+
+
+def test_zwei_sitzungen_zaehlen_zwei():
+    """Fremde Bildschirmaufnahmen zaehlen MIT. Fuer einen Kill-Switch ist das
+    die richtige Richtung: bleibt nach dem Abschalten eine Sitzung stehen,
+    will man das sehen und nicht wegfiltern."""
+    assert ks.videostroeme(dump_text=dump(
+        ("Stream/Output/Video", "kwin_wayland"),
+        ("Stream/Output/Video", "obs"))) == 2
 
 
 def test_ein_bildschirmstrom_wird_gezaehlt():
@@ -249,3 +261,25 @@ def test_eine_noch_aktive_unit_ist_KEIN_erfolg(tmp_path):
     assert b["ok"] is False
     assert b["noch_aktiv"] is True
     assert "weiter aktiv" in b["meldung"]
+
+
+def test_der_beleg_sagt_ob_die_positivkontrolle_stand():
+    """Ein `ok` ohne vorherigen Strom ist kein Nachweis -- der Bericht sagt
+    das jetzt selbst, statt es dem Leser zu ueberlassen."""
+    class Systemctl:
+        def __init__(self): self.aktiv = True
+        def __call__(self, argv, **_):
+            if argv[2] == "stop": self.aktiv = False
+            text = ("active" if self.aktiv else "inactive") if argv[2] == "is-active" else ""
+            return type("E", (), {"returncode": 0, "stdout": text, "stderr": ""})()
+
+    stroeme = iter([1, 0])
+    gefuehrt = ks.stoppe(lauf=Systemctl(), stroeme=lambda: next(stroeme),
+                         kontext=pathlib.Path("/nicht/da"))
+    assert gefuehrt["ok"] is True, gefuehrt["meldung"]
+    assert gefuehrt["beleg"] == "strom_gemessen"
+
+    leer = ks.stoppe(lauf=Systemctl(), stroeme=lambda: 0,
+                     kontext=pathlib.Path("/nicht/da"))
+    assert leer["ok"] is True          # die Unit ist weg, das gilt
+    assert leer["beleg"] == "nur_unit_zustand"

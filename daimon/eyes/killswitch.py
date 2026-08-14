@@ -53,15 +53,25 @@ ERLAUBTE_UNITS = ("daimon-ears.service", EYES_UNIT)
 # media.class eines Bildschirmstroms. Ein `Video/Source` ist das GERAET und
 # steht immer da; nur ein `Stream/Output/Video` heisst, dass jemand mitliest.
 # Der Portal-Knoten erscheint als Ausgang, weil er zu uns hin sendet.
-VIDEO_KLASSEN = ("Stream/Output/Video", "Stream/Input/Video")
-
-# NUR der eigene Strom zaehlt. Gemessen am 12.08.: die Arbeitsflaeche haelt
-# dauerhaft zwei Videostroeme (`kwin_wayland` als Ausgang, `plasmashell` als
-# Eingang), die mit dAImon nichts zu tun haben. Ein systemweiter Zaehler
-# stuende nach dem Abschalten fuer immer auf "laeuft weiter" -- und ein
-# Pruefer, der immer rot ist, ist so wertlos wie einer, der immer gruen ist.
-# Unser Strom traegt den Namen aus `capture.KLIENT_NAME`.
-from daimon.eyes.capture import KLIENT_NAME
+# BERICHTIGT am 14.08. Hier stand: "nur der eigene Strom zaehlt", gefiltert
+# auf `capture.KLIENT_NAME` -- mit der Begruendung, die Arbeitsflaeche halte
+# dauerhaft zwei Videostroeme. Beides ist falsch, und zusammen ergab es eine
+# Zahl, die IMMER 0 war:
+#
+#   * EINEN Knoten namens `daimon-eyes` gibt es nicht. Der Augendienst liest
+#     ueber den PipeWire-Dateideskriptor des PORTALS; in `pw-dump` erscheint
+#     nur der Knoten, den kwin_wayland fuer die ScreenCast-Sitzung erzeugt.
+#   * Dieser Knoten bleibt auch nicht "fuer immer" stehen. Zweimal gemessen
+#     am 14.08., zu zwei Tageszeiten: Augen an -> genau ein
+#     `Stream/Output/Video` von kwin_wayland, Augen aus -> NULL Video-Knoten.
+#
+# "0 Stroeme nach dem Schalter" war damit seit T-5.12 keine Aussage: die Zahl
+# war schon vorher 0. Gezaehlt wird jetzt die ScreenCast-Sitzung selbst.
+# Sie zaehlt auch FREMDE Bildschirmaufnahmen mit -- fuer einen Kill-Switch
+# ist das die richtige Richtung: bleibt nach dem Abschalten eine Sitzung
+# stehen, will man das sehen und nicht wegfiltern. Ob sie unsere war, sagt
+# die Positivkontrolle (`beleg` in `stoppe`).
+SCREENCAST_KLASSE = "Stream/Output/Video"
 
 
 def _pw_dump_text(timeout_s: float = 5.0) -> str | None:
@@ -73,16 +83,14 @@ def _pw_dump_text(timeout_s: float = 5.0) -> str | None:
     return lauf.stdout if lauf.returncode == 0 else None
 
 
-def videostroeme(*, dump_text: str | None = ..., klient: str = KLIENT_NAME
-                 ) -> int | None:
-    """Wie viele EIGENE Bildschirmstroeme laufen. `None` = nicht messbar.
+def videostroeme(*, dump_text: str | None = ...) -> int | None:
+    """Wie viele ScreenCast-Sitzungen laufen. `None` = nicht messbar.
 
     `None` und `0` duerfen nie verwechselt werden: das eine heisst „niemand
     sieht zu", das andere „wir wissen es nicht".
 
-    Gezaehlt wird nur, was `klient` heisst. Die Begruendung steht oben bei
-    `KLIENT_NAME`: die Arbeitsflaeche selbst haelt zwei Videostroeme, die
-    nie verschwinden.
+    Was gezaehlt wird und warum nicht der Klientname: siehe oben bei
+    `SCREENCAST_KLASSE`.
     """
     text = _pw_dump_text() if dump_text is ... else dump_text
     if not text:
@@ -97,9 +105,7 @@ def videostroeme(*, dump_text: str | None = ..., klient: str = KLIENT_NAME
         1 for k in knoten
         if isinstance(k, dict)
         and (k.get("info") or {}).get("props", {}).get("media.class")
-        in VIDEO_KLASSEN
-        and klient in str((k.get("info") or {}).get("props", {})
-                          .get("node.name", "")))
+        == SCREENCAST_KLASSE)
 
 
 def kontextdateien(verzeichnis: Path | None = None) -> int:
@@ -215,8 +221,16 @@ def stoppe(unit: str = EYES_UNIT, *, timeout_s: float = 10.0,
     else:
         ok, meldung = True, ""
 
+    # Die Positivkontrolle gehoert IN den Bericht. War vorher keine
+    # ScreenCast-Sitzung messbar, sagt "nachher keine" nichts -- dann traegt
+    # allein, dass die Unit weg ist. Ohne dieses Feld sieht ein leerer
+    # Nachweis genauso aus wie ein gefuehrter, und genau das hat die alte
+    # Messung zwei Wochen lang getan.
+    beleg = "strom_gemessen" if vorher and nachher == 0 else "nur_unit_zustand"
+
     return {"v": 1, "ok": ok, "unit": unit, "rc": rc, "war_aktiv": war_aktiv,
             "videostroeme_vorher": vorher, "videostroeme_nachher": nachher,
+            "beleg": beleg,
             "kontextdateien": dateien, "geleert": geleert,
             "noch_aktiv": noch_aktiv,
             "sitzung_geschlossen": sitzung_zu,

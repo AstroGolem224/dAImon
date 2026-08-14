@@ -65,43 +65,17 @@ KONFERENZ_VORGABE = (
 )
 
 
-VIDEO_KLASSE = "Stream/Output/Video"
-
-
 def bildschirmstroeme(*, dump_text: str | None = ...) -> int | None:
     """Laufende ScreenCast-Sitzungen. `None` = nicht messbar.
 
-    GEMESSEN AM 14.08., und der Befund hat diese Funktion erst noetig
-    gemacht: `daimon.eyes.killswitch.videostroeme` zaehlt Knoten mit dem
-    Klientnamen `daimon-eyes` -- und davon gibt es KEINEN. Der Augendienst
-    liest ueber den PipeWire-Dateideskriptor des Portals; in `pw-dump`
-    erscheint nur der Knoten, den **kwin_wayland** dafuer erzeugt. Die Zahl
-    war damit immer 0, auch bei laufender Erfassung.
-
-    Was hier gezaehlt wird, ist deshalb `Stream/Output/Video` -- er entsteht
-    mit der Portal-Sitzung und verschwindet mit ihr (nachgemessen: Augen an
-    -> 1, Augen aus -> 0). Das ist die Groesse, die "jemand nimmt den
-    Bildschirm auf" tatsaechlich abbildet.
-
-    Sie zaehlt auch FREMDE Bildschirmaufnahmen mit. Fuer den Zweck hier ist
-    das die richtige Richtung: bleibt nach der Pause eine Sitzung stehen,
-    will man das sehen und nicht wegfiltern.
+    Eine Weiterleitung und kein zweites Verfahren: die Messung gehoert dem
+    Augen-Kill-Switch (T-5.12), sie steht dort und ist dort begruendet.
+    Bis zum 14.08. zaehlte sie den Klientnamen `daimon-eyes` -- den es nicht
+    gibt -- und war deshalb immer 0; diese Funktion war die Umgehung davon.
+    Nachdem die Quelle berichtigt ist, waere ein eigenes Verfahren hier eine
+    zweite Wahrheit.
     """
-    text = _pw_dump_text() if dump_text is ... else dump_text
-    if not text:
-        return None
-    try:
-        knoten = json.loads(text)
-    except (json.JSONDecodeError, ValueError):
-        return None
-    if not isinstance(knoten, list):
-        return None
-    return sum(
-        1 for k in knoten
-        if isinstance(k, dict)
-        and (k.get("info") or {}).get("props", {}).get("media.class")
-        == VIDEO_KLASSE
-    )
+    return videostroeme(dump_text=dump_text)
 
 
 def _ist_aktiv(unit: str, lauf: Callable[..., Any]) -> bool:

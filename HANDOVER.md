@@ -154,7 +154,7 @@ Der Handel ist eine Syscall-Gruppe gegen eine Zusage, die sonst nur auf dem
 Papier steht — bei einer Pause, die §201 StGB tragen soll, die richtige
 Richtung. Nach dem Neustart 90 Sekunden ohne Absturz, sechs Automatik-Runden.
 
-## BEFUND: Der Augen-Kill-Switch belegt seine Wirkung nicht
+## BEHOBEN: Der Augen-Kill-Switch belegt seine Wirkung jetzt
 
 `daimon.eyes.killswitch.videostroeme()` zählt Knoten mit dem Klientnamen
 `daimon-eyes` — **und davon gibt es keinen.** Der Augendienst liest über den
@@ -169,12 +169,24 @@ nach dem Schalter ist deshalb keine Aussage. In T-6.8 trägt den Beweis die
 DBus-Kanarie (`runden`, `erfasst`), nicht diese Zahl; das Szenario ist grün
 und war es nie wegen dieser Prüfung.
 
-**Die messbare Größe steht jetzt in `daimon/recorder/pause.py` als
-`bildschirmstroeme()`:** `Stream/Output/Video` entsteht mit der
-Portal-Sitzung und verschwindet mit ihr — nachgemessen, Augen an → 1, Augen
-aus → 0. Wer T-5.12 nachzieht, nimmt sie; ich habe den Kill-Switch selbst
-**nicht angefasst**, weil das eine eigene Entscheidung an einer
-Sicherheitszusage ist.
+**Nachgezogen am 14.08.** `videostroeme()` zählt jetzt die
+ScreenCast-Sitzung selbst (`Stream/Output/Video`) statt eines Klientnamens,
+und `stoppe()` trägt ein Feld `beleg`: `strom_gemessen` nur dann, wenn vorher
+eine Sitzung lief und nachher keine — sonst `nur_unit_zustand`. Ein `ok` ohne
+Positivkontrolle sieht damit nicht mehr aus wie ein geführter Nachweis.
+
+`recorder/pause.bildschirmstroeme()` ist zur Weiterleitung geworden: die
+Messung gehört dem Kill-Switch, ein zweites Verfahren wäre eine zweite
+Wahrheit.
+
+Live belegt, den vollen Weg des Hotkeys gefahren:
+`{"ok": true, "beleg": "strom_gemessen", "videostroeme_vorher": 1,
+"videostroeme_nachher": 0, "geleert": 5, "kontextdateien": 0, "lampe": "aus"}`.
+
+**Und eine Prämisse von 12.08. ist damit widerlegt:** die Arbeitsfläche hält
+*keine* dauerhaften Videoströme. Zweimal gemessen, zwei Tageszeiten — Augen
+aus, null Video-Knoten. Der Prüfstand hielt das Gegenteil fest und ist
+berichtigt.
 
 ## BEFUND: T-7.4 steht auf zwei falschen Prämissen
 
