@@ -137,6 +137,39 @@ class FocusReceiver:
                 pass
         return ev
 
+    def archiv_melder(self) -> Callable[["FocusEvent"], None]:
+        """T-7.1b: der Fenstertitel ins Archiv -- von HIER und nicht von den
+        Augen.
+
+        `fenster()` haelt den `caption` ausdruecklich zurueck, weil er
+        Angreifertext ist. Ihn fuer das Archiv durch den Augendienst zu
+        schleusen -- den Prozess, der zuschneidet, OCRt und fremde
+        Bibliotheken laedt -- waere eine neue Flaeche fuer nichts. Dieser
+        Dienst hat ihn ohnehin, fuehrt ihn als `tainted`, und im Archiv ist
+        alles `tainted`.
+
+        Die Kennung geht MIT: sonst sperrt die Redaktion (T-7.2) den Titel
+        als unbekannt -- und ein Titel aus einem gelisteten Passwortmanager
+        ist genauso verraeterisch wie dessen Inhalt.
+
+        Gemeldet wird nur, was sich geaendert hat. `captionChanged` feuert
+        bei jeder Titelaenderung, und eine Terminalausgabe erzeugt davon
+        viele; derselbe Titel zweimal hintereinander ist kein Ereignis.
+        """
+        letzter: list[str] = [""]
+
+        def melden(ev: "FocusEvent") -> None:
+            titel = str(ev.caption.value or "").strip()
+            if not titel or titel == letzter[0]:
+                return
+            letzter[0] = titel
+            from daimon.common.config import runtime_dir
+            from daimon.recorder.melder import melde_titel
+            melde_titel(runtime_dir(), titel,
+                        klasse=str(ev.resource_class.value or ""))
+
+        return melden
+
     def handle_json(self, nutzlast: Any) -> FocusEvent | None:
         """Nimmt die Nutzlast des Watchers als JSON-Objekt entgegen.
 
@@ -224,6 +257,13 @@ class FocusReceiver:
 
     def serve(self) -> None:  # pragma: no cover - braucht einen echten Bus
         """Blockiert. Nimmt den Namen `de.daimon.Focus` auf dem Sitzungsbus."""
+        # T-7.1b: der Archivmelder wird HIER verdrahtet und nicht im
+        # Konstruktor -- sonst versuchte jeder Prueflauf, der einen
+        # `FocusReceiver` baut, bei jedem Ereignis eine Socketverbindung.
+        # `handle()` faengt Ausnahmen des Abnehmers ohnehin ab: ein
+        # fehlender Recorder darf den Fokusempfang nicht mitreissen.
+        if self._on_event is None:
+            self._on_event = self.archiv_melder()
         import dbus
         import dbus.service
         from dbus.mainloop.glib import DBusGMainLoop

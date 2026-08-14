@@ -44,6 +44,50 @@ schreibender Verben beschränken statt auf den ganzen Text. Das ist eine
 Entscheidung am Wächter und gehört nicht in einen Task, der nebenbei an ihm
 vorbeikommt.
 
+## BEFUND: Der Fokus-Empfang ist im Betrieb tot — und trägt drei Zusagen
+
+**`de.daimon.Focus.Fenster()` antwortet `{"bekannt": false}`, dauerhaft.**
+Gemessen am 14.08., und zwar nicht aus dem Ruhezustand heraus:
+
+* `isScriptLoaded daimon-watcher` → **true**
+* Ein echtes Vollbildfenster wurde geöffnet und aktiviert
+  (`tests/harness/vollbildfenster.py`) — `windowActivated` muss gefeuert haben
+* Das installierte Script ist **byte-gleich** mit `kwin-script/daimon-watcher/`,
+  `SERVICE`/`PATH`/`IFACE` stimmen, der Dienst ist `active`
+* Danach weiterhin `bekannt: false`
+
+**Was daran hängt, in der Reihenfolge der Kosten:**
+
+1. **Die Augen schneiden jede Runde aufs Vollbild zu** — 3,2 s statt 0,09 s,
+   die teuerste bekannte Runde des Projekts. Der Modulkopf von
+   `daimon/eyes/daemon.py` nennt genau diesen Rückfall.
+2. **Der Archiv-Absender aus T-7.1b archiviert nichts.** Ohne Fensterklasse
+   greift die Redaktion fail-closed: `kennung_fehlt`, gemessen im Journal des
+   Recorders. Das ist die richtige Richtung — aber der Bildschirmteil des
+   Archivs ist damit im Betrieb leer, während alle Tests grün sind.
+3. **Das Vollbild-Gate** (T-3.7) fragt denselben Dienst.
+
+**Das ist nicht neu und war schon einmal geschlossen** (`9973dc7`, „Die Augen
+bekamen nie ein Fokus-Ereignis"). Es ist wieder offen, und der Verdacht liegt
+auf dem Weg Script → `callDBus` → Dienst: `callDBus` ist fire-and-forget, KWin
+meldet nichts, und ein zweites geladenes Script (`daimon-focusprobe`) liegt
+ebenfalls in `~/.local/share/kwin/scripts/`. Nicht weiterverfolgt — das ist
+T-0.12-Gebiet und ein eigener Task, kein Nebenprodukt von Phase 7.
+
+## BEFUND: `pw-dump` starb im Recorder an SIGSYS
+
+Die automatische Pause (T-7.3) ruft `pw-dump`, und ein PipeWire-Klient setzt
+seine Scheduling-Priorität. Mit `SystemCallFilter=~@resources` stirbt er an
+**SIGSYS** — nachgewiesen mit `coredumpctl list pw-dump`, alle 15 Sekunden im
+Takt der Automatik. Der Auslöser „fremder Mikrofonstrom" wäre damit dauerhaft
+blind gewesen, und zwar **still**: `fremde_mikrofonstroeme()` meldet dann
+`None`, und `None` pausiert absichtlich nicht.
+
+`@resources` steht deshalb nicht mehr in der Sperrliste der Recorder-Unit.
+Der Handel ist eine Syscall-Gruppe gegen eine Zusage, die sonst nur auf dem
+Papier steht — bei einer Pause, die §201 StGB tragen soll, die richtige
+Richtung. Nach dem Neustart 90 Sekunden ohne Absturz, sechs Automatik-Runden.
+
 ## BEFUND: Der Augen-Kill-Switch belegt seine Wirkung nicht
 
 `daimon.eyes.killswitch.videostroeme()` zählt Knoten mit dem Klientnamen

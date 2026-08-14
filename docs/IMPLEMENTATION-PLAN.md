@@ -1854,6 +1854,21 @@ in §6 (`daimon-recorder`).
   `eyes` **nicht** schreiben kann
 - **Agent:** builder · **Umfang:** L
 
+### T-7.1b — Die Absender: wer das Archiv füllt
+- **Ziel:** Das Archiv bekommt, was wahrgenommen wird — von den Diensten, die es ohnehin haben.
+- **Dateien:** `daimon/recorder/melder.py` [neu], `daimon/eyes/daemon.py` [ändern], `daimon/hub/focus.py` [ändern]
+- **Abhängigkeiten:** T-7.1, T-7.2
+  > **Nachgetragen am 14.08.** Die Lücke fiel beim Bauen von T-7.1 auf: der Archivdienst stand samt Zulaufsocket und Redaktion, und **keine Akzeptanzliste von T-7.1 bis T-7.5 nannte den Absender**. Ein Archiv ohne Produzent ist eine Datenbank mit Verfallsdatum und ohne Inhalt.
+- **Akzeptanz:**
+  - [ ] **Der OCR-Text kommt vom Augendienst**, an derselben Stelle, an der er in den Quarantäne-Kontextspeicher geht — mit `resource_class` und DRM-Flagge, damit die Redaktion aus T-7.2 überhaupt urteilen kann
+  - [ ] **Der Fenstertitel kommt vom Fokusdienst**, nicht von den Augen. `focus.fenster()` hält den `caption` ausdrücklich zurück, weil er Angreifertext ist; ihn für das Archiv durch den Prozess zu schleusen, der zuschneidet und OCRt, wäre eine neue Fläche. Der Fokusdienst hat ihn und führt ihn schon als `tainted`
+  - [ ] **Die Denylist gilt auch für Titel.** Ein Fenstertitel eines gelisteten Passwortmanagers darf nicht im Archiv stehen — die Meldung trägt deshalb die Kennung mit
+  - [ ] **Kein Melder hält seinen Dienst auf**: kurzes Zeitlimit, jeder Fehler ein Rückgabewert. Ein pausierter Recorder (T-7.3) lässt jede Meldung ins Leere laufen, ohne dass Wahrnehmung oder Sprachpfad es merken
+  - [ ] **Die doppelte Ablage ist gewollt und benannt:** Kontextspeicher (T-5.7) ist der Live-Kontext mit Minutenfristen, das Archiv die durchsuchbare Vergangenheit mit 30 Tagen. Beide gehen nur durch das Deklassifizierungs-Gate hinaus. Ein Vermerk im Code hält das fest, damit niemand eine der beiden für redundant hält
+  - [ ] Frames werden **nicht** gemeldet — Schema und Verfall stehen (T-7.1), ein Produzent dafür ist ein eigener Task
+- **Verifikation:** `tests/verify/T-7.1b.sh` — erzeugt einen Kanarienvogel in einem **nicht** gelisteten Fenster und belegt, dass er im Archiv ankommt; denselben in einem **gelisteten** und belegt, dass er nirgends steht; stoppt den Recorder und belegt, dass Augen und Fokus weiterlaufen und keine Ausnahme werfen
+- **Agent:** builder · **Umfang:** M
+
 ### T-7.2 — Redaktion vor dem Schreiben
 - **Ziel:** Was nicht auf die Platte soll, kommt gar nicht erst hin.
 - **Dateien:** `daimon/recorder/redaktion.py` [neu],

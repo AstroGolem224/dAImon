@@ -156,6 +156,12 @@ class Augen:
         self.runden = 0
         self.erfasst = 0
         self.gelesen = 0
+        # T-7.1b: was ins Archiv ging und was nicht. Zwei Zaehler und nicht
+        # einer: "nichts archiviert" kann heissen, dass der Recorder
+        # pausiert ist (T-7.3) ODER dass die Redaktion gesperrt hat -- beides
+        # ist richtig, und beides will man sehen.
+        self.archiviert = 0
+        self.nicht_archiviert = 0
 
     # -- Aufbau ------------------------------------------------------------
 
@@ -175,6 +181,34 @@ class Augen:
                 "interaktiver_rueckfall": befund.get("interaktiver_rueckfall")}
 
     # -- Eine Runde --------------------------------------------------------
+
+    def _archivieren(self, text: str, klasse: str, drm: bool) -> None:
+        """T-7.1b: der gelesene Text ins Archiv -- ohne den Dienst aufzuhalten.
+
+        Die Kennung MUSS mit: ohne sie sperrt die Redaktion (T-7.2), und
+        zwar zu Recht -- ein Bildschirmtext ohne Herkunft ist einer, bei dem
+        niemand sagen kann, ob er aus einem Passwortmanager stammt.
+
+        Der Import steht lokal: der Augendienst laeuft unter System-Python
+        ohne das venv, und `melder` ist reines stdlib.
+        """
+        try:
+            from daimon.recorder.melder import melde_ocr
+            from daimon.common.config import runtime_dir
+            ergebnis = melde_ocr(runtime_dir(), text, klasse=klasse, drm=drm)
+        except Exception as exc:  # noqa: BLE001 -- die Wahrnehmung steht nie
+            print(f"Archivmeldung fehlgeschlagen: {exc}", file=sys.stderr,
+                  flush=True)
+            self.nicht_archiviert += 1
+            return
+        # `ok: true, id: 0` heisst "angenommen und von der Redaktion
+        # gesperrt" -- das ist KEIN Eintrag. Am 14.08. live gemessen: der
+        # Zaehler stand auf `archiviert: 2`, waehrend das Archiv leer war
+        # und das Journal zweimal "nicht mitgeschnitten" meldete.
+        if int(ergebnis.get("id") or 0) > 0:
+            self.archiviert += 1
+        else:
+            self.nicht_archiviert += 1
 
     def fenster_abfragen(self) -> Fenster | None:
         """Fragt `de.daimon.Focus` nach dem aktuellen Fenster.
@@ -253,7 +287,16 @@ class Augen:
 
         with self._fenster_sperre:
             klasse = self._fenster.klasse if self._fenster else ""
+            drm = bool(self._fenster.drm) if self._fenster else False
         self._speicher.hinzufuegen(context.ART_OCR, klasse, text)
+        # T-7.1b: DIESELBE Zeile geht ins Archiv, und die doppelte Ablage
+        # ist gewollt. Der Kontextspeicher ist der LIVE-Kontext mit
+        # Minutenfristen (T-5.7: fuenf Eintraege, 15 Minuten), das Archiv
+        # ist die durchsuchbare Vergangenheit mit 30 Tagen (T-7.1). Beide
+        # gehen nur durch das Deklassifizierungs-Gate hinaus. Wer eine der
+        # beiden fuer redundant haelt und loescht, nimmt entweder dem Mind
+        # den Kontext oder der Suche ihre Grundlage.
+        self._archivieren(text, klasse, drm)
         return {"grund": grund, "generation": befund.generation,
                 "region": befund.region, "zeichen": len(text),
                 "kosten": befund.kosten}
@@ -333,6 +376,8 @@ class Augen:
                 "gelesen": self.gelesen, "ocr_verschoben": self.ocr_verschoben,
                 "ocr_abkuehlung_s": self._ocr_abkuehlung,
                 "ausloeser": self._ausloeser.zaehler(),
+                "archiviert": self.archiviert,
+                "nicht_archiviert": self.nicht_archiviert,
                 "kontext": self._speicher.zaehler()}
 
 

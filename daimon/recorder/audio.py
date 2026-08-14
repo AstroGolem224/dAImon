@@ -25,19 +25,15 @@ Antwort verzoegert, waere ein schlechter Handel.
 """
 from __future__ import annotations
 
-import json
-import socket
 from pathlib import Path
 
-from daimon.common import ipc
+from daimon.recorder.melder import senden
 from daimon.recorder.store import ART_TRANSKRIPT
 
 # Ein Transkript ist eine Zeile, kein Vortrag. Was darueber liegt, ist im
 # Zweifel kein Gesprochenes mehr -- gekuerzt statt abgewiesen, weil ein
 # verlorener Satz schlechter ist als ein gekuerzter.
 MAX_ZEICHEN = 8000
-
-PRODUZENT = "recorder"
 
 
 def melde_transkript(runtime_dir: Path, text: str, *, marke: str = "",
@@ -53,24 +49,14 @@ def melde_transkript(runtime_dir: Path, text: str, *, marke: str = "",
     if not sauber:
         return {"ok": False, "grund": "leer"}
 
-    pfad = ipc.socket_path(Path(runtime_dir), PRODUZENT)
-    nachricht = {"v": 1, "typ": "archiv", "art": ART_TRANSKRIPT,
-                 "text": sauber, "fenster": str(marke)[:40],
-                 "klasse": ""}
-    try:
-        c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        c.settimeout(timeout_s)
-        c.connect(str(pfad))
-        with c:
-            c.sendall((json.dumps(nachricht, ensure_ascii=False) + "\n")
-                      .encode())
-            antwort = c.makefile("r").readline()
-    except (OSError, socket.timeout):
-        # Kein Recorder, keine Aufzeichnung -- und der Sprachpfad merkt
-        # nichts davon. Genau so ist die Pause aus T-7.3 wirksam: sie stoppt
-        # die Unit, und danach laeuft hier alles ins Leere.
-        return {"ok": False, "grund": "kein_recorder"}
-    try:
-        return json.loads(antwort)
-    except (ValueError, TypeError):
-        return {"ok": False, "grund": "unlesbar"}
+    # Derselbe Sendeweg wie die Bildschirmmelder (T-7.1b): zwei Kopien
+    # waeren zwei Zeitlimits und zwei Stellen, an denen jemand eine
+    # Ausnahme durchreichen koennte. Kein Recorder heisst hier
+    # `{"ok": False, "grund": "kein_recorder"}` -- genau so ist die Pause
+    # aus T-7.3 wirksam: sie stoppt die Unit, und danach laeuft alles ins
+    # Leere, ohne dass der Sprachpfad es merkt.
+    return senden(runtime_dir,
+                  {"v": 1, "typ": "archiv", "art": ART_TRANSKRIPT,
+                   "text": sauber, "fenster": str(marke)[:40],
+                   "klasse": ""},
+                  timeout_s=timeout_s)

@@ -75,7 +75,11 @@ def _fokus_klasse() -> str:
 # meldet das Transkript, das er ohnehin in der Hand hat. Er bekommt damit
 # KEIN Leserecht und keine zweite Faehigkeit -- derselbe Socket, derselbe
 # eine Typ, dieselbe Redaktion davor.
-ERLAUBTE_UNITS = ("daimon-eyes.service", "daimon-ears.service")
+ERLAUBTE_UNITS = ("daimon-eyes.service", "daimon-ears.service",
+                  # T-7.1b: der Fokusdienst meldet Fenstertitel. Er ist der
+                  # einzige, der sie hat -- die Augen bekommen den `caption`
+                  # absichtlich nicht.
+                  "daimon-focus.service")
 
 # Ein Zeilenzulauf ist eine Meldung. Groesser als das ist kein OCR-Text mehr,
 # sondern ein Versuch, den Dienst mit einer Zeile vollzuschreiben.

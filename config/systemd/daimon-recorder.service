@@ -82,7 +82,19 @@ PrivateDevices=yes
 LimitCORE=0
 UMask=0077
 SystemCallFilter=@system-service
-SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+# `@resources` fehlt hier ABSICHTLICH in der Sperrliste, und die Ausnahme ist
+# gemessen: die automatische Pause (T-7.3) ruft `pw-dump`, und ein
+# PipeWire-Klient setzt seine Scheduling-Prioritaet. Mit gesperrtem
+# `@resources` stirbt `pw-dump` an SIGSYS -- nachgewiesen am 14.08. mit
+# `coredumpctl list pw-dump`, alle 15 Sekunden im Takt der Automatik. Der
+# Ausloeser „fremder Mikrofonstrom" waere damit dauerhaft blind, und zwar
+# STILL: `fremde_mikrofonstroeme()` haette immer `None` gemeldet, und `None`
+# pausiert absichtlich nicht.
+#
+# Der Handel: eine Syscall-Gruppe weniger gesperrt gegen eine Zusage, die
+# sonst nur auf dem Papier steht. Bei einer Pause, die §201 StGB tragen
+# soll, ist das die richtige Richtung.
+SystemCallFilter=~@privileged @obsolete @mount @swap @reboot @module
 MemoryDenyWriteExecute=yes
 TimeoutStopSec=10
 
