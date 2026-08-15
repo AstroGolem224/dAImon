@@ -180,6 +180,9 @@ class Hub:
         # Anlegen nichts, aber die Archivsuche braucht `data_dir()`, und der
         # Hub soll ohne Archiv starten koennen.
         self._gate = None
+        # Getrennt gehalten, weil er je Anfrage neu von der Platte liest --
+        # siehe `_gate_teile`.
+        self._speicher = None
         # T-3.7: die Ladesperre. Hoechstens ein Ladevorgang gleichzeitig, und
         # zwar HIER, weil ein Worker nur sich selbst kennt. `_gpu_sperre` ist
         # (Marke, Ablauf in monotoner Zeit) -- monoton, weil eine
@@ -989,16 +992,32 @@ class Hub:
     # -- T-5.9b: Deklassifizierung ------------------------------------------
 
     def _gate_teile(self):
-        """Marken, Kontextspeicher, Archiv -- beim ersten Aufruf gebaut."""
+        """Marken, Kontextspeicher, Archiv -- beim ersten Aufruf gebaut.
+
+        `laden()` JE ANFRAGE, und das ist keine Vorsicht, sondern die
+        Bedingung dafuer, dass hier ueberhaupt etwas herauskommt: die Ringe
+        fuellt der AUGEN-Prozess, dieser hier sieht nur dessen Dateien. Ein
+        Speicher, der nie liest, gibt fuer immer leere Listen heraus -- das
+        Gate antwortet dann `ok` mit leerem Umfang, und von aussen ist das
+        von "nichts gesehen" nicht zu unterscheiden. Einmal im Konstruktor zu
+        lesen waere die zweite Gestalt desselben Fehlers: der Stand des
+        Hub-Starts, fuer den Rest der Sitzung.
+
+        Die Archivsuche braucht das nicht -- sie oeffnet die Datenbank je
+        Freigabe neu.
+        """
         if self._gate is None:
             from daimon.eyes.context import Kontextspeicher
             from daimon.hub.declassify import Deklassifizierung
             from daimon.recorder.suche import Archivsuche
+            self._speicher = Kontextspeicher()
             self._gate = Deklassifizierung(
                 marken=self.marken,
-                speicher=Kontextspeicher(),
+                speicher=self._speicher,
                 archiv=Archivsuche(),
                 audit=getattr(self, "audit", None))
+        if self._speicher is not None:
+            self._speicher.laden()
         return self._gate
 
     def kontext_anfrage(self, anfrage: object) -> dict:

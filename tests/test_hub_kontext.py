@@ -117,6 +117,46 @@ def test_archivtreffer_nur_bei_zeitbezug(hub):
     assert any("Weizenbaum" in e for e in mit["archiv"])
 
 
+def test_der_speicher_wird_je_anfrage_von_der_platte_gelesen(tmp_path,
+                                                             monkeypatch):
+    """Der ECHTE `_gate_teile`, nicht der Stub -- und genau da sass der Fehler.
+
+    Die Ringe fuellt der Augen-Prozess; der Hub sieht nur dessen Dateien.
+    Ohne `laden()` gibt `freigeben()` fuer immer leere Listen heraus: das Gate
+    antwortet `ok` mit leerem Umfang, und von aussen sieht das aus wie
+    "nichts gesehen". Der Rest dieser Datei konnte das nicht bemerken, weil
+    `HubStub` genau die Methode ersetzt, die zu pruefen waere.
+
+    Geschrieben wird NACH dem ersten `_gate_teile()`: ein einmaliges Lesen im
+    Konstruktor bestuende diese Probe nicht.
+    """
+    from daimon.hub.daemon import Hub
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+
+    class Stub:
+        pass
+
+    stub = Stub()
+    stub._gate = None
+    stub._speicher = None
+    stub.marken = MarkenBuch(log=Log())
+    stub.log, stub.diag = Log(), Diag()
+    stub._gate_teile = Hub._gate_teile.__get__(stub, Stub)
+    stub.kontext_anfrage = Hub.kontext_anfrage.__get__(stub, Stub)
+
+    stub._gate_teile()
+    context.Kontextspeicher().hinzufuegen(context.ART_OCR, "org.kde.kate",
+                                          KANARIE)
+
+    stub.marken.ausgeben(quelle="auth", turn_id="t-1")
+    antwort = stub.kontext_anfrage({"art": "deklassifizieren", "text": FRAGE})
+    assert antwort["ok"] is True
+    assert antwort["umfang"].get(context.ART_OCR) == 1
+    assert any(KANARIE in e for e in antwort["eintraege"])
+
+
 def test_ein_klemmendes_gate_gibt_eine_absage_statt_eines_absturzes(hub):
     class Kaputt:
         def freigeben(self, **_):
