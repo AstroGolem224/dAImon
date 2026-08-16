@@ -387,13 +387,35 @@ class Router:
         Die Tabelle wird bei jeder Runde ERSETZT. Eine Referenz, die eine Runde
         ueberlebt, ist ein Angriffspfad: das Modell koennte auf ein Fenster
         zeigen, das der Nutzer in dieser Runde nie gesehen hat.
+
+        **Die `app_id` wird HIER gegen die Aufzaehlung geprueft, seit dem
+        16.08., und nicht nur in `fenster_lesen`.** Bis dahin lag die
+        Absicherung allein in der QUELLE: `fenster_lesen` setzt die `app_id`
+        ueber `app_id_aus_titel` und gibt nur Installiertes heraus. Das hielt,
+        solange es genau eine Quelle gab -- und der ponytail-Vermerk dort
+        plant ausdruecklich eine zweite (ein KWin-Script, das `resourceClass`
+        direkt meldet, fuer den Aktionskatalog). Die haette ihre `app_id`
+        ungefiltert bis in den Modellkoerper gereicht, denn hier stand
+        `f.get("app_id", "unbekannt")` -- durchgereicht, was kommt.
+
+        Eine Zusage gehoert an die Stelle, die sie einhaelt: das ist die
+        Bildung der Referenz, nicht die Herkunft der Daten. Kostet 0,08 ms je
+        Runde (gemessen, 357 Eintraege).
+
+        Ersetzt damit `hub.declassify.referenzen()` -- dieselbe Zusage, dort
+        gebaut, dort geprueft und NIE aufgerufen. Zwei Fassungen einer Regel
+        sind eine Regel und eine Attrappe; welche von beiden gilt, entscheidet
+        dann der Zufall des Aufrufs.
         """
+        erlaubt = app_ids_installiert()
         self._referenzen = {}
         offen = []
         for i, f in enumerate(fenster, 1):
             ref = f"w_{i}"
             self._referenzen[ref] = dict(f)
-            offen.append({"ref": ref, "app_id": f.get("app_id", "unbekannt")})
+            roh = str(f.get("app_id", "")).strip().lower()
+            offen.append({"ref": ref,
+                          "app_id": roh if roh in erlaubt else "unbekannt"})
         return offen
 
     # -- Der Weg -----------------------------------------------------------

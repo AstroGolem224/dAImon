@@ -206,28 +206,17 @@ def test_nicht_als_bildschirmfrage_gezaehlt(satz):
 
 
 # -- Durchgang 1 bekommt opake Referenzen ----------------------------------
-
-def test_durchgang_1_sieht_keine_fenstertitel():
-    """Ein Fenstertitel ist Angreifertext: er steht in einem Browsertab, den
-    irgendwer benannt hat. Auch als typisiertes Feld bleibt er das."""
-    r = dk.referenzen([{"app_id": "konsole", "title": "sudo rm -rf /"}],
-                      bekannte_app_ids=["konsole"])
-    assert r == [{"window_ref": "w_0", "app_id": "konsole"}]
-    assert "sudo" not in str(r)
-    assert "title" not in str(r)
-
-
-def test_eine_unbekannte_app_id_wird_nicht_durchgereicht():
-    """Sie waere eine Zeichenkette aus fremder Quelle in einem Feld, das als
-    geschlossen gilt."""
-    r = dk.referenzen([{"app_id": "boeser-name-<script>"}],
-                      bekannte_app_ids=["konsole"])
-    assert r[0]["app_id"] == "unbekannt"
-
-
-def test_die_fensterreferenz_ist_eine_laufende_nummer():
-    r = dk.referenzen([{"app_id": "a"}, {"app_id": "b"}], bekannte_app_ids=["a"])
-    assert [x["window_ref"] for x in r] == ["w_0", "w_1"]
+#
+# HIER STANDEN DREI PRUEFUNGEN, und sie sind am 16.08. nach
+# `tests/test_router.py` gewandert -- mitsamt der Funktion, die sie prueften.
+# `declassify.referenzen()` hatte keinen Aufrufer: der Router baut seine
+# Referenzen selbst, und diese Pruefungen belegten eine Fassung, die im
+# Betrieb nie lief.
+#
+# Das ist die unangenehme Haelfte des Befundes: die Zusage WAR geprueft, und
+# trotzdem sagte die Pruefung nichts ueber das laufende System. Ein gruener
+# Testlauf ist kein Beleg dafuer, dass der gepruefte Code auch aufgerufen
+# wird.
 
 
 # -- Audit -----------------------------------------------------------------

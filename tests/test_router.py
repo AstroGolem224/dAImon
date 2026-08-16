@@ -152,7 +152,12 @@ def test_die_nutzerantwort_traegt_die_fenstertitel():
     assert "Discord" in a["antwort"]
 
 
-def test_kein_fenstertitel_im_prompt():
+def test_kein_fenstertitel_im_prompt(monkeypatch):
+    # Die Aufzaehlung wird gesetzt, seit die Referenzbildung selbst filtert
+    # (16.08.). Vorher hing dieser Test daran, dass NICHT gefiltert wird --
+    # auf einer Maschine ohne Okular waere er stillschweigend an einer
+    # anderen Zusage vorbeigelaufen als der, die er prueft.
+    monkeypatch.setattr(R, "app_ids_installiert", lambda: frozenset({"okular"}))
     m = MindAttrappe()
     r, _ = router(fenster=[{"id": "k1", "titel": "KANARIE-9d23a1",
                             "app_id": "okular"}], mind=m)
@@ -414,6 +419,31 @@ def test_der_zustand_ist_flach_wie_im_vertrag(monkeypatch):
 # --------------------------------------------------------------------------
 # app_id: aus einer GESCHLOSSENEN Aufzaehlung, nie freier Text
 # --------------------------------------------------------------------------
+
+def test_die_referenzbildung_filtert_selbst(monkeypatch):
+    """Uebernommen aus `test_declassify.py` am 16.08., samt der Zusage.
+
+    Dort prueften drei Faelle `declassify.referenzen()` -- eine Funktion ohne
+    Aufrufer. Der Router baut seine Referenzen selbst, und er reichte die
+    `app_id` DURCH: die Absicherung lag allein in `fenster_lesen`. Das hielt,
+    solange es eine Quelle gibt; der ponytail-Vermerk dort plant eine zweite
+    (ein KWin-Script mit `resourceClass`). Diese Probe stellt eine solche
+    Quelle: eine `app_id`, die nie durch `app_id_aus_titel` lief.
+    """
+    m = MindAttrappe()
+    r, _ = router(fenster=[{"id": "k1", "titel": "egal",
+                            "app_id": "boeser-name-<script>"},
+                           {"id": "k2", "titel": "egal", "app_id": "Discord"}],
+                  mind=m)
+    monkeypatch.setattr(R, "app_ids_installiert",
+                        lambda: frozenset({"discord"}))
+    offen = r._referenzen_bilden(r._quellen.fenster())
+    assert [f["app_id"] for f in offen] == ["unbekannt", "discord"]
+    assert [f["ref"] for f in offen] == ["w_1", "w_2"]
+    # Der Titel bleibt draussen, die Aufloesung behaelt ihn.
+    assert "titel" not in str(offen)
+    assert r.aufloesen("w_1")["titel"] == "egal"
+
 
 def test_app_id_kommt_nur_aus_der_aufzaehlung():
     erlaubt = {"discord", "konsole"}

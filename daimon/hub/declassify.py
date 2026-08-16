@@ -37,7 +37,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable
+from typing import Any, Callable
 
 from daimon.common.protocol import Mark
 from daimon.common.taint import markiere
@@ -266,23 +266,18 @@ class Deklassifizierung:
 
 
 # -- Durchgang 1: opake Referenzen -----------------------------------------
-
-def referenzen(fenster: Iterable[dict], *,
-               bekannte_app_ids: Iterable[str] = ()) -> list[dict]:
-    """Was Durchgang 1 ueber Fenster erfahren darf. Keine Titel.
-
-    `window_ref` ist eine laufende Nummer und traegt keine Bedeutung; `app_id`
-    kommt aus einer geschlossenen Aufzaehlung. Was nicht darin steht, wird
-    `unbekannt` -- und NICHT durchgereicht: eine unbekannte `app_id` waere
-    eine Zeichenkette aus fremder Quelle in einem Feld, das als geschlossen
-    gilt.
-    """
-    erlaubt = {s.strip().lower() for s in bekannte_app_ids if s.strip()}
-    heraus = []
-    for i, f in enumerate(fenster):
-        roh = str(f.get("app_id", "")).strip().lower()
-        heraus.append({
-            "window_ref": f"w_{i}",
-            "app_id": roh if roh in erlaubt else "unbekannt",
-        })
-    return heraus
+#
+# HIER STAND `referenzen()`, und sie ist am 16.08. entfernt worden. Die Zusage
+# -- Durchgang 1 sieht keine Titel, die `app_id` kommt aus einer geschlossenen
+# Aufzaehlung -- gilt unveraendert; sie steht jetzt an der Stelle, die sie
+# einhaelt: `daimon.mind.router.Router._referenzen_bilden`.
+#
+# Der Grund ist der Befund des unabhaengigen Reviews: diese Funktion hatte
+# KEINEN Aufrufer. Der Router baute seine Referenzen selbst, und die drei
+# Pruefungen hier belegten eine Fassung, die im Betrieb nie lief. Zwei
+# Fassungen einer Regel sind eine Regel und eine Attrappe -- und geprueft war
+# die Attrappe.
+#
+# Die eine Sache, die sie besser machte, ist mitgewandert: sie prueft die
+# `app_id` bei der BILDUNG der Referenz. Der Router verliess sich darauf,
+# dass seine Quelle schon gefiltert hat.
