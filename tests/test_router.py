@@ -249,6 +249,29 @@ def test_api_ist_gemessen_und_nicht_behauptet():
     z = r.zustand()
     assert z["api_aufrufe"] == len(m.koerper) == 1
     assert z["runden"] == 2
+    # Ohne Gate-Quelle gibt es nichts zu deklassifizieren -- aber das Feld
+    # muss DA sein. Ein Zaehler, den niemand lesen kann, ist keine Messung.
+    assert z["deklassifiziert"] == 0
+
+
+def test_der_deklassifizierungs_zaehler_ist_von_aussen_lesbar():
+    """Er existiert seit T-5.9b und stand in keiner Auskunft.
+
+    Genau fuer diese eine Frage ist er gebaut -- kommt der Bildschirmkontext
+    im Modell an? -- und genau die war damit von aussen nicht zu fuehren. Die
+    Naht PTT -> Bildschirmfrage -> Kontext haengt daran.
+    """
+    class MitGate(Attrappen):
+        def kontext(self, text):
+            return {"ok": True, "eintraege": ["[ocr kate] Kanarienvogel"],
+                    "archiv": []}
+
+    m = MindAttrappe()
+    r = R.Router(quellen=MitGate(), mind=m)
+    assert r.zustand()["deklassifiziert"] == 0        # Positivkontrolle
+    frage(r, "was steht auf dem bildschirm")
+    assert r.zustand()["deklassifiziert"] == 1
+    assert "Kanarienvogel" in json.dumps(m.koerper, ensure_ascii=False)
 
 
 # --------------------------------------------------------------------------

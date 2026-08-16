@@ -625,6 +625,12 @@ class Router:
                 "meldung": meldung[:200], "api": False, **extra}
 
     def zustand(self) -> dict:
+        # `deklassifiziert` steht seit dem 16.08. mit drin. Der Zaehler
+        # existiert seit T-5.9b und wurde brav hochgezaehlt -- nur konnte ihn
+        # niemand lesen: er stand in keiner Auskunft und in keinem Test. Die
+        # eine Messung, fuer die er gebaut wurde (kommt der Bildschirmkontext
+        # im Modell an?), war damit von aussen nicht zu fuehren.
         return {"v": 1, "ok": True, "testprofil": self.testprofil,
                 "absichten": list(ABSICHTEN), "runden": self.runden,
-                "api_aufrufe": self.api_aufrufe, "pid": os.getpid()}
+                "api_aufrufe": self.api_aufrufe,
+                "deklassifiziert": self.deklassifiziert, "pid": os.getpid()}
