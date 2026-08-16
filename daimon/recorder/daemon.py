@@ -368,8 +368,8 @@ class Recorder:
             self._srv = None
 
 
-def _wahrnehmung_an() -> bool:
-    """Sehen die Augen gerade? Gemessen an der WIRKUNG, nicht am Etikett.
+def _wahrnehmung_an(runtime_dir: Path) -> bool:
+    """Sehen die Augen gerade? Gemessen an IHREM Lebenszeichen.
 
     ZWEI FEHLER UEBEREINANDER, beide am 14.08. live gefunden, und deshalb
     steht hier jetzt etwas anderes als vorher:
@@ -388,15 +388,21 @@ def _wahrnehmung_an() -> bool:
     Redaktion sperrte JEDE Meldung mit `wahrnehmung_aus`, bei laufenden
     Augen, und das Archiv blieb leer, waehrend alle Tests gruen waren.
 
-    Gemessen wird deshalb der ScreenCast-Strom: er entsteht mit der
-    Portal-Sitzung und verschwindet mit ihr (T-7.3, nachgemessen: Augen an
-    -> 1, Augen aus -> 0). Ist er nicht messbar, gilt „an": ein Gatter, das
-    bei unlesbarer Messung alles verwirft, schaltet die Funktion still ab --
-    und der Absender selbst ist bereits ein Beleg dafuer, dass wahrgenommen
-    wird.
+    **Der dritte war wieder der Messweg, gefunden am 16.08.** Danach stand
+    hier `bildschirmstroeme()`, und die zaehlt JEDEN `Stream/Output/Video`.
+    Fuer den Kill-Switch ist das Mitzaehlen fremder Stroeme richtig; fuer
+    diese Frage ist es falsch. Wer waehrend einer Konferenz seinen Bildschirm
+    teilt und dann die Augen abschaltet, bekam hier weiter „an" -- der
+    Fokusdienst lieferte Fenstertitel, und die Redaktion liess sie durch.
+    Der Kill-Switch stoppt `daimon-eyes`, nicht `daimon-focus`.
+
+    Gemessen wird jetzt das Lebenszeichen des Augendienstes: er schreibt es
+    je Runde, hier wird sein ALTER geprueft. Kein Herzschlag heisst „aus",
+    und das ist keine Wiederholung des zweiten Fehlers -- diese Messung
+    gelingt immer, sie liest eine Datei im eigenen Laufzeitverzeichnis.
+    Ihr Fehlen ist eine Aussage und kein Werkzeugfehler.
     """
-    stroeme = pause.bildschirmstroeme()
-    return True if stroeme is None else stroeme > 0
+    return pause.augen_sehen(runtime_dir)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -425,7 +431,7 @@ def main(argv: list[str] | None = None) -> int:
         runtime_dir=rt,
         archiv=Archiv(args.archiv, grenze_bytes=int(grenze)),
         redaktion=Redaktion(denylist=denylist, runtime_dir=rt,
-                            wahrnehmung_an=_wahrnehmung_an),
+                            wahrnehmung_an=lambda: _wahrnehmung_an(rt)),
         aufraeum_intervall_s=float(cfg.get("archiv.aufraeum_intervall_s",
                                            3600.0)),
         log=log)

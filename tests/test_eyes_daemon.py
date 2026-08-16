@@ -145,6 +145,27 @@ def test_eine_gescheiterte_runde_beendet_den_dienst_nicht(tmp_path, capsys):
     assert "gescheitert" in capsys.readouterr().err
 
 
+# -- Das Lebenszeichen der Wahrnehmung -------------------------------------
+
+def test_die_schleife_schreibt_das_lebenszeichen(tmp_path, monkeypatch):
+    """Der Recorder sperrt Bildschirmarten, solange es fehlt. Ohne diese
+    Pruefung haenge sein Gatter an einer Datei, die niemand fuellt -- und der
+    Mitschnitt waere still abgeschaltet statt falsch offen.
+    """
+    from daimon.recorder import pause
+
+    monkeypatch.setattr("daimon.common.config.runtime_dir", lambda: tmp_path)
+    a = augen(tmp_path)
+    a._ausloeser = type("A", (), {"tick": lambda self: None})()
+    threading.Timer(0.15, a._halt.set).start()
+    a.lauf(takt_s=0.01)
+
+    assert pause.augen_sehen(tmp_path) is True
+    # Und nach dem Abbau ist es SOFORT weg, nicht erst nach der Frist.
+    a.beenden()
+    assert pause.augen_sehen(tmp_path) is False
+
+
 # -- Der Widerruf ----------------------------------------------------------
 
 class SitzungAttrappe:

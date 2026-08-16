@@ -175,14 +175,23 @@ class Redaktion:
         aufzeichnen" --, koppelte den Ton an den Bildschirm und liesse ihn
         genau dann durch, wenn kein Fenster vorn ist.
 
-        Was greift: der Privatmodus und die abgeschaltete Wahrnehmung. Die
-        Pause aus T-7.3 braucht hier nichts, denn sie stoppt den Dienst --
-        und ein gestoppter Recorder nimmt keine Meldung mehr an.
+        Was greift: der Privatmodus, und sonst nichts.
+
+        **Die Bildschirm-Wahrnehmung greift hier NICHT, seit dem 16.08.** Sie
+        wird am Lebenszeichen der AUGEN gemessen, und der Ton hat mit ihnen
+        nichts zu tun: wer die Augen abschaltet, hat nicht das Mikrofon
+        abgeschaltet. Vorher hing beides an derselben Funktion, und das fiel
+        nur deshalb nicht auf, weil ihre damalige Messung fast immer „an"
+        sagte -- ein Fehler, der auf einen anderen Fehler angewiesen war, um
+        unsichtbar zu bleiben.
+
+        Was den Ton sperrt, ist dasselbe wie bei der Pause aus T-7.3 und
+        braucht deshalb keine eigene Regel: der Ohren-Kill-Switch stoppt
+        `daimon-ears.service`, und ein gestoppter Absender meldet nichts.
+        Eine Sperre in diesem Prozess waere die zweite Wahrheit dazu.
         """
         if self._uhr() < privat_bis(self.runtime_dir):
             return Urteil(STUFE_TRANSIENT, GRUND_PRIVAT)
-        if not self.wahrnehmung_an():
-            return Urteil(STUFE_TRANSIENT, GRUND_WAHRNEHMUNG_AUS)
         return Urteil(stufe)
 
     def urteil(self, klasse: str, *, drm: bool = False,

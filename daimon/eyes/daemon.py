@@ -322,6 +322,27 @@ class Augen:
 
     # -- Die Schleife ------------------------------------------------------
 
+    def _lebenszeichen(self, *, loeschen: bool = False) -> None:
+        """„Ich sehe gerade hin" -- oder, beim Abbau, das Gegenteil.
+
+        Fehler sind hier folgenlos: ein Augendienst, der wegen eines vollen
+        tmpfs stirbt, waere ein teurer Handel fuer eine Anzeige. Die Folge
+        eines ausbleibenden Schreibens ist, dass der Recorder Bildschirmarten
+        sperrt -- die sichere Richtung.
+        """
+        from daimon.common.config import runtime_dir
+        from daimon.recorder import pause
+
+        try:
+            if loeschen:
+                pause.herzschlag_loeschen(runtime_dir(),
+                                          datei=pause.WAHRNEHMUNG_DATEI)
+            else:
+                pause.herzschlag(runtime_dir(),
+                                 datei=pause.WAHRNEHMUNG_DATEI)
+        except OSError:
+            pass
+
     def _widerruf_pruefen(self) -> bool:
         """Hat das Face einen Widerruf vermerkt? Dann ist hier Schluss."""
         if self._sitzung is None:
@@ -337,6 +358,13 @@ class Augen:
         self._halt.clear()
         self._laeuft.set()
         while not self._halt.is_set():
+            # Das Lebenszeichen der Wahrnehmung, je Runde. Der Recorder liest
+            # es und sperrt Bildschirmarten, solange es fehlt -- vorher fragte
+            # er die globale Zahl der ScreenCast-Stroeme, und eine fremde
+            # Bildschirmfreigabe beantwortete "sehen die Augen?" mit ja.
+            # Ein Schreiben ins tmpfs je halbe Sekunde kostet nichts; derselbe
+            # Handel wie beim Mitschnitt-Herzschlag des Recorders.
+            self._lebenszeichen()
             if self._widerruf_pruefen():
                 break
             grund = self._ausloeser.tick()
@@ -375,6 +403,10 @@ class Augen:
         """
         self._halt.set()
         self._laeuft.clear()
+        # ZUERST das Lebenszeichen, vor Sitzung und Pool: schon der naechste
+        # Blick des Recorders soll „niemand sieht hin" lesen, und nicht erst
+        # der nach dem Verfall der Frist.
+        self._lebenszeichen(loeschen=True)
         bericht = {"sitzung": None, "pool": None}
         if self._portal is not None:
             try:

@@ -51,6 +51,18 @@ PAUSE_UNITS = (RECORDER_UNIT, EYES_UNIT)
 HERZSCHLAG_DATEI = "mitschnitt"
 HERZSCHLAG_FRIST_S = 5.0
 
+# Derselbe Mechanismus fuer die Augen, und zwar aus einem gemessenen Grund.
+# Bis zum 16.08. fragte der Recorder `bildschirmstroeme()`, ob wahrgenommen
+# wird -- und die zaehlt JEDEN `Stream/Output/Video`, auch fremde. Fuer den
+# Kill-Switch ist das Mitzaehlen richtig (bleibt nach dem Abschalten eine
+# fremde Sitzung stehen, will man das sehen). Fuer die Frage „sehen UNSERE
+# Augen gerade?" ist es falsch: eine laufende Bildschirmfreigabe in einer
+# Konferenz beantwortet sie mit „ja", auch wenn der Augendienst gestoppt ist.
+#
+# Der Augendienst schreibt deshalb sein eigenes Lebenszeichen, und der
+# Recorder liest es. Beide haben `%t/daimon` als `RuntimeDirectory`.
+WAHRNEHMUNG_DATEI = "wahrnehmung"
+
 # Konferenzanwendungen, bei denen automatisch pausiert wird. `.desktop`-
 # Kennungen und Fensterklassen, wie in der Denylist: hier steht die Vorgabe,
 # ergaenzt wird in config/redaktion.yaml unter `konferenz`.
@@ -133,18 +145,28 @@ def ist_konferenz(klasse: str, liste: Iterable[str] = KONFERENZ_VORGABE) -> bool
                for e in liste if e.strip())
 
 
-def herzschlag(runtime_dir: Path, *, uhr: Callable[[], float] = time.time
-               ) -> None:
-    """Der Recorder sagt „ich schneide mit", einmal je Runde."""
-    datei = Path(runtime_dir) / HERZSCHLAG_DATEI
-    datei.write_text(f"{uhr()}\n")
+def herzschlag(runtime_dir: Path, *, uhr: Callable[[], float] = time.time,
+               datei: str = HERZSCHLAG_DATEI) -> None:
+    """„Ich arbeite", einmal je Runde. Der Recorder fuer den Mitschnitt, der
+    Augendienst fuer die Wahrnehmung."""
+    (Path(runtime_dir) / datei).write_text(f"{uhr()}\n")
 
 
-def herzschlag_loeschen(runtime_dir: Path) -> None:
+def herzschlag_loeschen(runtime_dir: Path, *,
+                        datei: str = HERZSCHLAG_DATEI) -> None:
     try:
-        (Path(runtime_dir) / HERZSCHLAG_DATEI).unlink()
+        (Path(runtime_dir) / datei).unlink()
     except OSError:
         pass
+
+
+def _frisch(runtime_dir: Path, datei: str, uhr: Callable[[], float],
+            frist_s: float) -> bool:
+    try:
+        stand = float((Path(runtime_dir) / datei).read_text().strip())
+    except (OSError, ValueError):
+        return False
+    return 0.0 <= uhr() - stand < frist_s
 
 
 def schneidet_mit(runtime_dir: Path, *,
@@ -156,11 +178,26 @@ def schneidet_mit(runtime_dir: Path, *,
     leuchtete die Anzeige weiter, nachdem der Dienst mit SIGKILL gestorben
     ist.
     """
-    try:
-        stand = float((Path(runtime_dir) / HERZSCHLAG_DATEI).read_text().strip())
-    except (OSError, ValueError):
-        return False
-    return 0.0 <= uhr() - stand < frist_s
+    return _frisch(runtime_dir, HERZSCHLAG_DATEI, uhr, frist_s)
+
+
+def augen_sehen(runtime_dir: Path, *,
+                uhr: Callable[[], float] = time.time,
+                frist_s: float = HERZSCHLAG_FRIST_S) -> bool:
+    """Sehen die Augen gerade? Gemessen an IHREM Lebenszeichen.
+
+    Kein Herzschlag heisst hier AUS, und das ist die richtige Richtung --
+    anders als bei einer Messung, die der Prozess technisch nicht ausfuehren
+    kann (`systemctl --user` im Sandkasten des Recorders, Befund vom 14.08.).
+    Diese hier gelingt immer: es ist eine Datei im eigenen
+    Laufzeitverzeichnis. Dass niemand hineinschreibt, ist deshalb eine
+    Aussage und kein Werkzeugfehler -- niemand sieht hin.
+
+    Nach einem SIGKILL des Augendienstes verfaellt sie von selbst; nach dem
+    Kill-Switch ist sie binnen `frist_s` alt, und `beenden()` raeumt sie
+    ohnehin sofort weg.
+    """
+    return _frisch(runtime_dir, WAHRNEHMUNG_DATEI, uhr, frist_s)
 
 
 def stoppe(units: Iterable[str] = PAUSE_UNITS, *,

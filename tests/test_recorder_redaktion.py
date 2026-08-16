@@ -120,6 +120,34 @@ def test_wahrnehmung_aus_faellt_auf_transient(tmp_path):
     assert r.urteil("kate").stufe == STUFE_TRANSIENT
 
 
+def test_abgeschaltete_AUGEN_sperren_den_TON_nicht(tmp_path):
+    """Zwei Wahrnehmungen, zwei Schalter -- seit dem 16.08. getrennt.
+
+    `wahrnehmung_an` misst das Lebenszeichen der AUGEN. Wer sie abschaltet,
+    hat nicht das Mikrofon abgeschaltet: den Ton sperrt der Ohren-Kill-Switch,
+    indem er den Absender stoppt. Vorher hing beides an derselben Funktion,
+    und das fiel nur deshalb nicht auf, weil ihre damalige Messung fast immer
+    „an" sagte -- ein Fehler, der einen zweiten brauchte, um unsichtbar zu
+    bleiben.
+    """
+    uhr = Uhr()
+    r = Redaktion(denylist=[], runtime_dir=tmp_path, kennungen={},
+                  wahrnehmung_an=lambda: False, uhr=uhr)
+    assert r.urteil("kate").grund == GRUND_WAHRNEHMUNG_AUS   # Bildschirm: zu
+    assert r.urteil_ton().schreibt                           # Ton: offen
+
+
+def test_der_privatmodus_sperrt_BEIDE(tmp_path):
+    """Die Gegenprobe zur Trennung: was den ganzen Betrieb betrifft, greift
+    weiterhin auf beiden Wegen. Sonst waere oben nicht getrennt, sondern der
+    Ton schlicht ungeschuetzt."""
+    uhr = Uhr()
+    r = Redaktion(denylist=[], runtime_dir=tmp_path, kennungen={}, uhr=uhr)
+    privat_setzen(tmp_path, 900.0, uhr=uhr)
+    assert r.urteil("kate").grund == GRUND_PRIVAT
+    assert r.urteil_ton().grund == GRUND_PRIVAT
+
+
 def test_kaputte_denylist_scheitert_laut(tmp_path):
     datei = tmp_path / "redaktion.yaml"
     datei.write_text("denylist: [unbalanciert\n")

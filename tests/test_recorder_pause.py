@@ -7,6 +7,7 @@ herstellt: rc=0, Unit weg -- und der Strom laeuft weiter.
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 
@@ -227,26 +228,56 @@ def test_nicht_messbares_mikrofon_pausiert_nicht(tmp_path):
 
 # -- Der Wahrnehmungs-Gatter (T-7.2, korrigiert am 14.08.) ----------------
 
-def test_wahrnehmung_wird_am_strom_gemessen_nicht_am_etikett():
-    """Zwei Fehler, beide live gefunden, beide hier festgenagelt.
+def test_wahrnehmung_wird_am_lebenszeichen_der_augen_gemessen(tmp_path):
+    """DRITTE Fassung dieser Messung, und hier steht, warum die zweite fiel.
 
-    `lampe()` kennt drei Werte; `lampe() == "an"` faltet sie auf zwei und
-    macht aus einem Werkzeugfehler ein "abgeschaltet". Und `systemctl
-    --user` laeuft im Sandkasten des Recorders gar nicht. Gemessen wird
-    deshalb der ScreenCast-Strom.
+    Erste Fassung: `lampe() == "an"`. Zwei Fehler uebereinander -- drei Werte
+    auf zwei gefaltet, und `systemctl --user` laeuft im Sandkasten des
+    Recorders ohnehin nicht.
+
+    Zweite Fassung: `bildschirmstroeme()`. Die zaehlt JEDEN
+    `Stream/Output/Video`, auch fremde. Wer waehrend einer Konferenz seinen
+    Bildschirm teilt und dann die Augen abschaltet, bekam weiter "an" -- und
+    der Fokusdienst, den der Kill-Switch gar nicht stoppt, fuellte das Archiv
+    mit Fenstertiteln weiter.
+
+    Dritte Fassung: das Lebenszeichen des Augendienstes. Sein FEHLEN heisst
+    "aus", und das widerspricht der Lehre der ersten Fassung nicht: die galt
+    einer Messung, die SCHEITERN kann. Diese hier gelingt immer -- sie liest
+    eine Datei im eigenen Laufzeitverzeichnis.
     """
+    from daimon.recorder.daemon import _wahrnehmung_an
+    from daimon.recorder import pause as p
+
+    # Noch nie ein Augendienst da gewesen.
+    assert _wahrnehmung_an(tmp_path) is False
+
+    p.herzschlag(tmp_path, datei=p.WAHRNEHMUNG_DATEI)
+    assert _wahrnehmung_an(tmp_path) is True
+
+    # Ein alter Herzschlag zaehlt nicht -- sonst saehe ein mit SIGKILL
+    # gestorbener Augendienst aus wie einer, der hinsieht.
+    p.herzschlag(tmp_path, datei=p.WAHRNEHMUNG_DATEI,
+                 uhr=lambda: time.time() - 3600)
+    assert _wahrnehmung_an(tmp_path) is False
+
+    # Und nach dem sauberen Abbau ist er sofort weg, nicht erst nach der Frist.
+    p.herzschlag(tmp_path, datei=p.WAHRNEHMUNG_DATEI)
+    p.herzschlag_loeschen(tmp_path, datei=p.WAHRNEHMUNG_DATEI)
+    assert _wahrnehmung_an(tmp_path) is False
+
+
+def test_ein_fremder_bildschirmstrom_ist_keine_eigene_wahrnehmung(tmp_path):
+    """DER BEFUND. Eine fremde Bildschirmfreigabe darf das Gatter nicht
+    oeffnen -- fuer den Kill-Switch zaehlt sie mit (bleibt nach dem
+    Abschalten eine Sitzung stehen, will man das sehen), fuer diese Frage
+    nicht."""
     from daimon.recorder.daemon import _wahrnehmung_an
     from daimon.recorder import pause as p
 
     alt = p.bildschirmstroeme
     try:
-        p.bildschirmstroeme = lambda: 1
-        assert _wahrnehmung_an() is True
-        p.bildschirmstroeme = lambda: 0
-        assert _wahrnehmung_an() is False
-        # Nicht messbar heisst NICHT "aus": sonst schaltet ein
-        # Werkzeugfehler die ganze Funktion still ab.
-        p.bildschirmstroeme = lambda: None
-        assert _wahrnehmung_an() is True
+        p.bildschirmstroeme = lambda **_kw: 3      # drei fremde Stroeme
+        assert _wahrnehmung_an(tmp_path) is False
     finally:
         p.bildschirmstroeme = alt
