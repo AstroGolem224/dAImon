@@ -180,6 +180,29 @@ class Deklassifizierung:
                   proaktiv: bool = False) -> Freigabe:
         """Kontext aus der Quarantaene, oder `GateFehler` mit Grund.
 
+        **`kontingent` und `proaktiv` haben heute keinen produktiven
+        Aufrufer** -- nachgesehen am 16.08., der einzige Aufruf im Betrieb ist
+        `Hub.kontext_anfrage`, und der uebergibt beide nicht. Das ist keine
+        Luecke, aber es ist auch nicht das, wonach es aussieht: WIRKSAM sind
+        die Zusagen an anderer Stelle, und dort sind sie strukturell statt
+        durch ein Argument.
+
+        * Ein Wake-Word kann keine Deklassifizierung tragen, weil es keine
+          RUNDENMARKE erzeugen kann: `MarkenBuch.ausgeben` nimmt ausser
+          `quelle="auth"` nichts an, und ein Kontingent ist keine Marke.
+          `KontingentBuch.erlaubt_deklassifizierung` ist zusaetzlich eine
+          konstante, testbare Zusage.
+        * Proaktives Verhalten sieht nichts, weil `mind.proactive` das Gate
+          gar nicht aufruft -- es entscheidet und gibt einen Vorschlag
+          zurueck. Und ohne Nutzerhandlung gibt es keine offene Marke, also
+          fuehrt der Weg ohnehin auf `keine_marke`.
+
+        Beide Parameter bleiben trotzdem stehen: sie sind der Ort, an dem die
+        Bedingung steht, wenn das Wake-Word einmal verdrahtet wird. Damit
+        das nicht stillschweigend passiert, bewacht `tests/test_gate_zulauf.py`
+        genau diesen Zulauf -- wer `KontingentBuch` produktiv verdrahtet, muss
+        `kontingent` hier durchreichen, und der Pruefstand sagt es ihm.
+
         Die Reihenfolge ist nicht beliebig, und sie war im ersten Entwurf
         falsch: dort wurde die Marke VOR dem Bildschirmbezug eingeloest. Eine
         Aeusserung ohne Bezug verbrannte damit die Marke, und der Nutzer
