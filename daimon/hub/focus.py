@@ -91,6 +91,11 @@ class FocusEvent:
     fullscreen: bool
     pid: int
     geometrie: tuple[int, int, int, int] = (0, 0, 0, 0)
+    # KWins `excludeFromCapture`: "dieses Fenster gehoert in keine Aufnahme".
+    # Vorgabe `False` und nicht `True`, weil ein aelteres Script das Feld nicht
+    # kennt -- und ein Empfaenger, der dann ALLES sperrt, schaltet den
+    # Mitschnitt bei jedem Versionsversatz still ab.
+    drm: bool = False
     ts: float = field(default_factory=time.time)
 
     def deckt_ab(self, x: int, y: int) -> bool:
@@ -117,13 +122,14 @@ class FocusReceiver:
 
     def handle(self, kind: str, uuid: str, caption: str, cls: str,
                desktop: str, fullscreen: bool, pid: int,
-               x: int = 0, y: int = 0, breite: int = 0, hoehe: int = 0
-               ) -> FocusEvent:
+               x: int = 0, y: int = 0, breite: int = 0, hoehe: int = 0,
+               drm: bool = False) -> FocusEvent:
         ev = FocusEvent(
             kind=str(kind), uuid=str(uuid),
             caption=tainted(str(caption)), resource_class=tainted(str(cls)),
             desktop_file=str(desktop), fullscreen=bool(fullscreen),
             pid=int(pid), geometrie=(int(x), int(y), int(breite), int(hoehe)),
+            drm=bool(drm),
         )
         with self._lock:
             self._letztes = ev
@@ -165,8 +171,14 @@ class FocusReceiver:
             letzter[0] = titel
             from daimon.common.config import runtime_dir
             from daimon.recorder.melder import melde_titel
+            # `drm` geht MIT: der Titel eines Fensters, das sich aus jeder
+            # Aufnahme nimmt, verraet dasselbe wie sein Inhalt -- "Folge 3:
+            # ..." steht in der Titelleiste, nicht nur im Bild. Die Augen
+            # sperrt das Flag ohnehin; ohne diese Zeile bliebe der Titel der
+            # einzige Weg, auf dem ein geschuetztes Fenster ins Archiv kaeme.
             melde_titel(runtime_dir(), titel,
-                        klasse=str(ev.resource_class.value or ""))
+                        klasse=str(ev.resource_class.value or ""),
+                        drm=bool(ev.drm))
 
         return melden
 
@@ -197,6 +209,7 @@ class FocusReceiver:
             pid=_zahl(daten.get("pid")),
             x=_zahl(daten.get("x")), y=_zahl(daten.get("y")),
             breite=_zahl(daten.get("breite")), hoehe=_zahl(daten.get("hoehe")),
+            drm=_flag(daten.get("drm")),
         )
 
     @property
@@ -237,6 +250,10 @@ class FocusReceiver:
                 "v": 1, "bekannt": True, "uuid": ev.uuid,
                 "resource_class": ev.resource_class.value,
                 "fullscreen": bool(ev.fullscreen),
+                # Die Augen fragen hier ab (T-5.5) und reichen das Feld an die
+                # Redaktion weiter. Vorher stand dort ein festes `False`, und
+                # damit war die DRM-Sperre aus Design 4.4 unerreichbar.
+                "drm": bool(ev.drm),
                 "x": x, "y": y, "breite": breite, "hoehe": hoehe,
                 "alter_s": max(0.0, time.time() - ev.ts),
             }

@@ -73,7 +73,7 @@ def melde_ocr(runtime_dir: Path, text: str, *, klasse: str,
 
 
 def melde_titel(runtime_dir: Path, titel: str, *, klasse: str,
-                timeout_s: float = 1.0) -> dict:
+                drm: bool = False, timeout_s: float = 1.0) -> dict:
     """Ein Fenstertitel ins Archiv.
 
     Der Titel wandert in `text` und NICHT in `fenster`: gesucht werden soll
@@ -81,10 +81,14 @@ def melde_titel(runtime_dir: Path, titel: str, *, klasse: str,
     Art `titel` sagt, was er ist. Die Kennung kommt getrennt mit, damit die
     Denylist greift: der Titel eines gelisteten Passwortmanagers ist genauso
     verraeterisch wie sein Inhalt.
+
+    `drm` ebenso, und aus demselben Grund: ein Fenster, das sich aus jeder
+    Aufnahme nimmt, traegt den Titel der geschuetzten Wiedergabe.
     """
     sauber = str(titel).strip()[:MAX_ZEICHEN]
     if not sauber:
         return {"ok": False, "grund": "leer"}
     return senden(runtime_dir, {"v": 1, "typ": "archiv", "art": ART_TITEL,
                                 "text": sauber, "klasse": str(klasse),
-                                "fenster": str(klasse)}, timeout_s=timeout_s)
+                                "fenster": str(klasse),
+                                "drm": bool(drm)}, timeout_s=timeout_s)

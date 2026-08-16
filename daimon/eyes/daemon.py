@@ -238,7 +238,15 @@ class Augen:
         return Fenster(x=int(roh["x"]), y=int(roh["y"]),
                        breite=int(roh["breite"]), hoehe=int(roh["hoehe"]),
                        klasse=str(roh.get("resource_class", "")),
-                       drm=False)
+                       # Hier stand `drm=False`, fest verdrahtet -- und das ist
+                       # der EINZIGE produktive Weg zu einem Fenster (der
+                       # Push-Weg auf `de.daimon.Eyes` hat keinen Absender).
+                       # Damit konnte die DRM-Sperre aus Design 4.4 nie
+                       # ausloesen: weder die Gatterkette (change.py) noch die
+                       # Redaktion (T-7.2) haben je ein `True` gesehen. Der
+                       # Fokusdienst fuehrt das Feld seit dem 15.08. aus KWins
+                       # `excludeFromCapture`.
+                       drm=bool(roh.get("drm", False)))
 
     def _aktuelles_fenster(self, breite: int, hoehe: int) -> Fenster:
         with self._fenster_sperre:

@@ -27,7 +27,8 @@ var IFACE = "de.daimon.Focus";
 function melde(kind, w) {
     var d = {
         kind: String(kind), uuid: "", caption: "", cls: "", desktop: "",
-        fullscreen: false, pid: 0, x: 0, y: 0, breite: 0, hoehe: 0
+        fullscreen: false, pid: 0, x: 0, y: 0, breite: 0, hoehe: 0,
+        drm: false
     };
     if (w) {
         d.uuid       = String(w.internalId || "");
@@ -36,6 +37,18 @@ function melde(kind, w) {
         d.desktop    = String(w.desktopFileName || "");
         d.fullscreen = !!w.fullScreen;
         d.pid        = Number(w.pid || 0);
+        // Design 4.4 verlangt eine DRM-Sperre, und bis hierher hatte sie
+        // KEINE Quelle: der Augendienst setzte `drm` fest auf false, also
+        // konnte der Grund `drm` in der Redaktion nie entstehen.
+        //
+        // `excludeFromCapture` ist die einzige Eigenschaft, die KWin dazu
+        // fuehrt -- am 15.08. an der Fensterliste dieser Sitzung abgefragt,
+        // nicht aus der Dokumentation uebernommen. Sie ist WEITER als DRM:
+        // sie sagt "dieses Fenster gehoert nicht in eine Aufnahme", gleich
+        // ob wegen geschuetzter Wiedergabe oder weil die Anwendung es so
+        // will. Fuer einen Mitschnitt ist das die richtige Richtung -- wer
+        // sich aus der Aufnahme nimmt, meint auch unsere.
+        d.drm        = !!w.excludeFromCapture;
         // frameGeometry ist die Anreicherung, die das VRAM-Gate braucht:
         // ein Vollbildfenster auf dem Ausgabegeraet des Overlays heisst,
         // dass das Overlay verdeckt sein koennte.
@@ -58,6 +71,18 @@ function verdrahteCaption(w) {
             melde("caption", w);
         }
     });
+    // Ohne diese Zeile waere die DRM-Meldung halb: der geschuetzte Inhalt
+    // startet IM schon fokussierten Fenster, und dann feuert nur dieses
+    // Signal. Der Empfaenger haelt das letzte Ereignis -- ohne ein neues
+    // bliebe er auf `drm: false` stehen, waehrend die Wiedergabe laeuft.
+    if (w.excludeFromCaptureChanged) {
+        w.excludeFromCaptureChanged.connect(function () {
+            if (workspace.activeWindow &&
+                String(workspace.activeWindow.internalId) === id) {
+                melde("drm", w);
+            }
+        });
+    }
 }
 
 workspace.windowActivated.connect(function (w) {
