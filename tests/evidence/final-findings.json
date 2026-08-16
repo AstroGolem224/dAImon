@@ -1,7 +1,7 @@
 {
   "v": 1,
   "task": "T-6.9",
-  "erzeugt": "2026-08-14T15:32:53+0200",
+  "erzeugt": "2026-08-16T14:49:14+0200",
   "rolle": "builder",
   "unabhaengig": false,
   "hinweis": "Erzeugt von derselben Einheit, die den Code gebaut hat. Der Plan weist T-6.9 der Rolle `reviewer` zu. Feld `herkunft` je Befund: gemessen | direktive | pruefstand.",
@@ -36,15 +36,23 @@
       "status": "closed",
       "herkunft": "gemessen",
       "titel": "Eine fremde Unit bekommt keinen Bildschirmkontext",
-      "beleg": "Antwort auf /run/user/1000/daimon/kontext.sock (Modus 0o600): 'ConnectionResetError: [Errno 104] Connection reset by peer' -- leer heisst: Verbindung ohne Antwort geschlossen"
+      "beleg": "kontext.sock (Modus 0o600): abgewiesen ('ConnectionResetError: [Errno 104] Connection reset by peer'). Positivkontrolle state.sock ohne Allowlist: beantwortet. Der Hub nennt die abgewiesene Unit im Journal: True."
+    },
+    {
+      "id": "7.2b-entscheidung",
+      "severity": "critical",
+      "status": "closed",
+      "herkunft": "pruefstand",
+      "titel": "Ohne Rundenmarke und Bildschirmbezug gibt das Gate nichts heraus",
+      "beleg": "tests/test_hub_kontext.py + tests/test_declassify.py: rc=0, 37 passed in 0.04s. NICHT am laufenden System gemessen -- dafuer braucht es einen Menschen an der Taste und einen Absender, der daimon-mind IST. Diese Zeile ist `pruefstand` und damit vom selben Erbauer."
     },
     {
       "id": "7.2c-mind-token",
-      "severity": "critical",
-      "status": "closed",
+      "severity": "high",
+      "status": "unbelegt",
       "herkunft": "gemessen",
       "titel": "Kein Token in der Umgebung von daimon-mind",
-      "beleg": "/proc/126424/environ, 93 Variablen, verdaechtige NAMEN (ohne Werte): [] "
+      "beleg": "daimon-mind laeuft nicht -- nicht messbar"
     },
     {
       "id": "7.2c-egress-token",
@@ -68,7 +76,7 @@
       "status": "closed",
       "herkunft": "gemessen",
       "titel": "Keine Zeile steht auf `full` ohne ausdrueckliche Anforderung",
-      "beleg": "Stufen: {'redacted': 617}, Arten: {'ocr': 210, 'titel': 407}"
+      "beleg": "1041 Zeilen. Stufen: {'redacted': 1041}, Arten: {'ocr': 503, 'titel': 538}"
     },
     {
       "id": "7.2d-kein-rohaudio",
@@ -76,8 +84,10 @@
       "status": "closed",
       "herkunft": "gemessen",
       "titel": "Kein Rohaudio im Archiv",
-      "beleg": "Audio-Arten: [], WAVE-Koepfe (RIFF+WAVE) in ['archiv.db', 'archiv.db-wal', 'archiv.db-shm']: 0"
+      "beleg": "1041 Zeilen. Audio-Arten: [], WAVE-Koepfe (RIFF+WAVE) in ['archiv.db', 'archiv.db-wal', 'archiv.db-shm']: 0"
     }
   ],
-  "offen_high_critical": []
+  "offen_high_critical": [
+    "7.2c-mind-token"
+  ]
 }

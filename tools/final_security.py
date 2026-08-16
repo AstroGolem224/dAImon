@@ -48,9 +48,11 @@ NETZ_TRAEGER = ("daimon-egress.service", "daimon-lokal-broker.service",
 TOKEN = Path.home() / ".config" / "daimon" / "anthropic-token"
 
 
-def _sh(*argv: str, timeout: float = 15.0) -> tuple[int, str]:
+def _sh(*argv: str, timeout: float = 15.0,
+        cwd: str | None = None) -> tuple[int, str]:
     try:
-        e = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        e = subprocess.run(argv, capture_output=True, text=True,
+                           timeout=timeout, cwd=cwd)
     except (OSError, subprocess.SubprocessError) as exc:
         return 1, f"{type(exc).__name__}: {exc}"
     return e.returncode, (e.stdout or e.stderr or "").strip()
@@ -121,9 +123,64 @@ def netzsperre() -> list[dict]:
 
 # -- 7.2b Deklassifizierungs-Gate ------------------------------------------
 
+ABGEWIESEN = "abgewiesen"       # keine Antwort -- die Unit kam nicht durch
+BEANTWORTET = "beantwortet"     # der Dienst hat GEREDET, also angenommen
+UNKLAR = "unklar"               # weder noch, und das ist kein Ergebnis
+
+
+def deutung(antwort: str) -> str:
+    """Was die Antwort am Kontextsocket bedeutet. DREI Ausgaenge, nicht zwei.
+
+    **Hier stand der vierte Falschbefund dieses Werkzeugs.** Die alte Fassung
+    zaehlte auch `{"ok": false, ...}` als Abweisung -- und das ist genau die
+    Verwechslung, die der Befund 7.2b nicht machen darf: wer eine Antwort
+    bekommt, ist ANGENOMMEN worden. Die Unit-Allowlist hat ihn dann gerade
+    nicht abgewiesen; abgelehnt hat das Gate DAHINTER, und zwar aus einem
+    ganz anderen Grund (meist "keine Rundenmarke"). Ein Hub ohne
+    Peer-Pruefung haette diesen Befund weiter gruen gemeldet.
+
+    Die Zeile war ohnehin wirkungslos: gesucht wurde `ok": false` MIT
+    Leerzeichen in einer Zeichenkette, aus der zuvor alle Leerzeichen
+    entfernt wurden. Sie konnte nie treffen. Zwei Fehler, die einander
+    verdeckt haben -- der zweite hat den ersten folgenlos gemacht, und
+    beide waeren beim Reparieren des zweiten allein sichtbar geworden.
+
+    Ein RST zaehlt als Abweisung: der Dienst schliesst, waehrend ungelesene
+    Bytes im Puffer stehen, und dann ist der Abbruch hart. Dieselbe Wirkung
+    wie ein EOF -- keine Antwort.
+    """
+    text = (antwort or "").strip()
+    if text == "" or "ConnectionReset" in text:
+        return ABGEWIESEN
+    try:
+        geparst = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return UNKLAR
+    return BEANTWORTET if isinstance(geparst, dict) else UNKLAR
+
+
+def _eine_zeile(sock: Path, zeile: bytes, timeout: float = 5.0) -> str:
+    c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    c.settimeout(timeout)
+    try:
+        c.connect(str(sock))
+        if zeile:
+            c.sendall(zeile)
+        return c.makefile("r").readline().strip()
+    except OSError as exc:
+        return f"{type(exc).__name__}: {exc}"
+    finally:
+        c.close()
+
+
 def gate() -> list[dict]:
-    """Der Ausgang aus der Quarantaene. Gemessen wird die GRENZE -- dass ein
-    fremder Absender abgewiesen wird -- nicht die Entscheidung dahinter."""
+    """Der Ausgang aus der Quarantaene.
+
+    Gemessen wird die GRENZE -- dass ein fremder Absender abgewiesen wird --
+    NICHT die Entscheidung dahinter. Beides steht getrennt im Bericht, mit
+    getrennter `herkunft`: die Grenze ist gemessen, die Entscheidung haengt
+    an `pytest` und damit am selben Erbauer.
+    """
     heraus = []
     rt = Path(os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000")) / "daimon"
     sock = rt / "kontext.sock"
@@ -135,31 +192,64 @@ def gate() -> list[dict]:
         return heraus
 
     modus = oct(sock.stat().st_mode & 0o777)
-    c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    c.settimeout(5.0)
-    antwort = ""
-    try:
-        c.connect(str(sock))
-        c.sendall(b'{"v":1,"art":"deklassifizieren","text":"was steht auf dem Bildschirm"}\n')
-        antwort = c.makefile("r").readline().strip()
-    except OSError as exc:
-        antwort = f"{type(exc).__name__}: {exc}"
-    finally:
-        c.close()
+    seit = time.strftime("%Y-%m-%d %H:%M:%S")
+    antwort = _eine_zeile(
+        sock,
+        b'{"v":1,"art":"deklassifizieren","text":"was steht auf dem Bildschirm"}\n')
+    wie = deutung(antwort)
 
-    # Ein RST zaehlt als Abweisung. Der Dienst schliesst, waehrend noch
-    # ungelesene Bytes im Puffer stehen -- dann ist der Abbruch hart, und
-    # der Klient sieht ConnectionResetError statt EOF. Dieselbe Wirkung:
-    # keine Antwort. (Beim ersten Lauf las dieses Werkzeug das als offenen
-    # Befund -- ein Falschbefund des Pruefers, nicht des Systems.)
-    abgewiesen = (antwort == "" or "ConnectionReset" in antwort
-                  or "ok\": false" in antwort.replace(" ", ""))
+    # POSITIVKONTROLLE 1 -- kann dieses Werkzeug ueberhaupt eine Antwort
+    # lesen? `state.sock` ist derselbe Hub, dieselbe Verbindungsart, nur ohne
+    # Unit-Allowlist. Schweigt er auch dort, sagt das Schweigen oben nichts
+    # ueber die Allowlist, sondern etwas ueber den Pruefer. Genau diese
+    # Referenzsonde fehlte -- vier Falschbefunde an einem Tag kamen daher.
+    zustand = _eine_zeile(rt / "state.sock", b"")
+    kontrolle = deutung(zustand)
+
+    # POSITIVKONTROLLE 2 -- hat der Hub die Gegenstelle wirklich AUFGELOEST
+    # und wegen ihrer Unit abgewiesen? Sein Journal nennt sie beim Namen. Ohne
+    # das waere eine Abweisung aus jedem beliebigen Grund (kaputter Socket,
+    # gestorbener Faden) von der zugesagten nicht zu unterscheiden.
+    _, journal = _sh("journalctl", "--user", "-u", "daimon-hub.service",
+                     "--since", seit, "--no-pager", "-o", "cat")
+    genannt = "Kontextanfrage von fremder Unit" in journal
+
+    belegt = wie == ABGEWIESEN and kontrolle == BEANTWORTET and genannt
     heraus.append(befund(
-        "7.2b-fremde-unit", "critical", "closed" if abgewiesen else "open",
+        "7.2b-fremde-unit", "critical", "closed" if belegt else "open",
         "gemessen",
         "Eine fremde Unit bekommt keinen Bildschirmkontext",
-        f"Antwort auf {sock} (Modus {modus}): {antwort!r} -- leer heisst: "
-        "Verbindung ohne Antwort geschlossen"))
+        f"kontext.sock (Modus {modus}): {wie} ({antwort[:120]!r}). "
+        f"Positivkontrolle state.sock ohne Allowlist: {kontrolle}. "
+        f"Der Hub nennt die abgewiesene Unit im Journal: {genannt}."))
+
+    # Die ENTSCHEIDUNG -- Rundenmarke, Bildschirmbezug, proaktiv -- kann
+    # dieses Werkzeug nicht messen: sie verlangt eine Runde, die ein Mensch
+    # mit Push-to-Talk eroeffnet, und einen Absender, der `daimon-mind` IST.
+    # Sie steht deshalb hier als eigener Satz mit `herkunft: pruefstand` und
+    # nicht als Teil des gemessenen oben. Das Dokument sagte das bereits, der
+    # maschinenlesbare Beleg nicht -- wer nur die JSON las, sah §7.2b als
+    # `gemessen` und `closed`.
+    repo = Path(__file__).resolve().parents[1]
+    rc, pytest_aus = _sh(
+        str(repo / ".venv/bin/python"), "-m", "pytest",
+        "tests/test_hub_kontext.py", "tests/test_declassify.py",
+        "--no-header", "--tb=no", timeout=180.0, cwd=str(repo))
+    # Die ZUSAMMENFASSUNG, nicht die letzte Zeile: unter `-q` gibt es sie gar
+    # nicht (gemessen -- die letzte Zeile ist dann die Punktereihe), und ein
+    # fehlender Beleg las sich wie ein gescheiterter Lauf. Gewertet wird
+    # ohnehin `rc`; diese Zeile ist der Beleg dazu.
+    summe = ([z.strip() for z in pytest_aus.splitlines()
+              if "passed" in z or "failed" in z or "error" in z.lower()]
+             or ["keine Zusammenfassung"])[-1]
+    heraus.append(befund(
+        "7.2b-entscheidung", "critical",
+        "closed" if rc == 0 else "open", "pruefstand",
+        "Ohne Rundenmarke und Bildschirmbezug gibt das Gate nichts heraus",
+        f"tests/test_hub_kontext.py + tests/test_declassify.py: rc={rc}, "
+        f"{summe}. NICHT am laufenden System gemessen -- dafuer braucht es "
+        "einen Menschen an der Taste und einen Absender, der daimon-mind "
+        "IST. Diese Zeile ist `pruefstand` und damit vom selben Erbauer."))
     return heraus
 
 
@@ -235,13 +325,26 @@ def archiv() -> list[dict]:
             "SELECT stufe, COUNT(*) FROM archiv GROUP BY stufe").fetchall())
         arten = dict(db.execute(
             "SELECT art, COUNT(*) FROM archiv GROUP BY art").fetchall())
+        zeilen = int(db.execute("SELECT COUNT(*) FROM archiv").fetchone()[0])
     finally:
         db.close()
+
+    # DIE POSITIVKONTROLLE DIESES ABSCHNITTS, und sie fehlte. "Keine Zeile
+    # steht auf `full`" und "kein Rohaudio" sind auf einem LEEREN Archiv
+    # beide wahr, ohne dass irgendetwas geprueft worden waere. Dass hier
+    # bisher Zeilen standen, war Zufall und keine Kontrolle -- ein Archiv,
+    # das aus einem ganz anderen Grund leer bleibt (Dienst tot, Redaktion
+    # sperrt alles), haette diesen Abschnitt gruen gemeldet und genau das
+    # verdeckt, was er finden soll.
     voll = int(stufen.get("full", 0))
     heraus.append(befund(
-        "7.2d-stufen", "high", "closed" if voll == 0 else "open", "gemessen",
+        "7.2d-stufen", "high",
+        "unbelegt" if zeilen == 0 else ("closed" if voll == 0 else "open"),
+        "gemessen",
         "Keine Zeile steht auf `full` ohne ausdrueckliche Anforderung",
-        f"Stufen: {stufen}, Arten: {arten}"))
+        f"{zeilen} Zeilen. Stufen: {stufen}, Arten: {arten}"
+        + (" -- LEERES ARCHIV: die Aussage ist wahr und wertlos."
+           if zeilen == 0 else "")))
 
     # BERICHTIGT beim ersten Lauf: hier stand `pfad.parent.rglob("*")` --
     # und das Datenverzeichnis enthaelt auch `models/` und `voices/`. Die 13
@@ -269,10 +372,13 @@ def archiv() -> list[dict]:
                        if roh[i:i + 4] == b"RIFF" and roh[i + 8:i + 12] == b"WAVE")
     heraus.append(befund(
         "7.2d-kein-rohaudio", "critical",
-        "closed" if not audio and treffer == 0 else "open", "gemessen",
+        "unbelegt" if zeilen == 0
+        else ("closed" if not audio and treffer == 0 else "open"),
+        "gemessen",
         "Kein Rohaudio im Archiv",
-        f"Audio-Arten: {audio}, WAVE-Koepfe (RIFF+WAVE) in "
-        f"{[d.name for d in dateien if d.exists()]}: {treffer}"))
+        f"{zeilen} Zeilen. Audio-Arten: {audio}, WAVE-Koepfe (RIFF+WAVE) in "
+        f"{[d.name for d in dateien if d.exists()]}: {treffer}"
+        + (" -- LEERES ARCHIV, also nichts belegt." if zeilen == 0 else "")))
     return heraus
 
 

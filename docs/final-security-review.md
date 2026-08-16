@@ -18,10 +18,18 @@ trägt ein Feld `herkunft`.**
 | `direktive` | aus der Unit gelesen; die Wirkung am Prozess **nicht** geprüft |
 | `pruefstand` | durch `pytest` belegt — geschrieben vom selben Erbauer |
 
-Acht der neun Feststellungen sind `gemessen`. Die eine `direktive` ist unten
-benannt.
+Acht der zehn Feststellungen sind `gemessen`, eine ist `direktive`, eine
+`pruefstand`. Beide sind unten benannt.
 
-**Und das Werkzeug hat sich dreimal selbst geirrt** — hier stehen gelassen
+**Nachgetragen am 16.08.:** die Stufe `pruefstand` stand bis dahin nur in
+dieser Tabelle. **Keine einzige Feststellung trug sie** — die Entscheidung
+des Gates war im Fließtext als testbelegt beschrieben und fehlte in der
+maschinenlesbaren Datei ganz. Wer nur `final-findings.json` las, sah §7.2b
+als `critical / closed / gemessen` und hatte keinen Anhalt, dass davon nur
+die Grenze gemessen war. Sie steht jetzt als eigener Satz
+`7.2b-entscheidung`.
+
+**Und das Werkzeug hat sich viermal selbst geirrt** — hier stehen gelassen
 statt weggewischt:
 
 1. Es durchsuchte für „kein Rohaudio" das **ganze** Datenverzeichnis — dort
@@ -44,8 +52,28 @@ statt weggewischt:
    nicht nach vier Buchstaben. Nebenbei ist das der beste Beleg dafür, dass
    der Bildschirmmitschnitt tut, was er soll.
 
+4. **Und der vierte hat sich vor den anderen versteckt** — gefunden am 16.08.
+   vom unabhängigen Review, nicht vom Werkzeug selbst. Es zählte eine Antwort
+   `{"ok": false}` am Kontext-Socket als **Abweisung**. Das ist die
+   Verwechslung, die genau dieser Befund nicht machen darf: wer eine Antwort
+   bekommt, ist **angenommen** worden — abgelehnt hat dann das Gate dahinter,
+   mangels Rundenmarke, und so sieht im Normalbetrieb **jede** Anfrage aus.
+   Ein Hub ganz ohne Peer-Prüfung hätte §7.2b weiter grün gemeldet.
+
+   Die Zeile war zugleich wirkungslos: gesucht wurde `ok": false` **mit**
+   Leerzeichen in einer Zeichenkette, aus der vorher alle Leerzeichen
+   entfernt worden waren. Zwei Fehler, die einander verdeckt haben — der
+   zweite machte den ersten folgenlos, und wer nur den zweiten repariert
+   hätte, hätte den ersten scharf gestellt.
+
 Ein Prüfer, der seine eigenen Falschbefunde nicht findet, findet auch keine
-echten. Alle drei Male war das System in Ordnung und das Werkzeug nicht.
+echten. Alle vier Male war das System in Ordnung und das Werkzeug nicht.
+
+**Was daraus folgt, und zwar als Bauart:** die Auswertung hat jetzt einen
+eigenen Prüfstand (`tests/test_final_security.py`) und drei Ausgänge statt
+zwei — `abgewiesen`, `beantwortet`, `unklar`. Ein Deuter mit zwei Ausgängen
+muss Unverstandenes einem davon zuschlagen, und „abgewiesen" ist die bequeme
+Wahl.
 
 ## §7.2a — Netzsperre
 
@@ -86,9 +114,24 @@ davon wertet Modellinhalt aus."** Gleich mit berichtigt: §1.2 sagte
 
 Gemessen wurde die **Grenze**, nicht die Entscheidung dahinter: eine fremde
 Unit — dieser Prüfprozess — verbindet sich mit `kontext.sock` (Modus 0600) und
-bekommt keine Antwort, die Verbindung wird abgebrochen. Die Entscheidung
-selbst (Rundenmarke, Bildschirmbezug, proaktiv) liegt in `pytest` und trägt
-damit `herkunft: pruefstand`.
+bekommt keine Antwort, die Verbindung wird abgebrochen.
+
+**Mit zwei Positivkontrollen, seit dem 16.08.** Ohne sie war „keine Antwort"
+nichts wert: ein Prüfer, der überhaupt keine Antwort lesen kann, und ein Hub,
+dessen Socket jeden abweist, sehen genauso aus.
+
+* **Derselbe Weg gegen `state.sock`** — derselbe Hub, dieselbe
+  Verbindungsart, nur ohne Unit-Allowlist. Er antwortet. Das Schweigen oben
+  ist also eine Aussage über die Allowlist und nicht über den Prüfer.
+* **Das Journal des Hubs nennt die abgewiesene Unit beim Namen**
+  (`Kontextanfrage von fremder Unit`, mit aufgelöster Unit im Feld). Damit
+  ist belegt, dass die Gegenstelle wirklich aufgelöst und *wegen ihrer Unit*
+  abgewiesen wurde — und nicht wegen eines gestorbenen Fadens.
+
+Die Entscheidung selbst (Rundenmarke, Bildschirmbezug, proaktiv) steht als
+eigener Satz `7.2b-entscheidung` mit `herkunft: pruefstand`. Sie ist von
+außen nicht messbar: dafür braucht es einen Menschen an der Taste und einen
+Absender, der `daimon-mind` **ist**.
 
 Strukturell und deshalb ohne eigene Regel: **proaktives Verhalten sieht weder
 Bildschirm noch Archiv**, weil die proaktive Abweisung vor allen anderen
@@ -127,6 +170,13 @@ Am echten Archiv gemessen, nicht an einer Attrappe:
 * alle Zeilen auf Stufe `redacted` — **keine einzige auf `full`**
 * Arten `ocr` und `titel`; **kein Rohaudio**, weder als Art noch als
   WAVE-Kopf (`RIFF`+`WAVE`) in `archiv.db`, `-wal` oder `-shm`
+
+**Die Zeilenzahl steht seit dem 16.08. im Beleg, und der Status hängt an ihr.**
+Beide Aussagen sind auf einem **leeren** Archiv wahr und wertlos — und ein
+Archiv wird leer, wenn der Dienst tot ist oder die Redaktion alles sperrt,
+also genau in den Fällen, die dieser Abschnitt finden soll. Bei null Zeilen
+lautet der Status jetzt `unbelegt`, nicht `closed`. Dass hier bisher Zeilen
+standen, war Zufall und keine Kontrolle.
 
 ## Was dieses Review nicht abdeckt
 
