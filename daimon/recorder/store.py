@@ -130,8 +130,25 @@ class Archiv:
     def oeffnen(self) -> sqlite3.Connection:
         if self._db is not None:
             return self._db
-        self.pfad.parent.mkdir(parents=True, exist_ok=True)
+        # ANLEGEN mit den richtigen Rechten, nicht nachtraeglich chmodden.
+        # `mkdir(mode=)` und `os.open(..., 0o600)` setzen sie beim Erzeugen;
+        # die umask kann Bits nur WEGnehmen, aus 0700 wird also nie 0755.
+        # Vorher lagen zwischen `connect()` und `chmod` ein paar
+        # Mikrosekunden, in denen Datenbank und Verzeichnis mit den Rechten
+        # der Shell dastanden -- im Dienst deckt das `UMask=0077` der Unit
+        # zu, beim CLI-Aufruf (`python -m daimon.recorder.store`) nicht.
+        #
+        # Ein Angriffsweg ist daraus im Bedrohungsmodell nicht abzuleiten
+        # (Design 1.3 deckt same-uid ohnehin nicht, und ein fremder uid
+        # scheitert am 0700-Verzeichnis). Es ist die richtige Reihenfolge,
+        # und sie kostet zwei Zeilen -- `_rechte_ziehen` bleibt fuer
+        # Datenbanken, die schon liegen.
+        self.pfad.parent.mkdir(parents=True, exist_ok=True,
+                               mode=VERZEICHNIS_MODUS)
         os.chmod(self.pfad.parent, VERZEICHNIS_MODUS)
+        if not self.pfad.exists():
+            os.close(os.open(self.pfad, os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                             MODUS))
         db = sqlite3.connect(self.pfad, isolation_level=None)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA journal_mode=WAL")

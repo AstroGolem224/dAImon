@@ -27,7 +27,7 @@ import sqlite3
 from pathlib import Path
 
 from daimon.common.config import data_dir
-from daimon.common.protocol import Mark, Marked
+from daimon.common.protocol import Mark, Marked, ist_freigabeschein
 from daimon.recorder.store import DATEI
 
 # Ein Suchergebnis ist eine Handvoll Zeilen, kein Bericht. Was das Modell
@@ -70,9 +70,11 @@ class Archivsuche:
 
         `schein` wird auf seinen TYP geprueft und nicht auf Wahrheit: ein
         `True` entsteht aus jedem Versehen, ein `Freigabeschein` nur dort,
-        wo das Gate ihn herstellt.
+        wo das Gate ihn herstellt. Die Pruefung steht seit dem 16.08. in
+        `common.protocol` -- der Kontextspeicher braucht dieselbe, und er
+        hatte eine schwaechere.
         """
-        if type(schein).__name__ != "Freigabeschein":
+        if not ist_freigabeschein(schein):
             raise QuarantaeneFehler(
                 "Das Archiv gibt nichts ohne Freigabeschein heraus. Der Weg "
                 "fuehrt ueber daimon.hub.declassify.Deklassifizierung."

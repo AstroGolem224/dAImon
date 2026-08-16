@@ -32,7 +32,7 @@ from enum import Enum
 from typing import Any, ClassVar, TypeVar
 
 __all__ = [
-    "Mark", "Marked", "tainted", "trusted",
+    "Mark", "Marked", "tainted", "trusted", "ist_freigabeschein",
     "ProtocolError", "UnsupportedVersion",
     "Event", "State", "ActionRequest", "ExecutionOrder", "RoundMark",
     "ActionApproval", "ApiQuota", "Ticket", "AuditRecord",
@@ -116,6 +116,34 @@ class Marked:
 
 def tainted(value: Any) -> Marked:
     return Marked(value, Mark.TAINTED)
+
+
+def ist_freigabeschein(schein: Any) -> bool:
+    """Traegt dieses Objekt einen Freigabeschein des Deklassifizierungs-Gates?
+
+    **Warum hier und nicht `isinstance`.** Die beiden Speicher hinter der
+    Quarantaene -- der Kontextspeicher (T-5.7) und die Archivsuche (T-7.5) --
+    duerfen das Gate NICHT kennen. Sie verlangen den Schein und pruefen ihn
+    nicht nach; ausgestellt wird er allein in `daimon.hub.declassify`. Ein
+    `isinstance` waere ein Import von `eyes`/`recorder` nach `hub` und damit
+    genau die Schichtung, die T-5.7 aufmacht.
+
+    **Warum ueberhaupt eine gemeinsame Funktion.** Bis zum 16.08. prueften die
+    beiden verschieden: die Archivsuche den Typnamen, der Kontextspeicher nur
+    `getattr(schein, "turn_id", "") != ""` -- also jedes beliebige Objekt mit
+    diesem Attribut, ein `Namespace(turn_id="x")` genuegte. Zwei Fassungen
+    einer Regel sind eine Regel und eine Attrappe; welche gilt, entscheidet
+    dann der Aufrufer.
+
+    **Was diese Pruefung NICHT leistet.** Sie haelt ein Versehen auf, keinen
+    Angreifer: eine hier definierte Klasse namens `Freigabeschein` kommt
+    durch. Wer im selben Prozess Code ausfuehrt, hat den Speicher ohnehin --
+    er braucht dafuer keinen Schein. Der Punkt ist, dass ein `True`, eine `1`
+    oder ein durchgereichtes Konfigurationsobjekt aus jedem Versehen
+    entstehen, ein Schein aber nur dort, wo das Gate ihn herstellt.
+    """
+    return (type(schein).__name__ == "Freigabeschein"
+            and bool(str(getattr(schein, "turn_id", "")).strip()))
 
 
 def trusted(value: Any) -> Marked:

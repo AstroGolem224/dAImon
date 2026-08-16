@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from daimon.common.config import state_dir
+from daimon.common.protocol import ist_freigabeschein
 
 ART_TITEL = "titel"
 ART_OCR = "ocr"
@@ -222,7 +223,13 @@ class Kontextspeicher:
         zweite Lesemethode „nur fuer intern" waere genau die Tuer, die
         spaeter jemand benutzt, weil sie da ist.
         """
-        if getattr(schein, "turn_id", "") == "":
+        # Bis zum 16.08. stand hier `getattr(schein, "turn_id", "") == ""` --
+        # und damit kam JEDES Objekt mit diesem Attribut durch, ein
+        # `Namespace(turn_id="x")` genuegte. Die Archivsuche (T-7.5) prueft
+        # denselben Schein seit jeher strenger; zwei Fassungen einer Regel
+        # sind eine Regel und eine Attrappe. Jetzt fragen beide dieselbe
+        # Funktion, und die kennt das Gate ebenso wenig wie dieses Modul.
+        if not ist_freigabeschein(schein):
             raise QuarantaeneFehler(
                 "Kontext verlaesst die Quarantaene nur durch das "
                 "Deklassifizierungs-Gate (T-5.9), und nur unter einer "
