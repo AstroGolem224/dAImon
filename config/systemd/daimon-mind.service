@@ -105,7 +105,22 @@ MemoryDenyWriteExecute=yes
 PrivateDevices=yes
 TimeoutStopSec=10
 
+# NACHGETRAGEN AM 16.08. Hier stand unter "ABSICHTLICH FEHLT" der Satz „Kein
+# `[Install]`: gestartet wird ueber den Socket" -- und er widersprach dem Kopf
+# dieser Datei, der Socket-Aktivierung ausdruecklich ABLEHNT. Es gibt keine
+# `daimon-mind.socket`, keine andere Unit zieht diese hier, und `PartOf=`
+# propagiert nur Stopp und Neustart, niemals einen Start.
+#
+# Folge, live gemessen: `daimon-mind` lief nicht. Zwei Messungen des
+# Abschlussreviews (T-6.9) standen deshalb auf `unbelegt` statt auf `closed`,
+# und ein Pruefstand uebersprang sich selbst -- nicht weil eine Zusage
+# gebrochen war, sondern weil der Dienst gar nicht da war.
+#
+# Alle anderen Units ohne `[Install]` haben eine `.socket` oder einen
+# `.timer`, der sie zieht. Diese war die einzige ohne beides.
+[Install]
+WantedBy=graphical-session.target
+
 # --- Was hier ABSICHTLICH FEHLT ------------------------------------------
-# Kein `[Install]`: gestartet wird ueber den Socket.
 # Kein `Environment=ANTHROPIC_API_KEY=` -- das ist keine Auslassung, sondern der
 #   Kern des Tasks. Wer diese Zeile hinzufuegt, macht T-3.11 rueckgaengig.

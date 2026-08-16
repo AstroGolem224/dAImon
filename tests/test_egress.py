@@ -561,7 +561,16 @@ def test_beide_units_sind_gehaertet(unit):
                       "RuntimeDirectory=daimon",
                       "RuntimeDirectoryPreserve=yes"):
         assert direktive in text, f"{unit}: {direktive}"
-    assert "[Install]" not in text, unit
+    # `[Install]` haengt daran, ob die Unit jemand ANDERS zieht. Hier stand
+    # `assert "[Install]" not in text` fuer BEIDE -- und fuer den Mind war das
+    # dieselbe falsche Annahme, die auch in seiner Unit stand („gestartet wird
+    # ueber den Socket"). Eine `daimon-mind.socket` gibt es nicht, und
+    # `PartOf=` startet nichts: der Dienst lief schlicht nicht, bis es am
+    # 16.08. auffiel. Der Egress hat seine `.socket` und braucht deshalb
+    # weiterhin kein `[Install]`.
+    zieht_ihn_wer = (REPO / "config/systemd"
+                     / unit.replace(".service", ".socket")).exists()
+    assert ("[Install]" not in text) is zieht_ihn_wer, unit
 
 
 def test_das_rotationsverfahren_ist_dokumentiert():

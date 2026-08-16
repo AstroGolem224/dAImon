@@ -1,7 +1,7 @@
 {
   "v": 1,
   "task": "T-6.9",
-  "erzeugt": "2026-08-16T14:49:14+0200",
+  "erzeugt": "2026-08-16T15:10:18+0200",
   "rolle": "builder",
   "unabhaengig": false,
   "hinweis": "Erzeugt von derselben Einheit, die den Code gebaut hat. Der Plan weist T-6.9 der Rolle `reviewer` zu. Feld `herkunft` je Befund: gemessen | direktive | pruefstand.",
@@ -44,15 +44,15 @@
       "status": "closed",
       "herkunft": "pruefstand",
       "titel": "Ohne Rundenmarke und Bildschirmbezug gibt das Gate nichts heraus",
-      "beleg": "tests/test_hub_kontext.py + tests/test_declassify.py: rc=0, 37 passed in 0.04s. NICHT am laufenden System gemessen -- dafuer braucht es einen Menschen an der Taste und einen Absender, der daimon-mind IST. Diese Zeile ist `pruefstand` und damit vom selben Erbauer."
+      "beleg": "tests/test_hub_kontext.py + tests/test_declassify.py: rc=0, 37 passed in 0.05s. NICHT am laufenden System gemessen -- dafuer braucht es einen Menschen an der Taste und einen Absender, der daimon-mind IST. Diese Zeile ist `pruefstand` und damit vom selben Erbauer."
     },
     {
       "id": "7.2c-mind-token",
-      "severity": "high",
-      "status": "unbelegt",
+      "severity": "critical",
+      "status": "closed",
       "herkunft": "gemessen",
       "titel": "Kein Token in der Umgebung von daimon-mind",
-      "beleg": "daimon-mind laeuft nicht -- nicht messbar"
+      "beleg": "/proc/99217/environ, 93 Variablen, verdaechtige NAMEN (ohne Werte): [] "
     },
     {
       "id": "7.2c-egress-token",
@@ -87,7 +87,5 @@
       "beleg": "1041 Zeilen. Audio-Arten: [], WAVE-Koepfe (RIFF+WAVE) in ['archiv.db', 'archiv.db-wal', 'archiv.db-shm']: 0"
     }
   ],
-  "offen_high_critical": [
-    "7.2c-mind-token"
-  ]
+  "offen_high_critical": []
 }
