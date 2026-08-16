@@ -11,7 +11,9 @@ MELDEN, geschrieben wird hier.
 
 **Der Zulauf ist ein Socket, kein gemeinsames Verzeichnis.** `recorder.sock`,
 0600, Gegenstelle ueber `SO_PEERPIDFD` aufgeloest und gegen eine Unit-Liste
-geprueft. Das haelt keinen same-uid-Angreifer auf (Design §1.3) und soll es
+geprueft -- und seit dem 16.08. entscheidet dieselbe Gegenstelle auch, WELCHE
+Art sie ablegen darf (`ART_JE_UNIT`): die Art waehlt das Regelwerk, und wer
+sie frei setzen kann, waehlt sich seine Redaktion selbst. Das haelt keinen same-uid-Angreifer auf (Design §1.3) und soll es
 nicht -- es haelt einen falsch verdrahteten eigenen Prozess auf und macht im
 Nachhinein sichtbar, wer abgelegt hat.
 
@@ -41,7 +43,8 @@ from daimon.common.config import denylist_laden, denylist_pfade, load
 from daimon.common.logging import get_logger
 from daimon.recorder import pause
 from daimon.recorder.redaktion import Redaktion
-from daimon.recorder.store import ART_TRANSKRIPT, Archiv, ArchivFehler
+from daimon.recorder.store import (ART_OCR, ART_TITEL, ART_TRANSKRIPT, Archiv,
+                                   ArchivFehler)
 
 PRODUZENT = "recorder"
 
@@ -69,17 +72,35 @@ def _fokus_klasse() -> str:
     except Exception:      # noqa: BLE001 -- kein Watcher, keine Klasse
         return ""
 
-# Wer an diesem Socket sprechen darf. Eine Liste und kein Feld in der
-# Nachricht -- sonst suchte sich der Absender seine Rolle selbst aus.
-# T-7.4 laesst diese Menge um genau einen Eintrag wachsen: der Ohren-Dienst
-# meldet das Transkript, das er ohnehin in der Hand hat. Er bekommt damit
-# KEIN Leserecht und keine zweite Faehigkeit -- derselbe Socket, derselbe
-# eine Typ, dieselbe Redaktion davor.
-ERLAUBTE_UNITS = ("daimon-eyes.service", "daimon-ears.service",
-                  # T-7.1b: der Fokusdienst meldet Fenstertitel. Er ist der
-                  # einzige, der sie hat -- die Augen bekommen den `caption`
-                  # absichtlich nicht.
-                  "daimon-focus.service")
+# Wer an diesem Socket sprechen darf, UND WOMIT. Eine Tabelle und kein Feld
+# in der Nachricht -- sonst suchte sich der Absender seine Rolle selbst aus.
+#
+# Die zweite Spalte ist neu und schliesst einen Riss, den die erste allein
+# offenliess: `art` steht in der NACHRICHT und waehlt aus, WELCHES Urteil
+# gefaellt wird. `transkript` fuehrt auf `urteil_ton()`, und das kennt weder
+# Denylist noch DRM -- mit gutem Grund, ein gesprochener Satz hat kein
+# Fenster. Nur durfte bis hierher JEDER der drei Absender jeden Text als
+# Transkript deklarieren: der Augendienst haette den OCR-Text eines
+# gesperrten Passwortmanagers als `art: "transkript"` ablegen koennen, und
+# die Denylist waere nie gefragt worden. Die groesste Angriffsflaeche des
+# Projekts (Modulkopf oben) haette damit an der Redaktion vorbeigeschrieben.
+#
+# Jetzt gilt: wer OCR meldet, meldet OCR. Die Art gehoert zum Absender, nicht
+# zur Nachricht.
+ART_JE_UNIT: dict[str, frozenset[str]] = {
+    "daimon-eyes.service": frozenset({ART_OCR}),
+    # T-7.1b: der Fokusdienst meldet Fenstertitel. Er ist der einzige, der
+    # sie hat -- die Augen bekommen den `caption` absichtlich nicht.
+    "daimon-focus.service": frozenset({ART_TITEL}),
+    # T-7.4: der Ohren-Dienst meldet das Transkript, das er ohnehin in der
+    # Hand hat. KEIN Leserecht, keine zweite Faehigkeit -- derselbe Socket,
+    # derselbe eine Typ, dieselbe Redaktion davor.
+    "daimon-ears.service": frozenset({ART_TRANSKRIPT}),
+}
+
+# Abgeleitet und nicht danebengeschrieben: zwei Listen, die dasselbe meinen,
+# laufen auseinander, sobald jemand nur eine pflegt.
+ERLAUBTE_UNITS = tuple(ART_JE_UNIT)
 
 # Ein Zeilenzulauf ist eine Meldung. Groesser als das ist kein OCR-Text mehr,
 # sondern ein Versuch, den Dienst mit einer Zeile vollzuschreiben.
@@ -122,8 +143,13 @@ class Recorder:
 
     # -- Eine Meldung ------------------------------------------------------
 
-    def melde(self, nachricht: dict) -> dict:
-        """Eine abgelegte Meldung. Der Rueckweg traegt nur die id."""
+    def melde(self, nachricht: dict, *, unit: str | None = None) -> dict:
+        """Eine abgelegte Meldung. Der Rueckweg traegt nur die id.
+
+        `unit` ist die Gegenstelle aus `SO_PEERPIDFD`. `None` heisst "jede
+        Art" und ist der Weg, den ein Prueflauf ohne systemd nimmt -- dieselbe
+        Bedeutung wie bei `erlaubte_units`.
+        """
         if not isinstance(nachricht, dict):
             return {"v": 1, "ok": False, "grund": "unlesbar"}
         typ = str(nachricht.get("typ", ""))
@@ -131,6 +157,15 @@ class Recorder:
             ipc.pruefe_typ(PRODUZENT, typ)
         except ipc.MessageTypeError as exc:
             return {"v": 1, "ok": False, "grund": "typ", "meldung": str(exc)}
+        art = str(nachricht.get("art", "")).strip().lower()
+        if unit is not None and art not in ART_JE_UNIT.get(unit, frozenset()):
+            # Kein Sonderfall fuer eine unbekannte Unit: die leere Menge oben
+            # weist sie ab. `accept` haette sie ohnehin nicht durchgelassen --
+            # aber ein Fail-open an dieser Stelle waere genau die Tuer, die
+            # der Task schliesst.
+            self.log.warn("Art gehoert nicht zu dieser Unit",
+                          DAIMON_UNIT=str(unit)[:80], DAIMON_ART=art[:40])
+            return {"v": 1, "ok": False, "grund": "art_nicht_erlaubt"}
         # T-7.2: DIE REDAKTION STEHT VOR DEM SCHREIBEN, nicht dahinter. Es
         # gibt in diesem Prozess keinen anderen Aufruf von
         # `Archiv.schreiben` -- wer einen ergaenzt, hebt den Task auf.
@@ -139,7 +174,7 @@ class Recorder:
         # eigenes Urteil -- nicht die Fensterpruefung mit leerer Klasse, die
         # es als „Kennung fehlt" verwerfen wuerde.
         stufe = str(nachricht.get("stufe", "redacted"))
-        if str(nachricht.get("art", "")).strip().lower() == ART_TRANSKRIPT:
+        if art == ART_TRANSKRIPT:
             urteil = self.redaktion.urteil_ton(stufe=stufe)
         else:
             urteil = self.redaktion.urteil(
@@ -284,9 +319,21 @@ class Recorder:
             except (ipc.PeerError, OSError):
                 continue
             with conn:
-                self._bediene(conn)
+                # Die Unit haengt an der VERBINDUNG und nicht an der Zeile:
+                # `SO_PEERPIDFD` beantwortet sie einmal beim Annehmen, und ein
+                # Feld in der Nachricht waere wieder etwas, das der Absender
+                # selbst setzt.
+                #
+                # Die beiden Schalter gehoeren ZUSAMMEN: `erlaubte_units=None`
+                # heisst "ohne systemd" (siehe Konstruktor), und dann ist auch
+                # `peer.unit` keine Aussage -- sie traegt dort die Unit des
+                # Prueflaufs. Die Art-Tabelle daran zu haengen hiesse, jeden
+                # Prueflauf gegen die Einheiten des Betriebs zu messen.
+                unit = (getattr(peer, "unit", None)
+                        if self.erlaubte_units is not None else None)
+                self._bediene(conn, unit)
 
-    def _bediene(self, conn: socket.socket) -> None:
+    def _bediene(self, conn: socket.socket, unit: str | None = None) -> None:
         conn.settimeout(5.0)
         puffer = b""
         try:
@@ -298,7 +345,7 @@ class Recorder:
                 while b"\n" in puffer:
                     zeile, puffer = puffer.split(b"\n", 1)
                     conn.sendall(
-                        (json.dumps(self._zeile(zeile),
+                        (json.dumps(self._zeile(zeile, unit),
                                     ensure_ascii=False) + "\n").encode())
                 if len(puffer) > MAX_ZEILE:
                     self.log.warn("Zeile zu lang, Verbindung ab",
@@ -307,9 +354,9 @@ class Recorder:
         except (OSError, socket.timeout):
             return
 
-    def _zeile(self, roh: bytes) -> dict:
+    def _zeile(self, roh: bytes, unit: str | None = None) -> dict:
         try:
-            return self.melde(json.loads(roh.decode("utf-8")))
+            return self.melde(json.loads(roh.decode("utf-8")), unit=unit)
         except (ValueError, UnicodeDecodeError):
             return {"v": 1, "ok": False, "grund": "unlesbar"}
 
