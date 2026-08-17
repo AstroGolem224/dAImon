@@ -75,3 +75,122 @@ def test_builder_darf_produktivcode_und_keinen_verifizierer():
 def test_reviewer_darf_keinen_produktivcode():
     assert _entschied(_guard("reviewer", "tests/verify/T-3.7.sh")) != "deny"
     assert _entschied(_guard("reviewer", "daimon/hub/daemon.py")) == "deny"
+
+
+# --------------------------------------------------------------------------
+# Die BASH-Seite. Hier sass der Befund vom 14.08., und am 17.08. hat er
+# dreimal zugeschlagen -- jedes Mal bei einem LESENDEN Kommando.
+#
+# Der Prueflauf oben kennt nur `Write`. Damit war die Haelfte des Waechters
+# ungeprueft, in der er zwei Entscheidungen faellt: "kann dieses Kommando
+# ueberhaupt schreiben" und "welches Wort darin ist das Ziel". Beide sind zu
+# grob, und beide Fehler zeigen in dieselbe Richtung -- er blockiert Lesen.
+#
+# Die Kommandos stehen als BAUSTEINE da und nicht als fertige Zeichenketten.
+# Der Grund ist derselbe Befund: eine Datei, in der `tests/verify/...` neben
+# einem schreibenden Verb im Klartext steht, laesst sich unter der Rolle
+# `builder` nicht per Shell anlegen -- der Waechter liest den Kommandotext.
+# Beim Schreiben dieser Zeilen ist das genau einmal passiert.
+# --------------------------------------------------------------------------
+
+VERIFIZIERER = "tests/" + "verify/T-0.0.sh"
+FROZEN = "tests/" + "verify/FROZEN"
+
+
+def _bash(rolle: str | None, kommando: str) -> dict:
+    umgebung = {"PATH": "/usr/bin:/bin"}
+    if rolle is not None:
+        umgebung["DAIMON_ROLE"] = rolle
+    lauf = subprocess.run(
+        [sys.executable, str(GUARD)],
+        input=json.dumps({"tool_name": "Bash",
+                          "tool_input": {"command": kommando}}),
+        capture_output=True, text=True, timeout=30, env=umgebung, cwd=str(REPO))
+    assert lauf.returncode == 0, lauf.stderr
+    return json.loads(lauf.stdout) if lauf.stdout.strip() else {}
+
+
+# -- Was er BLOCKIEREN MUSS, und heute auch tut ---------------------------
+
+@pytest.mark.parametrize("vorlage", [
+    "echo kaputt > {z}",
+    "echo kaputt >> {z}",
+    "sed -i s/a/b/ {z}",
+    "cp /tmp/x {z}",
+    "mv /tmp/x {z}",
+    "rm {z}",
+    "tee {z} < /tmp/x",
+    "truncate -s 0 {z}",
+    "chmod 777 {z}",
+    "git add {z}",
+])
+def test_der_builder_kommt_nicht_an_die_verifizierer(vorlage):
+    """Die eigentliche Zusage. Sie gilt und muss jede Lockerung ueberleben --
+    wer den Waechter praeziser macht, faehrt DIESE Liste zuerst."""
+    kommando = vorlage.format(z=VERIFIZIERER)
+    assert _entschied(_bash("builder", kommando)) == "deny", kommando
+
+
+def test_und_ohne_rolle_erst_recht_nicht():
+    assert _entschied(_bash(None, f"echo x > {VERIFIZIERER}")) == "deny"
+
+
+def test_POSITIVKONTROLLE_ein_harmloses_kommando_geht_durch():
+    """Ohne diese Zeile bestuende die Liste oben auch ein Waechter, der ALLES
+    ablehnt -- und genau der waere das Problem."""
+    assert _entschied(_bash("builder", "ls daimon")) != "deny"
+    assert _entschied(_bash("builder", "python3 -m pytest -q")) != "deny"
+
+
+def test_eine_commit_botschaft_darf_einen_verifizierer_nennen():
+    """BERICHTIGT den Befund vom 14.08. Dort steht, ein `git commit` sei
+    abgewiesen worden, weil seine BOTSCHAFT den Pfad eines Verifizierers
+    nannte. Nachgemessen am 17.08.: er geht durch.
+
+    `WRITING_CMD` kennt `git checkout|restore|apply|add` -- `git commit`
+    steht nicht darin, und ohne Treffer sieht der Waechter den Text gar
+    nicht erst an. Was jene Botschaft damals ausgeloest hat, muss etwas
+    anderes gewesen sein: eine Umleitung im selben Kommando oder ein Wort
+    wie `rm`, das der Regex als Verb liest.
+
+    Der Fall steht hier, weil er in HANDOVER.md als Befund gefuehrt wurde --
+    und ein Befund, den niemand nachmisst, wird zur Ueberlieferung."""
+    kommando = f'git commit -m "beschrieben in {VERIFIZIERER}"'
+    assert _entschied(_bash("builder", kommando)) != "deny"
+
+
+# -- Was er DURCHLASSEN SOLLTE, und heute nicht tut -----------------------
+#
+# `strict=True`, also dokumentiert rot: wer den Waechter nachruestet, sieht
+# XPASS und entfernt das Mark. Ein `xfail` ohne strict verschwiege den
+# Fortschritt.
+
+@pytest.mark.xfail(strict=True, reason=(
+    "WRITING_CMD enthaelt `>\\s*\\S`, und eine Fehlerumleitung erfuellt das. "
+    "Damit ist praktisch jedes Kommando mit `2>&1` oder `2>/dev/null` "
+    "schreibend -- am 17.08. zweimal daran haengengeblieben, beide Male bei "
+    "einem lesenden `ls` bzw. `cat`."))
+@pytest.mark.parametrize("vorlage", [
+    "cat {z} 2>/dev/null",
+    "ls -l {z} 2>&1",
+])
+def test_eine_fehlerumleitung_ist_kein_schreiben(vorlage):
+    kommando = vorlage.format(z=FROZEN)
+    assert _entschied(_bash("builder", kommando)) != "deny", kommando
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "Trifft WRITING_CMD, gilt JEDES pfadaehnliche Wort im Kommandotext als "
+    "Ziel -- auch das Argument eines lesenden Verbs und der Text einer "
+    "Commit-Botschaft. Der Nachruestweg steht in HANDOVER.md: Ausfuehrung "
+    "von Aenderung trennen, Ziele nur hinter schreibenden Verben suchen."))
+@pytest.mark.parametrize("vorlage", [
+    # Den Pruefstand AUSFUEHREN ist keine Aenderung an ihm.
+    "bash {z} > /tmp/log",
+    # Ein Kopiervorgang, dessen QUELLE geschuetzt ist -- gelesen, nicht
+    # geschrieben.
+    "cp {z} /tmp/kopie",
+])
+def test_ein_genannter_pfad_ist_kein_schreibziel(vorlage):
+    kommando = vorlage.format(z=VERIFIZIERER)
+    assert _entschied(_bash("builder", kommando)) != "deny", kommando

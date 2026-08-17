@@ -180,6 +180,15 @@ Schreibziel behandelt. Beide Schritte sind zu grob:
   nannte. Und, als das Muster untersucht werden sollte, das Analyseskript
   selbst: der Regex-Quelltext enthält `|rm|`, und das genügte.
 
+  > **BERICHTIGT am 17.08.:** der `git commit` stimmt so nicht. `WRITING_CMD`
+  > kennt `git checkout|restore|apply|add` — `commit` steht nicht darin, und
+  > ohne Treffer sieht der Wächter den Text gar nicht erst an. Nachgemessen
+  > und als Prüfung festgehalten
+  > (`test_eine_commit_botschaft_darf_einen_verifizierer_nennen`). Was jene
+  > Botschaft ausgelöst hat, war etwas anderes im selben Kommando — eine
+  > Umleitung oder ein Wort wie `rm`. Die beiden übrigen Fälle gelten
+  > unverändert und sind jetzt als `xfail(strict=True)` festgenagelt.
+
 **Die Folge ist nicht kosmetisch.** `tests/verify/verify-frozen.sh` ist in
 dieser Sitzung **nie gelaufen**, obwohl `daimon/common/ipc.py` und
 `daimon/common/config.py` angefasst wurden. Die eingefrorenen Zusagen sind
