@@ -1,0 +1,22 @@
+GUT-MUSTER fuer tests/verify/T-4.6.sh
+
+Kopie des Arbeitsbaums auf Commit ea447d0: `daimon/**` (ohne __pycache__),
+`config/systemd/daimon-audit-verify.service` und `.timer`, `pyproject.toml`.
+Mehr braucht der Pruefstand nicht: er laedt `daimon.hub.audit`, startet
+`daimon.hub.daemon` gegen temporaere XDG-Verzeichnisse, ruft die CLI und liest
+die beiden Unit-Dateien.
+
+EINE ABWEICHUNG vom Arbeitsbaum, und sie ist der Grund, warum dieses Muster
+existiert: `daimon/hub/daemon.py::audit_verankern` setzt hier bei gerissener
+Kette eine Blase mit `urgent=True`. Design 7.6 und die Akzeptanzliste von
+T-4.6 verlangen das ("meldet eine Abweichung als Bubble mit hoher
+Dringlichkeit"); der Arbeitsbaum vom 17.08. schreibt nur eine Journalzeile.
+
+Das Gut-Muster ist damit die Fassung, die die Akzeptanzliste ERFUELLT -- und
+zugleich die Positivkontrolle des Verifizierers: er wird gegen sie gruen und
+bleibt gegen den Arbeitsbaum rot. Waere er gegen beide gruen, koennte er das
+Kriterium nicht sehen.
+
+Jeder Mutantenbaum unter tests/mutants/T-4.6/ entsteht als bytegleiche Kopie
+dieses Musters (tests/mutants/T-4.6/erzeugen.sh) und bricht danach genau die
+in seiner mutation.txt benannte Grenze.
