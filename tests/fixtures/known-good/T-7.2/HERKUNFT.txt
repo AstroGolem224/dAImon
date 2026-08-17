@@ -1,0 +1,52 @@
+GUT-MUSTER fuer tests/verify/T-7.2.sh
+
+Kopie des Arbeitsbaums auf Commit 33e5496, aber nur die IMPORTHUELLE, die der
+Pruefstand braucht (26 Dateien und diese, 272 K -- nicht `daimon/**`):
+
+  daimon/common/{config,ipc,logging,protocol}.py
+  daimon/recorder/*.py                 (der Archivdienst und alles daran)
+  daimon/eyes/{daemon,change,context,capture,screencast,trigger,regionen,
+               killswitch}.py          (die Pruefung VOR dem Diff, K8)
+  daimon/ears/killswitch.py            (zieht `recorder/pause.py` nach)
+  config/redaktion.yaml                (die Denylist -- `denylist_pfade()`
+                                        sucht sie unter <wurzel>/config/)
+
+Der Pruefstand startet `daimon.recorder.daemon` gegen einen vollstaendig
+eigenen XDG-Baum, meldet ueber den echten Socket mit dem echten Melder und
+liest danach Datenbank, WAL, Laufzeitverzeichnis, Temp und Prozessausgabe.
+`tests/fixtures/known-good/T-7.2/.venv` gibt es nicht: der Wrapper faellt auf
+`python3` zurueck, und die Huelle oben ist ausser `yaml` und `numpy` reine
+Standardbibliothek.
+
+EINE ABWEICHUNG vom Arbeitsbaum, und sie ist der Grund, warum dieses Muster
+existiert:
+
+  daimon/eyes/daemon.py::_denylist_aus_datei() nimmt hier ZUSAETZLICH jede
+  Fensterklasse auf, die ueber ihre `.desktop`-Datei auf eine gelistete
+  Kennung zeigt (`_klassen_zu_kennungen`, neu).
+
+Im Arbeitsbaum vom 17.08. vergleichen die Gatterkette vor dem Diff
+(`eyes/change.py::Kette`) und der Quarantaene-Kontextspeicher
+(`eyes/context.py::Kontextspeicher`) die ROHE `resource_class` gegen eine
+Liste, die `.desktop`-KENNUNGEN fuehrt. Nur die Redaktion vor dem Schreiben
+schlaegt in den `.desktop`-Dateien nach. Fuer jede gelistete Anwendung, deren
+Fensterklasse nicht zufaellig gleich ihrer Kennung ist, laufen die beiden
+Enden auseinander: ihr Bildschirm wird gelesen, geOCRt und in den Live-Kontext
+gelegt -- nur der Archiveintrag faellt weg. Akzeptanzpunkt 2 von T-7.2 sagt
+"werden gar nicht erfasst" und "die Pruefung sitzt vor dem Diff UND vor dem
+Schreiben", Akzeptanzpunkt 3 bindet die Zuordnung an die `.desktop`-Kennung.
+
+Das Gut-Muster ist damit die Fassung, die die Akzeptanzliste ERFUELLT -- und
+zugleich die Positivkontrolle des Verifizierers: er wird gegen sie gruen und
+bleibt gegen den Arbeitsbaum rot (K8). Waere er gegen beide gruen, koennte er
+das Kriterium nicht sehen.
+
+Die Messung schreibt NICHT vor, wo repariert wird: sie holt die Liste dort,
+wo der Augendienst sie seinen beiden Vorrichtungen gibt
+(`_denylist_aus_datei()`). Wer die Zuordnung stattdessen in `Kette` und
+`Kontextspeicher` legt, wird ebenso gruen.
+
+Jeder Mutantenbaum unter tests/mutants/T-7.2/ entsteht als bytegleiche Kopie
+dieses Musters (tests/mutants/T-7.2/erzeugen.sh, die Baeume sind NICHT
+eingecheckt) und bricht danach genau die in seiner mutation.txt benannte
+Grenze.
