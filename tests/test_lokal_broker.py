@@ -58,12 +58,33 @@ KOERPER = {"model": "claude-sonnet-4-5", "max_tokens": 1024,
            "messages": [{"role": "user", "content": "wie spaet ist es"}]}
 
 
-def broker(http=None, hub=None, **kwargs):
+class Tags:
+    """Ersatz fuer `/api/tags`. Zaehlt mit, wie oft gefragt wurde.
+
+    MUSS eingespeist werden, seit der Broker das Modell ermittelt statt es zu
+    behaupten (17.08.). Ohne diese Attrappe fragte jeder Test das ECHTE
+    Ollama dieser Maschine -- die Suite waere gruen, solange es laeuft, und
+    rot auf jedem Rechner ohne. Genau die stille Maschinenabhaengigkeit, die
+    ein Prueflauf nicht haben darf.
+    """
+
+    def __init__(self, namen=("qwen3.8:27b",), status: int = 200) -> None:
+        self.namen = list(namen)
+        self.status = status
+        self.aufrufe = 0
+
+    def __call__(self, url, *, timeout_s=0.0):
+        self.aufrufe += 1
+        return self.status, json.dumps(
+            {"models": [{"model": n} for n in self.namen]})
+
+
+def broker(http=None, hub=None, tags=None, **kwargs):
     puffer = io.StringIO()
     b = B.LokalBroker(
         log=get_logger("test", socket_path="/nicht/da", stream=puffer),
         hub_socket="/nicht/da", http=http or Http(), hub_anfrage=hub or Hub(),
-        **kwargs)
+        http_get=tags or Tags(), **kwargs)
     b._protokoll = puffer
     return b
 
@@ -212,3 +233,104 @@ def test_ein_denkendes_modell_wird_benannt_und_nicht_verschwiegen():
     a = frage(broker(http=Http(roh=roh)))
     assert a["ok"] is False and a["grund"] == "modell_denkt"
     assert "Der Nutzer fragt" not in json.dumps(a), "kein Inhalt in der Absage"
+
+
+# -- Dem Broker ist egal, welches Modell laeuft (17.08.) -------------------
+
+def test_er_nimmt_was_ollama_vorhaelt():
+    """DER BEFUND aus der ersten Messung der Naht. Vorher stand hier ein
+    fester Name, und lief etwas anderes, hoerte der Nutzer "Ich komme gerade
+    nicht an die API" -- eine Meldung ueber das Netz fuer einen Fehler, der
+    keiner war."""
+    http = Http()
+    frage(broker(http=http, tags=Tags(["qwen3.8:27b"])))
+    assert http.nutzlast["model"] == "qwen3.8:27b"
+
+
+def test_eine_ausdrueckliche_wahl_schlaegt_den_fund():
+    """Wer ein Modell nennt, meint eins. Sonst waere `--modell` eine
+    Zeile, die nichts tut."""
+    http = Http()
+    tags = Tags(["etwas-anderes"])
+    frage(broker(http=http, tags=tags, modell="genau-dieses"))
+    assert http.nutzlast["model"] == "genau-dieses"
+    assert tags.aufrufe == 0, "gefragt, obwohl die Wahl feststand"
+
+
+def test_bei_mehreren_modellen_faellt_zweimal_dieselbe_wahl():
+    """Ollama liefert nach Aenderungsdatum. Ohne feste Ordnung haenge die
+    Antwort daran, welches Modell zuletzt angefasst wurde."""
+    http = Http()
+    frage(broker(http=http, tags=Tags(["z:1", "a:2", "m:3"])))
+    assert http.nutzlast["model"] == "a:2"
+
+
+def test_der_fund_wird_gemerkt_und_nicht_je_anfrage_geholt():
+    """Ein HTTP-Aufruf mehr auf dem Weg, den der Nutzer als Wartezeit
+    erlebt."""
+    tags = Tags()
+    b = broker(tags=tags)
+    frage(b)
+    frage(b, ticket="t-2")
+    assert tags.aufrufe == 1
+
+
+def test_ohne_jedes_modell_sagt_er_es_ehrlich():
+    a = frage(broker(tags=Tags([])))
+    assert a["ok"] is False and a["grund"] == "modell_fehlt"
+
+
+def test_ein_totes_ollama_ist_keine_ausnahme():
+    def kaputt(url, *, timeout_s=0.0):
+        raise OSError("connection refused")
+
+    a = frage(broker(tags=kaputt))
+    assert a["ok"] is False and a["grund"] == "modell_fehlt"
+
+
+def test_ein_404_verwirft_den_FUND_und_laesst_die_wahl_stehen():
+    """Das Modell kann seit der Erkennung entfernt worden sein. Ein Broker,
+    der sich an einen toten Namen klammert, bis jemand ihn neu startet, ist
+    die Falle, die dieser Task zumacht -- die AUSDRUECKLICHE Wahl bleibt
+    aber stehen, sie ist eine Ansage und kein Fund."""
+    tags = Tags(["a:1"])
+    b = broker(http=Http(status=404), tags=tags)
+    assert frage(b)["grund"] == "modell_fehlt"
+    assert b._erkannt is None
+    frage(b, ticket="t-2")
+    assert tags.aufrufe == 2, "der Fund wurde nicht neu ermittelt"
+
+    fest = broker(http=Http(status=404), tags=Tags(["a:1"]), modell="fest")
+    assert frage(fest)["grund"] == "modell_fehlt"
+    assert fest.modell == "fest"
+
+
+def test_modelle_lesen_haelt_muell_aus():
+    assert B.modelle_lesen("kein json") == []
+    assert B.modelle_lesen("{}") == []
+    assert B.modelle_lesen('{"models": [{"kein_model": 1}, {"model": "a"}]}') \
+        == ["a"]
+
+
+def test_der_zustand_nennt_das_WIRKLICH_benutzte_modell():
+    """`self.modell` allein staende auf `None`, waehrend eins laeuft -- eine
+    Auskunft, die formal richtig und im Betrieb nutzlos ist."""
+    z = broker(tags=Tags(["qwen3.8:27b"])).anfrage({"v": 1, "art": "zustand"})
+    assert z["modell"] == "qwen3.8:27b"
+    assert z["modell_gewaehlt"] is None
+
+    fest = broker(tags=Tags(["andere"]), modell="genau-dieses")
+    z2 = fest.anfrage({"v": 1, "art": "zustand"})
+    assert z2["modell"] == z2["modell_gewaehlt"] == "genau-dieses"
+
+
+def test_die_vorgabe_None_wird_nicht_zum_modellnamen_None():
+    """`str(cfg.get("lokal.modell", None))` ergab die Zeichenkette "None" --
+    einen Namen, den Ollama brav mit 404 quittiert. Drei Minuten nach der
+    Umstellung live gemessen: der Broker meldete `modell: 'None'`."""
+    assert B.modell_waehlen(None, None) is None
+    assert B.modell_waehlen(None, "") is None
+    assert B.modell_waehlen(None, "  ") is None
+    assert B.modell_waehlen(None, "None") is None      # der Fall selbst
+    assert B.modell_waehlen(None, "qwen3.8:27b") == "qwen3.8:27b"
+    assert B.modell_waehlen("vom-schalter", "aus-config") == "vom-schalter"

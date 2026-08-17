@@ -55,7 +55,20 @@ TICKET_SOCKET = "ticket.sock"
 # kann anderswohin zeigen. Die Zusage "nur dieser Rechner" soll nicht an
 # /etc/hosts haengen.
 ZIEL = "http://127.0.0.1:11434/api/chat"
-MODELL = "hf.co/Soofi-Project/Soofi-S-Instruct-Preview-GGUF:Q5_K_M"
+# Woher der Broker erfaehrt, was ueberhaupt da ist. Aus ZIEL abgeleitet und
+# nicht zweitgeschrieben: zwei Adressen, die auf dieselbe Ollama-Instanz
+# zeigen sollen, laufen auseinander, sobald jemand nur eine pflegt.
+TAGS = ZIEL.rsplit("/", 1)[0] + "/tags"
+# KEIN fest verdrahtetes Modell mehr. Bis zum 17.08. stand hier ein Name,
+# und der Broker verlangte GENAU den -- lief ein anderes Modell, antwortete
+# Ollama mit 404 und der Nutzer hoerte "Ich komme gerade nicht an die API".
+# Bei der ersten Messung der Naht war das der einzige Bruch in einer sonst
+# tragenden Kette: jeder Weg funktionierte, nur der NAME passte nicht.
+#
+# `None` heisst jetzt "nimm, was laeuft". Ein ausdruecklich gesetztes Modell
+# (`--modell`, `lokal.modell`) schlaegt das weiterhin -- wer eins nennt,
+# meint eins.
+MODELL: str | None = None
 TIMEOUT_S = 120.0
 FENSTER_S = 60.0
 HOECHSTENS = 30
@@ -87,6 +100,55 @@ def http_post(url: str, nutzlast: dict, *,
             return antwort.status, antwort.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as fehler:
         return fehler.code, fehler.read().decode("utf-8", "replace")
+
+
+def http_get(url: str, *, timeout_s: float = 10.0) -> tuple[int, str]:
+    """Wie `http_post`, nur lesend -- und aus demselben Grund ohne Proxy."""
+    oeffner = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with oeffner.open(urllib.request.Request(url), timeout=timeout_s) as a:
+            return a.status, a.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as fehler:
+        return fehler.code, fehler.read().decode("utf-8", "replace")
+
+
+def modell_waehlen(*kandidaten: object) -> str | None:
+    """Der erste nichtleere Kandidat als Zeichenkette, sonst `None`.
+
+    Klingt nach nichts und war ein Fehler: `str(cfg.get(...))` machte aus der
+    Vorgabe `None` den Modellnamen `"None"`, und Ollama quittierte den brav
+    mit 404. Drei Minuten nach der Umstellung live gemessen. Die Umwandlung
+    darf erst NACH der Auswahl passieren.
+    """
+    for k in kandidaten:
+        if k is None:
+            continue
+        text = str(k).strip()
+        if text and text.lower() != "none":
+            return text
+    return None
+
+
+def modelle_lesen(roh: str) -> list[str]:
+    """Die Namen aus einer `/api/tags`-Antwort. Rein, damit der Pruefstand
+    sie ohne laufendes Ollama pruefen kann.
+
+    Sortiert, und das ist keine Kosmetik: bei mehreren Modellen soll zweimal
+    dieselbe Wahl herauskommen. Ollama liefert nach Aenderungsdatum -- damit
+    haenge die Antwort des Assistenten daran, welches Modell zuletzt
+    angefasst wurde.
+    """
+    try:
+        daten = json.loads(roh)
+    except (json.JSONDecodeError, ValueError):
+        return []
+    if not isinstance(daten, dict):
+        return []
+    namen = []
+    for m in daten.get("models") or []:
+        if isinstance(m, dict) and isinstance(m.get("model"), str):
+            namen.append(m["model"])
+    return sorted(namen)
 
 
 def nutzlast(koerper: dict, *, modell: str,
@@ -122,19 +184,37 @@ def nutzlast(koerper: dict, *, modell: str,
 
 
 class LokalBroker:
+    """Der lokale Rueckgrat. **Ihm ist egal, welches Modell laeuft.**
+
+    Bis zum 17.08. war ein Name fest verdrahtet, und der Broker verlangte
+    genau den. Lief etwas anderes, antwortete Ollama mit 404 und der Nutzer
+    hoerte "Ich komme gerade nicht an die API" -- eine Meldung ueber das Netz
+    fuer einen Fehler, der keiner war. Bei der ersten Messung der Naht war
+    das der einzige Bruch in einer sonst tragenden Kette.
+    """
+
     def __init__(self, cfg: Config | None = None, *,
                  log: Logger | None = None, hub_socket: str = "",
-                 ziel: str = ZIEL, modell: str = MODELL,
+                 ziel: str = ZIEL, modell: str | None = MODELL,
                  timeout_s: float = TIMEOUT_S, fenster_s: float = FENSTER_S,
                  hoechstens: int = HOECHSTENS,
                  num_predict: int = NUM_PREDICT,
                  http: Callable[..., tuple[int, str]] = http_post,
+                 http_get: Callable[..., tuple[int, str]] = http_get,
+                 tags: str = TAGS,
                  hub_anfrage: Callable[..., dict] = hub_anfrage) -> None:
         self.cfg = cfg
         self.log = log or get_logger("daimon-lokal-broker")
         self.hub_socket = hub_socket
         self.ziel = ziel
+        self.tags = tags
+        # `modell` ist die AUSDRUECKLICHE Wahl (None = nimm, was laeuft),
+        # `_erkannt` die ermittelte. Getrennt, damit ein 404 nur die zweite
+        # verwirft: wer ein Modell benannt hat, soll nicht stillschweigend
+        # ein anderes bekommen.
         self.modell = modell
+        self._erkannt: str | None = None
+        self._http_get = http_get
         self.timeout_s = float(timeout_s)
         self.fenster_s = float(fenster_s)
         self.hoechstens = int(hoechstens)
@@ -153,6 +233,35 @@ class LokalBroker:
             if len(self._fenster) < self.hoechstens:
                 return True, 0.0
             return False, round(self.fenster_s - (jetzt - self._fenster[0]), 2)
+
+    def modell_jetzt(self) -> str | None:
+        """Welches Modell diese Anfrage benutzt. `None` = keins da.
+
+        Die Reihenfolge ist die ganze Regel: eine ausdrueckliche Wahl gilt
+        immer und wird NIE ueberschrieben; sonst wird einmal ermittelt und
+        gemerkt. Gemerkt und nicht je Anfrage geholt -- das waere ein
+        HTTP-Aufruf mehr auf dem Weg, den der Nutzer als Wartezeit erlebt.
+        Verworfen wird der Fund nur bei einem 404, und dann ist er ja auch
+        falsch.
+        """
+        if self.modell:
+            return self.modell
+        if self._erkannt:
+            return self._erkannt
+        try:
+            status, roh = self._http_get(self.tags)
+        except Exception:      # noqa: BLE001 -- ein totes Ollama ist kein
+            return None        # Absturz dieses Dienstes, sondern eine Absage
+        if status != 200:
+            return None
+        namen = modelle_lesen(roh)
+        if not namen:
+            return None
+        self._erkannt = namen[0]
+        self.log.info("Modell erkannt", DAIMON_ACTION="modell_erkannt",
+                      DAIMON_MODELL=self._erkannt,
+                      DAIMON_AUSWAHL=len(namen))
+        return self._erkannt
 
     def _nein(self, grund: str, meldung: str, **extra: Any) -> dict:
         assert grund in GRUENDE, grund
@@ -195,10 +304,16 @@ class LokalBroker:
         with self._lock:
             self._fenster.append(time.monotonic())
 
+        modell = self.modell_jetzt()
+        if not modell:
+            return self._nein("modell_fehlt",
+                              f"kein Modell unter {self.tags} gemeldet -- "
+                              "laeuft ollama, und ist eins gezogen?")
+
         t0 = time.monotonic()
         try:
             status, roh = self._http(
-                self.ziel, nutzlast(koerper, modell=self.modell,
+                self.ziel, nutzlast(koerper, modell=modell,
                                     num_predict=self.num_predict),
                 timeout_s=self.timeout_s)
         except (OSError, urllib.error.URLError) as exc:
@@ -212,8 +327,14 @@ class LokalBroker:
             # Ollama meldet ein nicht geladenes Modell mit 404. Das ist der
             # haeufigste Betriebsfehler und verdient einen eigenen Grund --
             # "modell_fehler" waere hier eine Diagnose weniger.
-            return self._nein("modell_fehlt",
-                              f"{self.modell!r} ist nicht gezogen")
+            #
+            # Die ERKANNTE Wahl wird dabei verworfen: das Modell kann seit der
+            # Erkennung entfernt worden sein, und ein Broker, der sich an
+            # einen toten Namen klammert, bis jemand ihn neu startet, ist
+            # genau die Falle, die dieser Task zumacht. Die ausdrueckliche
+            # Wahl bleibt stehen -- sie ist eine Ansage, kein Fund.
+            self._erkannt = None
+            return self._nein("modell_fehlt", f"{modell!r} ist nicht gezogen")
         if status != 200:
             return self._nein("modell_fehler", f"HTTP {status}")
         try:
@@ -245,7 +366,12 @@ class LokalBroker:
                 "dauer_ms": dauer_ms, "antwort": antwort}
 
     def zustand(self) -> dict:
-        return {"v": 1, "ok": True, "modell": self.modell, "ziel": self.ziel,
+        # `modell` ist, was WIRKLICH benutzt wird -- der Fund, wenn keine
+        # ausdrueckliche Wahl vorliegt. `self.modell` allein staende hier auf
+        # `None`, waehrend ein Modell laeuft, und die Auskunft waere die
+        # unbrauchbare Sorte: formal richtig, im Betrieb nutzlos.
+        return {"v": 1, "ok": True, "modell": self.modell_jetzt(),
+                "modell_gewaehlt": self.modell, "ziel": self.ziel,
                 "anfragen": self.anfragen, "fenster_s": self.fenster_s,
                 "hoechstens": self.hoechstens}
 
@@ -281,7 +407,11 @@ def main(argv: list[str] | None = None) -> int:
     broker = LokalBroker(
         cfg, hub_socket=args.hub_socket or str(cfg.runtime_dir / TICKET_SOCKET),
         ziel=str(cfg.get("lokal.ziel", ZIEL)),
-        modell=args.modell or str(cfg.get("lokal.modell", MODELL)),
+        # `str()` NUR auf einen echten Wert: die Vorgabe ist seit dem 17.08.
+        # `None`, und `str(None)` haette daraus den Modellnamen "None"
+        # gemacht -- ein Name, den Ollama brav mit 404 quittiert. Live
+        # gemessen, drei Minuten nach der Umstellung.
+        modell=modell_waehlen(args.modell, cfg.get("lokal.modell", MODELL)),
         timeout_s=float(cfg.get("lokal.timeout_s", TIMEOUT_S)),
         fenster_s=float(cfg.get("lokal.fenster_s", FENSTER_S)),
         hoechstens=int(cfg.get("lokal.hoechstens", HOECHSTENS)),

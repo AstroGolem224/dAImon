@@ -78,6 +78,33 @@ def _sock(name: str, anfrage: dict | None = None) -> dict | None:
     return antwort if isinstance(antwort, dict) else None
 
 
+def _archiv_arten() -> dict:
+    """Wie viele Zeilen je Art im Archiv. `{}` = nicht lesbar.
+
+    READ-ONLY und ueber eine eigene Verbindung: der Recorder ist der einzige
+    Schreiber, und diese Vorrichtung hat dort nichts zu suchen.
+    """
+    import sqlite3
+
+    from daimon.common.config import data_dir
+    from daimon.recorder.store import DATEI
+
+    pfad = data_dir() / DATEI
+    if not pfad.exists():
+        return {}
+    try:
+        db = sqlite3.connect(f"file:{pfad}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return {}
+    try:
+        return dict(db.execute(
+            "SELECT art, COUNT(*) FROM archiv GROUP BY art").fetchall())
+    except sqlite3.Error:
+        return {}
+    finally:
+        db.close()
+
+
 def aufnehmen() -> dict:
     """Alles, was sich messen laesst, in einem Augenblick."""
     from daimon.eyes.context import Kontextspeicher
@@ -95,6 +122,7 @@ def aufnehmen() -> dict:
         "mind": {k: mind.get(k) for k in
                  ("runden", "api_aufrufe", "deklassifiziert")},
         "kontext": speicher.zaehler(),
+        "archiv": _archiv_arten(),
     }
 
 
@@ -145,6 +173,20 @@ def _urteil(vorher: dict, nachher: dict) -> list[dict]:
             "erwartet": ">= 1",
             "ohne": "der lokale Broker laeuft nicht (braucht ollama) -- "
                     "die Kette ist bis Station 4 trotzdem gueltig",
+        },
+        {
+            # Der ZWEITE Zweig der Naht (T-7.4): dasselbe Gesprochene geht
+            # ausserdem ins Archiv, damit es spaeter auffindbar ist. Er
+            # haengt an keiner der Stationen oben -- ein stummer Archivzweig
+            # faellt im Sprachpfad nicht auf, das ist seine Bauart
+            # (`melder.senden` schluckt jeden Fehler).
+            "nr": 6, "station": "Transkript landet im ARCHIV (T-7.4)",
+            "messbar": d["recorder"] and bool(nachher["archiv"]),
+            "wert": (nachher["archiv"].get("transkript", 0)
+                     - vorher["archiv"].get("transkript", 0)
+                     if nachher["archiv"] else None),
+            "erwartet": ">= 1",
+            "ohne": "recorder laeuft nicht, oder das Archiv ist nicht lesbar",
         },
     ]
     for s in stationen:
