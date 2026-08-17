@@ -136,6 +136,21 @@ TTS_ABKUEHLUNG_DATEI = "tts-abkuehlung.json"
 TICKET_DATEI = "tickets.json"
 TICKET_FRIST_S = 300.0
 
+# T-4.6, verdrahtet am 17.08.: wie oft der Kettenkopf des Audits ins Journal
+# geht. Der Modulkopf von `audit.py` nennt drei Pruefstellen und sagt dazu:
+# "Findet keine davon statt, ist die Kette wertlos und gehoert gestrichen
+# statt behauptet." Es fand keine statt -- `verankern()` hatte genau einen
+# Aufrufer (`rotieren`), und den rief niemand. `pruefe` meldete das die ganze
+# Zeit selbst: "keine Journal-Anker gefunden; die Kette ist nur gegen sich
+# selbst geprueft und damit gegen eine Neuberechnung blind."
+#
+# Eine Stunde deckelt das Fenster, in dem eine komplett neu gerechnete Datei
+# unentdeckt bliebe: sie muesste auch die Anker der Vergangenheit treffen,
+# und die stehen ausserhalb ihrer Reichweite im Journal. Kuerzer waere ein
+# `systemd-cat` je Minute fuer nichts -- die Kette wandert nur, wenn etwas
+# passiert.
+AUDIT_ANKER_INTERVALL_S = 3600.0
+
 
 def _dumpbarkeit_abschalten() -> None:
     """Design 7.5: keine ptrace-/Core-Dump-Freigabe fuer den Hub.
@@ -1013,6 +1028,51 @@ class Hub:
             self._audit = Audit.oeffnen(Path(self.cfg.state_dir) / "audit")
         return self._audit
 
+    def audit_verankern(self) -> dict:
+        """Die Kette pruefen und ihren Kopf ins Journal schreiben.
+
+        DIE REIHENFOLGE IST DIE AUSSAGE: erst pruefen, dann verankern. Wer
+        zuerst verankert, schreibt den Kopf einer womoeglich schon
+        manipulierten Datei fest und macht den Anker zum Komplizen.
+
+        Ein Befund wird LAUT, aber er haelt den Hub nicht an: eine gerissene
+        Kette ist ein Verdacht auf Vergangenes, kein Grund, die Gegenwart
+        einzustellen. Der Nutzer sieht sie ueber `--verify`, das Journal
+        ueber diese Zeile.
+        """
+        from daimon.hub.audit import pruefe
+
+        buch = self.audit_buch()
+        befund = pruefe(buch.verzeichnis)
+        # `ok` verlangt Anker. Beim ALLERERSTEN Lauf gibt es noch keine, und
+        # das ist kein Fund -- gemeldet wird, was die Kette selbst sagt.
+        kette_kaputt = [f for f in befund["fehler"] if "Anker" not in f]
+        if kette_kaputt:
+            self.log.warn("AUDIT-KETTE GERISSEN", DAIMON_ACTION="audit_kaputt",
+                          DAIMON_SAETZE=befund["saetze"],
+                          DAIMON_FEHLER="; ".join(kette_kaputt)[:300])
+        else:
+            self.log.info("Audit geprueft", DAIMON_ACTION="audit_geprueft",
+                          DAIMON_SAETZE=befund["saetze"],
+                          DAIMON_ANKER=befund["anker_gefunden"],
+                          DAIMON_ANKER_GETROFFEN=befund["anker_getroffen"])
+        buch.verankern()
+        return befund
+
+    def _audit_schleife(self) -> None:
+        """Stuendlich pruefen und verankern. Sofort beim Start, nicht erst
+        nach einer Stunde: ein Hub, der taeglich neu startet, haette sonst
+        nie einen Anker gesetzt."""
+        while not self._stop.is_set():
+            try:
+                self.audit_verankern()
+            except Exception as exc:      # noqa: BLE001
+                # Ein klemmender Anker darf den Hub nicht mitnehmen. Er faellt
+                # ohnehin auf: beim naechsten `pruefe` fehlt er.
+                self.log.warn("Anker gescheitert",
+                              DAIMON_GRUND=f"{type(exc).__name__}: {exc}"[:200])
+            self._stop.wait(AUDIT_ANKER_INTERVALL_S)
+
     def _gate_teile(self):
         """Marken, Kontextspeicher, Archiv -- beim ersten Aufruf gebaut.
 
@@ -1265,6 +1325,12 @@ class Hub:
         t.start()
         self._threads.append(t)
         t = threading.Thread(target=self._horche_push, daemon=True)
+        t.start()
+        self._threads.append(t)
+        # T-4.6: der zweite Strom. Ohne diesen Faden gibt es keine Anker, und
+        # ohne Anker ist die Hash-Kette nur gegen sich selbst pruefbar -- eine
+        # neu gerechnete Datei ist gegen sich selbst immer stimmig.
+        t = threading.Thread(target=self._audit_schleife, daemon=True)
         t.start()
         self._threads.append(t)
         self.log.info("Hub laeuft", DAIMON_ACTION="start",

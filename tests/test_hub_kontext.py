@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+import daimon.hub.daemon as D
 from daimon.eyes import context
 from daimon.hub.declassify import Deklassifizierung
 from daimon.hub.marks import MarkenBuch
@@ -305,3 +306,102 @@ def test_die_kette_bleibt_bei_zwei_schreibern_heil(tmp_path, monkeypatch):
     # geprueft wird hier die KETTE, und die einzige Beanstandung darf die
     # fehlenden Anker betreffen.
     assert all("Anker" in f for f in befund["fehler"]), befund["fehler"]
+
+
+# -- Der zweite Strom: Anker im Journal (T-4.6, verdrahtet 17.08.) ---------
+
+def test_der_hub_verankert_die_kette(tmp_path, monkeypatch):
+    """`verankern()` hatte genau einen Aufrufer -- `rotieren()`, und den rief
+    niemand. Der Modulkopf von `audit.py` ist da unmissverstaendlich: findet
+    keine der drei Pruefstellen statt, ist die Kette wertlos und gehoert
+    gestrichen statt behauptet."""
+    stub = _audit_hub(tmp_path, monkeypatch)
+    buch = stub.audit_buch()
+    buch.schreiben(action_id="t", outcome="ok", turn_id="t-1", tool_use_id="-",
+                   prompt_shown="x", params_hash="sha256:0", mark_id="m",
+                   initiator="foreground")
+
+    gesetzt = []
+    monkeypatch.setattr(buch, "verankern",
+                        lambda **kw: gesetzt.append(buch.kopf))
+    stub.audit_verankern = D.Hub.audit_verankern.__get__(stub, type(stub))
+    befund = stub.audit_verankern()
+
+    assert gesetzt == [buch.kopf], "kein Anker gesetzt"
+    assert befund["saetze"] == 1
+
+
+def test_erst_pruefen_dann_verankern(tmp_path, monkeypatch):
+    """Wer zuerst verankert, schreibt den Kopf einer womoeglich schon
+    manipulierten Datei fest und macht den Anker zum Komplizen."""
+    stub = _audit_hub(tmp_path, monkeypatch)
+    buch = stub.audit_buch()
+    buch.schreiben(action_id="t", outcome="ok", turn_id="t-1", tool_use_id="-",
+                   prompt_shown="x", params_hash="sha256:0", mark_id="m",
+                   initiator="foreground")
+
+    reihenfolge = []
+    import daimon.hub.audit as A
+    echt = A.pruefe
+    monkeypatch.setattr(A, "pruefe",
+                        lambda *a, **k: (reihenfolge.append("pruefe"),
+                                         echt(*a, **k))[1])
+    monkeypatch.setattr(buch, "verankern",
+                        lambda **kw: reihenfolge.append("verankern"))
+    stub.audit_verankern = D.Hub.audit_verankern.__get__(stub, type(stub))
+    stub.audit_verankern()
+    assert reihenfolge == ["pruefe", "verankern"]
+
+
+def test_eine_gerissene_kette_wird_laut(tmp_path, monkeypatch):
+    """...und haelt den Hub trotzdem nicht an: ein Verdacht auf Vergangenes
+    ist kein Grund, die Gegenwart einzustellen."""
+    stub = _audit_hub(tmp_path, monkeypatch)
+    buch = stub.audit_buch()
+    for i in range(2):
+        buch.schreiben(action_id="t", outcome="ok", turn_id=f"t-{i}",
+                       tool_use_id="-", prompt_shown="x",
+                       params_hash="sha256:0", mark_id="m",
+                       initiator="foreground")
+    # Eine Zeile von Hand verbiegen -- genau das soll auffallen.
+    zeilen = buch.datei.read_text().splitlines()
+    zeilen[0] = zeilen[0].replace('"outcome":"ok"', '"outcome":"denied"')
+    buch.datei.write_text("\n".join(zeilen) + "\n")
+
+    gemeldet = []
+    stub.log.warn = lambda *a, **k: gemeldet.append((a, k))
+    monkeypatch.setattr(buch, "verankern", lambda **kw: None)
+    stub.audit_verankern = D.Hub.audit_verankern.__get__(stub, type(stub))
+    stub.audit_verankern()                      # wirft NICHT
+    assert any("GERISSEN" in str(a) for a, _ in gemeldet), gemeldet
+
+
+def test_WAECHTER_start_verdrahtet_die_ankerschleife(monkeypatch, tmp_path):
+    """Die Methode allein genuegt nicht -- sie braucht einen AUFRUFER.
+
+    Ohne diese Probe blieb die Suite gruen, auch als der Faden aus `start()`
+    entfernt wurde: `audit_verankern` war geprueft, seine Verdrahtung nicht.
+    Genau das Muster aus CLAUDE.md, und diesmal in meinem eigenen Fix.
+    """
+    hub = D.Hub.__new__(D.Hub)
+    hub.log = Log()
+    hub.runtime_dir = tmp_path
+    hub._stop = __import__("threading").Event()
+    hub._server, hub._threads = [], []
+    hub.state = type("S", (), {"snapshot": staticmethod(lambda: {})})()
+    hub.diag = Diag()
+    hub.diag.snapshot = lambda: {}
+
+    ziele = []
+
+    class FakeThread:
+        def __init__(self, target=None, args=(), kwargs=None, daemon=False):
+            ziele.append(getattr(target, "__name__", str(target)))
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(D.threading, "Thread", FakeThread)
+    D.Hub.start(hub, produzenten=[])
+
+    assert "_audit_schleife" in ziele, ziele
