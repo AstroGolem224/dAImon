@@ -54,6 +54,41 @@ def test_jede_unit_wird_von_etwas_gezogen(unit: Path):
         "nach einem Neustart startet sie niemand")
 
 
+@pytest.mark.parametrize("timer", sorted(UNITS.glob("*.timer")),
+                         ids=lambda p: p.name)
+def test_jeder_timer_wird_aktiviert(timer: Path):
+    """Dieselbe Frage eine Ebene weiter, aufgefallen am 17.08. beim Bau des
+    Audit-Timers: die Regel oben prueft nur `*.service`.
+
+    Ein Timer ohne `[Install]` zieht seinen Dienst nie -- und dann ist auch
+    der Dienst nie gezogen, obwohl die Regel oben ihn fuer versorgt haelt.
+    Eine `.timer`-Datei, die niemand aktiviert, ist genau die Attrappe, gegen
+    die diese Datei geschrieben wurde.
+    """
+    assert _hat(timer, "[Install]"), (
+        f"{timer.name} hat kein [Install] -- niemand aktiviert ihn, und der "
+        "Dienst dahinter laeuft nie")
+    text = timer.read_text(encoding="utf-8")
+    assert "Unit=" in text, f"{timer.name} nennt keinen Dienst"
+
+
+def test_der_audit_pruefer_darf_nicht_schreiben():
+    """Die Zusage dieser einen Unit, und sie steht in ihrer Abwesenheit.
+
+    Ein Pruefer mit Schreibrecht koennte einen Befund wegschreiben, statt ihn
+    zu melden. `ProtectSystem=strict` und `ProtectHome=read-only` ohne ein
+    einziges `ReadWritePaths=` ist die ganze Bauart -- und weil eine fehlende
+    Zeile in keinem Diff auffaellt, steht sie hier als Pruefung.
+    """
+    text = (UNITS / "daimon-audit-verify.service").read_text(encoding="utf-8")
+    ohne_kommentar = "\n".join(z for z in text.splitlines()
+                               if not z.strip().startswith("#"))
+    assert "ProtectSystem=strict" in ohne_kommentar
+    assert "ProtectHome=read-only" in ohne_kommentar
+    assert "ReadWritePaths" not in ohne_kommentar
+    assert "StateDirectory" not in ohne_kommentar
+
+
 def test_POSITIVKONTROLLE_die_regel_kann_ueberhaupt_reissen(tmp_path):
     """Ohne diese Zeile bestuende der Test oben auch eine Fassung, die immer
     wahr sagt -- und genau so eine haette den Befund nicht gefunden."""
