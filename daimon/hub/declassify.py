@@ -153,20 +153,45 @@ class Deklassifizierung:
         self._uhr = uhr
         self.abgelehnt: dict[str, int] = {}
 
-    def _ablehnen(self, grund: str, turn_id: str = "") -> GateFehler:
+    def _ablehnen(self, grund: str, turn_id: str = "",
+                  aeusserung: str = "") -> GateFehler:
         self.abgelehnt[grund] = self.abgelehnt.get(grund, 0) + 1
         self._schreiben(outcome="denied", grund=grund, turn_id=turn_id,
-                        umfang={})
+                        umfang={}, aeusserung=aeusserung)
         return GateFehler(grund)
 
     def _schreiben(self, *, outcome: str, grund: str, turn_id: str,
-                   umfang: dict) -> None:
+                   umfang: dict, aeusserung: str = "") -> None:
+        """Ein Satz ins Audit. ALLE Pflichtfelder, sonst schreibt er nichts.
+
+        **Zwei Fehler uebereinander, beide am 17.08. gefunden.** Das Audit war
+        nie angeschlossen (`getattr(self, "audit", None)` im Hub) -- und selbst
+        angeschlossen haette dieser Aufruf nichts geschrieben: `params_hash`,
+        `mark_id` und `initiator` sind Pflicht (Design 7.6), fehlten hier, und
+        `Audit.schreiben` haette mit `AuditFehler` abgelehnt. Das `except`
+        unten haette ihn verschluckt. Der erste Fehler hat den zweiten
+        versteckt; wer nur den ersten behoben haette, saesse vor einem Audit,
+        das weiterhin leer bleibt.
+
+        `params_hash` ist der Abdruck der AEUSSERUNG: er beantwortet "war das
+        dieselbe Frage" im Nachhinein, ohne sie aufzubewahren -- und die
+        Aeusserung kam aus einem Mikrofon, sie gehoert nirgends im Klartext
+        hin.
+        """
         if self._audit is None:
             return
+        from daimon.hub.audit import _hash
+
         try:
             self._audit.schreiben(
                 action_id="context.declassify", outcome=outcome,
                 turn_id=turn_id or "-", tool_use_id="-",
+                params_hash=_hash(aeusserung),
+                # Die Rundenmarke IST die Kennung dieser Handlung.
+                mark_id=turn_id or "-",
+                # Ohne Marke gibt es keine Nutzerhandlung -- und genau das
+                # soll im Audit stehen, nicht "foreground" fuer alles.
+                initiator="foreground" if turn_id else "background",
                 prompt_shown=f"{grund} {sorted(umfang.items())}",
                 tainted=("prompt_shown",))
         except Exception:
@@ -214,25 +239,27 @@ class Deklassifizierung:
             # Steht VOR allem anderen. Ein proaktiver Aufruf mit gueltiger
             # Marke ist keine Nutzerhandlung -- die Marke gehoert dann zu
             # einer Runde, in der der Nutzer etwas ANDERES wollte.
-            raise self._ablehnen(GRUND_PROAKTIV)
+            raise self._ablehnen(GRUND_PROAKTIV, aeusserung=aeusserung)
         if turn_id is None:
             # Das Kontingent bekommt seinen EIGENEN Grund und nicht
             # „keine Marke". Wer im Journal sucht, warum der Bildschirm
             # nicht herauskam, soll den Wake-Word-Weg benannt sehen.
             raise self._ablehnen(
-                GRUND_KONTINGENT if kontingent else GRUND_KEINE_MARKE)
+                GRUND_KONTINGENT if kontingent else GRUND_KEINE_MARKE,
+                aeusserung=aeusserung)
         if kontingent:
             # Beides zugleich ist kein Zufall, sondern ein Versuch, die
             # schwaechere Bedingung mitlaufen zu lassen.
-            raise self._ablehnen(GRUND_KONTINGENT, turn_id)
+            raise self._ablehnen(GRUND_KONTINGENT, turn_id, aeusserung)
 
         if not bildschirmbezug(aeusserung):
-            raise self._ablehnen(GRUND_KEIN_BEZUG, turn_id)
+            raise self._ablehnen(GRUND_KEIN_BEZUG, turn_id, aeusserung)
 
         try:
             self._marken.einloesen(turn_id)
         except MarkenFehler:
-            raise self._ablehnen(GRUND_MARKE_UNGUELTIG, turn_id) from None
+            raise self._ablehnen(GRUND_MARKE_UNGUELTIG, turn_id,
+                                 aeusserung) from None
 
         schein = Freigabeschein(turn_id=turn_id)
         eintraege = self._speicher.freigeben(schein)
@@ -260,7 +287,7 @@ class Deklassifizierung:
             umfang["archiv"] = len(archiv)
 
         self._schreiben(outcome="ok", grund="freigabe", turn_id=turn_id,
-                        umfang=umfang)
+                        umfang=umfang, aeusserung=aeusserung)
         return Freigabe(turn_id=turn_id, umfang=umfang, eintraege=markiert,
                         archiv=archiv)
 

@@ -171,8 +171,14 @@ def test_der_speicher_wird_je_anfrage_von_der_platte_gelesen(tmp_path,
     stub = Stub()
     stub._gate = None
     stub._speicher = None
+    # Das Audit gehoert seit dem 17.08. dazu: `_gate_teile` holt es ueber
+    # `audit_buch()`, und ein Stub ohne diese Felder pruefte einen Hub, den
+    # es nicht gibt.
+    stub._audit = None
+    stub.cfg = type("Cfg", (), {"state_dir": tmp_path / "state"})()
     stub.marken = MarkenBuch(log=Log())
     stub.log, stub.diag = Log(), Diag()
+    stub.audit_buch = Hub.audit_buch.__get__(stub, Stub)
     stub._gate_teile = Hub._gate_teile.__get__(stub, Stub)
     stub.kontext_anfrage = Hub.kontext_anfrage.__get__(stub, Stub)
 
@@ -195,3 +201,107 @@ def test_ein_klemmendes_gate_gibt_eine_absage_statt_eines_absturzes(hub):
     hub._gate = Kaputt()
     antwort = hub.kontext_anfrage({"art": "deklassifizieren", "text": FRAGE})
     assert antwort["ok"] is False and antwort["grund"] == "gate_weg"
+
+
+# -- Das Gate schreibt ins Audit (17.08.) ----------------------------------
+
+def _audit_hub(tmp_path, monkeypatch):
+    """Ein Stub mit ECHTEM Audit -- wie der Hub ihn seit dem 17.08. hat."""
+    from daimon.hub.daemon import Hub
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+
+    class Stub:
+        pass
+
+    stub = Stub()
+    stub._gate = None
+    stub._speicher = None
+    stub._audit = None
+    stub.cfg = type("Cfg", (), {"state_dir": tmp_path / "state"})()
+    stub.marken = MarkenBuch(log=Log())
+    stub.log, stub.diag = Log(), Diag()
+    stub.audit_buch = Hub.audit_buch.__get__(stub, Stub)
+    stub._gate_teile = Hub._gate_teile.__get__(stub, Stub)
+    stub.kontext_anfrage = Hub.kontext_anfrage.__get__(stub, Stub)
+    return stub
+
+
+def _saetze(stub):
+    import json as _json
+    datei = stub.audit_buch().datei
+    if not datei.exists():
+        return []
+    return [_json.loads(z) for z in datei.read_text().splitlines() if z.strip()]
+
+
+def test_das_gate_schreibt_die_ABLEHNUNG_ins_audit(tmp_path, monkeypatch):
+    """`_gate_teile` uebergab `getattr(self, "audit", None)` -- ein Feld, das
+    der Hub NIE hatte. Das Gate schrieb damit nichts, und die Frage "warum kam
+    der Bildschirm nicht heraus" war unbeantwortbar."""
+    stub = _audit_hub(tmp_path, monkeypatch)
+    assert _saetze(stub) == []                          # Positivkontrolle
+    stub.kontext_anfrage({"art": "deklassifizieren", "text": FRAGE})
+    (satz,) = _saetze(stub)
+    assert satz["action_id"] == "context.declassify"
+    assert satz["outcome"] == "denied"
+    assert "keine_marke" in satz["prompt_shown"] or \
+        satz["prompt_shown"].startswith("<redacted")
+
+
+def test_und_die_FREIGABE_ebenso(tmp_path, monkeypatch):
+    stub = _audit_hub(tmp_path, monkeypatch)
+    stub.marken.ausgeben(quelle="auth", turn_id="t-1")
+    stub.kontext_anfrage({"art": "deklassifizieren", "text": FRAGE})
+    (satz,) = _saetze(stub)
+    assert satz["outcome"] == "ok"
+    assert satz["turn_id"] == "t-1"
+
+
+def test_der_vorschautext_des_gates_ist_redigiert(tmp_path, monkeypatch):
+    """Er nennt den Umfang der Freigabe. Redigiert wird er trotzdem: das
+    Audit redigiert `prompt_shown` immer, und diese Zusage darf nicht davon
+    abhaengen, wer schreibt."""
+    stub = _audit_hub(tmp_path, monkeypatch)
+    stub.marken.ausgeben(quelle="auth", turn_id="t-1")
+    stub.kontext_anfrage({"art": "deklassifizieren", "text": FRAGE})
+    (satz,) = _saetze(stub)
+    assert satz["prompt_shown"].startswith("<redacted:sha256:")
+
+
+def test_die_kette_bleibt_bei_zwei_schreibern_heil(tmp_path, monkeypatch):
+    """Das Gate und der Aktionsweg schreiben aus VERSCHIEDENEN Threads. Ohne
+    Schloss verschraenken sich `seq` und `prev_hash` -- jede Haelfte fuer
+    sich stimmig, zusammen kaputt, und auffallen wuerde es erst bei
+    `pruefen`."""
+    import threading
+
+    from daimon.hub.audit import pruefe
+
+    stub = _audit_hub(tmp_path, monkeypatch)
+    buch = stub.audit_buch()
+
+    def schreiber(n):
+        for i in range(20):
+            buch.schreiben(action_id=f"t.{n}", outcome="ok", turn_id=f"{n}-{i}",
+                           tool_use_id="-", prompt_shown="x",
+                           params_hash="sha256:0", mark_id="m",
+                           initiator="foreground")
+
+    faeden = [threading.Thread(target=schreiber, args=(n,)) for n in range(4)]
+    for f in faeden:
+        f.start()
+    for f in faeden:
+        f.join()
+
+    saetze = _saetze(stub)
+    assert len(saetze) == 80
+    assert [s["seq"] for s in saetze] == list(range(1, 81))
+    befund = pruefe(buch.verzeichnis)
+    assert befund["saetze"] == 80
+    # `ok` verlangt ZUSAETZLICH Journal-Anker (die Kette allein faellt auf
+    # eine neu gerechnete Datei herein). Die gibt es im Pruefstand nicht --
+    # geprueft wird hier die KETTE, und die einzige Beanstandung darf die
+    # fehlenden Anker betreffen.
+    assert all("Anker" in f for f in befund["fehler"]), befund["fehler"]

@@ -37,6 +37,10 @@ def hub(tmp_path, monkeypatch, *, marke_gueltig=True, broker_ok=True):
     h.consent = None
     h.runtime_dir = tmp_path
     h._aktion = None
+    # Seit dem 17.08. teilen Aktionsweg und Gate EIN Audit -- eine
+    # Kette, ein Objekt. `__new__` legt keine Attribute an, also
+    # gehoert es hierher.
+    h._audit = None
     h.gesprochen = []
 
     class Cfg:

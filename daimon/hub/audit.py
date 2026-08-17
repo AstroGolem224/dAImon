@@ -43,7 +43,8 @@ import os
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
@@ -94,6 +95,16 @@ class Audit:
     verzeichnis: Path
     _seq: int = 0
     _prev: str = ""
+    # Die Kette ist ZUSTAND: `_seq` und `_prev` wandern mit jedem Satz weiter.
+    # Zwei Threads, die gleichzeitig schreiben, verschraenken Sequenz und
+    # `prev_hash` -- und eine verschraenkte Kette ist keine Kette mehr,
+    # sondern ein Fund fuer `pruefen`. Der Aktionsendpunkt bedient seit T-4.16
+    # NEBENLAEUFIG (ein Thread je Verbindung), und seit dem 17.08. schreibt
+    # das Deklassifizierungs-Gate aus einem zweiten Thread mit. Das Schloss
+    # gehoert deshalb hierher und nicht zu den Aufrufern: ein Aufrufer, der
+    # es vergisst, soll die Kette nicht brechen koennen.
+    _schloss: threading.Lock = field(default_factory=threading.Lock,
+                                     compare=False, repr=False)
 
     @classmethod
     def oeffnen(cls, verzeichnis: Path | str) -> "Audit":
@@ -159,20 +170,25 @@ class Audit:
         # gezeigt wurde, ohne ihn aufzubewahren.
         daten["prompt_shown"] = redigieren(daten["prompt_shown"])
 
-        self._seq += 1
-        # Die Wanduhr, nicht die monotone: ein Audit beantwortet "wann war
-        # das" und nicht "wieviel spaeter als der Start". Injizierbar, damit
-        # ein Test eine Kette zweimal gleich schreiben kann -- und weil ohne
-        # das jede Probe an der Uhr haenge statt am Inhalt.
-        satz = {"schema": SCHEMA, "seq": self._seq, "prev_hash": self._prev,
-                "ts": float(time.time() if ts is None else ts), **daten}
-        zeile = _zeile(satz)
-        with open(self.datei, "a", encoding="utf-8") as fh:
-            fh.write(zeile + "\n")
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.chmod(self.datei, 0o600)
-        self._prev = _kette_hash(satz)
+        # ALLES unter einem Schloss: Nummer ziehen, Vorgaengerhash lesen,
+        # schreiben, Kopf fortsetzen. Wer nur den Zaehler schuetzt, bekommt
+        # zwei Saetze mit richtiger Nummer und falscher Verkettung -- und die
+        # faellt erst Tage spaeter bei `pruefen` auf.
+        with self._schloss:
+            self._seq += 1
+            # Die Wanduhr, nicht die monotone: ein Audit beantwortet "wann war
+            # das" und nicht "wieviel spaeter als der Start". Injizierbar,
+            # damit ein Test eine Kette zweimal gleich schreiben kann -- und
+            # weil ohne das jede Probe an der Uhr haenge statt am Inhalt.
+            satz = {"schema": SCHEMA, "seq": self._seq, "prev_hash": self._prev,
+                    "ts": float(time.time() if ts is None else ts), **daten}
+            zeile = _zeile(satz)
+            with open(self.datei, "a", encoding="utf-8") as fh:
+                fh.write(zeile + "\n")
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.chmod(self.datei, 0o600)
+            self._prev = _kette_hash(satz)
         return satz
 
     @property

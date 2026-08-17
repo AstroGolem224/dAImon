@@ -183,6 +183,8 @@ class Hub:
         # Getrennt gehalten, weil er je Anfrage neu von der Platte liest --
         # siehe `_gate_teile`.
         self._speicher = None
+        # Das gemeinsame Audit, siehe `audit_buch`.
+        self._audit = None
         # T-3.7: die Ladesperre. Hoechstens ein Ladevorgang gleichzeitig, und
         # zwar HIER, weil ein Worker nur sich selbst kennt. `_gpu_sperre` ist
         # (Marke, Ablauf in monotoner Zeit) -- monoton, weil eine
@@ -601,7 +603,6 @@ class Hub:
                                          buch=self.freigaben)
         if self._aktion is None:
             from daimon.hub.action_queue import Aktionsschlange
-            from daimon.hub.audit import Audit
             from daimon.hub.coordinator import Koordinator
             from daimon.hub.order import Auftragsbuch
             from daimon.hub.policy import Policy
@@ -629,7 +630,8 @@ class Hub:
                 consent=self.consent,
                 auftragsbuch=Auftragsbuch(),
                 schlange=Aktionsschlange(),
-                audit=Audit.oeffnen(Path(self.cfg.state_dir) / "audit"),
+                # DASSELBE Audit wie das Gate -- eine Kette, ein Objekt.
+                audit=self.audit_buch(),
                 broker=self._auftrag_zustellen,
                 vorschau=self._vorschau_bauen,
                 sprechen=self._sprechen)
@@ -991,6 +993,26 @@ class Hub:
 
     # -- T-5.9b: Deklassifizierung ------------------------------------------
 
+    def audit_buch(self):
+        """DAS Audit dieses Hubs. Eines, nicht zwei.
+
+        Die Kette traegt `seq` und `prev_hash` im Objekt. Zwei Instanzen auf
+        dasselbe Verzeichnis waeren zwei Ketten, die sich gegenseitig
+        ueberschreiben -- jede fuer sich stimmig, zusammen kaputt, und
+        auffallen wuerde es erst bei `pruefen`.
+
+        Bis zum 17.08. baute nur `_aktionsteile()` eines, und zwar in sich
+        selbst. `_gate_teile()` fragte `getattr(self, "audit", None)` -- ein
+        Feld, das es nie gab. Das Gate schrieb also NICHTS, und die Frage
+        "was hat es wann freigegeben" war unbeantwortbar. Jede Freigabe und
+        jede Ablehnung soll protokolliert werden (declassify.py); im Betrieb
+        wurde nichts geschrieben, weil `_schreiben` still auf `None` lief.
+        """
+        if self._audit is None:
+            from daimon.hub.audit import Audit
+            self._audit = Audit.oeffnen(Path(self.cfg.state_dir) / "audit")
+        return self._audit
+
     def _gate_teile(self):
         """Marken, Kontextspeicher, Archiv -- beim ersten Aufruf gebaut.
 
@@ -1015,7 +1037,7 @@ class Hub:
                 marken=self.marken,
                 speicher=self._speicher,
                 archiv=Archivsuche(),
-                audit=getattr(self, "audit", None))
+                audit=self.audit_buch())
         if self._speicher is not None:
             self._speicher.laden()
         return self._gate
