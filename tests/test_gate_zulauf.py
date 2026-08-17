@@ -138,6 +138,31 @@ def test_WAECHTER_das_gate_hat_genau_einen_produktiven_aufrufer():
     assert aufrufer[0].startswith("daimon/hub/daemon.py:"), aufrufer
 
 
+def test_WAECHTER_der_privatmodus_hat_keinen_schalter():
+    """Er ist gebaut, geprueft -- und niemand kann ihn einschalten.
+
+    `redaktion.privat_setzen()` legt einen zeitlich begrenzten Privatmodus an,
+    und `privat_bis()` liest ihn korrekt; die Redaktion sperrt danach JEDE
+    Ablage, Bild wie Ton. Aufgerufen wird `privat_setzen` im Produktivcode
+    nirgends (nachgemessen am 17.08.): kein Kuerzel, kein Menuepunkt, keine
+    CLI.
+
+    Der Waechter steht hier und nicht als Vorratscode dort: heute einen
+    Schalter zu bauen, den niemand verlangt hat, waere derselbe Fehler von
+    der anderen Seite. Sobald ihn jemand baut, faellt dieser Test auf -- und
+    dann gehoert das Kuerzel in `README.md`, wie die drei anderen.
+    """
+    aufrufer = _aufrufe("privat_setzen", ausser=("redaktion.py",))
+    if aufrufer:
+        readme = (REPO / "README.md").read_text(encoding="utf-8")
+        assert "privat" in readme.lower() and "Privatmodus ist gebaut und " \
+            "nicht einschaltbar" not in readme, (
+            "Der Privatmodus hat jetzt einen Aufrufer ("
+            + ", ".join(aufrufer) + ") -- die Kill-Switch-Tabelle in README.md "
+            "muss ihn nennen, und der Abschnitt 'gebaut und nicht "
+            "einschaltbar' gilt nicht mehr.")
+
+
 def test_WAECHTER_proaktiv_ruft_das_gate_nicht():
     """Die strukturelle Haelfte der Zusage: das Modul ENTSCHEIDET nur. Eine
     Klasse, die selbst freigeben koennte und es nur unterlaesst, gibt frei,

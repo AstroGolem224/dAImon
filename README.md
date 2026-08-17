@@ -134,11 +134,48 @@ Konfigurationsflagge — ein zweiter Weg wäre eine zweite Angriffsfläche.
 
 | Was | Befehl | Was er belegt |
 |---|---|---|
-| Ohren aus | `python -m daimon.ears.killswitch` | Unit inaktiv **und** null Aufnahmeströme |
+| Ohren aus | `Meta+Shift+M` oder `python -m daimon.ears.killswitch` | Unit inaktiv **und** null Aufnahmeströme |
 | Augen aus | `python -m daimon.eyes.killswitch` | Unit inaktiv, null eigene Videoströme, Kontextverzeichnis leer |
+| Mitschnitt anhalten | `Meta+Shift+P` (Umschalter) | Units gestoppt, keine Bildschirmströme mehr — mit Positivkontrolle `beleg` |
 | Alles aus | `systemctl --user stop 'daimon-*'` | — |
-| Alles vergessen | `python -m daimon.mind.store --loeschen` | Zeilen **und** Datei |
+| Gedächtnis vergessen | `python -m daimon.mind.store --loeschen` | Zeilen **und** Datei |
+| **Archiv vergessen** | `python -m daimon.recorder.store --loeschen` | Zeilen, Datei, WAL und SHM |
 | Bildschirmzugriff widerrufen | Kontextmenü → *Bildschirmzugriff widerrufen* | Token gelöscht, Portal-Sitzung geschlossen |
+
+**Beide Löschwege gehören zusammen.** Das Gedächtnis hält Notizen, das
+**Archiv** 30 Tage Fenstertitel und Bildschirmtext — der größere Bestand.
+Wer nur den ersten fährt, hat das Meiste behalten. Bis zum 17.08. stand hier
+nur der erste.
+
+### Tastenkürzel
+
+Registriert vom Auth-Agenten über `org.kde.kglobalaccel`. Scheitert die
+Registrierung, sagt er es und läuft weiter — ein Kürzel, das lautlos nicht
+greift, wäre schlimmer als keines.
+
+| Kürzel | Wirkung |
+|---|---|
+| `Meta+Space` | Push-to-Talk (Umschalter, mit Zeitlimit) |
+| `Meta+Shift+M` | Ohren aus |
+| `Meta+Shift+P` | Mitschnitt anhalten / fortsetzen |
+
+**Fortsetzen ist ein Tastendruck, nie automatisch.** Eine Pause, die sich
+selbst beendet, sobald die Konferenz weg ist, wäre ein Mitschnitt, der wieder
+anläuft, ohne dass jemand es gesagt hat.
+
+### Der Privatmodus ist gebaut und nicht einschaltbar
+
+`daimon.recorder.redaktion.privat_setzen()` legt einen zeitlich begrenzten
+Privatmodus an — die Redaktion sperrt dann **jede** Ablage, Bild wie Ton.
+Geprüft ist er, und `privat_bis()` liest ihn korrekt.
+
+**Nur ruft ihn niemand auf.** Kein Tastenkürzel, kein Menüpunkt, keine CLI
+(Stand 17.08., nachgemessen). Wer den Privatmodus heute will, nimmt
+`Meta+Shift+P` — das hält den Mitschnitt an, ist aber nicht dasselbe: der
+Privatmodus überlebt einen Neustart absichtlich **nicht**, die Pause schon.
+
+Das ist dieselbe Sorte Lücke, die diese Woche elfmal aufgefallen ist: das
+Stück ist gebaut, sein Zulauf fehlt. Siehe `CLAUDE.md`.
 
 Beide Schalter geben JSON zurück und setzen `ok` erst, wenn die **Wirkung**
 gemessen ist — nicht, wenn `systemctl` mit 0 endet. Ein Dienst, der beim

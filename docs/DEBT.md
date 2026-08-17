@@ -18,6 +18,17 @@ Diese Datei wird ERZEUGT, nicht gepflegt:
 grep -rn 'ponytail:' daimon face/src tools config
 ```
 
+**Und seit dem 17.08. bewacht.** Erzeugt wurde sie einmal, und dann hat sich
+der Code darunter bewegt: vier von 21 Zeilenangaben zeigten ins Leere, wer
+eine Schuld nachlesen wollte, landete auf einer beliebigen Zeile. Eine
+Momentaufnahme, die aussieht wie ein Verzeichnis, ist die schlechtere Hälfte
+von beidem.
+
+`tests/test_debt_ledger.py` prüft jetzt beide Richtungen — jeder Eintrag zeigt
+auf einen echten Vermerk, jeder Vermerk hat einen Eintrag, und die Zahl im
+Kopf wird nachgerechnet. Nicht geprüft wird der **Wortlaut**: das wäre
+Nachschreiben, und dafür ist der `grep` oben da.
+
 ## `daimon/brokers/cli/broker.py`
 
 - **Zeile 39** — kein Streaming. Obergrenze: die Antwort kommt am Stueck, TTFA ist
@@ -67,11 +78,11 @@ grep -rn 'ponytail:' daimon face/src tools config
 
 ## `daimon/hub/daemon.py`
 
-- **Zeile 835** — der Ersatzsatz hat KEINE eigene Frist. Obergrenze: er ist
+- **Zeile 880** — der Ersatzsatz hat KEINE eigene Frist. Obergrenze: er ist
 
 ## `daimon/hub/state.py`
 
-- **Zeile 200** — nur ein Wahrheitswert plus Ablauf. Obergrenze: die Sperre
+- **Zeile 207** — nur ein Wahrheitswert plus Ablauf. Obergrenze: die Sperre
 
 ## `daimon/mind/daemon.py`
 
@@ -79,11 +90,11 @@ grep -rn 'ponytail:' daimon face/src tools config
 
 ## `daimon/mind/router.py`
 
-- **Zeile 226** — sauberer waere ein KWin-Script, das `resourceClass` meldet; das
+- **Zeile 227** — sauberer waere ein KWin-Script, das `resourceClass` meldet; das
 
 ## `face/src/main.rs`
 
-- **Zeile 1048** — // ponytail: kein Grund-Unterscheiden. Der Compositor sagt nicht, warum
+- **Zeile 1057** — // ponytail: kein Grund-Unterscheiden. Der Compositor sagt nicht, warum
 
 ## `face/src/menu.rs`
 

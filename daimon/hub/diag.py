@@ -138,3 +138,53 @@ class Diagnose:
                 # waere schlimmer als gar keiner.
                 "units": unit_zustaende or {},
             }
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`python -m daimon.hub.diag` -- den Schnappschuss des laufenden Hubs.
+
+    **Diese Funktion fehlte bis zum 17.08.**, und der Befehl stand die ganze
+    Zeit in `docs/INSTALL.md` unter "Pruefen, dass es steht". Ohne `main()`
+    importiert `python -m` das Modul, fuehrt nichts aus und endet mit 0: eine
+    dokumentierte Pruefung, die stumm gelingt. Sie sah aus wie ein
+    Pruefschritt und war keiner -- dieselbe Gestalt wie ein Zaehler ohne
+    Ableser (siehe `CLAUDE.md`).
+
+    Der Hub ist nicht erreichbar -> `rc=1` und eine Zeile, die sagt WO
+    gesucht wurde. Ein Diagnosewerkzeug, das bei fehlendem Dienst schweigt,
+    ist genau dann nutzlos, wenn man es braucht.
+    """
+    import argparse
+    import json
+    import socket
+    from pathlib import Path
+
+    from daimon.common.config import load as load_config
+
+    ap = argparse.ArgumentParser(description="dAImon Hub-Diagnose (T-0.13)")
+    ap.add_argument("--runtime-dir", type=Path, default=None)
+    args = ap.parse_args(argv)
+
+    rt = args.runtime_dir or load_config(make_dirs=False).runtime_dir
+    pfad = Path(rt) / "diag.sock"
+    try:
+        c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        c.settimeout(5.0)
+        c.connect(str(pfad))
+        with c:
+            roh = c.makefile("rb").readline()
+    except OSError as exc:
+        print(f"kein Hub an {pfad}: {type(exc).__name__}: {exc}")
+        return 1
+    try:
+        schnappschuss = json.loads(roh)
+    except (json.JSONDecodeError, ValueError):
+        print(f"unlesbare Antwort von {pfad}: {roh[:200]!r}")
+        return 1
+    print(json.dumps(schnappschuss, ensure_ascii=False, indent=2,
+                     sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":       # pragma: no cover
+    raise SystemExit(main())
