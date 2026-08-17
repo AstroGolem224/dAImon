@@ -111,6 +111,7 @@ def aufnehmen() -> dict:
 
     diag = _sock("diag.sock") or {}
     mind = _sock("mind.sock", {"v": 1, "art": "zustand"}) or {}
+    zustand = _sock("state.sock") or {}
     speicher = Kontextspeicher()
     speicher.laden()
 
@@ -123,6 +124,10 @@ def aufnehmen() -> dict:
                  ("runden", "api_aufrufe", "deklassifiziert")},
         "kontext": speicher.zaehler(),
         "archiv": _archiv_arten(),
+        # Laeuft gerade noch eine Runde? Ohne diese Frage ist "das Modell hat
+        # nicht geantwortet" nicht von "es antwortet noch" zu unterscheiden --
+        # und das erste ist ein Befund, das zweite Ungeduld.
+        "voice": zustand.get("voice") or {},
     }
 
 
@@ -209,6 +214,25 @@ def _urteil(vorher: dict, nachher: dict) -> list[dict]:
     # Werkzeug, das den Fehler macht, den es finden soll -- der vierte
     # dieser Sorte in dieser Woche, und der erste in meinem eigenen.
     st = {s["nr"]: s for s in stationen}
+
+    # NOCH UNTERWEGS ist kein Versagen. Am 17.08. live passiert: Station 5
+    # stand auf "NICHT getragen", und 41 Sekunden spaeter meldete der Mind
+    # "Antwort erhalten" -- ein 27B-Modell laedt beim ersten Aufruf in den
+    # VRAM. Eine Messung ist ein ZEITPUNKT; wer das nicht sagt, macht aus
+    # Ungeduld einen Befund. Derselbe Fehlertyp wie beim toten Zaehler, nur
+    # eine Stunde spaeter.
+    voice = nachher.get("voice") or {}
+    laeuft = bool(voice.get("denkt") or voice.get("tts_active"))
+    if st[5]["urteil"] == "NICHT getragen" and (laeuft
+                                                or st[4]["urteil"] == "getragen"):
+        st[5]["urteil"] = "nicht messbar"
+        st[5]["ohne"] = (
+            "NOCH UNTERWEGS? " + ("der Mind denkt gerade -- " if laeuft else
+                                  "Station 4 hat getragen, die Runde laeuft "
+                                  "also -- ")
+            + "beim ersten Aufruf laedt das Modell in den VRAM. Einfach "
+              "`nachher` noch einmal fahren; die Vorher-Aufnahme gilt weiter.")
+
     if st[4]["urteil"] == "getragen" and st[3]["urteil"] == "NICHT getragen":
         st[3]["urteil"] = "nicht messbar"
         st[3]["ohne"] = (
