@@ -1,9 +1,139 @@
-# Übergabe — Stand 2026-08-14
+# Übergabe — Stand 2026-08-17
 
 Alles, was nicht aus dem Repo hervorgeht. Die Nachträge stehen in umgekehrter
-Zeitfolge: der **14.08.** zuerst, darunter unverändert der 12.08., der 09.08.
+Zeitfolge: der **17.08.** zuerst, darunter der 14.08., der 12.08., der 09.08.
 und der 05.08. Ältere Aussagen gelten weiter, **soweit sie unten nicht
 ausdrücklich berichtigt sind**.
+
+---
+
+# Stand 17.08. — das zweite Augenpaar, und was es gekostet hat
+
+## Wo es steht, in fünf Zeilen
+
+* **Die drei Aufträge vom 14.08. sind erledigt.** `verify-frozen` ist
+  gelaufen (37 Artefakte unverändert, Abhängigkeiten geschlossen), das
+  zweite Augenpaar hat neun Befunde gefunden und behoben, und die Naht ist
+  gemessen: **6 von 6 Stationen**, live.
+* **Design §7.2b trägt im Betrieb**, erstmals belegt: Tastendruck →
+  gesprochene Bildschirmfrage → Kontext im Modell. Dazu T-7.4 (das Archiv
+  hat seine erste `transkript`-Zeile) und T-3.11c (der lokale Weg antwortet).
+* **Das Audit lebt.** Es war *doppelt* tot — nie angeschlossen, und die
+  Pflichtfelder fehlten. Jetzt schreibt das Gate jede Freigabe und jede
+  Ablehnung, die Kette ist verankert, und **alle drei** Prüfstellen aus dem
+  Modulkopf von `audit.py` existieren.
+* **`pytest` 1517 passed + 4 xfail**, `cargo test` 95 passed (in `face/`).
+* **Elf Befunde, ein Muster.** Siehe unten — und `CLAUDE.md`, wo es jetzt
+  als Regel steht.
+
+## Was als Erstes zu tun ist
+
+1. **Die Verifizierer-Sitzung aus `PLAN.md`** — T-3.14.v, T-3.15.v,
+   T-4.4.v–T-4.16.v, T-4.17.sh, T-4.18.sh. Sie braucht `DAIMON_ROLE=reviewer`
+   und einen eigenen Branch; das ist der größte offene Block.
+2. **Den Rollenwächter nachrüsten** (Befund vom 14.08., unten). Er greift auf
+   *Kommandotext*: `2>&1` gilt als Schreiben. Am 17.08. dreimal
+   hängengeblieben, jedes Mal bei einem lesenden Kommando.
+3. **Die dreißig Test-Anker im Journal aussitzen.** Siehe unten; sie
+   verschwinden von selbst, aber wer vorher `--verify` liest, soll wissen,
+   woher sie kommen.
+
+## BERICHTIGT: die drei Aufträge vom 14.08.
+
+**`verify-frozen` läuft — und die Rolle war nie das Hindernis.** Der Satz
+unten („läuft nicht, solange `DAIMON_ROLE=builder` gesetzt ist") trifft die
+Ursache nicht. Der Wächter greift auf *schreibende* Kommandos, und
+`bash tests/verify/verify-frozen.sh` ohne Umleitung ist keins. Was ihn
+auslöst, sind `2>&1` und `>` im selben Kommando. Ergebnis:
+
+    verify-frozen: 37 eingefrorene Dateien unveraendert; Abhaengigkeiten geschlossen.
+
+**Das zweite Augenpaar hat geliefert**, neun Befunde, alle behoben und
+einzeln belegt (`2788cfc` bis `6138e00`). Einer davon war halb falsch, und
+das steht in `d7e589d`: die Gate-Zusage ist wirksam, nur an anderer Stelle
+als dokumentiert.
+
+**Die Naht ist gemessen**, mit einer eigenen Vorrichtung
+(`tools/naht_messen.py vorher` / `nachher`). Sie urteilt in **drei**
+Zuständen — `getragen`, `nicht getragen`, `nicht messbar` —, und der dritte
+ist der Grund für das Werkzeug: eine Station, deren Dienst nicht läuft, hat
+nicht versagt.
+
+## DAS MUSTER: elfmal dasselbe
+
+Sechs Befunde des Reviews und fünf weitere aus dem Messen waren **dieselbe
+Sache**: ein Stück ist gebaut, dokumentiert, mit grünen Tests belegt — und
+im Betrieb ruft es niemand auf.
+
+| Was fehlte | wo |
+|---|---|
+| Kontextspeicher ohne `laden()` | `2788cfc` |
+| DRM-Gatter ohne Eingabe | `ab922d7` |
+| Dienst ohne Starter (`daimon-mind`) | `d80e8e9` |
+| Regel ohne Aufrufer (`referenzen()`) | `0b77245` |
+| Zähler ohne **Leser** (`deklassifiziert`) | `e93a4c1` |
+| Zähler ohne **Schreiber** (`rundenmarke.eingeloest`) | `ed58559` |
+| Audit ohne Objekt, und ohne Pflichtfelder | `cd49823` |
+| `verankern()` ohne Aufrufer | `855def8` |
+| Timer, den niemand aktiviert (die Regel prüfte nur `*.service`) | `d981689` |
+
+**Die letzten fünf habe ich selbst gebaut**, nachdem die Regel in
+`CLAUDE.md` stand. Einmal fiel der eigene Faden aus `start()`, und die Suite
+blieb grün — die Methode war geprüft, ihre Verdrahtung nicht. Deshalb stehen
+jetzt an vier Stellen **Wächter** statt bloßer Tests:
+`test_gate_zulauf.py`, `test_units_werden_gezogen.py`,
+`test_WAECHTER_start_verdrahtet_die_ankerschleife`, und die Widerspruchs-
+prüfung in `naht_messen.py`.
+
+## BEFUND: drei Messfehler derselben Art, an einem Tag
+
+Alle drei in **meinen eigenen** Werkzeugen, alle drei hätten einen
+Falschbefund ergeben:
+
+1. **Zwei Zeitfenster statt zwei Zustände.** `journalctl --since -1min`
+   gegen `--since -2min` verglichen und aus der Differenz „16 Anker je
+   Testlauf" geschlossen. Mit festem Bezugspunkt: null.
+2. **Dasselbe nochmal**, eine Stunde vorher: Station 5 der Naht stand auf
+   „nicht getragen", und 41 Sekunden später meldete der Mind „Antwort
+   erhalten". Das Modell lud noch. Eine Messung ist ein *Zeitpunkt*.
+3. **Eine Positivkontrolle, die nichts verändert hat.** Beim Prüfen des
+   Audit-Timers traf mein `replace` nicht, die Kopie blieb byteweise
+   identisch — und der Prüfer meldete brav `ok`. Erst der Vergleich der
+   Prüfsummen zeigte es.
+
+Die Lehre steht schon im Repo (Positivkontrolle, 14.08.). Sie gilt auch für
+das Werkzeug, das die Kontrolle fährt.
+
+## AM SYSTEM GEÄNDERT, nicht nur im Repo
+
+Wer diese Maschine übernimmt, sollte das wissen:
+
+* **Dienste gestartet:** `ollama` (per `sudo`), `daimon-lokal-broker`,
+  `daimon-ears`, `daimon-recorder`. **Der Mitschnitt läuft wieder** — er war
+  seit dem 16.08. 11:46 pausiert.
+* **Aktiviert:** `daimon-mind.service` (`enable`), sowie
+  `daimon-audit-verify.service` + `.timer` (verlinkt und aktiviert, nächster
+  Lauf 00:00).
+* **`~/.config/daimon/daimon.toml`:** die Zeile `modell = "gemma4:26b"` ist
+  durch einen Kommentar ersetzt. Das Modell lag nicht mehr vor (gezogen ist
+  `qwen3.8:27b`), und jede Frage endete mit einem 404 — der Nutzer hörte
+  „Ich komme gerade nicht an die API". Der Broker nimmt jetzt, was Ollama
+  vorhält; eine ausdrückliche Wahl schlägt das weiterhin.
+* **Rund dreißig `AUDIT-ANKER seq=0 head=`-Zeilen im Journal**, aus
+  Zwischenfassungen der Anker-Prüfstände. Sie sind Köpfe von Ketten aus
+  `tmp_path`, die es nie gab, und `anker_aus_journal` sieht 30 Tage zurück.
+  `tests/conftest.py` verhindert die Wiederholung.
+
+## Was weiterhin NICHT belegt ist
+
+* **Die tägliche Prüfung von außen ist neu und einmal gelaufen.** Ob der
+  Timer über Wochen trägt (`Persistent=true`, Suspend, Neustart), weiß
+  niemand.
+* **Der Hub prüft sich selbst.** Das ist schwächer als die unabhängige Unit
+  und ersetzt sie nicht — beide stehen absichtlich nebeneinander.
+* **Station 5 der Naht hängt an der Ladezeit.** `qwen3.8:27b` braucht beim
+  ersten Aufruf länger als das 30-s-Limit des Minds. Zweiter Versuch
+  antwortet schnell; ein Kaltstart-Gatter gibt es nicht.
 
 ---
 
