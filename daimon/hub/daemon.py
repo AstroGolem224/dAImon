@@ -1047,6 +1047,14 @@ class Hub:
             gate = self._gate_teile()
             freigabe = gate.freigeben(aeusserung=text,
                                       turn_id=self.marken.aktuelle())
+            # Die EINLOESUNG zaehlen, und zwar hier: `MarkenBuch.einloesen`
+            # kennt die Diagnose nicht, und `declassify` soll sie nicht
+            # kennen muessen. Der Zaehler stand seit T-0.9 in `diag.TYPEN`
+            # und hatte KEINEN Schreiber -- am 17.08. bei der ersten Messung
+            # der Naht aufgefallen: das Journal meldete `einloesung`, der
+            # Zaehler blieb auf 0, und die Vorrichtung las daraus "Station
+            # nicht getragen". Ein Falschbefund ueber eine heile Kette.
+            self.diag.zaehle("rundenmarke", "eingeloest")
         except GateFehler as exc:
             self.diag.verworfen(f"kontext_{exc.grund}")
             return {"v": 1, "ok": False, "grund": exc.grund}

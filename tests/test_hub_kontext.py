@@ -35,8 +35,12 @@ class Log:
 
 
 class Diag:
-    def __init__(self): self.verworfen_gruende = []
+    def __init__(self):
+        self.verworfen_gruende = []
+        self.gezaehlt = []
+
     def verworfen(self, grund): self.verworfen_gruende.append(grund)
+    def zaehle(self, typ, was): self.gezaehlt.append((typ, was))
 
 
 @pytest.fixture
@@ -103,6 +107,32 @@ def test_mit_marke_und_bezug_kommt_der_kontext(hub):
     assert antwort["senke"] == "durchgang2"
     # Einmal eingeloest: die zweite Frage derselben Runde bekommt nichts.
     assert hub.marken.aktuelle() is None
+
+
+def test_die_einloesung_wird_gezaehlt(hub):
+    """`rundenmarke.eingeloest` stand seit T-0.9 in `diag.TYPEN` und hatte
+    KEINEN Schreiber.
+
+    Aufgefallen am 17.08. bei der ersten Messung der Naht: das Journal des
+    Hubs meldete `rundenmarke: einloesung`, der Zaehler blieb auf 0, und die
+    Vorrichtung las daraus "Station nicht getragen" -- ein Falschbefund ueber
+    eine heile Kette. Ein Zaehler, den niemand fuellt, ist schlimmer als
+    keiner: er sieht aus wie eine Messung.
+    """
+    hub.marken.ausgeben(quelle="auth", turn_id="t-1")
+    assert hub.diag.gezaehlt == []                       # Positivkontrolle
+    hub.kontext_anfrage({"art": "deklassifizieren", "text": FRAGE})
+    assert ("rundenmarke", "eingeloest") in hub.diag.gezaehlt
+
+
+def test_eine_abgelehnte_anfrage_zaehlt_keine_einloesung(hub):
+    """Die Gegenrichtung. Sonst zaehlte auch der Weg mit, auf dem die Marke
+    gerade NICHT verbrannt wird -- und der Zaehler waere wieder eine Zahl,
+    die niemandem etwas sagt."""
+    hub.marken.ausgeben(quelle="auth", turn_id="t-1")
+    hub.kontext_anfrage({"art": "deklassifizieren", "text": "wie spaet ist es"})
+    assert ("rundenmarke", "eingeloest") not in hub.diag.gezaehlt
+    assert hub.marken.aktuelle() == "t-1"                # nicht verbrannt
 
 
 def test_archivtreffer_nur_bei_zeitbezug(hub):

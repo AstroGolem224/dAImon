@@ -156,6 +156,25 @@ def _urteil(vorher: dict, nachher: dict) -> list[dict]:
             s["urteil"] = "getragen"
         else:
             s["urteil"] = "NICHT getragen"
+
+    # WIDERSPRUCHSPRUEFUNG. Station 4 setzt Station 3 voraus: Kontext kommt
+    # nur durch das Gate, und das Gate loest dabei die Marke ein. Traegt 4
+    # und 3 nicht, ist die MESSUNG kaputt und nicht die Kette.
+    #
+    # Genau das ist am 17.08. beim ersten Lauf passiert: der Zaehler
+    # `rundenmarke.eingeloest` hatte keinen Schreiber, und diese Vorrichtung
+    # meldete "NICHT getragen" ueber eine Station, die getragen hatte. Ein
+    # Werkzeug, das den Fehler macht, den es finden soll -- der vierte
+    # dieser Sorte in dieser Woche, und der erste in meinem eigenen.
+    st = {s["nr"]: s for s in stationen}
+    if st[4]["urteil"] == "getragen" and st[3]["urteil"] == "NICHT getragen":
+        st[3]["urteil"] = "nicht messbar"
+        st[3]["ohne"] = (
+            "WIDERSPRUCH: Station 4 hat getragen, also MUSS das Gate "
+            "freigegeben und dabei die Marke eingeloest haben. Der Zaehler "
+            "sagt etwas anderes -- glaube dem Journal, nicht ihm: "
+            "`journalctl --user -u daimon-hub.service | grep einloesung`. "
+            "Vor dem 17.08. hatte dieser Zaehler keinen Schreiber.")
     return stationen
 
 
