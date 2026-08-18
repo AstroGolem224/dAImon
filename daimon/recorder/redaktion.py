@@ -98,6 +98,45 @@ def desktop_kennungen(
     return karte
 
 
+def gesperrt(klasse: str, denylist: Iterable[str],
+             kennungen: dict[str, str] | None = None) -> bool:
+    """DIE Denylist-Entscheidung. Es gibt genau diese eine.
+
+    **Warum sie hier als freie Funktion steht.** Bis zum 18.08. fiel dieselbe
+    Entscheidung an DREI Stellen, und nur eine davon war richtig:
+
+    * `Redaktion.urteil` loeste die `.desktop`-Kennung auf -- richtig;
+    * `eyes.change.Kette` verglich die ROHE Fensterklasse -- vor dem Diff;
+    * `eyes.context.Kontextspeicher` ebenso -- vor dem Live-Kontext.
+
+    `config/redaktion.yaml` sagt ausdruecklich, die Eintraege seien
+    `.desktop`-KENNUNGEN und "der Recorder loest KWins `resource_class`
+    gegen diese Kennungen auf". Zwei von drei Stellen taten das nicht. Der
+    Verifizierer T-7.2 hat es am 18.08. gemessen (K8, produktdefekt-rot):
+    ein Fenster eines Passwortmanagers wurde erfasst, durch den Diff
+    geschickt und geOCRt -- weg fiel nur der Archiveintrag, der erkannte
+    Text stand im Quarantaene-Kontextspeicher und damit im Live-Kontext.
+
+    Zwei Fassungen einer Regel sind eine Regel und eine Attrappe; hier waren
+    es drei. Wer eine vierte Stelle braucht, ruft diese Funktion.
+
+    `kennungen=None` heisst „ohne Aufloesung" und vergleicht roh -- das ist
+    der Weg fuer einen Prueflauf ohne `.desktop`-Dateien, nicht fuer den
+    Betrieb.
+    """
+    roh = str(klasse).strip()
+    if not roh:
+        # Ein Fenster ohne Kennung ist nicht „nicht gesperrt". Es ist
+        # unbekannt, und darueber entscheidet der Aufrufer -- die Redaktion
+        # sperrt es (`kennung_fehlt`), die Kette schneidet es zu.
+        return False
+    liste = {s.strip().lower() for s in denylist if s.strip()}
+    if not liste:
+        return False
+    aufgeloest = (kennungen or {}).get(roh.lower(), roh)
+    return aufgeloest.lower() in liste or roh.lower() in liste
+
+
 def privat_bis(runtime_dir: Path) -> float:
     """Bis wann der Privatmodus laeuft. 0.0 = laeuft nicht."""
     try:
@@ -205,7 +244,10 @@ class Redaktion:
         k = self.kennung(klasse)
         if not k:
             return Urteil(STUFE_TRANSIENT, GRUND_UNBEKANNT)
-        if k.lower() in self.denylist:
+        # Dieselbe Entscheidung wie in der Gatterkette und im
+        # Kontextspeicher -- seit dem 18.08. eine Funktion statt dreier
+        # Fassungen (siehe `gesperrt`).
+        if gesperrt(klasse, self.denylist, self.kennungen):
             return Urteil(STUFE_TRANSIENT, GRUND_DENYLIST)
         if drm:
             return Urteil(STUFE_TRANSIENT, GRUND_DRM)

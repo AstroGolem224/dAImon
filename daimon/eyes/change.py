@@ -153,16 +153,50 @@ def _verkleinern(rgb: np.ndarray) -> np.ndarray:
     return regionen.graustufen(rgb[ys][:, xs])
 
 
+def _kennungen() -> dict:
+    """Die `.desktop`-Zuordnung, oder leer. Lokal importiert."""
+    try:
+        from daimon.recorder.redaktion import desktop_kennungen
+        return desktop_kennungen()
+    except Exception:      # noqa: BLE001
+        return {}
+
+
+def gesperrt(klasse, denylist, kennungen):
+    """Weiterleitung auf die EINE Denylist-Entscheidung.
+
+    Lokal importiert wie die uebrigen recorder-Aufrufe im
+    Augendienst: `change.py` wird auch ohne den Recorder geladen.
+    """
+    from daimon.recorder.redaktion import gesperrt as _gesperrt
+    return _gesperrt(klasse, denylist, kennungen)
+
+
 class Kette:
     """Die Gatterkette. Vergibt Generationen und misst jede Stufe."""
 
     def __init__(self, *, tor: Callable[[], bool],
                  denylist: Iterable[str] = (),
+                 kennungen: dict[str, str] | None = None,
                  uhr: Callable[[], float] = time.perf_counter) -> None:
         # Kleingeschrieben verglichen: KWin meldet `org.kde.konsole`, der
         # Nutzer schreibt `Konsole`. Ein Vergleich, der daran scheitert, laesst
         # genau die Anwendung durch, die der Nutzer ausschliessen wollte.
+        #
+        # `kennungen` seit dem 18.08.: die rohe Klasse allein genuegt NICHT.
+        # `config/redaktion.yaml` fuehrt `.desktop`-Kennungen, und diese
+        # Stufe verglich dagegen die Klasse, wie KWin sie meldet -- ein
+        # gelistetes Fenster lief damit durch den Diff und ins OCR. Gemessen
+        # von T-7.2 am 18.08. (K8). Die Entscheidung faellt jetzt in
+        # `recorder.redaktion.gesperrt`, an einer Stelle fuer alle drei.
         self._denylist = {s.strip().lower() for s in denylist if s.strip()}
+        # `None` heisst LADEN, nicht `ohne` -- dieselbe Politik wie in
+        # `Redaktion`. Wer die Kette direkt baut (ein Verifizierer tut
+        # das), bekommt sonst still die schwaechere Pruefung, und genau
+        # daran ist der Fix vom 18.08. im ersten Anlauf gescheitert.
+        # 6,6 ms je Aufruf, gemessen -- einmal je Dienststart.
+        self._kennungen = (_kennungen() if kennungen is None
+                           else kennungen)
         self._tor = tor
         self._uhr = uhr
         self._generation = 0
@@ -189,7 +223,7 @@ class Kette:
         kosten: dict[str, float] = {}
 
         t = self._uhr()
-        if fenster.klasse.strip().lower() in self._denylist:
+        if gesperrt(fenster.klasse, self._denylist, self._kennungen):
             kosten[GRUND_DENYLIST] = self._uhr() - t
             return self._abgewiesen(gen, GRUND_DENYLIST, kosten)
         kosten[GRUND_DENYLIST] = self._uhr() - t

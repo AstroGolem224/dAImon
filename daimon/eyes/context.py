@@ -94,17 +94,30 @@ class Eintrag:
                 "stufe": self.stufe, "inhalt": self.inhalt}
 
 
+def _kennungen() -> dict:
+    """Die `.desktop`-Zuordnung, oder leer. Lokal importiert."""
+    try:
+        from daimon.recorder.redaktion import desktop_kennungen
+        return desktop_kennungen()
+    except Exception:      # noqa: BLE001
+        return {}
+
+
 class Kontextspeicher:
     """Ringe je Datenart, auf Platte, unter Quarantaene."""
 
     def __init__(self, *, verzeichnis: Path | None = None,
                  denylist: Iterable[str] = (),
+                 kennungen: dict[str, str] | None = None,
                  stufe: str = VORGABE_STUFE,
                  uhr: Callable[[], float] = time.time) -> None:
         if stufe not in STUFEN:
             raise ValueError(f"Stufe {stufe!r} ist keine von {STUFEN}")
         self.verzeichnis = Path(verzeichnis or (state_dir() / "context"))
         self._denylist = {s.strip().lower() for s in denylist if s.strip()}
+        # `None` heisst LADEN -- siehe `change.Kette`.
+        self._kennungen = (_kennungen() if kennungen is None
+                           else kennungen)
         self._stufe = stufe
         self._uhr = uhr
         self._ringe: dict[str, list[Eintrag]] = {a: [] for a in AUFBEWAHRUNG}
@@ -125,7 +138,13 @@ class Kontextspeicher:
             raise ValueError(f"Art {art!r} ist keine von {tuple(AUFBEWAHRUNG)}")
         # Kleingeschrieben verglichen: KWin meldet `org.keepassxc.KeePassXC`,
         # der Nutzer schreibt `keepassxc`.
-        if fenster.strip().lower() in self._denylist:
+        # DIESELBE Entscheidung wie in der Kette und der Redaktion, seit
+        # dem 18.08. an einer Stelle. Vorher verglich diese Zeile die ROHE
+        # Fensterklasse gegen eine Liste von `.desktop`-Kennungen -- der
+        # OCR-Text eines gelisteten Fensters stand damit im Live-Kontext,
+        # obwohl er nie ins Archiv gelangte (T-7.2 K8, 18.08.).
+        from daimon.recorder.redaktion import gesperrt
+        if gesperrt(fenster, self._denylist, self._kennungen):
             self.ausgelassen += 1
             return False
 

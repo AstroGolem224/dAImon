@@ -76,6 +76,22 @@ DENYLIST_VORGABE = (
 )
 
 
+def _kennungen_laden() -> dict[str, str]:
+    """`resource_class` (klein) -> `.desktop`-Kennung.
+
+    Lokal importiert wie die uebrigen recorder-Aufrufe hier: der Augendienst
+    laedt sonst die Redaktion mit, auch wenn er nur zuschneidet. Faellt das
+    Lesen aus, bleibt die Zuordnung leer -- dann greift der Rueckfall auf die
+    rohe Klasse, und das ist der Stand vor dem 18.08.: schwaecher, aber nicht
+    kaputt.
+    """
+    try:
+        from daimon.recorder.redaktion import desktop_kennungen
+        return desktop_kennungen()
+    except Exception:      # noqa: BLE001 -- eine fehlende Zuordnung darf den
+        return {}          # Dienst nicht umbringen
+
+
 def _denylist_aus_datei() -> tuple[str, ...]:
     """Die gepflegte Liste, sonst die Vorgabe. Nie eine leere Liste.
 
@@ -113,17 +129,32 @@ class Augen:
     """Ein Dienst, der hinsieht -- und zwischen den Blicken nichts tut."""
 
     def __init__(self, *, verzeichnis: Path | None = None,
-                 denylist=None,
+                 denylist=None, kennungen=None,
                  periode_s: float = trigger.PERIODE_S,
                  ocr_abkuehlung_s: float = OCR_ABKUEHLUNG_S,
                  ocr_arbeiter: int = 2) -> None:
         if denylist is None:
             denylist = _denylist_aus_datei()
+        # DIE `.desktop`-ZUORDNUNG, seit dem 18.08. auch hier. Ohne sie
+        # verglichen Kette und Kontextspeicher die ROHE Fensterklasse gegen
+        # eine Liste von `.desktop`-Kennungen -- und `config/redaktion.yaml`
+        # sagt ausdruecklich, es seien Kennungen. Folge (T-7.2 K8): ein
+        # Passwortmanager wurde erfasst, diffed und geOCRt; weg fiel nur der
+        # Archiveintrag, der Text stand im Live-Kontext.
+        #
+        # Einmal je Dienststart geladen, nicht je Runde: die Zuordnung liest
+        # alle `.desktop`-Dateien des Systems. Wer eine Anwendung waehrend
+        # des Laufs installiert, startet den Dienst neu -- dieselbe Frist wie
+        # fuer die Denylist selbst.
+        if kennungen is None:
+            kennungen = _kennungen_laden()
         self._tor = trigger.SystemTor()
         self._ausloeser = trigger.Ausloeser(tor=self._tor, periode_s=periode_s)
-        self._kette = Kette(tor=self._tor, denylist=denylist)
+        self._kette = Kette(tor=self._tor, denylist=denylist,
+                            kennungen=kennungen)
         self._speicher = context.Kontextspeicher(verzeichnis=verzeichnis,
-                                                 denylist=denylist)
+                                                 denylist=denylist,
+                                                 kennungen=kennungen)
         self._speicher.laden()
         self._ocr_arbeiter = ocr_arbeiter
         self._ocr_abkuehlung = float(ocr_abkuehlung_s)
