@@ -1,0 +1,37 @@
+Gut-Muster T-4.8 — Herkunft
+===========================
+
+Ausgangsstand: Branch reviewer/p4-T-4.8v, Commit ea61a13.
+
+Enthalten sind GENAU die Dateien, die der Pruefstand laedt oder liest --
+21 Stueck, ~190 KB. Kein ganzer Baum: was nicht gemessen wird, gehoert nicht
+in ein Gut-Muster.
+
+  Importiert (Modulschluss von coordinator + undo + modal, gemessen):
+    <paket>/{__init__.py}
+    <paket>/auth/{__init__.py,modal.py,preview.py}
+    <paket>/brokers/{__init__.py}
+    <paket>/brokers/fs/{__init__.py,undo.py}          <- das Pruefstueck
+    <paket>/common/{__init__.py,order.py,protocol.py,taint.py}
+    <paket>/hub/{__init__.py,action_queue.py,audit.py,consent.py,
+                 coordinator.py,order.py,policy.py}
+  Nur gelesen (K7, als Text/AST):
+    <paket>/hub/daemon.py
+  Von Policy.laden() gebraucht:
+    config/actions/core.yaml, config/policy.yaml
+
+EINE Abweichung vom Arbeitsbaum
+-------------------------------
+<paket>/hub/daemon.py:  `HubKoordinator(...)` bekommt `undo=self._undo_vorbereiten`,
+                        und die Methode `_undo_vorbereiten` ist ergaenzt.
+
+Sie ist die POSITIVKONTROLLE fuer K7 (Zulauf): ohne einen Baum, in dem das
+Undo im Betrieb wirklich hergestellt wird, waere "niemand stellt es her" nicht
+von "der Leser findet nichts" zu unterscheiden. Der Arbeitsbaum hat diese
+Zeile NICHT -- das ist der Befund, nicht das Gut-Muster.
+
+Sie ist ausdruecklich KEIN Reparaturvorschlag und kein Produktivcode: diese
+Sitzung faehrt als `reviewer` und schreibt nichts unter <paket>/**. Wie die
+Verdrahtung am Ende aussieht, entscheidet der Builder.
+
+Alle uebrigen 20 Dateien sind byteweise identisch mit ea61a13.
