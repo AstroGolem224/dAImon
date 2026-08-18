@@ -235,9 +235,13 @@ ersetze(
     "broker-fuehrt-nicht-aus", BROKER,
     "        e = self.lauf(operation.argv(), capture_output=True, text=True,\n"
     "                      timeout=10)\n"
-    "        rc = int(getattr(e, \"returncode\", 1))\n",
+    "        rc = int(getattr(e, \"returncode\", 1))\n"
+    "        return {\"ok\": rc == 0, \"grund\": \"\" if rc == 0 else \"dbus\",\n"
+    "                \"action_id\": auftrag.action_id, \"rc\": rc,\n"
+    "                \"meldung\": (getattr(e, \"stderr\", \"\") or \"\").strip()[:200]}\n",
     "        # MUTATION: gemeldet wird Erfolg, ausgefuehrt wird nichts\n"
-    "        rc = 0\n",
+    "        return {\"ok\": True, \"grund\": \"\", \"action_id\": auftrag.action_id,\n"
+    "                \"rc\": 0, \"meldung\": \"\"}\n",
     "Der Broker meldet `ok`, ohne den Aufruf zu machen. Alles wird "
     "'ausgefuehrt', nichts geschieht -- und ein Verifizierer ohne "
     "Kanarienvogel bliebe gruen, weil jede Verweigerung weiterhin verweigert "

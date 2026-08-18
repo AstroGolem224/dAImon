@@ -293,6 +293,20 @@ def desktop_jetzt(adresse: str) -> str:
     return treffer.group(1)
 
 
+def desktop_liste(adresse: str) -> list[str]:
+    """Die Arbeitsflaechen in ihrer Reihenfolge.
+
+    Gebraucht wird die ERSTE: `Switch to Next Desktop` bewegt nichts, wenn man
+    schon auf der letzten steht (`navigationWrappingAround` ist auf dieser
+    Maschine `false`). Ein Kanarienvogel, dessen Wirkung von der Vorposition
+    abhaengt, meldet sonst zufaellig "nichts geschehen".
+    """
+    e = gdbus(adresse, KWIN_DIENST, VD_PFAD,
+              "org.freedesktop.DBus.Properties.Get",
+              VD_SCHNITTSTELLE, "desktops")
+    return re.findall(r"'([0-9a-f-]{36})'", e.stdout)
+
+
 def desktop_zaehlen(adresse: str) -> int:
     e = gdbus(adresse, KWIN_DIENST, VD_PFAD,
               "org.freedesktop.DBus.Properties.Get",
@@ -613,16 +627,23 @@ def _liest_params(b: ast.AST | None, funktion: str) -> bool:
 
 def k2_kern(b: Bericht, broker_modul, daemon_modul, katalog_pfad: Path,
             arbeit: Path, bus: str, proxy: Proxy | None, frist: float,
-            eingriff) -> None:
+            eingriff, flaechen: list[str]) -> None:
     """K2 — der Kern: nicht genehmigt heisst hier "gibt es nicht"."""
     kandidat = katalog_mit_kern(katalog_pfad, arbeit / "katalog-candidate.yaml",
                                 "candidate")
     genehmigt = katalog_mit_kern(katalog_pfad, arbeit / "katalog-approved.yaml",
                                  "approved")
-    waegen(kandidat.read_text(encoding="utf-8"),
-           genehmigt.read_text(encoding="utf-8"),
-           "derselbe Katalog, einmal mit `status: candidate` und einmal mit "
-           "`status: approved` fuer " + KERN_AKTION)
+    kurz = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()[:12]
+    waegen(kurz(kandidat), kurz(genehmigt),
+           "derselbe Katalog (sha256, gekuerzt), einmal mit `status: "
+           "candidate` und einmal mit `status: approved` fuer " + KERN_AKTION)
+
+    # Nicht auf der Ziel-Arbeitsflaeche stehen: `Switch to Desktop 1` bewegt
+    # sonst nichts, und "abgewiesen" waere von "wirkungslos" nicht zu
+    # unterscheiden.
+    if flaechen and desktop_jetzt(bus) == flaechen[0]:
+        desktop_setzen(bus, flaechen[1])
+        print(f"Ausgangslage fuer den Kern-Fall: {flaechen[1]}")
 
     broker_nein = broker_modul.DBusBroker.aus_katalog(
         daemon_modul.katalog_lesen(kandidat))
@@ -914,15 +935,19 @@ def k5_sandbox(b: Bericht, pruefling: Path) -> None:
              "NoNewPrivileges=yes in der echten Unit")
 
 
-def k6_kanarienvogel(b: Bericht, gewirkt: bool, wiederhergestellt: bool,
-                     spur_im_log: bool, hat_proxy: bool) -> None:
+def k6_kanarienvogel(b: Bericht, gewirkt: bool, umkehr_wirkte: bool,
+                     wiederhergestellt: bool, spur_im_log: bool,
+                     hat_proxy: bool) -> None:
     """K6 — der genehmigte Shortcut wurde ausgefuehrt, die Wirkung gemessen."""
     b.pruefe("K6", gewirkt,
              "ein GENEHMIGTER Shortcut (" + KANARIE + ") wird ueber den "
              "Broker ausgefuehrt, und die Wirkung ist an "
              "VirtualDesktopManager.current messbar")
+    b.pruefe("K6", umkehr_wirkte,
+             "die Umkehraktion (" + KANARIE_ZURUECK + ") wirkt ebenfalls -- "
+             "der Eingriff ist mit denselben Mitteln ruecknehmbar")
     b.pruefe("K6", wiederhergestellt,
-             "der Vorzustand ist danach wiederhergestellt")
+             "der Zustand vor dem Kanarienvogel ist danach wieder da")
     if hat_proxy:
         b.pruefe("K6", spur_im_log,
                  "und der ausgefuehrte Aufruf steht im Proxy-Log -- der Weg "
@@ -959,6 +984,7 @@ def main(argv: list[str] | None = None) -> int:
 
     vorzustand = desktop_jetzt(bus)
     anzahl = desktop_zaehlen(bus)
+    flaechen = desktop_liste(bus)
     print(f"Arbeitsflaechen: {anzahl}, aktuell {vorzustand}")
     if anzahl < 2:
         b.fehler("K6", "nur eine Arbeitsflaeche -- der Kanarienvogel waere "
@@ -998,8 +1024,16 @@ def main(argv: list[str] | None = None) -> int:
                     os.environ.pop("DBUS_SESSION_BUS_ADDRESS", None)
                 else:
                     os.environ["DBUS_SESSION_BUS_ADDRESS"] = alt
-            time.sleep(0.6)
-            nachher = desktop_jetzt(bus)
+            # Auf die Wirkung WARTEN, nicht einen Augenblick raten: KWin
+            # animiert den Wechsel. Gemessen wird trotzdem ein Zustand, kein
+            # Fenster -- nach spaetestens drei Sekunden steht das Urteil.
+            nachher = vorher
+            ende = time.monotonic() + 3.0
+            while time.monotonic() < ende:
+                time.sleep(0.2)
+                nachher = desktop_jetzt(bus)
+                if nachher != vorher:
+                    break
             if aktiver_proxy and METHODE_SOLL in aktiver_proxy.seit(cursor):
                 kanarien_spur["log"] = True
             print(f"Eingriff '{was}': {ergebnis.get('ok')} "
@@ -1011,15 +1045,26 @@ def main(argv: list[str] | None = None) -> int:
             k1_operationstabelle(b, broker_modul, daemon_modul, katalog, frist)
 
             broker = broker_modul.DBusBroker.aus_katalog(katalog)
+            # Ausgangslage herstellen: von der ERSTEN Arbeitsflaeche aus
+            # bewegt `Switch to Next Desktop` in jedem Fall etwas. Der
+            # Vorzustand wird davon nicht beruehrt -- er ist gemerkt und wird
+            # im `finally` zurueckgeschrieben.
+            if flaechen and desktop_jetzt(bus) != flaechen[0]:
+                desktop_setzen(bus, flaechen[0])
+                print(f"Ausgangslage fuer den Kanarienvogel: {flaechen[0]}")
+            kanarie_start = desktop_jetzt(bus)
             gewirkt = eingriff(broker, KANARIE, "Kanarienvogel " + KANARIE)
             zurueck = eingriff(broker, KANARIE_ZURUECK,
                                "Umkehr " + KANARIE_ZURUECK)
-            wieder = desktop_jetzt(bus) == vorzustand
-            k6_kanarienvogel(b, gewirkt, wieder and bool(zurueck),
+            # Gemessen wird gegen die Position, von der der Kanarienvogel
+            # AUSGING -- nicht gegen den Vorzustand der Sitzung. Der wird im
+            # `finally` wiederhergestellt und dort geprueft.
+            wieder = desktop_jetzt(bus) == kanarie_start
+            k6_kanarienvogel(b, gewirkt, bool(zurueck), wieder,
                              kanarien_spur["log"], aktiver_proxy is not None)
 
             k2_kern(b, broker_modul, daemon_modul, katalog_pfad, arbeit, bus,
-                    aktiver_proxy, frist, eingriff)
+                    aktiver_proxy, frist, eingriff, flaechen)
             k3_proxy(b, pruefling, arbeit, bus, aktiver_proxy, filter_optionen,
                      start_fehler)
             k4_loadscript(b, broker_modul, daemon_modul, pruefling, arbeit,
