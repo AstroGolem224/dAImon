@@ -51,9 +51,12 @@ und in JEDEM Blob der Datenbank. Was diese Suche nicht sieht, steht im Ledger
 unter "Grenzen"; sie hat in JEDEM Lauf eine Positivkontrolle neben sich.
 
 **Der Pruefstand fasst weder das Archiv noch die Dienste des Nutzers an.**
-`XDG_DATA_HOME` und `XDG_RUNTIME_DIR` zeigen fuer die Dauer des Laufs in ein
-eigenes Verzeichnis unter `$(mktemp -d)`; `data_dir()` des Prueflings loest
-damit dorthin auf. Das echte Archiv wird nur `mode=ro` gelesen. Ueber dem
+`XDG_DATA_HOME` zeigt fuer die Dauer des Laufs in ein eigenes Verzeichnis
+unter `$(mktemp -d)`; `data_dir()` des Prueflings loest damit dorthin auf, und
+das Laufzeitverzeichnis wird jedem Beteiligten ausdruecklich uebergeben.
+(`XDG_RUNTIME_DIR` bleibt unveraendert -- daran haengt der Sitzungsbus, und
+ohne ihn bekaeme K7 seine transienten Units nicht und liesse den Stromteil
+still weg.) Das echte Archiv wird nur `mode=ro` gelesen. Ueber dem
 ganzen Lauf haengt ein `systemctl`-Vorschalter im PATH, der JEDE Produktiv-Unit
 mit Exit 99 zurueckweist und jeden Aufruf protokolliert; nur K7 haengt fuer die
 Dauer seines Eingriffs den abbildenden Vorschalter davor. Am 18.08. um 10:16
@@ -261,23 +264,33 @@ exec /usr/bin/systemctl "${{args[@]}}"
     return verz
 
 
-def sperre_pruefen(protokoll: Path) -> None:
-    """Hat waehrend des Laufs irgendein Pfad eine ECHTE Unit angefasst?"""
-    if not protokoll.is_file():
-        print("\nSPERRE: kein Protokoll -- der Vorschalter wurde nie gerufen.",
-              flush=True)
-        return
-    alle = [z for z in protokoll.read_text(encoding="utf-8").splitlines()
-            if z.strip()]
-    zeilen = [z for z in alle if f"{PAKET}-" in z]
-    print(f"\nSPERRE: {len(alle)} Aufruf(e) durchgereicht.", flush=True)
-    if zeilen:
-        print(f"SPERRE: {len(zeilen)} Aufruf(e) an ECHTE Units wurden "
-              "zurueckgewiesen -- ein Befund ueber den Pruefstand:", flush=True)
-        for z in zeilen:
-            print(f"     !!! {z}", flush=True)
-    else:
-        print("SPERRE: kein Aufruf an eine echte Unit.", flush=True)
+def sperre_pruefen(sperr_log: Path, abbild_log: Path) -> None:
+    """Jeder `systemctl`-Aufruf dieses Laufs, im ORIGINALWORTLAUT.
+
+    Zwei Protokolle: das der SPERRE (die haengt ueber dem ganzen Lauf und
+    weist jede Produktiv-Unit mit Exit 99 zurueck) und das des ABBILDENDEN
+    Vorschalters (der haengt nur waehrend des K7-Eingriffs davor und leitet
+    auf die transienten Units dieses Laufs um). Was in der SPERRE landet, ist
+    ein Befund ueber den Pruefstand -- dort haette etwas eine echte Unit
+    angefasst, wenn die zweite Reihe gefehlt haette.
+    """
+    print("", flush=True)
+    for name, pfad, streng in (("SPERRE", sperr_log, True),
+                               ("ABBILDUNG (nur K7)", abbild_log, False)):
+        if not pfad.is_file():
+            print(f"{name}: kein Protokoll -- nie gerufen.", flush=True)
+            continue
+        alle = [z for z in pfad.read_text(encoding="utf-8").splitlines()
+                if z.strip()]
+        print(f"{name}: {len(alle)} Aufruf(e).", flush=True)
+        for z in alle:
+            marke = "!!!" if (streng and f"{PAKET}-" in z) else "   "
+            print(f"     {marke} {z}", flush=True)
+        if streng:
+            treffer = [z for z in alle if f"{PAKET}-" in z]
+            print(f"SPERRE: {len(treffer)} Aufruf(e) an eine ECHTE Unit "
+                  "zurueckgewiesen." if treffer else
+                  "SPERRE: kein Aufruf an eine echte Unit.", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -299,24 +312,39 @@ SIGNATUREN = (
 )
 
 PCM_MINDESTBYTES = 2000
+# Die Grenzen sind GEMESSEN und nicht geraten. Am 18.08. gegen echte Dateien:
+#
+#   Datei                          Betrag  Gleichanteil  Differenz/Betrag
+#   test_wavs/de.wav (echte Sprache)  5000         0,03              0,26
+#   synthetisches Sprachsignal        2068         0,00              0,25
+#   reiner Sinus                      5729         0,00              0,09
+#   archiv.db (nur Text darin)       13995         0,82              0,61
+#   espeak-Woerterbuch de_dict       17870         0,58              0,81
+#   Zufallsbytes                     16305         --                1,34
+#
+# Zwei Achsen, beide mit Abstand: Audio ist gleichanteilsfrei und
+# bandbegrenzt. Eine Achse allein haette die Datenbank des Laufs als Rohaudio
+# gemeldet -- und ein Melder, der auf das eigene Archiv anspringt, ist so
+# wenig wert wie einer, der schweigt.
+PCM_DIFF_MAX = 0.40
+PCM_GLEICHANTEIL_MAX = 0.15
+PCM_BETRAG = (200.0, 20000.0)
+PCM_NULLDURCHGAENGE = (0.005, 0.45)
 
 
 def _pcm_verdacht(daten: bytes) -> str:
     """Rohes PCM, an seiner Statistik erkannt. Leer heisst: kein Verdacht.
 
-    Drei Merkmale unterscheiden 16-bit-LE-PCM von Text, von komprimierten
+    Vier Merkmale unterscheiden 16-bit-LE-PCM von Text, von komprimierten
     Daten und von Zufall:
 
       1. es ist kein Text (der Anteil druckbarer Bytes ist niedrig),
       2. die Amplituden liegen in einem plausiblen Bereich,
-      3. **benachbarte Samples sind aehnlich.** Sprache bei 16 kHz ist
-         bandbegrenzt; der mittlere Betrag der Differenz liegt deutlich unter
-         dem mittleren Betrag der Samples. Bei Zufallsbytes ist er GROESSER
-         (E|d| ~ 1,33 * E|s|), bei komprimierten Daten ebenso.
-
-    Punkt 3 traegt die Unterscheidung. Ohne ihn haette jede Binaerdatei im
-    Archivverzeichnis Verdacht erregt -- und ein Befundmelder, der auf die
-    eigene Datenbank anspringt, ist so wenig wert wie einer, der schweigt.
+      3. **benachbarte Samples sind aehnlich** -- Sprache bei 16 kHz ist
+         bandbegrenzt; bei Zufallsbytes ist der mittlere Differenzbetrag
+         GROESSER als der mittlere Samplebetrag (Faktor 1,34),
+      4. **es gibt keinen Gleichanteil.** Ein Mikrofonsignal schwingt um die
+         Null; Bytes, die nur als int16 gelesen werden, tun das nicht.
     """
     if len(daten) < PCM_MINDESTBYTES:
         return ""
@@ -332,18 +360,22 @@ def _pcm_verdacht(daten: bytes) -> str:
     if len(proben) < 500:
         return ""
     betrag = sum(abs(s) for s in proben) / len(proben)
-    if not 20.0 <= betrag <= 20000.0:
+    if not PCM_BETRAG[0] <= betrag <= PCM_BETRAG[1]:
+        return ""
+    gleich = abs(sum(proben) / len(proben)) / betrag
+    if gleich >= PCM_GLEICHANTEIL_MAX:
         return ""
     diff = sum(abs(proben[i + 1] - proben[i])
                for i in range(len(proben) - 1)) / (len(proben) - 1)
-    if betrag <= 0 or diff / betrag >= 0.9:
+    if diff / betrag >= PCM_DIFF_MAX:
         return ""
     nulldurchgaenge = sum(
         1 for i in range(len(proben) - 1)
         if (proben[i] < 0) != (proben[i + 1] < 0)) / (len(proben) - 1)
-    if nulldurchgaenge > 0.5:
+    if not (PCM_NULLDURCHGAENGE[0] <= nulldurchgaenge
+            <= PCM_NULLDURCHGAENGE[1]):
         return ""
-    return (f"rohes PCM (mittlerer Betrag {betrag:.0f}, "
+    return (f"rohes PCM (Betrag {betrag:.0f}, Gleichanteil {gleich:.2f}, "
             f"Differenz/Betrag {diff / betrag:.2f}, "
             f"Nulldurchgaenge {nulldurchgaenge:.2f})")
 
@@ -358,16 +390,13 @@ def audio_befund(daten: bytes) -> str:
             continue
         return f"{name} bei Versatz {pos}"
     # ADTS/MPEG hat keine Textmagie, sondern ein Bitmuster -- und zwar eines,
-    # das in Binaerdaten zufaellig vorkommt. Deshalb wird ein WIEDERHOLTES
-    # Muster verlangt und nicht ein einzelnes Vorkommen am Anfang.
-    treffer = 0
-    for i in range(0, min(len(daten), 65536) - 1):
-        if daten[i] == 0xFF and (daten[i + 1] & 0xE0) == 0xE0:
-            treffer += 1
-    if treffer >= 8 and len(daten) >= PCM_MINDESTBYTES:
-        roh = _pcm_verdacht(daten)
-        if not roh:
-            return f"ADTS/MPEG-Rahmenmuster ({treffer} Synchronwoerter)"
+    # das in JEDER Binaerdatei zufaellig vorkommt (im WAL der eigenen
+    # Datenbank elfmal). Erkannt wird es deshalb NUR am Dateianfang, wo eine
+    # ADTS- oder MPEG-Datei ihren ersten Rahmen hat. Was das nicht sieht,
+    # steht im Ledger unter "Grenzen".
+    if (len(daten) >= PCM_MINDESTBYTES and daten[0] == 0xFF
+            and (daten[1] & 0xE0) == 0xE0):
+        return "ADTS/MPEG-Synchronwort bei Versatz 0"
     return _pcm_verdacht(daten)
 
 
@@ -605,27 +634,63 @@ class RecorderLauf:
 
     def __init__(self, rec_mod, store_mod, redaktion_mod, runtime: Path,
                  db: Path) -> None:
-        self.archiv = store_mod.Archiv(db)
         self.pausen_rufe: list[dict] = []
-        self.rec = rec_mod.Recorder(
-            runtime_dir=runtime, archiv=self.archiv,
+        self.rec = None
+        self.fehler: BaseException | None = None
+        self.bereit = threading.Event()
+        self.runtime = runtime
+        self._bauen = lambda: rec_mod.Recorder(
+            runtime_dir=runtime, archiv=store_mod.Archiv(db),
             redaktion=redaktion_mod.Redaktion(runtime_dir=runtime,
                                               kennungen={}),
             fokus_klasse=lambda: "",
             mikrofone=lambda: 0,
             pausieren=self._pausieren_attrappe,
             erlaubte_units=None)
-        self.rec.start()
-        self.thread = threading.Thread(target=self.rec.lauf, daemon=True)
+        # ALLES im selben Faden: bauen, `start()`, `lauf()`. Die
+        # SQLite-Verbindung gehoert dem Faden, der sie geoeffnet hat -- ein
+        # `start()` im Hauptfaden und ein `lauf()` daneben laesst den Dienst
+        # beim ersten Schreiben mit `ProgrammingError` sterben, und der
+        # Pruefstand haette "kein Eintrag" gemeldet, wo sein eigener Aufbau
+        # kaputt war.
+        self.thread = threading.Thread(target=self._fahren, daemon=True)
         self.thread.start()
+        self.bereit.wait(timeout=15.0)
+
+    def _fahren(self) -> None:
+        try:
+            self.rec = self._bauen()
+            self.rec.start()
+        except BaseException as exc:                            # noqa: BLE001
+            self.fehler = exc
+            self.bereit.set()
+            return
+        self.bereit.set()
+        try:
+            self.rec.lauf()
+        except BaseException as exc:                            # noqa: BLE001
+            self.fehler = exc
 
     def _pausieren_attrappe(self, **kw) -> dict:
         self.pausen_rufe.append(dict(kw))
         return {"v": 1, "ok": True, "units": [], "meldung": "Attrappe"}
 
+    def laeuft(self) -> bool:
+        return (self.fehler is None and self.rec is not None
+                and self.thread.is_alive())
+
     def beenden(self) -> None:
-        self.rec.stop()
+        if self.rec is not None:
+            self.rec.stop()
         self.thread.join(timeout=10.0)
+        # `ipc.listen` raeumt den Socket nicht weg. Fuer das Ergebnis ist das
+        # gleich -- ohne Horcher gibt `connect()` ECONNREFUSED statt ENOENT,
+        # beides ist fuer den Melder `kein_recorder`. Weggeraeumt wird er
+        # trotzdem, damit die Lage nach der Pause unmissverstaendlich ist.
+        try:
+            (self.runtime / "recorder.sock").unlink()
+        except OSError:
+            pass
 
 
 def eintraege(db: Path, art: str | None = None) -> list[tuple]:
@@ -702,11 +767,15 @@ def k1_bis_k9_einspielung(B: Bilanz, pruefling: Path, arbeit: Path,
         return None
     recorder = RecorderLauf(rec_mod, store_mod, red_mod, runtime, db)
     try:
+        if not recorder.laeuft():
+            B.schlecht("K1", f"der Recorder dieses Laufs steht nicht: "
+                             f"{recorder.fehler!r} -- abgebrochen, statt "
+                             "'kein Eintrag' zu melden")
+            return None
         cfg = cfg_mod.load(make_dirs=False)
         ohren = ohren_bauen(ears, runtime, cfg)
 
         # --- K1: STILLE -------------------------------------------------
-        AufnahmeAttrappe.instanzen = 0
         vor_stille = len(sonde.aufrufe()), len(eintraege(db))
         einspielen(ohren, sprache=False)
         time.sleep(0.3)                      # Zustellung, nicht Messfenster
@@ -725,6 +794,11 @@ def k1_bis_k9_einspielung(B: Bilanz, pruefling: Path, arbeit: Path,
                  "Eintraege erzeugt")
 
         # --- K2: die Positivkontrolle ------------------------------------
+        # Der Zaehler beginnt HIER: gezaehlt wird, wie viele Aufnahmen EINE
+        # Einspielung oeffnet. Ueber zwei Einspielungen hinweg zu zaehlen
+        # haette den Pruefstand selbst gemessen (PTT geht zweimal an).
+        AufnahmeAttrappe.instanzen = 0
+        AufnahmeAttrappe.starts = 0
         einspielen(ohren, sprache=True)
         time.sleep(0.5)
         rufe = sonde.aufrufe()
@@ -1381,10 +1455,12 @@ def main(argv: list[str]) -> int:
         (daten / PAKET).mkdir(parents=True, exist_ok=True)
         runtime.mkdir(parents=True, exist_ok=True)
         os.environ["XDG_DATA_HOME"] = str(daten)
-        os.environ["XDG_RUNTIME_DIR"] = str(runtime.parent)
-        # runtime_dir() haengt EIN Verzeichnis unter XDG_RUNTIME_DIR:
-        runtime = runtime.parent / PAKET
-        runtime.mkdir(parents=True, exist_ok=True)
+        # `XDG_RUNTIME_DIR` bleibt UNVERAENDERT. Es umzubiegen war der erste
+        # Versuch und war falsch: daran haengt der Sitzungsbus, und ohne ihn
+        # startet `systemd-run --user` nicht -- K7 haette seine transienten
+        # Units nicht bekommen und den Stromteil still weggelassen. Der
+        # Pruefling schreibt trotzdem nichts in das echte Laufzeitverzeichnis:
+        # `runtime_dir` wird jedem Beteiligten AUSDRUECKLICH uebergeben.
         print(f"Archivverzeichnis dieses Laufs: {daten / PAKET}", flush=True)
         print(f"Laufzeitverzeichnis:            {runtime}", flush=True)
 
@@ -1424,7 +1500,7 @@ def main(argv: list[str]) -> int:
             except Exception as exc:                            # noqa: BLE001
                 B.schlecht("K8", f"Messung abgestuerzt: {exc!r}")
 
-        sperre_pruefen(sperr_log)
+        sperre_pruefen(sperr_log, arbeit / "vorschalter.log")
         return B.abschluss()
     finally:
         if zustand is not None:
