@@ -105,7 +105,8 @@ KRITERIEN = ("K1", "K2", "K3", "K4", "K5", "K6", "K7", "K8", "K9")
 MUTANTEN_GRENZEN = {
     "stille-gilt-als-sprache": "K1 (+K2/K6: aus einer Einspielung werden "
                                "mehrere Segmente, also mehrere Aufrufe)",
-    "archiv-ohne-transkript": "K1",
+    "eintrag-ohne-erkannte-sprache": "K2 (ein Abschnitt ohne erkannte "
+                                     "Sprache erzeugt einen zweiten Eintrag)",
     "zweiter-stt-aufruf-fuers-archiv": "K6 (+K2: der zweite Aufruf faellt "
                                        "schon an der Zaehlung auf)",
     "stt-ohne-leerlauf": "K3",
@@ -860,7 +861,25 @@ def k1_bis_k9_einspielung(B: Bilanz, pruefling: Path, arbeit: Path,
                  f"`melde_transkript` nimmt Audio entgegen: {verdaechtig}")
         offen = [w for w in rufe[nach_stille[0]:] if w.get("wav")]
         B.notiz(f"WAV-Pfade, die dem STT gereicht wurden: "
-                f"{[w['wav'] for w in offen]}")
+                f"{[w['wav'] for w in offen]} "
+                f"(existierten beim Aufruf: {[w['wav_existiert'] for w in offen]}, "
+                f"Bytes: {[w['wav_bytes'] for w in offen]})")
+        # DIE SCHAERFERE FRAGE: lag der Abschnitt ueberhaupt je im
+        # Archivverzeichnis? Die Verzeichnissuche in K4 sieht nur den Zustand
+        # NACH dem Lauf -- eine Datei, die dort entsteht und gleich wieder
+        # verschwindet, entginge ihr. Die STT-Sonde hat den Pfad im Moment des
+        # Aufrufs protokolliert, und das ist der Zeitpunkt, an dem sie liegt.
+        archivverz = (daten / PAKET).resolve()
+        drin = [w["wav"] for w in offen
+                if str(Path(w["wav"]).resolve()).startswith(str(archivverz))]
+        B.urteil("K4", offen and not drin,
+                 "der Audioabschnitt fuer den STT liegt zu KEINEM Zeitpunkt "
+                 "im Archivverzeichnis"
+                 if offen and not drin else
+                 (f"der Audioabschnitt liegt im Archivverzeichnis: {drin}"
+                  if drin else
+                  "kein WAV-Pfad im STT-Aufruf -- nicht messbar, und das ist "
+                  "kein Erfolg"))
         ueberlebt = [w["wav"] for w in offen if Path(w["wav"]).exists()]
         B.urteil("K5", offen and not ueberlebt,
                  "die WAV-Datei fuer den STT ist nach der Runde weg"
@@ -873,7 +892,11 @@ def k1_bis_k9_einspielung(B: Bilanz, pruefling: Path, arbeit: Path,
         try:
             archiv.migrieren()
             abgewiesen, durchgelassen = [], []
-            for art in sorted(store_mod.VERBOTENE_ARTEN) or ["audio"]:
+            # Die Liste steht HIER und nicht im Pruefling. `VERBOTENE_ARTEN`
+            # gegen `VERBOTENE_ARTEN` zu pruefen waere zirkulaer: eine leere
+            # Liste haette dann nichts zu pruefen und waere gruen.
+            for art in ("audio", "rohaudio", "pcm", "wav", "samples", "opus",
+                        "flac", "mp3", "raw"):
                 try:
                     archiv.schreiben(art, "x")
                     durchgelassen.append(art)
