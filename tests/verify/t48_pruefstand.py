@@ -604,14 +604,17 @@ def k4_verifikation(B: Bilanz, pruefling: Path, arbeit: Path,
     else:
         B.gut("K4", f"eingespeist: `cp` meldet 0 und schreibt {groessen[0]} "
                     f"von {GROSS} Bytes")
-        B.urteil("K4", not ergebnis.get("ausgefuehrt")
-                 and ergebnis.get("grund", "").startswith("undo")
-                 and "Bytes gross" in str(ergebnis.get("stderr", "")) + str(
-                     ergebnis),
+        # ERKANNT heisst: der Abbruch nennt die GROESSE. Ein Lauf, der an
+        # einer beliebigen Ausnahme stirbt, hat das Artefakt nicht gemessen
+        # -- er ist bloss gestolpert, und das waere ein Falschbefund.
+        erkannt = (not ergebnis.get("ausgefuehrt")
+                   and ergebnis.get("grund", "").startswith("undo")
+                   and "Bytes gross" in ergebnis.get("grund", ""))
+        B.urteil("K4", erkannt,
                  f"das unvollstaendige Artefakt wird ERKANNT: {ergebnis.get('grund')}"
-                 if not ergebnis.get("ausgefuehrt") else
-                 "der Rueckgabewert 0 hat gereicht -- das Artefakt wurde "
-                 "geglaubt, nicht gemessen")
+                 if erkannt else
+                 f"das unvollstaendige Artefakt wurde nicht an seiner Groesse "
+                 f"erkannt (Grund: {ergebnis.get('grund')!r})")
         B.urteil("K4", ergebnis.get("broker_gerufen") == 0
                  and sha(quelle) == vor_sha,
                  f"und die Mutation unterbleibt (sha256 {vor_sha} unveraendert)"
@@ -664,12 +667,18 @@ def k4_verifikation(B: Bilanz, pruefling: Path, arbeit: Path,
             "art": "git-stash", "quelle": str(repo / "a.txt"),
             "repo": str(repo), "zustand": str(heim / "zustand3")})
         B.notiz(f"Naht (git stash ohne Aenderung): {ergebnis3}")
-        B.urteil("K4", not ergebnis3.get("ausgefuehrt")
-                 and ergebnis3.get("broker_gerufen") == 0,
+        # Auch hier: der Abbruch muss den STASH nennen. Ein `IndexError`
+        # irgendwo im Broker bricht ebenfalls ab -- gemessen hat er nichts.
+        erkannt3 = (not ergebnis3.get("ausgefuehrt")
+                    and ergebnis3.get("broker_gerufen") == 0
+                    and "stash" in ergebnis3.get("grund", ""))
+        B.urteil("K4", erkannt3,
                  f"der leere Stash wird ERKANNT: {ergebnis3.get('grund')}"
-                 if not ergebnis3.get("ausgefuehrt") else
-                 "`git stash` meldete 0, und das hat gereicht -- ein "
-                 "Artefakt, das es nicht gibt, wurde behauptet")
+                 if erkannt3 else
+                 f"`git stash` meldete 0, und das hat gereicht -- ein "
+                 f"Artefakt, das es nicht gibt, wurde behauptet "
+                 f"(Grund: {ergebnis3.get('grund')!r}, Broker: "
+                 f"{ergebnis3.get('broker_gerufen')})")
 
 
 # ---------------------------------------------------------------------------
@@ -1040,6 +1049,19 @@ def k7_zulauf(B: Bilanz, pruefling: Path, arbeit: Path) -> None:
 # main
 # ---------------------------------------------------------------------------
 
+def messen(B: Bilanz, k: str, fn, *args) -> None:
+    """Ein Kriterium, dessen Messung wirft, ist ROT -- nicht abwesend.
+
+    Und der Lauf geht weiter: ein Pruefling, der an K1 stirbt, soll trotzdem
+    sagen, wie es um K5 steht.
+    """
+    try:
+        fn(*args)
+    except Exception as fehler:
+        B.schlecht(k, f"die Messung ist geworfen: "
+                      f"{type(fehler).__name__}: {str(fehler)[:300]}")
+
+
 def main() -> int:
     pruefling = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
     B = Bilanz()
@@ -1068,20 +1090,20 @@ def main() -> int:
         undo = modul_laden(pruefling, f"{PAKET}.brokers.fs.undo")
         modal = modul_laden(pruefling, f"{PAKET}.auth.modal")
 
-        k1_trash(B, undo, arbeit)
-        k2_kopie(B, undo, arbeit, protokoll)
-        k3_stash(B, pruefling, arbeit)
-        k4_verifikation(B, pruefling, arbeit, protokoll)
+        messen(B, "K1", k1_trash, B, undo, arbeit)
+        messen(B, "K2", k2_kopie, B, undo, arbeit, protokoll)
+        messen(B, "K3", k3_stash, B, pruefling, arbeit)
+        messen(B, "K4", k4_verifikation, B, pruefling, arbeit, protokoll)
 
         # Die Positivkontrolle aus K5 traegt auch K6 -- ein Artefakt, das
         # wirklich entstanden ist.
-        k5_abbruch(B, pruefling, arbeit)
+        messen(B, "K5", k5_abbruch, B, pruefling, arbeit)
         gut = naht_fahren(pruefling, {
             "art": "kopie", "quelle": str(_datei(arbeit / "k6", b"fuer K6\n")),
             "ablage": str(arbeit / "k6" / "undo"),
             "zustand": str(arbeit / "k6" / "zustand")})
-        k6_herabstufung(B, pruefling, undo, modal, arbeit, gut)
-        k7_zulauf(B, pruefling, arbeit)
+        messen(B, "K6", k6_herabstufung, B, pruefling, undo, modal, arbeit, gut)
+        messen(B, "K7", k7_zulauf, B, pruefling, arbeit)
     finally:
         os.environ["PATH"] = alter_pfad
         vorschalter_auswerten(protokoll)
