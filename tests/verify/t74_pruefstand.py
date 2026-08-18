@@ -133,6 +133,7 @@ UNIT_JE_ZIEL = {
     EARS_UNIT: f"{TAG}-ears.service",
 }
 
+SONDE_STILL = f"{TAG}still"
 STROM_BEREIT_S = 8.0
 RATE = 16000
 CHUNK_SAMPLES = 512
@@ -1033,18 +1034,21 @@ def k3_leerlauf(B: Bilanz, pruefling: Path, arbeit: Path) -> None:
                              f"{fehlend} -- {fehler}")
             return
 
-        # Der WARME haelt Anfragen, die anderen bekommen keine.
-        t_ende = time.monotonic() + 3 * frist
+        # Der WARME haelt Anfragen, die anderen bekommen keine. Danach wird
+        # SOFORT abgelesen: die stillen Prozesse haben dann das Dreifache
+        # ihrer Frist ungenutzt hinter sich, der warme genau eine Anfrage.
+        # Ein Nachschlaf hier waere ein Wettlauf gegen die eigene Frist.
+        t0 = time.monotonic()
         angeklopft = 0
-        while time.monotonic() < t_ende:
+        while time.monotonic() - t0 < 3 * frist:
             angeklopft += int(_anklopfen(kinder["stt-warm"][1]))
             time.sleep(frist / 4)
 
         # DIE ABLESUNG. Ein Zeitpunkt, drei Prozesse.
-        time.sleep(frist)
         lebt = {n: (p.poll() is None) for n, (p, _) in kinder.items()}
         B.notiz(f"Leerlauffrist {frist}s, {angeklopft} Anfragen an den "
-                f"warmen Prozess; lebt nach {4 * frist:.0f}s: {lebt}")
+                f"warmen Prozess; lebt nach {time.monotonic() - t0:.1f}s "
+                f"Stille bzw. Betrieb: {lebt}")
 
         if lebt["worker-still"]:
             B.schlecht("K3", "die POSITIVKONTROLLE lebt noch: auch der "
@@ -1128,6 +1132,7 @@ def k4_kein_rohaudio(B: Bilanz, daten: Path, db: Path) -> None:
         (verzeichnis / name).write_bytes(inhalt)
     # Und einer IN der Datenbank -- eine Suche, die nur Dateien kennt, sieht
     # ihn nicht, und ein Blob ist der bequemste Ort fuer Rohaudio.
+    blob_gelegt = False
     conn = sqlite3.connect(db)
     try:
         conn.execute(
@@ -1135,6 +1140,9 @@ def k4_kein_rohaudio(B: Bilanz, daten: Path, db: Path) -> None:
             "VALUES ('transkript', 0, 'redacted', 'kontrolle', 'kontrolle', "
             "?, 0)", (wav_bytes(),))
         conn.commit()
+        blob_gelegt = True
+    except sqlite3.Error as exc:
+        B.notiz(f"Blob-Positivkontrolle nicht gelegt: {exc}")
     finally:
         conn.close()
 
@@ -1153,11 +1161,13 @@ def k4_kein_rohaudio(B: Bilanz, daten: Path, db: Path) -> None:
                  f"diese getarnten Audiostuecke wurden NICHT gefunden: "
                  f"{fehlend} -- die Suche ist blind, ihr negatives Ergebnis "
                  "oben zaehlt nicht")
-        B.urteil("K4", bool(blob),
+        B.urteil("K4", bool(blob) and blob_gelegt,
                  "auch das Rohaudio IN der Datenbank wurde gefunden"
-                 if blob else
-                 "ein WAV-Blob in der Datenbank wurde NICHT gefunden -- die "
-                 "Suche sieht nur Dateien")
+                 if blob and blob_gelegt else
+                 ("ein WAV-Blob in der Datenbank wurde NICHT gefunden -- die "
+                  "Suche sieht nur Dateien" if blob_gelegt else
+                  "die Blob-Kontrolle ist AUSGEFALLEN (keine Datenbank) -- "
+                  "eine nicht ausgefuehrte Kontrolle ist kein Erfolg"))
     finally:
         for name in getarnt:
             try:
@@ -1168,6 +1178,8 @@ def k4_kein_rohaudio(B: Bilanz, daten: Path, db: Path) -> None:
         try:
             conn.execute("DELETE FROM archiv WHERE fenster = 'kontrolle'")
             conn.commit()
+        except sqlite3.Error:
+            pass
         finally:
             conn.close()
 
@@ -1290,6 +1302,7 @@ def k7_pause_schliesst_beide(B: Bilanz, pruefling: Path, arbeit: Path) -> None:
                      UNIT_JE_ZIEL[EYES_UNIT]: f"{TAG}eyes",
                      UNIT_JE_ZIEL[EARS_UNIT]: f"{TAG}ears"}
     vorher = nachher = None
+    still = None
     try:
         if werkzeuge_da:
             for unit, sonde in sonde_je_unit.items():
@@ -1306,8 +1319,28 @@ def k7_pause_schliesst_beide(B: Bilanz, pruefling: Path, arbeit: Path) -> None:
                     werkzeuge_da = False
                     break
         if werkzeuge_da:
+            # DIE UNTERSCHEIDUNGSKONTROLLE: ein vierter Strom, der zu keiner
+            # Unit gehoert und nur ANGEHALTEN wird (SIGSTOP). Er MUSS nachher
+            # noch da sein. Ohne ihn hiesse "aus pw-dump verschwunden" auch
+            # "pw-dump hat diesmal nichts gefunden" -- und genau der
+            # Unterschied zwischen geschlossen und still ist die Zusage aus
+            # Design 4.2.
+            try:
+                still = subprocess.Popen(sonde_kommando(SONDE_STILL),
+                                         stdout=subprocess.DEVNULL,
+                                         stderr=subprocess.DEVNULL)
+            except OSError:
+                still = None
+            if still is None or not auf_strom_warten(SONDE_STILL):
+                B.notiz("die Unterscheidungskontrolle kam nicht hoch -- der "
+                        "Stromteil dieses Kriteriums entfaellt")
+                werkzeuge_da = False
+            else:
+                still.send_signal(19)              # SIGSTOP: offen, aber still
+        if werkzeuge_da:
             stroeme = pw_dump_stroeme()
-            vorher = {s: zaehle(stroeme, s) for s in sonde_je_unit.values()}
+            vorher = {s: zaehle(stroeme, s)
+                      for s in list(sonde_je_unit.values()) + [SONDE_STILL]}
             B.notiz(f"Aufnahmestroeme vorher: {vorher}")
 
         os.environ["PATH"] = f"{verz}:{alter_pfad}"
@@ -1338,7 +1371,8 @@ def k7_pause_schliesst_beide(B: Bilanz, pruefling: Path, arbeit: Path) -> None:
 
         if werkzeuge_da:
             stroeme = pw_dump_stroeme()
-            nachher = {s: zaehle(stroeme, s) for s in sonde_je_unit.values()}
+            nachher = {s: zaehle(stroeme, s)
+                       for s in list(sonde_je_unit.values()) + [SONDE_STILL]}
             B.notiz(f"Aufnahmestroeme nachher: {nachher}")
             ton_sonde = sonde_je_unit[UNIT_JE_ZIEL[EARS_UNIT]]
             bild_sonde = sonde_je_unit[UNIT_JE_ZIEL[EYES_UNIT]]
@@ -1347,6 +1381,15 @@ def k7_pause_schliesst_beide(B: Bilanz, pruefling: Path, arbeit: Path) -> None:
                 # macht "noch da" zu einer Aussage.
                 B.wiegen("K7", f"Strom {bild_sonde}",
                          vorher.get(bild_sonde), nachher.get(bild_sonde))
+            if not B.urteil("K7", nachher.get(SONDE_STILL) == 1,
+                            "Unterscheidungskontrolle: der nur ANGEHALTENE "
+                            "Strom ist noch da -- 'verschwunden' heisst hier "
+                            "geschlossen und nicht still"
+                            if nachher.get(SONDE_STILL) == 1 else
+                            "die Unterscheidungskontrolle ist mit "
+                            "verschwunden: pw-dump sieht auch einen offenen "
+                            "Strom nicht mehr. Diese Messung zaehlt nicht"):
+                return
             offen = nachher.get(ton_sonde)
             B.urteil("K7", offen == 0,
                      "der Mikrofonstrom des Ohren-Dienstes ist nach der "
@@ -1363,6 +1406,13 @@ def k7_pause_schliesst_beide(B: Bilanz, pruefling: Path, arbeit: Path) -> None:
                     "traegt das Urteil allein")
     finally:
         os.environ["PATH"] = f"{arbeit / 'sperre'}:{alter_pfad}"
+        if still is not None:
+            still.send_signal(18)                  # SIGCONT, damit er stirbt
+            still.terminate()
+            try:
+                still.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                still.kill()
         transiente_units_aufraeumen()
 
 

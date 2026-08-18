@@ -1,0 +1,53 @@
+Gut-Muster fuer T-7.4.v -- der Tonmitschnitt in die Datenbank.
+
+HERKUNFT
+========
+Kopiert aus dem Reviewer-Worktree /mnt/data/AI/repos/dAImon-t74 auf Branch
+reviewer/p4-T-7.4v, Ausgangsstand ea61a13. Uebernommen wurde genau der
+Importabschluss, den der Pruefstand anfasst -- 23 Dateien, maschinell
+bestimmt: alles, was nach dem Import von
+
+    ohren-daemon, recorder-daemon, recorder-store, recorder-redaktion,
+    recorder-pause, recorder-audio, recorder-melder, common-config,
+    common-protocol, gpu-stt, gpu-worker
+
+in sys.modules unter dem Paketnamen stand. Kein Konfigurationsverzeichnis,
+keine Unit-Dateien: der Pruefstand liest keine.
+
+WAS HIER ANDERS IST ALS IM ECHTEN BAUM
+======================================
+Ein Gut-Muster ist der Zustand, in dem T-7.4 seine Akzeptanzliste ERFUELLT.
+Der echte Baum tut das an zwei Stellen nicht; genau diese zwei sind hier
+berichtigt, und zwar so knapp wie moeglich:
+
+1. K7 -- der TON-Pfad wird mit abgeschaltet.
+   `PAUSE_UNITS` in recorder/pause.py enthaelt zusaetzlich die Ohren-Unit;
+   sie stand in `ERLAUBTE_UNITS` schon drin, und der Modulkopf von pause.py
+   sagt selbst: "Wer T-7.4 baut, ergaenzt die Ohren-Unit in PAUSE_UNITS und
+   den Tonstrom in der Messung." Der Unit-Name steht jetzt als Konstante
+   `EARS_UNIT` neben den beiden anderen, statt zweimal als Literal.
+
+2. K3 -- der STT-Dienst beendet sich im Leerlauf.
+   `lauf()` in gpu/stt.py bekommt `srv.settimeout(frist)` und beendet die
+   Schleife bei `socket.timeout`; die Frist steht als Modulkonstante
+   `LEERLAUF_S` (300 s) und wird bei jedem Aufruf gelesen, nicht als
+   Vorgabewert beim Import eingefroren. Das ist dieselbe Bauform, die
+   gpu/worker.py schon hat (`srv.settimeout(self.idle_s)`).
+
+   ACHTUNG, hier ist eine ENTSCHEIDUNG noetig und nicht nur ein Fix: der
+   Modulkopf von gpu/stt.py lehnt den Leerlauf-Exit AUSDRUECKLICH ab und
+   begruendet es (kein VRAM zurueckzugeben, 843 ms Ladezeit je Neustart, das
+   Modell im Speicher IST die Latenzzusage). T-7.4 Punkt 2 und Design 5.4
+   verlangen das Gegenteil. Diese Fassung setzt um, was der PLAN sagt --
+   welche der beiden Zusagen gilt, entscheidet nicht der Verifizierer.
+   Siehe Ledger, Abschnitt "Zwei Zusagen, die sich widersprechen".
+
+Diese zwei Aenderungen sind die Befunde dieses Verifizierers. Sie stehen
+hier, damit belegt ist, dass der Verifizierer gegen einen ERFUELLTEN Stand
+gruen wird -- ein Verifizierer, der immer rot ist, misst so wenig wie einer,
+der immer gruen ist.
+
+WAS NICHT UEBERNOMMEN WURDE
+===========================
+Kein __pycache__, keine .venv, keine Datenbanken, keine Modelle. Der Wrapper
+setzt PYTHONDONTWRITEBYTECODE=1, damit ein Lauf hier nichts ablegt.
