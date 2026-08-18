@@ -209,6 +209,10 @@ def _schreibziele(kommando: str, tiefe: int = 0) -> list[str]:
         worte, umgeleitet = _umleitungen(kette)
         ziele += umgeleitet
         ziele += _ziele_der_verben(worte, tiefe)
+    if any("$" in z for z in ziele):
+        # Ein Ziel hinter einer Variablen (`rm $Z`) steht im Text nicht.
+        # Auch hier der grobe Weg statt einer Luecke.
+        return _grobe_ziele(kommando)
     return ziele
 
 

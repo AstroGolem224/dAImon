@@ -251,10 +251,12 @@ def test_die_sechs_faelle_aus_dem_betrieb_gehen_durch(vorlage, pfad):
     "sed -i s/a/b/ {z}",
     "cp /tmp/fremd.sh {z}",
     "bash -c 'echo x > {z}'",
-    # Beim Umbau aufgefallen und mitgenommen: eine Kommandosubstitution und
-    # ein `eval` sind eigene Kommandos, kein Text.
+    # Beim Umbau aufgefallen und mitgenommen: `eval`, `xargs` und ein Ziel
+    # hinter einer Variablen. Alle drei kamen beim alten, groben Weg nur aus
+    # Versehen nicht durch -- praeziser heisst hier: ausdruecklich behandelt.
     "eval 'rm {z}'",
     "echo {z} | xargs rm",
+    "Z={z}; rm $Z",
 ])
 def test_geschrieben_bleibt_geschrieben(vorlage):
     """Zweite Haelfte der Auflage vom 18.08.: praeziser heisst nicht
