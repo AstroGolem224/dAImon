@@ -159,31 +159,24 @@ def test_eine_commit_botschaft_darf_einen_verifizierer_nennen():
     assert _entschied(_bash("builder", kommando)) != "deny"
 
 
-# -- Was er DURCHLASSEN SOLLTE, und heute nicht tut -----------------------
+# -- Was er DURCHLASSEN MUSS ----------------------------------------------
 #
-# `strict=True`, also dokumentiert rot: wer den Waechter nachruestet, sieht
-# XPASS und entfernt das Mark. Ein `xfail` ohne strict verschwiege den
-# Fortschritt.
+# Bis zum 18.08. standen die beiden folgenden Pruefungen als
+# `xfail(strict=True)` hier. Der Umbau vom 18.08. (Kommando zerlegen, Ziele
+# nur hinter Schreib-Umleitungen und schreibenden Verben suchen) macht sie
+# gruen; die Marken sind damit weg.
 
-@pytest.mark.xfail(strict=True, reason=(
-    "WRITING_CMD enthaelt `>\\s*\\S`, und eine Fehlerumleitung erfuellt das. "
-    "Damit ist praktisch jedes Kommando mit `2>&1` oder `2>/dev/null` "
-    "schreibend -- am 17.08. zweimal daran haengengeblieben, beide Male bei "
-    "einem lesenden `ls` bzw. `cat`."))
 @pytest.mark.parametrize("vorlage", [
     "cat {z} 2>/dev/null",
     "ls -l {z} 2>&1",
 ])
 def test_eine_fehlerumleitung_ist_kein_schreiben(vorlage):
+    """`2>/dev/null` schreibt nach /dev/null, `2>&1` gar nicht in eine Datei.
+    Beides ist kein Zugriff auf den genannten Pfad."""
     kommando = vorlage.format(z=FROZEN)
     assert _entschied(_bash("builder", kommando)) != "deny", kommando
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "Trifft WRITING_CMD, gilt JEDES pfadaehnliche Wort im Kommandotext als "
-    "Ziel -- auch das Argument eines lesenden Verbs und der Text einer "
-    "Commit-Botschaft. Der Nachruestweg steht in HANDOVER.md: Ausfuehrung "
-    "von Aenderung trennen, Ziele nur hinter schreibenden Verben suchen."))
 @pytest.mark.parametrize("vorlage", [
     # Den Pruefstand AUSFUEHREN ist keine Aenderung an ihm.
     "bash {z} > /tmp/log",
@@ -192,5 +185,112 @@ def test_eine_fehlerumleitung_ist_kein_schreiben(vorlage):
     "cp {z} /tmp/kopie",
 ])
 def test_ein_genannter_pfad_ist_kein_schreibziel(vorlage):
+    """Ein Pfad im Kommandotext ist erst dann ein Ziel, wenn er hinter einer
+    Schreib-Umleitung oder als Ziel eines schreibenden Verbs steht."""
     kommando = vorlage.format(z=VERIFIZIERER)
     assert _entschied(_bash("builder", kommando)) != "deny", kommando
+
+
+# -- Die sechs Faelle aus dem Betrieb -------------------------------------
+#
+# Der Builder ist an diesen Kommandos real haengengeblieben, jedes Mal ohne
+# etwas zu schreiben. Die Kommandos sind aus HANDOVER.md und dem Auftrag vom
+# 18.08. nachgebildet -- der Wortlaut der Argumente kann abweichen, die
+# Bauform ist die, die gegriffen hat.
+
+ECHTE_FAELLE = [
+    pytest.param(
+        "cat {z} 2>/dev/null", FROZEN, id="17.08-cat-2-dev-null",
+        # 17.08., Fall 1: eine Fehlerumleitung erfuellte `>\s*\S`.
+    ),
+    pytest.param(
+        "ls -l {z} 2>&1", FROZEN, id="17.08-ls-2-1",
+        # 17.08., Fall 2: dieselbe Ursache, `2>&1` ist nicht einmal eine Datei.
+    ),
+    pytest.param(
+        "cat <<'EOF'\n{z}\nEOF", VERIFIZIERER, id="17.08-heredoc",
+        # 17.08., Fall 3: ein Heredoc, dessen RUMPF Verifiziererpfade nannte.
+        # Der Rumpf ist Text, kein Kommando.
+    ),
+    pytest.param(
+        "cat {z} > /tmp/frozen.txt", FROZEN, id="17.08-cat-nach-tmp",
+        # 17.08., Fall 4: ein `cat >`, das einen geschuetzten Pfad LIEST und
+        # ausserhalb des Repos schreibt.
+    ),
+    pytest.param(
+        'git add docs/handover.md && git commit -m "Notiz zu {z}"',
+        VERIFIZIERER, id="17.08-git-add-und-commit",
+        # 17.08., Fall 5: `git add` auf einem erlaubten Pfad im selben
+        # Kommando wie ein `git commit`, dessen BOTSCHAFT einen Verifizierer
+        # nannte.
+    ),
+    pytest.param(
+        "git merge --no-ff reviewer/p4-T-7.2v 2>&1 | tail -5 ; du -sh {z}",
+        "tests/" + "fixtures/known-good", id="18.08-merge-und-du",
+        # 18.08., Fall 6: beide Defekte zugleich -- Fehlerumleitung plus ein
+        # `du` auf einem geschuetzten Pfad im selben Kommando.
+    ),
+]
+
+
+@pytest.mark.parametrize("vorlage,pfad", ECHTE_FAELLE)
+def test_die_sechs_faelle_aus_dem_betrieb_gehen_durch(vorlage, pfad):
+    """Am 17.08. fuenfmal, am 18.08. ein sechstes Mal: der Waechter hat ein
+    LESENDES Kommando abgewiesen. Sie stehen hier, damit der Defekt nicht in
+    anderer Gestalt zurueckkehrt."""
+    kommando = vorlage.format(z=pfad)
+    assert _entschied(_bash("builder", kommando)) != "deny", kommando
+
+
+# -- Die Gegenrichtung: der Umbau darf nicht zu weit gehen ----------------
+
+@pytest.mark.parametrize("vorlage", [
+    "echo x > {z}",
+    "cat vorlage.sh > {z}",
+    "tee {z} < vorlage.sh",
+    "sed -i s/a/b/ {z}",
+    "cp /tmp/fremd.sh {z}",
+    "bash -c 'echo x > {z}'",
+    # Beim Umbau aufgefallen und mitgenommen: eine Kommandosubstitution und
+    # ein `eval` sind eigene Kommandos, kein Text.
+    "eval 'rm {z}'",
+    "echo {z} | xargs rm",
+])
+def test_geschrieben_bleibt_geschrieben(vorlage):
+    """Zweite Haelfte der Auflage vom 18.08.: praeziser heisst nicht
+    durchlaessiger. Faellt eine dieser Zeilen, ist der Umbau falsch."""
+    kommando = vorlage.format(z=VERIFIZIERER)
+    assert _entschied(_bash("builder", kommando)) == "deny", kommando
+
+
+# -- Was NACH dem Umbau vom 18.08. offen bleibt ---------------------------
+#
+# Alle drei kamen schon VOR dem Umbau durch -- nachgemessen am alten
+# `WRITING_CMD`. Sie gehoeren nicht zu den beiden Defekten des Auftrags und
+# sind deshalb nicht repariert, sondern dokumentiert rot: wer sie schliesst,
+# sieht XPASS und entfernt die Marke.
+
+@pytest.mark.xfail(strict=True, reason=(
+    "Ein Verzeichnis als Ziel trifft die deny-Muster nicht: `blocked()` "
+    "vergleicht 'tests/verify' weder mit 'tests/verify/**' noch mit "
+    "'tests/verify/*'. Das ist ein Defekt der Musterauswertung, nicht der "
+    "Kommandozerlegung -- er sitzt auch im Write-Pfad."))
+def test_ein_verzeichnis_als_ziel_muesste_blockiert_werden():
+    kommando = "cp /tmp/fremd.sh " + "tests/" + "verify/"
+    assert _entschied(_bash("builder", kommando)) == "deny", kommando
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "Ein Interpreter schreibt ohne schreibendes Verb und ohne Umleitung. "
+    "Der Waechter liest Shell-Syntax, keinen Python-Quelltext."))
+def test_ein_interpreter_als_umweg_muesste_blockiert_werden():
+    kommando = 'python3 -c "open(\'{z}\', \'w\')"'.format(z=VERIFIZIERER)
+    assert _entschied(_bash("builder", kommando)) == "deny", kommando
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "`find ... -delete` und `-exec rm {} +` tragen ihr Ziel nicht als "
+    "Argument eines schreibenden Verbs, sondern als Suchpfad."))
+def test_find_delete_muesste_blockiert_werden():
+    kommando = "find " + "tests/" + "verify -name '*.sh' -delete"
+    assert _entschied(_bash("builder", kommando)) == "deny", kommando
