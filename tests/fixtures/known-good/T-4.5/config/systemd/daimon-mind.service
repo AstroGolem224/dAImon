@@ -1,0 +1,126 @@
+# dAImon Mind (T-3.11): KEIN Netz, KEIN Token.
+#
+# Das ist der ganze Zweck dieser Unit, und er steht in genau einer Zeile:
+# `RestrictAddressFamilies=AF_UNIX`. Der Kernel laesst diesem Prozess keinen
+# AF_INET-Socket anlegen -- "kein API-Aufruf ohne Autorisierung" ist damit KEINE
+# Anwendungslogik mehr in dem Prozess, der die Anfragen stellt. In v2.0 des
+# Entwurfs hielt Mind Netz und Token; ein Fehler dort, und die Zusage war weg.
+#
+# Der Pruefstand messt das am LAUFENDEN Prozess (ein AF_INET-Socket muss
+# scheitern), nicht an dieser Zeile -- eine Direktive im Unit-Text ist erst dann
+# eine Zusage, wenn sie im Prozess wirkt.
+#
+# Was dieser Dienst in T-3.11 kann, ist absichtlich wenig: eine Frage nehmen, den
+# Persona-Prompt davorsetzen, ein Kontingent holen, den Koerper an den Egress
+# geben. Routing, Kontext und Markierung sind T-3.12 und T-3.13b -- ein Mind, der
+# hier schon routet, haette Routing ohne Pruefstand.
+#
+# Installation: systemctl --user link <dieser Pfad>
+#               systemctl --user start daimon-mind.service
+
+[Unit]
+Description=dAImon Mind (ohne Netz, ohne Token)
+# KEINE Socket-Aktivierung, anders als bei Hub, TTS, STT und Egress. Mind bindet
+# seinen Socket selbst (`--socket`), und zwar aus einem gemessenen Grund: eine
+# `Requires=daimon-mind.socket`-Zeile macht jede KOPIE dieser Unit unstartbar,
+# solange die Socket-Unit nicht mitkopiert wird -- `systemctl start` bricht mit
+# "Unit daimon-mind.socket not found" und Exit 5 ab, auch wenn ein Drop-in
+# `Requires=` leert. Genau das ist am 04.08. im Pruefstand passiert und hat 53
+# Pruefungen gerissen, die alle an derselben Wurzel hingen. Socket-Aktivierung
+# kauft hier ohnehin nichts: Mind haelt kein Modell im Speicher, sein Start
+# kostet Millisekunden.
+After=daimon-hub.service daimon-egress.socket
+Wants=daimon-hub.service daimon-egress.socket
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+# T-3.11c: `--egress-socket` zeigt auf den LOKALEN Broker. Mind merkt davon
+# nichts -- alle drei Rueckgrate sprechen dieselbe Drahtform und antworten in
+# Messages-Gestalt. Die Wahl ist damit genau diese eine Zeile:
+#
+#   lokal.sock    Modell auf dieser Maschine (T-3.11c). 1--5 s, kostenlos,
+#                 und die einzige Variante, deren Unit kein offenes Netz
+#                 braucht. Voraussetzung: ollama laeuft, Modell gezogen.
+#   cli.sock      `claude -p` ueber das Abo (T-3.11b). 7--25 s, rund 0,11 USD
+#                 Kontingent je Frage, Unit mit offenem Netz.
+#   egress.sock   Messages-API mit API-Key (T-3.11). Braucht
+#                 ~/.config/daimon/anthropic-token.
+ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
+    -m daimon.mind.daemon \
+    --egress-socket %t/daimon/lokal.sock
+
+Restart=on-failure
+RestartSec=2
+
+# --- DIE Zusage dieses Tasks ---------------------------------------------
+# Nur Unix-Sockets. Kein AF_INET, kein AF_INET6, kein AF_NETLINK. Wer hier eine
+# Familie hinzufuegt, hebt die Prozessgrenze auf, um die es in T-3.11 geht.
+RestrictAddressFamilies=AF_UNIX
+# Und KEIN LoadCredential=. Diese Unit bekommt den Token nicht -- nicht als
+# Datei, nicht als Umgebungsvariable, nicht ueber ein Verzeichnis, das sie lesen
+# darf. Der Pruefstand sucht ihn in /proc/<pid>/environ UND im Adressraum.
+InaccessiblePaths=-%h/.config/daimon/anthropic-token
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+
+# T-6.9, gemessen am 14.08.: der anthropic-token ist gesperrt -- FREMDE
+# Schluessel waren es nicht. `/proc/<pid>/environ` des laufenden Dienstes
+# enthielt `ELEVENLABS_API_KEY` (51 Zeichen) und `MISTRAL_API_KEY` (32),
+# geerbt aus der Umgebung des systemd-Benutzermanagers. Design 7.2c sagt
+# "mind hat weder Token noch AF_INET"; die Netzsperre haelt, der Satz zum
+# Token galt nur fuer einen einzigen.
+#
+# Ausnutzbar waere das nicht direkt -- AF_UNIX laesst den Prozess nicht ins
+# Netz --, aber der Egress traegt Prompt-Koerper, ohne sie zu deuten. Ein
+# kompromittierter Mind koennte einen fremden Schluessel als TEXT hinausgeben.
+#
+# DIESE ZEILE IST EINE DENYLIST UND DAMIT DIE SCHWAECHERE HAELFTE. Sie faengt
+# die gemessenen Namen und die ueblichen Verdaechtigen; ein Schluessel, der
+# morgen anders heisst, steht wieder drin. Der strukturelle Weg ist, solche
+# Werte gar nicht erst in die Umgebung des Benutzermanagers zu geben
+# (`systemctl --user unset-environment`, bzw. sie nicht in der Shell-Rc zu
+# exportieren) -- das ist Sitzungskonfiguration und gehoert nicht ins Repo.
+UnsetEnvironment=ANTHROPIC_API_KEY ELEVENLABS_API_KEY MISTRAL_API_KEY
+UnsetEnvironment=OPENAI_API_KEY GEMINI_API_KEY GOOGLE_API_KEY HF_TOKEN
+UnsetEnvironment=GITHUB_TOKEN GH_TOKEN AWS_SECRET_ACCESS_KEY
+
+# --- Haertung nach Design 7.5 --------------------------------------------
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=read-only
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+# Ein Dump enthielte den Persona-Prompt und die Frage des Nutzers.
+LimitCORE=0
+UMask=0077
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+MemoryDenyWriteExecute=yes
+PrivateDevices=yes
+TimeoutStopSec=10
+
+# NACHGETRAGEN AM 16.08. Hier stand unter "ABSICHTLICH FEHLT" der Satz „Kein
+# `[Install]`: gestartet wird ueber den Socket" -- und er widersprach dem Kopf
+# dieser Datei, der Socket-Aktivierung ausdruecklich ABLEHNT. Es gibt keine
+# `daimon-mind.socket`, keine andere Unit zieht diese hier, und `PartOf=`
+# propagiert nur Stopp und Neustart, niemals einen Start.
+#
+# Folge, live gemessen: `daimon-mind` lief nicht. Zwei Messungen des
+# Abschlussreviews (T-6.9) standen deshalb auf `unbelegt` statt auf `closed`,
+# und ein Pruefstand uebersprang sich selbst -- nicht weil eine Zusage
+# gebrochen war, sondern weil der Dienst gar nicht da war.
+#
+# Alle anderen Units ohne `[Install]` haben eine `.socket` oder einen
+# `.timer`, der sie zieht. Diese war die einzige ohne beides.
+[Install]
+WantedBy=graphical-session.target
+
+# --- Was hier ABSICHTLICH FEHLT ------------------------------------------
+# Kein `Environment=ANTHROPIC_API_KEY=` -- das ist keine Auslassung, sondern der
+#   Kern des Tasks. Wer diese Zeile hinzufuegt, macht T-3.11 rueckgaengig.

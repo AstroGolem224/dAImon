@@ -1,0 +1,42 @@
+# dAImon Fokus-Empfaenger (T-0.14): DBus-Ziel fuer das KWin-Script.
+#
+# Der Watcher selbst laeuft als JavaScript im KWin-Prozess. Dieser getrennte
+# Type=dbus-Dienst haelt den Busnamen, damit fire-and-forget callDBus-Aufrufe
+# nicht im Leeren landen.
+#
+# Installation: systemctl --user link <dieser Pfad>; systemctl --user start daimon-focus
+
+[Unit]
+Description=dAImon Fokus-Empfaenger fuer KWin
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=de.daimon.Focus
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+
+# WICHTIG: System-Python, nicht das Projekt-venv. dbus-python, PyGObject
+# und GLib sind kompilierte Sitzungsbibliotheken aus der Distribution.
+ExecStart=/usr/bin/python3 -c \
+    'from daimon.hub.focus import FocusReceiver; FocusReceiver().serve()'
+Restart=on-failure
+RestartSec=2
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=read-only
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+LimitCORE=0
+UMask=0077
+# DBus ist ein Unix-Socket; Netzwerkprotokollfamilien sind unnoetig.
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+
+[Install]
+WantedBy=graphical-session.target

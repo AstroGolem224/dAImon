@@ -1,0 +1,54 @@
+[Unit]
+# T-4.10 — der Exec-Broker. Startet freigegebene Anwendungen, und zwar
+# AUSSERHALB der eigenen Sandbox.
+Description=dAImon Exec-Broker (Anwendungsstart über desktop_id)
+PartOf=graphical-session.target
+After=daimon-hub.service
+Requires=daimon-hub.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
+    -m daimon.brokers.exec.daemon \
+    --socket %t/daimon/exec-broker.sock \
+    --katalog /home/itiger013/Dokumente/Github/dAImon/config/actions/core.yaml
+Restart=on-failure
+RestartSec=2
+
+NoNewPrivileges=yes
+PrivateDevices=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=strict
+# Lesend, weil die .desktop-Dateien unter ~/.local/share/applications liegen
+# können. Geschrieben wird dort nie -- und genau deshalb hängt die Freigabe
+# am sha256 der Datei und nicht an ihrem Ort: dieses Verzeichnis ist für
+# jeden Prozess derselben uid schreibbar, auch für den Broker selbst wäre es
+# das ohne diese Zeile.
+ProtectHome=read-only
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+LimitCORE=0
+UMask=0077
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+
+# KEIN Delegate= und keine eigene Slice für gestartete Anwendungen: sie
+# entstehen über `systemd-run --user --collect` in einer eigenen transienten
+# Unit und liegen damit in einer anderen cgroup. Würden sie hier drin
+# entstehen, erbten sie diese Sandbox -- und wer sie lockert, damit die
+# Anwendung läuft, lockert sie für den Broker.
+
+[Install]
+WantedBy=graphical-session.target

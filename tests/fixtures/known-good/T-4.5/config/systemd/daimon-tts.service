@@ -1,0 +1,93 @@
+# dAImon TTS (T-3.9): die Stimme. sherpa-onnx VITS auf der CPU, 0 VRAM.
+#
+# Socket-aktiviert, aber OHNE Leerlauf-Exit -- der Unterschied zum GPU-Worker,
+# und er ist begruendet: dort war die belastbare Groesse die VRAM-Rueckgabe nach
+# dem Prozessende. Hier gibt es kein VRAM zurueckzugeben, und das Modell im
+# Speicher IST das Latenzkriterium (Laden kostet 420 ms, das Kriterium ist
+# p95 < 200 ms). Ein Dienst, der sich beendet, zahlt diese 420 ms bei jeder
+# Aeusserung nach einer Pause.
+#
+# Haertung nach Design 7.5. Jede Direktive ist begruendet, damit eine spaetere
+# "Vereinfachung" sichtbar macht, welche Schicht sie abtraegt -- und damit die
+# Direktiven sichtbar sind, die hier ABSICHTLICH FEHLEN (unten).
+#
+# Installation: systemctl --user link <dieser Pfad>
+#               systemctl --user enable --now daimon-tts.socket
+
+[Unit]
+Description=dAImon TTS (Stimme, sherpa-onnx VITS)
+# Ohne den Socket gibt es keinen Deskriptor zum Erben. Requires statt Wants:
+# ein Dienst ohne Socket waere gestartet und unerreichbar.
+Requires=daimon-tts.socket
+After=daimon-tts.socket daimon-hub.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+
+# Projekt-venv: sherpa-onnx liegt dort, und System-Python ist 3.14 ohne das
+# Paket. Dieselbe Zwei-Interpreter-Trennung wie beim Auth-Agenten, nur
+# umgekehrt.
+ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
+    -m daimon.face.tts --hub-socket %t/daimon/tts.sock
+
+# Restart=on-failure, NICHT no: anders als beim GPU-Worker ist ein Ende hier
+# immer ein Fehler -- dieser Dienst hat keinen geordneten Ausgang. Ohne Restart
+# waere das Pet nach einem Absturz dauerhaft stumm, und stumm sieht aus wie
+# "hat nichts zu sagen".
+Restart=on-failure
+RestartSec=2
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+# Read-only genuegt: die Stimmgewichte werden GELESEN. Geschrieben wird nur die
+# Abkuehlung, und die gehoert dem Hub.
+ProtectHome=read-only
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+# Dieser Dienst bekommt Antworten zu sehen, die aus Bildschirmmaterial stammen
+# koennen. Fremde Prozesse gehen ihn nichts an.
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+# Keine Core-Dumps: ein Dump enthielte den Sprechtext und die Samples.
+LimitCORE=0
+UMask=0077
+# Der Dienst spricht mit dem Hub und mit PipeWire, beides ueber Unix-Sockets.
+# Er laedt NICHTS herunter -- eine Stimme, die beim ersten Wort aus dem Netz
+# kommt, waere ein TTFA, den niemand messen kann.
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+# @resources ist NICHT gefiltert, und das ist gemessen, nicht abgewaehlt: mit
+# `~@resources` stirbt der Dienst mit `status=31/SYS`, und zwar BEIDE Prozesse
+# (pw-cat und der Python-Prozess, SIGSYS in coredumpctl). Ein PipeWire-Client
+# setzt Echtzeitprioritaet und ruft mlock -- beides liegt in @resources. Der
+# GPU-Worker filtert es aus demselben Grund nicht, dort wegen CUDA.
+SystemCallFilter=~@privileged @obsolete @mount @swap @reboot @module
+# W+X wird nicht gebraucht: onnxruntime auf der CPU ohne JIT-Provider. Anders
+# als beim GPU-Worker, wo der CUDA-JIT es verlangt -- deshalb steht es hier und
+# fehlt dort.
+MemoryDenyWriteExecute=yes
+# Kein Geraeteknoten: PipeWire wird ueber seinen Socket erreicht, nicht ueber
+# /dev/snd. Damit ist dieser Dienst strenger gehaertet als der GPU-Worker.
+PrivateDevices=yes
+TimeoutStopSec=10
+
+# --- Was hier ABSICHTLICH FEHLT ------------------------------------------
+# `~@resources` ist NICHT im Filter -- siehe die Messung oben. Wer es
+#   hinzufuegt, bekommt einen Dienst, der die Stimme laedt und dann bei der
+#   ersten Aeusserung stirbt: das Laden gelingt, der Wiedergabeprozess nicht.
+# `Nice=` und `CPUWeight=` sind NICHT gesetzt, obwohl der Dienst acht Threads
+#   nimmt. Ein herabgesetzter Sprecher waere bei Last genau dann langsam, wenn
+#   die Antwort gebraucht wird -- und das Latenzkriterium haengt daran. Wer die
+#   Kerne braucht, senkt `tts.threads` in der Konfiguration; das ist der
+#   Kalibrierknopf, nicht die Scheduler-Prioritaet.
+# `IPAddressDeny=any` fehlt, weil `RestrictAddressFamilies=AF_UNIX` die Frage
+#   schon beantwortet: ohne AF_INET gibt es keine Adresse zu verbieten.
+# Kein `[Install]`: gestartet wird ausschliesslich ueber den Socket. Ein
+#   `enable` waere ein Modell, das beim Anmelden 420 ms und 200 MB kostet, ohne
+#   dass jemand etwas gesagt hat.

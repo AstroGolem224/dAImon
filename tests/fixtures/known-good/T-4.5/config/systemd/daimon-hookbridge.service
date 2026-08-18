@@ -1,0 +1,65 @@
+# dAImon Hook-Bridge (T-0.14): eng begrenztes HTTP-zu-Unix-Socket-Gateway.
+#
+# Sie ist absichtlich ein eigener Prozess: nur die Bridge braucht AF_INET.
+# Der Hub behaelt dadurch seine harte AF_UNIX-Grenze.
+#
+# Installation: systemctl --user link <dieser Pfad>; systemctl --user start daimon-hookbridge
+
+[Unit]
+Description=dAImon Hook-Bridge (Loopback-HTTP zu Hub-Unix-Socket)
+After=graphical-session.target daimon-hub.service
+Wants=daimon-hub.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+
+# WICHTIG: Projekt-venv, nicht System-Python. Bridge und Hub teilen das
+# festgeschriebene Python-Protokoll und dieselbe Projektumgebung.
+ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
+    -m daimon.hookbridge.daemon \
+    --runtime-dir %t/daimon \
+    --host 127.0.0.1 \
+    --port 8787 \
+    --audit-log %h/.local/state/daimon/audit/hookbridge.log
+Restart=on-failure
+RestartSec=2
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=read-only
+# Token und Hub-Socket liegen im Runtime-Verzeichnis; abgewiesene Hook-
+# Aufrufe werden zusaetzlich zum Journal im Audit-Verzeichnis protokolliert.
+# %t/daimon muss EXISTIEREN, bevor systemd den Namespace baut -- sonst
+# stirbt die Unit mit 226/NAMESPACE, und zwar nach JEDEM Neustart, weil
+# /run/user/<uid> leer hochkommt. Real passiert am 02.08.: alle vier Units
+# im Restart-Karussell, Zaehler bei 97, und niemand hat es gemerkt, weil
+# ein totes Pet genauso aussieht wie ein ruhiges.
+# Preserve=yes, weil sonst das Stoppen EINER Unit das Verzeichnis loescht
+# und den anderen drei die Sockets unter den Fuessen wegzieht.
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon %h/.local/state/daimon/audit
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+LimitCORE=0
+# Insbesondere hook-token und Auditdatei muessen als 0600 entstehen.
+UMask=0077
+# AF_INET ist die dokumentierte Abweichung fuer den Loopback-Listener.
+# AF_UNIX bleibt fuer die Weiterleitung zum Hub notwendig.
+RestrictAddressFamilies=AF_UNIX AF_INET
+# Selbst innerhalb AF_INET darf die Bridge nur Loopback-Verkehr sehen.
+IPAddressDeny=any
+IPAddressAllow=localhost
+# Gebunden werden darf nur der festgelegte IPv4/TCP-Port.
+SocketBindDeny=any
+SocketBindAllow=ipv4:tcp:8787
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+
+[Install]
+WantedBy=graphical-session.target

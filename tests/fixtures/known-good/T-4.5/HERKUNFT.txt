@@ -1,0 +1,73 @@
+GUT-MUSTER fuer tests/verify/T-4.5.sh
+
+Kopie des Arbeitsbaums auf Commit 3c1b843 (Branch reviewer/p4-T-4.5v):
+
+  daimon/**                       (ohne __pycache__ -- VOLLSTAENDIG, nicht als
+                                  Importhuelle: der Pruefstand durchsucht den
+                                  ganzen Produktivbaum nach Stellen, die ein
+                                  `Auftragsbuch` bauen, und nach
+                                  Authentifizierungs-Primitiven im
+                                  Auftragsweg. Eine getrimmte Kopie koennte
+                                  einen Fund verstecken, und der Leser meldete
+                                  dann Ruhe, wo keine ist.)
+  config/**                       (die Broker-Units unter config/systemd/ sind
+                                  der Beleg, dass die vier Zielgruppen aus
+                                  Design 6.4 einen Zulauf HABEN -- sie laufen
+                                  heute nur nicht.)
+  pyproject.toml
+
+`.venv` gibt es hier nicht: der Wrapper faellt auf `python3` zurueck. Der
+Pruefstand braucht ausser der Standardbibliothek nichts.
+
+ZWEI ABWEICHUNGEN vom Arbeitsbaum, und sie sind derselbe Befund an seinen
+zwei Enden. Beide betreffen AKZEPTANZPUNKT 6 von T-4.5:
+
+  "Herkunft ueber den Socket (Peer-Pruefung nach Design 1.3), nicht ueber
+   Kryptografie"
+
+1. daimon/brokers/dienst.py::lauf nimmt im Arbeitsbaum jede Verbindung an:
+
+       conn, _ = srv.accept()
+       with conn:
+           ...
+
+   Im Gut-Muster steht davor eine Peer-Pruefung gegen
+   HUB_UNITS = ("daimon-hub.service",). Sie liegt im DIENSTMANTEL und nicht
+   viermal in den Brokern -- vier Kopien waeren vier Stellen, an denen sie
+   einzeln vergessen werden kann.
+
+2. daimon/hub/daemon.py startet `aktion.sock` im Arbeitsbaum ohne
+   `erlaubte_units`; `kontext.sock` hat eine (T-5.9b). Im Gut-Muster bekommt
+   der Aktionsendpunkt AKTION_UNITS -- Mind und die vier Broker aus
+   BROKER_SOCKETS, deren Units unter config/systemd/ liegen. Ueber DIESEN
+   Socket laufen beide Richtungen des Auftragswegs: die Aktionsbitte hinein
+   und die Ticketeinloesung des Brokers unmittelbar vor der Ausfuehrung.
+
+WARUM DAS EIN BEFUND IST UND KEIN NEBENSATZ
+
+Design 1.3 und 6.2 haben den HMAC gestrichen, und die Begruendung endet mit
+einem Verweis: der ehrliche Fall laeuft "bereits ueber einen direkten
+Socket". Die Signatur ist also nicht ersatzlos entfallen -- sie ist durch die
+Leitung ERSETZT worden. Faellt die Pruefung der Leitung auch weg, bleibt fuer
+die Herkunft eines Auftrags nichts uebrig ausser dem Dateimodus 0600.
+
+Das schliesst weiterhin keinen same-uid-Angreifer aus; das soll es nach 1.3
+auch gar nicht. Was es ausschliessen SOLL, steht dort woertlich:
+"Verwechslung, Fehlkonfiguration und einen kompromittierten *eigenen*
+Prozess, der sich als anderer ausgeben will." Genau das faengt heute niemand.
+
+Das Gut-Muster ist damit die Fassung, die die Akzeptanzliste ERFUELLT -- und
+zugleich die Positivkontrolle des Verifizierers: er wird gegen sie gruen und
+bleibt gegen den Arbeitsbaum rot (K6). Waere er gegen beide gruen, koennte er
+das Kriterium nicht sehen.
+
+Die Messung schreibt NICHT vor, wie repariert wird. Sie prueft zwei Dinge:
+dass `ipc.peer_of` auf dem Weg zum Broker-Rumpf ueberhaupt gerufen wird, und
+dass eine abgelehnte Gegenstelle den Rumpf nicht erreicht. Wer die Pruefung
+anders aufhaengt -- eine Allowlist je Broker, ein `ipc.accept` statt
+`srv.accept`, ein Socket mit anderem Besitzer -- wird ebenso gruen.
+
+Jeder Mutantenbaum unter tests/mutants/T-4.5/ entsteht als bytegleiche Kopie
+dieses Musters (tests/mutants/T-4.5/erzeugen.sh, die Baeume sind NICHT
+eingecheckt) und bricht danach genau die in seiner mutation.txt benannte
+Grenze.
