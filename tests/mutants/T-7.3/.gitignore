@@ -1,0 +1,5 @@
+# Mutanten werden ERZEUGT, nicht eingecheckt. tests/verify/meta.sh ruft
+# erzeugen.sh selbst auf. Zwei Fassungen derselben Regel waeren eine Regel
+# und eine Attrappe -- bei T-4.6 lagen vier fertige Baeume neben einem
+# Erzeuger, der von niemandem gerufen wurde.
+*/

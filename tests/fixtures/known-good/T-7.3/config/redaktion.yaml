@@ -1,0 +1,61 @@
+# T-7.2 -- was gar nicht erst mitgeschnitten wird.
+#
+# Die Eintraege sind `.desktop`-KENNUNGEN, nicht Fenstertitel und nicht
+# Programmnamen. Nachschlagen laesst sich die Kennung so:
+#
+#     ls /usr/share/applications ~/.local/share/applications
+#     grep -l StartupWMClass /usr/share/applications/*.desktop
+#
+# Der Recorder loest KWins `resource_class` gegen diese Kennungen auf. Wer
+# eine Anwendung eintraegt, die keine `.desktop`-Datei hat, traegt ihre
+# Fensterklasse ein -- der Rueckfall greift.
+#
+# Gross- und Kleinschreibung ist egal. Ein unbekanntes Fenster (keine Klasse
+# gemeldet) wird GESPERRT, nicht durchgelassen; das steht im Code und nicht
+# hier, weil es keine Einstellung ist.
+
+denylist:
+  # Passwortmanager. Der Grund braucht keine Erklaerung, aber einen Namen:
+  # ein Mitschnitt eines entsperrten Tresors ist der Tresor.
+  - org.keepassxc.KeePassXC
+  - keepassxc
+  - org.gnome.World.Secrets
+  - bitwarden
+  - com.bitwarden.desktop
+  - 1password
+  - KeePass2
+
+  # Banking und Bezahlen.
+  - org.kde.kmymoney
+  - gnucash
+  - hibiscus
+  - moneyplex
+
+  # Was sonst noch Geheimnisse im Klartext zeigt.
+  - org.gnome.Seahorse           # Schluesselbund
+  - seahorse
+  - org.kde.kwalletmanager5
+  - kwalletmanager5
+
+# Eigene Ergaenzungen gehoeren hierunter oder in eine Kopie dieser Datei
+# unter $XDG_CONFIG_HOME/daimon/redaktion.yaml -- die hat Vorrang.
+
+# T-7.3 -- bei welchen Anwendungen der Mitschnitt automatisch pausiert.
+# Fensterklassen und .desktop-Kennungen, wie oben. Diese Liste ERSETZT die
+# eingebaute Vorgabe; wer nur ergaenzen will, schreibt sie mit ab.
+konferenz:
+  - zoom
+  - us.zoom.Zoom
+  - teams
+  - com.microsoft.Teams
+  - teams-for-linux
+  - skype
+  - com.skype.Client
+  - discord
+  - com.discordapp.Discord
+  - jitsi
+  - org.jitsi.jitsi-meet
+  - webex
+  - Cisco Webex Meetings
+  - signal
+  - org.signal.Signal

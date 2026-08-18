@@ -795,15 +795,25 @@ def k5_liste(B: Bilanz, pruefling: Path, arbeit: Path) -> None:
     yaml_text = yaml_pfad.read_text(encoding="utf-8", errors="replace") \
         if yaml_pfad.is_file() else ""
     im_yaml = bool(re.search(r"^\s*konferenz\s*:", yaml_text, re.M))
-    B.urteil("K5", aus_konfig or im_yaml,
-             "der Betrieb liest die Liste aus der Konfiguration"
-             if aus_konfig or im_yaml else
-             "im BETRIEB ist die Liste nicht konfigurierbar: "
-             f"{PAKET}/recorder/daemon.py:main() uebergibt kein "
-             "`konferenz=`, und config/redaktion.yaml hat keinen "
-             "`konferenz:`-Schluessel -- obwohl pause.py genau darauf "
-             "verweist. Konfigurierbar ist die Liste nur fuer einen "
-             "Aufrufer, den es nicht gibt")
+    # ZWEI Urteile, und der LESER ist das tragende. Ein Schluessel in der
+    # Datei, den niemand liest, ist die Bauform, an der dieses Repo sechsmal
+    # gescheitert ist -- er sieht aus wie eine Einstellung und ist keine.
+    B.urteil("K5", aus_konfig,
+             "der Betriebspfad (main()) uebergibt eine Liste aus der "
+             "Konfiguration"
+             if aus_konfig else
+             f"im BETRIEB ist die Liste nicht konfigurierbar: "
+             f"{PAKET}/recorder/daemon.py:main() nennt `konferenz` nirgends "
+             "und baut den Recorder mit der eingebauten Vorgabe. Das "
+             "Schluesselwort im Konstruktor bedient nur einen Aufrufer, den "
+             "es im Betrieb nicht gibt")
+    B.urteil("K5", im_yaml,
+             "config/redaktion.yaml fuehrt den `konferenz:`-Schluessel"
+             if im_yaml else
+             "config/redaktion.yaml hat keinen `konferenz:`-Schluessel -- "
+             f"obwohl {PAKET}/recorder/pause.py ausdruecklich dorthin "
+             "verweist ('ergaenzt wird in config/redaktion.yaml unter "
+             "`konferenz`'). Der Verweis zeigt auf nichts")
 
 
 # ---------------------------------------------------------------------------
