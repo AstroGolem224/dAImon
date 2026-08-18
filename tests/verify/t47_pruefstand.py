@@ -788,14 +788,20 @@ def k4_loadscript(b: Bericht, broker_modul, daemon_modul, pruefling: Path,
                        "weil ihn niemand sieht")
         return
 
-    skriptpfad = arbeit / "gibt-es-nicht" / "daimon-t47.js"
-    beobachtet = [Path.home() / ".local" / "share" / "kwin" / "scripts", arbeit]
+    # Beobachtet wird ein LEERES Verzeichnis und der Ort, an dem KDE geladene
+    # Skripte ablegt. Nicht das ganze Arbeitsverzeichnis: dort waechst das
+    # Proxy-Protokoll, und dann maesse der Differ sich selbst.
+    beobachtung = arbeit / "beobachtet"
+    beobachtung.mkdir(exist_ok=True)
+    skriptpfad = beobachtung / "gibt-es-nicht" / "daimon-t47.js"
+    beobachtet = [Path.home() / ".local" / "share" / "kwin" / "scripts",
+                  beobachtung]
     vorher_abzug = dateibaum(beobachtet)
 
     # Positivkontrolle des Differs, VOR der Messung: eine selbst angelegte
     # Datei muss er sehen. Sonst waere "keine Datei entstanden" auch dann
     # gruen, wenn er blind ist.
-    spur = arbeit / "differ-probe.txt"
+    spur = beobachtung / "differ-probe.txt"
     spur.write_text("probe", encoding="utf-8")
     b.pruefe("K4", dateibaum(beobachtet) != vorher_abzug,
              "Positivkontrolle des Datei-Differs: eine angelegte Datei faellt auf")
