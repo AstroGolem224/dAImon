@@ -382,22 +382,30 @@ def zaehle(stroeme: list[str] | None, name: str) -> int | None:
 # K1 -- eigene kglobalaccel-Komponente
 # ---------------------------------------------------------------------------
 
-def modul_laden(pruefling: Path, name: str):
-    """Frisch aus dem PRUEFLING laden, nicht aus einem alten sys.modules."""
+def modul_satz(pruefling: Path, *namen: str):
+    """Einen SATZ Module frisch aus dem Pruefling laden.
+
+    Frisch heisst: `sys.modules` wird von allem aus diesem Paket geleert und
+    danach werden ALLE genannten Module importiert -- in einem Zug. Modul fuer
+    Modul zu laden waere der Fehler, der diesem Pruefstand am 18.08. um 10:16
+    zwei echte Dienste gestartet hat: der zweite Aufruf raeumte die
+    Einspeisungen des ersten weg, und der lokale Import im Prueflings-Code
+    griff wieder auf das echte Modul zu.
+    """
     for m in [k for k in sys.modules if k == PAKET or k.startswith(PAKET + ".")]:
         del sys.modules[m]
     import importlib
-    return importlib.import_module(name)
+    module = tuple(importlib.import_module(n) for n in namen)
+    return module[0] if len(namen) == 1 else module
 
 
 def k1_eigene_komponente(B: Bilanz, pruefling: Path) -> None:
     bus = FakeBus(verdraengt=True)
     gi_attrappe_setzen(bus)
     try:
-        agent = modul_laden(pruefling, f"{PAKET}.auth.agent")
+        agent = modul_satz(pruefling, f"{PAKET}.auth.agent")
     except Exception as exc:                                    # noqa: BLE001
         B.schlecht("K1", f"{PAKET}.auth.agent nicht ladbar: {exc!r}")
-        B.schlecht("K2", "ohne den Agenten keine Verteilung messbar")
         return
 
     if not hasattr(agent, "KG_AKTION_MITSCHNITT"):
@@ -419,8 +427,8 @@ def k1_eigene_komponente(B: Bilanz, pruefling: Path) -> None:
     agent.AuthAgent._kglobalaccel_registrieren(self, "Meta+Space")
     fehler = [z for z in self.log.zeilen if z[0] in ("warn", "error")]
     komponenten = {nam: akt[0] for nam, akt in aktionen.items()}
-    ueberlebt = {nam: aktionen[nam][2] in bus.komponenten.get(akt[0], {})
-                 for nam, akt in komponenten.items()}
+    ueberlebt = {nam: aktionen[nam][2] in bus.komponenten.get(komp, {})
+                 for nam, komp in komponenten.items()}
 
     B.notiz(f"Komponenten: {komponenten}")
     B.notiz(f"Bus danach:  { {k: sorted(v) for k, v in bus.komponenten.items()} }")
@@ -468,7 +476,7 @@ def k1_eigene_komponente(B: Bilanz, pruefling: Path) -> None:
     # und "alle drei ueberlebt" waere ein Zufall.
     bus2 = FakeBus(verdraengt=True)
     gi_attrappe_setzen(bus2)
-    agent2 = modul_laden(pruefling, f"{PAKET}.auth.agent")
+    agent2 = modul_satz(pruefling, f"{PAKET}.auth.agent")
     gemeinsam = list(agent2.KG_AKTION)
     agent2.KG_AKTION_OHREN_AUS = [gemeinsam[0], gemeinsam[1],
                                   "ohren_aus", "Ohren"]
@@ -495,9 +503,12 @@ def k2_umschalter(B: Bilanz, pruefling: Path, arbeit: Path) -> None:
     bus = FakeBus()
     gi_attrappe_setzen(bus)
     try:
-        agent = modul_laden(pruefling, f"{PAKET}.auth.agent")
-        pause = modul_laden(pruefling, f"{PAKET}.recorder.pause")
-        konfig = modul_laden(pruefling, f"{PAKET}.common.config")
+        # IN EINEM ZUG. Drei Einzelaufrufe haben sich am 18.08. gegenseitig
+        # die Einspeisungen weggeraeumt -- und der Schalter lief danach gegen
+        # die echten Units.
+        agent, pause, konfig = modul_satz(
+            pruefling, f"{PAKET}.auth.agent", f"{PAKET}.recorder.pause",
+            f"{PAKET}.common.config")
     except Exception as exc:                                    # noqa: BLE001
         B.schlecht("K2", f"Module nicht ladbar: {exc!r}")
         return
@@ -534,6 +545,16 @@ def k2_umschalter(B: Bilanz, pruefling: Path, arbeit: Path) -> None:
                                         {"v": 1, "ok": True})[1]
     konfig.runtime_dir = lambda *a, **k: rt
 
+    # Die Einspeisung wird GEWOGEN, bevor sie benutzt wird. `_mitschnitt_
+    # umschalten` importiert lokal aus `sys.modules`; sitzt dort ein anderes
+    # Modulobjekt, liefe der Schalter gegen die echten Units des Nutzers.
+    im_speicher = sys.modules.get(f"{PAKET}.recorder.pause")
+    if im_speicher is not pause or im_speicher.stoppe is not pause.stoppe:
+        B.schlecht("K2", "die Einspeisung sitzt nicht in sys.modules -- der "
+                         "Umschalter wuerde gegen echte Dienste laufen; "
+                         "Messung abgebrochen")
+        return
+
     self2 = AgentAttrappe()
     self2.mitschnitt_umschaltungen = 0
     # Zustand A: der Recorder schlaegt -> der Schalter muss ANHALTEN.
@@ -564,8 +585,8 @@ def k2_umschalter(B: Bilanz, pruefling: Path, arbeit: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def recorder_bauen(pruefling: Path, arbeit: Path, name: str, **kw):
-    daemon = modul_laden(pruefling, f"{PAKET}.recorder.daemon")
-    store = modul_laden(pruefling, f"{PAKET}.recorder.store")
+    daemon, store = modul_satz(pruefling, f"{PAKET}.recorder.daemon",
+                               f"{PAKET}.recorder.store")
     rt = arbeit / name
     rt.mkdir(parents=True, exist_ok=True)
     return daemon, daemon.Recorder(
@@ -609,7 +630,7 @@ def k3_automatik(B: Bilanz, pruefling: Path, arbeit: Path) -> None:
 
     # Der EIGENE Strom darf die Automatik nicht ausloesen -- sonst pausierte
     # der Mitschnitt sich selbst, sobald Push-to-Talk laeuft.
-    pause = modul_laden(pruefling, f"{PAKET}.recorder.pause")
+    pause = modul_satz(pruefling, f"{PAKET}.recorder.pause")
     dump = json.dumps([{"info": {"props": {
         "media.class": "Stream/Input/Audio",
         "node.name": f"{PAKET}-ears", "application.name": f"{PAKET}-ears"}}}])
@@ -635,7 +656,7 @@ def k4_fremder_strom(B: Bilanz, pruefling: Path) -> None:
         B.schlecht("K4", "pw-record/pw-dump fehlen -- eine NICHT gemessene "
                          "Stromzahl ist kein Erfolg")
         return
-    pause = modul_laden(pruefling, f"{PAKET}.recorder.pause")
+    pause = modul_satz(pruefling, f"{PAKET}.recorder.pause")
 
     ruhe = pause.fremde_mikrofonstroeme()
     if ruhe is None:
@@ -694,13 +715,23 @@ def k4_fremder_strom(B: Bilanz, pruefling: Path) -> None:
     # Und wieder herunter: verschwindet der Strom, faellt die Zahl zurueck.
     # Ohne diese dritte Messung waere "gezaehlt" nicht von "zaehlt immer"
     # zu unterscheiden.
+    # Die dritte Messung: verschwindet die Sonde, faellt die Zahl zurueck.
+    # Verglichen wird gegen die EIGENE Marke und nicht gegen die Grundlinie
+    # der Maschine -- die darf sich waehrend des Laufs bewegen (ein Browser,
+    # der zu telefonieren anfaengt, ist kein Befund ueber den Pruefling).
     time.sleep(1.0)
+    stroeme = pw_dump_stroeme()
+    eigene_weg = zaehle(stroeme, SONDE_FREMD)
     danach = pause.fremde_mikrofonstroeme()
-    B.urteil("K4", danach == ruhe,
-             f"nach dem Ende der Sonden ist die Zahl wieder bei {danach}"
-             if danach == ruhe else
-             f"die Zahl blieb bei {danach} statt {ruhe} -- gemessen wird "
-             "offenbar nicht der Strom")
+    B.notiz(f"nach dem Ende der Sonden: Marke {SONDE_FREMD} {eigene_weg}x, "
+            f"fremde Stroeme insgesamt {danach} (Grundlinie war {ruhe})")
+    B.urteil("K4", eigene_weg == 0 and danach is not None
+             and danach < mit_fremd,
+             "mit der Sonde verschwindet auch die Zahl -- gemessen wird der "
+             "Strom und nicht eine Konstante"
+             if eigene_weg == 0 and danach is not None and danach < mit_fremd
+             else f"die Sonde ist {eigene_weg}x noch da bzw. die Zahl blieb "
+                  f"bei {danach} (war {mit_fremd})")
 
 
 # ---------------------------------------------------------------------------
@@ -708,7 +739,7 @@ def k4_fremder_strom(B: Bilanz, pruefling: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def k5_liste(B: Bilanz, pruefling: Path, arbeit: Path) -> None:
-    pause = modul_laden(pruefling, f"{PAKET}.recorder.pause")
+    pause = modul_satz(pruefling, f"{PAKET}.recorder.pause")
     vorgabe = tuple(getattr(pause, "KONFERENZ_VORGABE", ()))
     B.urteil("K5", len(vorgabe) >= 5,
              f"die Vorgabeliste ist gefuellt ({len(vorgabe)} Eintraege)"
@@ -750,7 +781,16 @@ def k5_liste(B: Bilanz, pruefling: Path, arbeit: Path) -> None:
     # "konfigurierbar" einloest, muss diesen Weg auch bedienen.
     daemon_text = (pruefling / PAKET / "recorder" / "daemon.py").read_text(
         encoding="utf-8", errors="replace")
-    aus_konfig = bool(re.search(r"konferenz\s*=\s*(?!pause\.)", daemon_text))
+    # NUR der Betriebspfad zaehlt: `main()`. Dass `__init__` ein
+    # Schluesselwort annimmt, hat der Absatz darueber schon gemessen -- die
+    # Frage hier ist, ob im BETRIEB jemand etwas anderes uebergibt als die
+    # Vorgabe. Der erste Entwurf sah `self.konferenz = tuple(konferenz)` und
+    # meldete gruen; das war ein Fehlbefund an genau der Stelle, an der
+    # dieses Repo sie sammelt.
+    m = re.search(r"^def main\(", daemon_text, re.M)
+    betrieb = daemon_text[m.start():] if m else ""
+    aus_konfig = bool(re.search(r"konferenz\s*=", betrieb)
+                      or re.search(r"konferenz", betrieb))
     yaml_pfad = pruefling / "config" / "redaktion.yaml"
     yaml_text = yaml_pfad.read_text(encoding="utf-8", errors="replace") \
         if yaml_pfad.is_file() else ""
@@ -770,17 +810,25 @@ def k5_liste(B: Bilanz, pruefling: Path, arbeit: Path) -> None:
 # K6 -- die Pause SCHLIESST den Strom
 # ---------------------------------------------------------------------------
 
-def vorschalter_bauen(arbeit: Path, protokoll: Path) -> Path:
+def vorschalter_bauen(arbeit: Path, protokoll: Path, name: str = "vorschalter",
+                      abbilden: bool = True) -> Path:
     """Ein `systemctl`, das NUR auf die Units dieses Laufs zeigt.
 
     Jede daimon-Unit, die nicht in der Abbildung steht, wird laut
     zurueckgewiesen. Damit kann dieser Lauf keinen echten Dienst des Nutzers
     stoppen -- und das Protokoll belegt es Zeile fuer Zeile.
+
+    Mit `abbilden=False` entsteht die SPERRE: dann wird JEDE daimon-Unit
+    zurueckgewiesen. Die haengt waehrend des ganzen Laufs im PATH und ist die
+    zweite Reihe hinter den Einspeisungen -- am 18.08. um 10:16 hat genau
+    diese zweite Reihe gefehlt, und ein Fehler im Pruefstand hat zwei echte
+    Wahrnehmungsdienste gestartet.
     """
-    verz = arbeit / "vorschalter"
+    verz = arbeit / name
     verz.mkdir(parents=True, exist_ok=True)
     abbildung = "\n".join(
-        f'    {echt}) a="{unser}" ;;' for echt, unser in UNIT_JE_ZIEL.items())
+        f'    {echt}) a="{unser}" ;;' for echt, unser in UNIT_JE_ZIEL.items()
+    ) if abbilden else ""
     text = f"""#!/usr/bin/env bash
 # Erzeugt vom T-7.3-Pruefstand. Bildet die daimon-Units auf die transienten
 # Units dieses Laufs ab und weist jede andere daimon-Unit zurueck.
@@ -799,6 +847,31 @@ exec /usr/bin/systemctl "${{args[@]}}"
     p.write_text(text, encoding="utf-8")
     p.chmod(0o755)
     return verz
+
+
+def sperre_pruefen(B: Bilanz, protokoll: Path) -> None:
+    """Hat waehrend des Laufs irgendein Pfad eine ECHTE Unit angefasst?
+
+    Die Sperre haette es verhindert -- aber ein Versuch ist ein Befund ueber
+    den PRUEFSTAND und gehoert ins Protokoll, nicht ins Schweigen.
+    """
+    if not protokoll.is_file():
+        return
+    alle = [z for z in protokoll.read_text(encoding="utf-8").splitlines()
+            if z.strip()]
+    # Der Vorschalter protokolliert JEDEN Aufruf, auch die eigenen
+    # Aufraeumzeilen. Verweigert hat er nur die daimon-Units -- und nur die
+    # sind ein Befund.
+    zeilen = [z for z in alle if f"{PAKET}-" in z]
+    print(f"\nSPERRE: {len(alle)} Aufruf(e) durchgereicht.", flush=True)
+    if zeilen:
+        print(f"SPERRE: {len(zeilen)} Aufruf(e) an ECHTE Units wurden "
+              "zurueckgewiesen -- ein Befund ueber den Pruefstand:",
+              flush=True)
+        for z in zeilen:
+            print(f"     !!! {z}", flush=True)
+    else:
+        print("SPERRE: kein Aufruf an eine echte Unit.", flush=True)
 
 
 def transiente_unit_starten(unit: str, sonde: str) -> bool:
@@ -828,7 +901,7 @@ def k6_schliesst_nicht_stumm(B: Bilanz, pruefling: Path,
             B.schlecht("K6", f"{werkzeug} fehlt -- die Zusage ist nicht "
                              "messbar, und das ist kein Erfolg")
             return None
-    pause = modul_laden(pruefling, f"{PAKET}.recorder.pause")
+    pause = modul_satz(pruefling, f"{PAKET}.recorder.pause")
 
     protokoll = arbeit / "vorschalter.log"
     protokoll.write_text("", encoding="utf-8")
@@ -886,17 +959,26 @@ def k6_schliesst_nicht_stumm(B: Bilanz, pruefling: Path,
                         wir_vorher, wir_nachher):
             return None
 
-        gestoppt = [u for u in unsere if u in _protokoll_units(protokoll)]
-        geschlossen = [s for u, s in sonde_je_unit.items()
-                       if wir_nachher.get(s) == 0]
-        offen = [s for u, s in sonde_je_unit.items()
-                 if wir_nachher.get(s) != 0]
-        B.urteil("K6", bool(geschlossen) and not offen,
-                 f"alle Stroeme der gestoppten Units sind aus pw-dump "
+        # K6 fragt: was der Schalter ANGEFASST hat -- ist das danach WEG?
+        # Ob er den richtigen Satz Units angefasst hat, ist die Frage von K8.
+        # Beides in ein Urteil zu werfen hiesse, denselben Befund zweimal zu
+        # zaehlen und den Ort des Fehlers zu verwischen.
+        # Das Protokoll haelt den ORIGINALWORTLAUT fest, also die daimon-Namen
+        # -- nicht ihre Abbildung.
+        angefasst = _protokoll_units(protokoll)
+        ziel_sonden = {sonde_je_unit[UNIT_JE_ZIEL[u]]: u
+                       for u in UNIT_JE_ZIEL if u in angefasst}
+        B.notiz(f"vom Schalter angefasst: {sorted(ziel_sonden.values())}")
+        geschlossen = [s for s in ziel_sonden if wir_nachher.get(s) == 0]
+        offen = [s for s in ziel_sonden if wir_nachher.get(s) != 0]
+        B.urteil("K6", bool(ziel_sonden) and not offen,
+                 f"jeder Strom einer angefassten Unit ist aus pw-dump "
                  f"VERSCHWUNDEN ({sorted(geschlossen)})"
-                 if geschlossen and not offen else
+                 if ziel_sonden and not offen else
                  f"nach der Pause laufen noch: {sorted(offen)} -- "
-                 f"geschlossen wurden {sorted(geschlossen)}")
+                 f"geschlossen wurden {sorted(geschlossen)}"
+                 if ziel_sonden else
+                 "der Schalter hat keine der abgebildeten Units angefasst")
 
         B.urteil("K6", wir_nachher.get(SONDE_STILL) == 1,
                  "UNTERSCHEIDUNGSKONTROLLE: der bloss angehaltene Strom steht "
@@ -923,7 +1005,7 @@ def k6_schliesst_nicht_stumm(B: Bilanz, pruefling: Path,
                  f"der Schalter zielte auf nicht abgebildete Units: "
                  f"{verweigert}")
         return {"protokoll": zeilen, "bericht": bericht,
-                "gestoppt": gestoppt}
+                "angefasst": sorted(angefasst)}
     finally:
         os.environ["PATH"] = alter_pfad
         if still is not None:
@@ -953,7 +1035,7 @@ def k7_ehrlicher_bericht(B: Bilanz, pruefling: Path) -> None:
     nimmt `lauf` und `video` ausdruecklich entgegen, damit dieser Fall
     pruefbar ist. Die Naht steht im Ledger unter "Grenzen".
     """
-    pause = modul_laden(pruefling, f"{PAKET}.recorder.pause")
+    pause = modul_satz(pruefling, f"{PAKET}.recorder.pause")
 
     def lauf_mit(rc: int, aktiv: str):
         def f(argv, **kw):
@@ -1007,10 +1089,12 @@ def k8_bild_und_ton(B: Bilanz, ergebnis: dict | None) -> None:
         B.schlecht("K8", "der Pausenlauf aus K6 kam nicht zustande -- "
                          "ohne ihn ist nicht messbar, WAS gestoppt wurde")
         return
-    text = "\n".join(ergebnis["protokoll"])
-    angefasst = {u for u in UNIT_JE_ZIEL
-                 if UNIT_JE_ZIEL[u] in text}
-    B.notiz(f"vom Schalter angefasste Units: {sorted(angefasst)}")
+    # Das Protokoll haelt den ORIGINALWORTLAUT fest -- die Zeile, die der
+    # Pruefling abgesetzt hat, nicht ihre Abbildung. Genau die ist hier die
+    # Aussage: WELCHE Unit wollte der Schalter stoppen?
+    stops = [z for z in ergebnis["protokoll"] if re.search(r"\bstop\b", z)]
+    angefasst = {u for u in UNIT_JE_ZIEL if any(u in z for z in stops)}
+    B.notiz(f"gestoppte Units (Originalwortlaut): {sorted(angefasst)}")
 
     bild = EYES_UNIT in angefasst
     ton = EARS_UNIT in angefasst
@@ -1040,9 +1124,9 @@ def k8_bild_und_ton(B: Bilanz, ergebnis: dict | None) -> None:
 # ---------------------------------------------------------------------------
 
 def k9_sprite(B: Bilanz, pruefling: Path, arbeit: Path) -> None:
-    pause = modul_laden(pruefling, f"{PAKET}.recorder.pause")
     try:
-        state = modul_laden(pruefling, f"{PAKET}.hub.state")
+        pause, state = modul_satz(pruefling, f"{PAKET}.recorder.pause",
+                                  f"{PAKET}.hub.state")
     except Exception as exc:                                    # noqa: BLE001
         B.schlecht("K9", f"{PAKET}.hub.state nicht ladbar: {exc!r}")
         return
@@ -1150,7 +1234,19 @@ def main(argv: list[str]) -> int:
     sys.path.insert(0, str(pruefling))
     B = Bilanz()
     arbeit = Path(tempfile.mkdtemp(prefix=f"{TAG}-"))
+    alter_pfad = os.environ.get("PATH", "")
     try:
+        # DIE SPERRE, ueber den ganzen Lauf. Sie weist jede daimon-Unit
+        # zurueck; nur K6 haengt fuer die Dauer seines Eingriffs den
+        # abbildenden Vorschalter davor. Ohne diese zweite Reihe hat ein
+        # Fehler in der Einspeisung am 18.08. um 10:16 zwei echte
+        # Wahrnehmungsdienste GESTARTET -- sie liefen 30 s und haben zwei
+        # Eintraege ins Archiv des Nutzers geschrieben.
+        sperr_log = arbeit / "sperre.log"
+        sperr_log.write_text("", encoding="utf-8")
+        sperre = vorschalter_bauen(arbeit, sperr_log, name="sperre",
+                                   abbilden=False)
+        os.environ["PATH"] = f"{sperre}:{alter_pfad}"
         for name, fn in (("K1", lambda: k1_eigene_komponente(B, pruefling)),
                          ("K2", lambda: k2_umschalter(B, pruefling, arbeit)),
                          ("K3", lambda: k3_automatik(B, pruefling, arbeit)),
@@ -1176,10 +1272,12 @@ def main(argv: list[str]) -> int:
             k8_bild_und_ton(B, ergebnis)
         except Exception as exc:                                # noqa: BLE001
             B.schlecht("K8", f"Messung abgestuerzt: {exc!r}")
+        sperre_pruefen(B, sperr_log)
         return B.abschluss()
     finally:
-        shutil.rmtree(arbeit, ignore_errors=True)
+        os.environ["PATH"] = alter_pfad
         transiente_units_aufraeumen(UNIT_JE_ZIEL.values())
+        shutil.rmtree(arbeit, ignore_errors=True)
 
 
 if __name__ == "__main__":
