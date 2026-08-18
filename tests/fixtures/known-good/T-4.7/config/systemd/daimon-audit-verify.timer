@@ -1,0 +1,26 @@
+# Taeglich, und zwar wirklich taeglich -- auch wenn die Maschine nachts aus
+# war. Genau dafuer steht `Persistent=true`: eine Pruefung, die einen
+# ausgeschalteten Rechner als "nichts zu tun" liest, faellt an jedem
+# Wochenende aus.
+#
+# `OnBootSec=10min` und nicht sofort: beim Hochfahren startet der Hub selbst
+# und verankert. Eine Pruefung in derselben Sekunde misst einen Zustand, der
+# sich gerade aendert -- und zwei Prozesse, die gleichzeitig `journalctl`
+# nach Ankern fragen, sind zwei Fragen zu viel fuer eine Aussage.
+#
+# `AccuracySec=1h`: das darf schlafen. Eine tageweise Frage braucht keine
+# Sekundengenauigkeit, und ein Wecker, der den Rechner aufweckt, waere fuer
+# diese Frage zu teuer.
+
+[Unit]
+Description=dAImon Audit-Kette taeglich pruefen
+
+[Timer]
+OnBootSec=10min
+OnCalendar=daily
+AccuracySec=1h
+Persistent=true
+Unit=daimon-audit-verify.service
+
+[Install]
+WantedBy=timers.target
