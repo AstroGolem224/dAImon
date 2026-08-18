@@ -90,15 +90,24 @@ KRITERIEN = ("K1", "K2", "K3", "K4", "K5", "K6", "K7", "K8", "K9", "K10")
 # Anhang D kennt T-7.3.v nicht. Die Mutanten sind deshalb hier gesetzt, jeder
 # an genau ein Akzeptanzkriterium gebunden; tests/mutants/T-7.3/erzeugen.sh
 # stellt sie deterministisch aus dem Gut-Muster her.
+#
+# Der Wert ist das ZUGEDACHTE Kriterium, dahinter in Klammern das, was ein
+# Lauf am 18.08. tatsaechlich zusaetzlich rot gemeldet hat. "Erkannt" allein
+# ist kein Nachweis -- ein Mutant, der aus dem falschen Grund auffaellt, hat
+# das zugedachte Kriterium nicht gemessen. Die Mitbefunde sind hier alle
+# erklaert und keiner ist ein Zufall.
 MUTANTEN_GRENZEN = {
-    "hotkey-in-fremder-komponente": "K1",
+    "hotkey-in-fremder-komponente": "K1 (+K2: die verdraengte Aktion "
+                                    "verteilt auch nichts mehr)",
     "kuerzel-nicht-verteilt": "K2",
     "schalter-schaltet-nicht-um": "K2",
-    "konferenz-loest-nicht-aus": "K3",
+    "konferenz-loest-nicht-aus": "K3 (+K5: die eigene Liste erreicht die "
+                                 "Automatik ueber denselben Zweig)",
     "fremdes-mikrofon-loest-nicht-aus": "K3",
-    "eigener-strom-zaehlt-mit": "K4",
-    "konferenzliste-leer": "K5",
-    "pause-schaltet-stumm": "K6 (und K8 sieht es mit)",
+    "eigener-strom-zaehlt-mit": "K4 (+K3: dieselbe Zaehlung traegt beide)",
+    "konferenzliste-leer": "K5 (+K3: ohne Liste loest die Konferenz nicht "
+                           "mehr aus)",
+    "pause-schaltet-stumm": "K6 (+K8: gestoppt wird dann gar nichts)",
     "rc-null-heisst-ok": "K7",
     "nicht-messbar-heisst-ok": "K7",
     "nur-der-recorder": "K8",
