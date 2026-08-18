@@ -1,0 +1,59 @@
+# dAImon Audit-Pruefung (T-4.6), die DRITTE Pruefstelle.
+#
+# Der Modulkopf von `daimon/hub/audit.py` nennt drei: den Hub beim Start,
+# einen Timer taeglich, und die CLI fuer den Nutzer. Dazu den Satz, der diese
+# Unit erzwingt: "Findet keine davon statt, ist die Kette wertlos und gehoert
+# gestrichen statt behauptet (Design 7.6)."
+#
+# Bis zum 17.08. existierte nur die CLI, und die startet ein Mensch von Hand.
+# Der Hub prueft seit `855def8` beim Start und stuendlich -- aber er ist
+# derselbe Prozess, der schreibt. Ein Schreiber, der sich selbst bescheinigt,
+# dass er nichts verbogen hat, ist die schwaechere Aussage. Diese Unit ist
+# die unabhaengige: eigener Prozess, eigener Zeitpunkt, KEIN Schreibrecht.
+#
+# LESEN GENUEGT, und das ist der Punkt. `ProtectSystem=strict` plus
+# `ProtectHome=read-only` ohne ein einziges `ReadWritePaths=`: dieser Prozess
+# kann die Kette pruefen und sie nicht anfassen. Ein Pruefer mit Schreibrecht
+# koennte einen Befund wegschreiben, statt ihn zu melden.
+#
+# Der Ausgang ist der Rueckgabewert: `--verify` liefert 1, wenn die Kette
+# reisst oder die Anker fehlen. systemd macht daraus ein `failed`, und das
+# steht im Journal und in `systemctl --user --failed`. Eine Meldung, die man
+# suchen muss, ist keine.
+
+[Unit]
+Description=dAImon Audit-Kette pruefen (unabhaengig vom Hub)
+# NICHT After=daimon-hub.service: die Pruefung soll auch dann laufen, wenn
+# der Hub gar nicht da ist. Gerade dann ist die Frage interessant.
+
+[Service]
+Type=oneshot
+WorkingDirectory=/mnt/data/AI/repos/dAImon
+ExecStart=/mnt/data/AI/repos/dAImon/.venv/bin/python \
+    -m daimon.hub.audit --verify
+Environment=PYTHONPATH=/mnt/data/AI/repos/dAImon
+
+# --- Nur lesen ------------------------------------------------------------
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=read-only
+# KEIN ReadWritePaths. Wer das ergaenzt, nimmt dieser Unit ihren Sinn.
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+InaccessiblePaths=-%h/.config/daimon/anthropic-token
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+PrivateDevices=yes
+LimitCORE=0
+UMask=0077
+# `journalctl` liest die Anker -- ein Unix-Socket zum Journal, kein Netz.
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+MemoryDenyWriteExecute=yes
+TimeoutStartSec=120
+
+# Kein [Install]: gezogen wird sie von daimon-audit-verify.timer. Das ist
+# hier keine Auslassung, sondern das Muster aller Timer-Dienste -- und
+# `tests/test_units_werden_gezogen.py` prueft, dass es eine .timer gibt.

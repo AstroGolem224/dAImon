@@ -1,0 +1,51 @@
+GUT-MUSTER fuer tests/verify/T-7.1.sh
+
+Kopie des Arbeitsbaums auf Commit 3c1b843, aber nur die IMPORTHUELLE, die der
+Pruefstand braucht, plus die Unit-Dateien, an denen er die Schreibrechte
+misst (47 Dateien einschliesslich dieser, 320 K -- nicht `daimon/**`):
+
+  daimon/common/{config,ipc,logging,protocol,taint}.py
+  daimon/recorder/*.py                 (der Archivdienst und alles daran)
+  daimon/ears/killswitch.py            (zieht `recorder/pause.py` nach)
+  daimon/eyes/killswitch.py            (dito)
+  config/redaktion.yaml                (die Denylist -- `denylist_pfade()`
+                                        sucht sie unter <wurzel>/config/)
+  config/systemd/*                     ALLE 21 Unit-Dateien: K1 fragt jede
+                                        einzelne, ob sie ins Archiv
+                                        schreiben darf. Eine Auswahl waere
+                                        eine Vorentscheidung darueber, wer
+                                        ueberhaupt verdaechtig ist.
+
+Die Importhuelle ist ausser `yaml` reine Standardbibliothek;
+`tests/fixtures/known-good/T-7.1/.venv` gibt es nicht, der Wrapper faellt auf
+`python3` zurueck.
+
+EINE ABWEICHUNG vom Arbeitsbaum, und sie ist der Grund, warum dieses Muster
+existiert:
+
+  config/systemd/daimon-fs.service bekommt hier eine Zeile:
+
+      InaccessiblePaths=-%h/.local/share/daimon
+
+Im Arbeitsbaum vom 18.08. steht in dieser Unit `ProtectHome=` AUSKOMMENTIERT
+(Zeile 30, mit Begruendung: `ProtectHome=tmpfs` blendet das venv aus, aus dem
+ihr `ExecStart` startet). `ProtectSystem=strict` haengt $HOME NICHT
+schreibgeschuetzt ein -- gemessen. Der Dateisystem-Broker hat damit
+Schreibrecht auf `~/.local/share/daimon/` und also auf das Archiv. Akzeptanz-
+punkt 1 von T-7.1 sagt: `daimon-recorder` ist der **einzige** Prozess mit
+Schreibrecht aufs Archiv.
+
+Das Gut-Muster ist damit die Fassung, die die Akzeptanzliste ERFUELLT -- und
+zugleich die Positivkontrolle des Verifizierers: er wird gegen sie gruen und
+bleibt gegen den Arbeitsbaum rot (K1). Waere er gegen beide gruen, koennte er
+das Kriterium nicht sehen.
+
+Die Messung schreibt NICHT vor, wo repariert wird. Sie fragt je Unit „darf
+dieser Sandkasten ins Archivverzeichnis schreiben?". `InaccessiblePaths`,
+`ProtectHome=tmpfs` mit passenden `BindPaths=`, ein eigener uid oder ein
+anderer Ort fuer das venv -- jeder Weg wird ebenso gruen.
+
+Jeder Mutantenbaum unter tests/mutants/T-7.1/ entsteht als bytegleiche Kopie
+dieses Musters (tests/mutants/T-7.1/erzeugen.sh, die Baeume sind NICHT
+eingecheckt) und bricht danach genau die in seiner mutation.txt benannte
+Grenze.

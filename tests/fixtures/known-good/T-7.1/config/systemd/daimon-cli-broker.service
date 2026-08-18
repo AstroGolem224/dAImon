@@ -1,0 +1,72 @@
+# dAImon CLI-Broker (T-3.11b): das Abo statt des API-Keys.
+#
+# DIESE UNIT IST DIE SCHWAECHSTE IM PROJEKT, und das steht hier oben, damit es
+# niemand uebersieht. Sie startet `claude` -- einen vollstaendigen Agenten mit
+# eigenem Netz, eigener Konfiguration und eigenem Werkzeugsystem. Was der
+# Egress durch Haertung zusagt (ein Ziel, kein Proxy, kein Inhalt im Prozess),
+# kann diese Unit nicht zusagen.
+#
+# Was sie stattdessen tut:
+#   * Werkzeuge werden auf der KOMMANDOZEILE abgeschaltet (--allowed-tools "").
+#     Das ist eine Zusage des Aufrufs, nicht des Kernels -- und der Pruefstand
+#     misst die Kommandozeile, nicht die Absicht.
+#   * Ticketpflicht wie beim Egress. Ohne Kontingent kein Aufruf.
+#   * Kein Inhalt im Protokoll, obwohl der Prozess ihn kennt.
+#
+# Wer die Opazitaet zurueck will, nimmt den Egress mit einem API-Key.
+#
+# Installation: systemctl --user link <dieser Pfad>
+#               systemctl --user enable --now daimon-cli-broker.service
+# Danach zeigt daimon-mind.service auf cli.sock statt egress.sock.
+
+[Unit]
+Description=dAImon CLI-Broker (claude -p, Abo statt API-Key)
+Wants=daimon-hub.service
+After=daimon-hub.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
+    -m daimon.brokers.cli.broker
+
+Restart=on-failure
+RestartSec=2
+
+# --- Haertung, soweit ein Agent sie zulaesst ------------------------------
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+# `ProtectHome=tmpfs` war der erste Entwurf und hat den Dienst nicht starten
+# lassen: es versteckt das GANZE Heimatverzeichnis, und darin liegt das Repo
+# samt .venv -- `203/EXEC, Unable to locate executable`. Am 09.08. gemessen.
+# Also read-only wie bei den anderen Units, plus genau die zwei Pfade, die die
+# CLI zum Schreiben braucht.
+ProtectHome=read-only
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon %h/.claude %h/.cache/claude-cli-nodejs
+# Die Schluesselbunde bleiben unerreichbar, auch fuer einen Agenten.
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+# Der API-Token des Egress geht diesen Prozess nichts an: er hat sein eigenes
+# Anmeldeverfahren, und zwei Wege zum selben Ziel sind einer zu viel.
+InaccessiblePaths=-%h/.config/daimon/anthropic-token
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+LimitCORE=0
+UMask=0077
+TimeoutStopSec=15
+
+# --- Was hier ABSICHTLICH FEHLT ------------------------------------------
+# Kein RestrictAddressFamilies=AF_UNIX: die CLI MUSS ins Netz. Das ist der
+#   Kern des Tauschs -- neben dem Egress gibt es jetzt einen zweiten Prozess
+#   mit Netzzugang, und die Zusage "genau eine Unit hat Netz" gilt nur noch,
+#   solange diese Unit nicht laeuft.
+# Kein MemoryDenyWriteExecute: node braucht seinen JIT. Gemessen beim
+#   Ohren-Dienst, dieselbe Klasse Problem wie dort mit cffi.
+# Kein SystemCallFilter=~@resources: node heftet Threads an Kerne.
+
+[Install]
+WantedBy=graphical-session.target
