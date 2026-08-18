@@ -28,13 +28,38 @@ class Marken:
         return "user" if self.gueltig else "background"
 
 
-def hub(tmp_path, monkeypatch, *, marke_gueltig=True, broker_ok=True):
+class _Consent:
+    """Ein Mensch, der zustimmt. Oder schweigt.
+
+    Seit dem Fix von T-4.4 K8 (Commit auf main, 19.08.) fuehrt der Socketweg
+    NICHT mehr an der Vorschau vorbei: `quelle` kommt vom Hub und ist dort
+    immer `modell`. Wer eine ausgefuehrte Aktion pruefen will, braucht also
+    eine erteilte Zustimmung -- vorher genuegte `quelle: parser` in der
+    Nachricht, und genau das war der Befund.
+    """
+
+    def __init__(self, antwort: str = "granted") -> None:
+        self.antwort = antwort
+        self.rueckfragen = []
+
+    def stellen(self, **kw):
+        self.rueckfragen.append(kw)
+        return type("R", (), {"id": f"r{len(self.rueckfragen)}",
+                              "zustand": self.antwort,
+                              "frist": 0.0})()
+
+    def warten(self, rueckfrage, *, timeout_s=0.0, **_):
+        return self.antwort
+
+
+def hub(tmp_path, monkeypatch, *, marke_gueltig=True, broker_ok=True,
+        zustimmung=None):
     h = D.Hub.__new__(D.Hub)          # ohne __init__: kein Socket, kein Thread
     h.log = _Log()
     h.marken = Marken(marke_gueltig)
     from daimon.hub.marks import FreigabeBuch
     h.freigaben = FreigabeBuch()
-    h.consent = None
+    h.consent = zustimmung
     h.runtime_dir = tmp_path
     h._aktion = None
     # Seit dem 17.08. teilen Aktionsweg und Gate EIN Audit -- eine
@@ -63,7 +88,7 @@ class _Log:
 
 def anfrage(**kw):
     grund = {"v": 1, "art": "ausfuehren", "action_id": "media.playpause",
-             "params": {}, "quelle": "parser", "turn_id": "r1",
+             "params": {}, "turn_id": "r1",
              "tool_use_id": "t1", "session_id": "s1"}
     grund.update(kw)
     return grund
@@ -77,13 +102,39 @@ def test_der_endpunkt_ist_kein_produzent():
         assert "aktion" not in menge
 
 
-def test_eine_direkte_aktion_unter_marke_wird_ausgefuehrt(tmp_path, monkeypatch):
-    h = hub(tmp_path, monkeypatch)
+def test_eine_zugestimmte_aktion_unter_marke_wird_ausgefuehrt(tmp_path,
+                                                              monkeypatch):
+    """Frueher hiess dieser Test "eine DIREKTE Aktion" und schickte
+    `quelle: parser` mit -- damit lief er an der Vorschau vorbei.
+
+    Genau das war BEFUND T-4.4 K8: die Direktbefehl-Ausnahme haengt am
+    Katalogflag UND an der Quelle, und die Quelle kam aus der Nachricht. Der
+    Weg ueber `aktion.sock` ist jetzt immer `modell`; ausgefuehrt wird nach
+    ZUSTIMMUNG. Dass die Tests selbst den Umgehungsweg benutzt haben, ist
+    ein Hinweis darauf, wie bequem er war.
+    """
+    zu = _Consent()
+    h = hub(tmp_path, monkeypatch, zustimmung=zu)
     a = h.aktion_anfrage(anfrage())
-    assert a["ok"] and a["ausgefuehrt"] and a["direkt"]
+    assert a["ok"] and a["ausgefuehrt"], a
+    assert a["direkt"] is False, "der Socketweg ist nie der Hub-Parser"
+    assert len(zu.rueckfragen) == 1, "es gab keine Vorschau"
     assert len(h.zugestellt) == 1
     assert h.zugestellt[0].audience == "dbus"
     assert h.zugestellt[0].ticket
+
+
+def test_der_socketweg_bekommt_die_direktausnahme_NICHT(tmp_path, monkeypatch):
+    """DER BEFUND, an der Naht gemessen: dieselbe Aktion, einmal ehrlich und
+    einmal mit `quelle: parser` in der Nachricht -- beide muessen gleich
+    ausgehen."""
+    zu = _Consent("declined")
+    h = hub(tmp_path, monkeypatch, zustimmung=zu)
+    ehrlich = h.aktion_anfrage(anfrage())
+    behauptet = h.aktion_anfrage(anfrage(quelle="parser"))
+    assert ehrlich["verdikt"] == behauptet["verdikt"] == "ask"
+    assert not ehrlich["ausgefuehrt"] and not behauptet["ausgefuehrt"]
+    assert h.zugestellt == []
 
 
 def test_ohne_gueltige_marke_passiert_nichts(tmp_path, monkeypatch):
@@ -131,7 +182,7 @@ def test_der_hub_spricht_ueber_den_torwaechter(tmp_path, monkeypatch):
 
 
 def test_die_dauer_je_hop_kommt_zurueck(tmp_path, monkeypatch):
-    h = hub(tmp_path, monkeypatch)
+    h = hub(tmp_path, monkeypatch, zustimmung=_Consent())
     a = h.aktion_anfrage(anfrage())
     assert "policy" in a["dauer_ms"] and "broker" in a["dauer_ms"]
 
@@ -151,7 +202,7 @@ def test_die_audience_kommt_aus_dem_katalog_nicht_aus_der_anfrage(tmp_path, monk
     Absender setzt, sagt nichts. Massgeblich ist der Katalogeintrag;
     media.playpause traegt keinen, also gilt die Vorgabe dbus.
     """
-    h = hub(tmp_path, monkeypatch)
+    h = hub(tmp_path, monkeypatch, zustimmung=_Consent())
     a = h.aktion_anfrage(anfrage(audience="fs"))
     assert a["ok"] and a["ausgefuehrt"]
     assert h.zugestellt[0].audience == "dbus"

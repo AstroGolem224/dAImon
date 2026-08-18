@@ -788,7 +788,25 @@ class Hub:
         try:
             lauf = teile.ausfuehren(
                 action_id=action_id, params=params,
-                quelle=str(anfrage.get("quelle") or "modell"),
+                # DIE QUELLE GEHOERT DEM HUB, nicht der Nachricht. Hier stand
+                # `anfrage.get("quelle")` -- und `policy.entscheide` gibt die
+                # Direktbefehl-Ausnahme genau dann, wenn sie `"parser"` sagt.
+                # Wer das Feld mitschickte, bekam `allow` ohne Vorschau, wo
+                # ehrlich `ask` gestanden haette. Gemessen von T-4.4 am
+                # 18.08. ueber den echten Socket (K8, produktdefekt-rot).
+                #
+                # DER SOCKETWEG KANN NIE DER PARSER SEIN, und das ist die
+                # strukturelle Antwort statt einer Pruefung: ein
+                # deterministischer Hub-Parser laeuft IM Hub und ruft den
+                # Koordinator direkt. Was durch `aktion.sock` kommt, ist per
+                # Definition eine fremde Anfrage -- also `modell`.
+                #
+                # Dieselbe Regel wie bei der `audience` drei Zeilen darueber,
+                # und derselbe Satz aus dem Modulkopf von `policy.py`: "Ein
+                # Feld, das der Absender setzt, sagt nichts." Sie galt dort
+                # fuer `initiator` und `params_hash` -- und nicht fuer die
+                # `quelle`, die als einzige eine Schranke oeffnet.
+                quelle="modell",
                 marke=marke, session_id=str(anfrage.get("session_id") or ""),
                 turn_id=turn_id,
                 tool_use_id=str(anfrage.get("tool_use_id") or ""),
