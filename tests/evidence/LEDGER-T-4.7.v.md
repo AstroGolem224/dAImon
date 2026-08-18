@@ -458,7 +458,7 @@ Kein `systemctl`, kein `kill`, kein Anklopfen an einem produktiven
 (`daimon-eyes`/`-ears`/`-recorder` blieben `dead`). Proxy, Kataloge und
 Protokolle liegen in einem `tempfile.TemporaryDirectory`.
 
-Nach allen Läufen (Gut-Muster, Arbeitsbaum, zwölf Mutanten, zweimal `meta.sh`):
+Nach allen Läufen (Gut-Muster, Arbeitsbaum, zwölf Mutanten, vier `meta.sh`-Läufe):
 
 ```
 $ pgrep -c xdg-dbus-proxy                     0
