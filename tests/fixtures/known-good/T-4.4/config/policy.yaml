@@ -1,0 +1,52 @@
+# T-4.4 — die Regelebenen der Policy.
+#
+# Ausgewertet werden ALLE Ebenen, und die schärfste Aussage gewinnt:
+# deny > ask > allow. Spezifität ist irrelevant (Design §6.5) -- eine Regel
+# mit mehr Bedingungen gewinnt NICHT dadurch, dass sie enger ist. Wer das
+# umdreht, hebelt jedes Verbot durch eine engere Erlaubnis aus.
+#
+# `deny` ist damit eine Vereinigung über alle Ebenen: was eine Ebene
+# verbietet, kann keine andere zurücknehmen. Auch nicht die eigene.
+#
+# Diese Datei kann nur SCHÄRFEN, nicht lockern -- die Vorgabe steht im
+# Katalog (config/actions/core.yaml), je Aktion und je initiator. Eine Regel
+# mit `verdikt: allow` hebt dort nichts an: `allow` ist die schwächste
+# Aussage und verliert gegen alles.
+#
+# `when:` nimmt strukturierte Prädikate, keine Zeichenketten-Globs. Erlaubt
+# sind genau: initiator, quelle, session_id, action_id. Ein Glob wäre eine
+# Sprache, und eine Sprache hat Sonderfälle.
+version: 1
+
+ebenen:
+
+  # --------------------------------------------------------------------------
+  # Ebene 0 -- mitgeliefert. Steht im Repo und gilt für jede Installation.
+  # --------------------------------------------------------------------------
+  - name: mitgeliefert
+    regeln:
+
+      # Nichts läuft ungefragt. Der Katalog sagt das schon je Aktion; hier
+      # steht es noch einmal als Ebene, damit ein einzelner Katalogeintrag mit
+      # einem versehentlichen `background: allow` nicht durchkommt.
+      - when: {initiator: background}
+        verdikt: deny
+        grund: kein_hintergrundhandeln
+      - when: {initiator: scheduled}
+        verdikt: deny
+        grund: keine_zeitsteuerung
+
+      # Eine Aktion aus einer Modellausgabe geht durch die Vorschau. Das
+      # erzwingt der Hub ohnehin (Design §263), aber eine Zusage, die nur im
+      # Code steht, ist im Audit nicht ablesbar.
+      - when: {quelle: modell}
+        verdikt: ask
+        grund: modellausgabe_immer_vorschau
+
+  # --------------------------------------------------------------------------
+  # Ebene 1 -- eigene Regeln. Gehört nach
+  # $XDG_CONFIG_HOME/daimon/policy.yaml und ersetzt diese Ebene, nicht die
+  # obere.
+  # --------------------------------------------------------------------------
+  - name: eigen
+    regeln: []
