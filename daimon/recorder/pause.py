@@ -34,16 +34,28 @@ from daimon.eyes.killswitch import videostroeme
 
 RECORDER_UNIT = "daimon-recorder.service"
 EYES_UNIT = "daimon-eyes.service"
+EARS_UNIT = "daimon-ears.service"
 
 # Was dieser Schalter anfassen darf -- und mehr nicht. Dieselbe Bauart wie
 # die Allowlist im Ohren-Kill-Switch: ein Schalter, der jede Unit stoppen
 # kann, ist kein Schalter, sondern ein Werkzeug.
-ERLAUBTE_UNITS = (RECORDER_UNIT, EYES_UNIT, "daimon-ears.service")
+ERLAUBTE_UNITS = (RECORDER_UNIT, EYES_UNIT, EARS_UNIT)
 
 # Was die Pause tatsaechlich stoppt. Reihenfolge: erst der Schreiber, dann
-# die Quelle -- sonst laeuft der Recorder noch, waehrend die Augen sterben,
+# die Quellen -- sonst laeuft der Recorder noch, waehrend die Augen sterben,
 # und schreibt die letzte Meldung.
-PAUSE_UNITS = (RECORDER_UNIT, EYES_UNIT)
+#
+# DIE OHREN STANDEN HIER NICHT DRIN, bis der Verifizierer T-7.3.sh es am
+# 18.08. gemessen hat (K8, produktdefekt-rot). Der Modulkopf oben sagte die
+# Bedingung wortwoertlich an: "Wer T-7.4 baut, ergaenzt die Ohren-Unit in
+# `PAUSE_UNITS` und den Tonstrom in der Messung." T-7.4 ist gebaut -- das
+# Archiv traegt seit dem 17.08. Transkripte --, die Zeile blieb stehen.
+#
+# Die Folge ist genau der Fall, den Design 4.2 wortwoertlich ausschliesst:
+# wer pausiert, wird weiter gehoert, und das Mikrofonsymbol in Plasma zeigt
+# es an, waehrend die Oberflaeche Pause behauptet. Ein Hinweis im Text ist
+# kein Zulauf (CLAUDE.md); er wartet darauf, dass jemand ihn liest.
+PAUSE_UNITS = (RECORDER_UNIT, EYES_UNIT, EARS_UNIT)
 
 # Der Herzschlag: der Recorder frischt ihn je Runde auf, der Hub liest ihn.
 # Eine blosse „ist da"-Datei bliebe nach einem SIGKILL liegen und zeigte
@@ -200,16 +212,30 @@ def augen_sehen(runtime_dir: Path, *,
     return _frisch(runtime_dir, WAHRNEHMUNG_DATEI, uhr, frist_s)
 
 
+def _aufnahmestroeme() -> int | None:
+    """Wie viele Mikrofonstroeme laufen. Der Kill-Switch der Ohren misst das
+    bereits -- ein zweites Verfahren waere eine zweite Wahrheit."""
+    from daimon.ears.killswitch import aufnahmestroeme
+    return aufnahmestroeme()
+
+
 def stoppe(units: Iterable[str] = PAUSE_UNITS, *,
            runtime_dir: Path | None = None,
            lauf: Callable[..., Any] = subprocess.run,
            video: Callable[[], int | None] = bildschirmstroeme,
+           ton: Callable[[], int | None] = _aufnahmestroeme,
            timeout_s: float = 10.0) -> dict:
     """Pausieren und BELEGEN, dass nichts mehr aufnimmt.
 
-    `lauf` und `video` sind einspeisbar, damit der Schalter ohne systemd und
-    ohne PipeWire pruefbar ist -- und damit der Fall „rc=0, Strom laeuft
-    weiter" ueberhaupt herstellbar ist.
+    `lauf`, `video` und `ton` sind einspeisbar, damit der Schalter ohne
+    systemd und ohne PipeWire pruefbar ist -- und damit der Fall „rc=0, Strom
+    laeuft weiter" ueberhaupt herstellbar ist.
+
+    **BEIDE Stroeme, seit dem 18.08.** Vorher belegte diese Funktion nur den
+    Bildteil: sie stoppte die Ohren nicht und mass den Tonstrom nicht. Ein
+    `ok: true`, das den Ton nicht angesehen hat, ist bei einer Pause, die
+    §201 StGB tragen soll, die gefaehrlichere Sorte Zusage -- sie klingt wie
+    ein Nachweis.
     """
     ziele = list(units)
     for unit in ziele:
@@ -220,6 +246,7 @@ def stoppe(units: Iterable[str] = PAUSE_UNITS, *,
 
     t0 = time.monotonic()
     vorher = video()
+    ton_vorher = ton()
     rc = 0
     for unit in ziele:
         e = lauf(["systemctl", "--user", "stop", unit],
@@ -227,12 +254,13 @@ def stoppe(units: Iterable[str] = PAUSE_UNITS, *,
         rc = rc or int(e.returncode)
 
     nachher = video()
+    ton_nachher = ton()
     noch_aktiv = [u for u in ziele if _ist_aktiv(u, lauf)]
     if runtime_dir is not None:
         herzschlag_loeschen(runtime_dir)
 
-    # Drei Wege zu `ok=False`, und der mittlere ist der wichtige: ein
-    # Rueckgabewert 0 mit laufendem Strom.
+    # Fuenf Wege zu `ok=False`, und die beiden mittleren sind die wichtigen:
+    # ein Rueckgabewert 0 mit laufendem Strom -- Bild ODER Ton.
     meldung = ""
     if rc != 0:
         meldung = f"systemctl stop rc={rc}"
@@ -242,17 +270,29 @@ def stoppe(units: Iterable[str] = PAUSE_UNITS, *,
         meldung = "Bildschirmstroeme nicht messbar (pw-dump?) -- kein Nachweis"
     elif nachher > 0:
         meldung = f"{nachher} Bildschirmstrom/-stroeme laufen weiter"
+    elif ton_nachher is None:
+        meldung = "Aufnahmestroeme nicht messbar (pw-dump?) -- kein Nachweis"
+    elif ton_nachher > 0:
+        meldung = f"{ton_nachher} Aufnahmestrom/-stroeme laufen weiter"
 
     # Die Positivkontrolle gehoert IN den Bericht. War vorher kein Strom da,
     # sagt "nachher keiner" nichts -- dann traegt allein, dass die Units weg
     # sind. Am 14.08. live passiert: `ok: true`, `vorher: 0`, und der Beleg
     # war leer, ohne dass es jemandem aufgefallen waere.
+    #
+    # JE STROM EINE EIGENE AUSSAGE. Ein gemeinsames "strom_gemessen" liesse
+    # offen, WELCHER gemessen wurde -- und genau daran ist der Tonteil
+    # monatelang nicht aufgefallen.
     beleg = ("strom_gemessen" if vorher and nachher == 0
              else "nur_unit_zustand")
+    ton_beleg = ("strom_gemessen" if ton_vorher and ton_nachher == 0
+                 else "nur_unit_zustand")
 
     return {"v": 1, "ok": not meldung, "units": ziele, "rc": rc,
             "bildschirmstroeme_vorher": vorher,
             "bildschirmstroeme_nachher": nachher, "beleg": beleg,
+            "aufnahmestroeme_vorher": ton_vorher,
+            "aufnahmestroeme_nachher": ton_nachher, "ton_beleg": ton_beleg,
             "noch_aktiv": noch_aktiv, "meldung": meldung,
             "dauer_ms": round((time.monotonic() - t0) * 1000, 3)}
 

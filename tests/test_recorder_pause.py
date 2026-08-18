@@ -12,7 +12,8 @@ import time
 import pytest
 
 from daimon.recorder.pause import (
-    EYES_UNIT, HERZSCHLAG_FRIST_S, PAUSE_UNITS, RECORDER_UNIT,
+    EARS_UNIT, EYES_UNIT, HERZSCHLAG_FRIST_S, PAUSE_UNITS,
+    RECORDER_UNIT,
     bildschirmstroeme, fortsetzen, fremde_mikrofonstroeme, herzschlag,
     herzschlag_loeschen, ist_konferenz, schneidet_mit, stoppe)
 
@@ -53,7 +54,7 @@ class Uhr:
 def test_pause_belegt_dass_nichts_mehr_aufnimmt(tmp_path):
     sc = Systemctl()
     stroeme = iter([1, 0])              # vorher einer, danach keiner
-    bericht = stoppe(lauf=sc, video=lambda: next(stroeme),
+    bericht = stoppe(lauf=sc, video=lambda: next(stroeme), ton=lambda: 0,
                      runtime_dir=tmp_path)
     assert bericht["ok"] is True, bericht["meldung"]
     assert bericht["bildschirmstroeme_vorher"] == 1   # Positivkontrolle
@@ -62,13 +63,14 @@ def test_pause_belegt_dass_nichts_mehr_aufnimmt(tmp_path):
     assert bericht["noch_aktiv"] == []
     # Erst der Schreiber, dann die Quelle.
     gestoppt = [r[3] for r in sc.rufe if r[2] == "stop"]
-    assert gestoppt == [RECORDER_UNIT, EYES_UNIT]
+    assert gestoppt == [RECORDER_UNIT, EYES_UNIT, EARS_UNIT]
 
 
 def test_ohne_strom_vorher_ist_der_beleg_schwaecher(tmp_path):
     """Am 14.08. live passiert: ok=true, vorher=0 -- und niemand sah, dass
     der Nachweis leer war. Jetzt sagt der Bericht es selbst."""
-    bericht = stoppe(lauf=Systemctl(), video=lambda: 0, runtime_dir=tmp_path)
+    bericht = stoppe(lauf=Systemctl(), video=lambda: 0, ton=lambda: 0,
+                     runtime_dir=tmp_path)
     assert bericht["ok"] is True          # die Units sind weg, das gilt
     assert bericht["beleg"] == "nur_unit_zustand"
 
@@ -89,14 +91,14 @@ def test_bildschirmstrom_wird_am_kwin_knoten_gezaehlt():
 def test_rc_null_mit_laufendem_strom_ist_kein_erfolg(tmp_path):
     """Der teuerste Fehlermodus, hier hergestellt."""
     sc = Systemctl()
-    bericht = stoppe(lauf=sc, video=lambda: 1, runtime_dir=tmp_path)
+    bericht = stoppe(lauf=sc, video=lambda: 1, ton=lambda: 0, runtime_dir=tmp_path)
     assert bericht["rc"] == 0
     assert bericht["ok"] is False
     assert "laufen weiter" in bericht["meldung"]
 
 
 def test_nicht_messbar_ist_kein_erfolg(tmp_path):
-    bericht = stoppe(lauf=Systemctl(), video=lambda: None,
+    bericht = stoppe(lauf=Systemctl(), video=lambda: None, ton=lambda: 0,
                      runtime_dir=tmp_path)
     assert bericht["ok"] is False
     assert "nicht messbar" in bericht["meldung"]
@@ -104,14 +106,66 @@ def test_nicht_messbar_ist_kein_erfolg(tmp_path):
 
 def test_unit_die_stehen_bleibt_faellt_auf(tmp_path):
     sc = Systemctl(stur={EYES_UNIT})
-    bericht = stoppe(lauf=sc, video=lambda: 0, runtime_dir=tmp_path)
+    bericht = stoppe(lauf=sc, video=lambda: 0, ton=lambda: 0, runtime_dir=tmp_path)
     assert bericht["ok"] is False
     assert bericht["noch_aktiv"] == [EYES_UNIT]
 
 
 def test_fremde_unit_wird_verweigert():
     with pytest.raises(ValueError, match="Allowlist"):
-        stoppe(["daimon-hub.service"], lauf=Systemctl(), video=lambda: 0)
+        stoppe(["daimon-hub.service"], lauf=Systemctl(), video=lambda: 0,
+               ton=lambda: 0)
+
+
+def test_DIE_PAUSE_STOPPT_AUCH_DIE_OHREN():
+    """BEFUND T-7.3 K8, gefunden von `tests/verify/T-7.3.sh` am 18.08.
+
+    `PAUSE_UNITS` nannte nur Recorder und Augen. Der Modulkopf von `pause.py`
+    sagte die Bedingung wortwoertlich an -- "wer T-7.4 baut, ergaenzt die
+    Ohren-Unit" --, T-7.4 wurde gebaut, und die Zeile blieb stehen.
+
+    Folge: wer pausiert, wird weiter gehoert. Und das Mikrofonsymbol in
+    Plasma haengt an genau diesem Strom, zeigt also Aufnahme, waehrend die
+    Oberflaeche Pause behauptet -- der Fall, den Design 4.2 wortwoertlich
+    ausschliesst.
+    """
+    assert EARS_UNIT in PAUSE_UNITS
+    # Reihenfolge: erst der Schreiber, dann die Quellen. Ein Recorder, der
+    # noch laeuft, waehrend die Quellen sterben, schreibt die letzte Meldung.
+    assert PAUSE_UNITS[0] == RECORDER_UNIT
+
+
+def test_ein_laufender_TONSTROM_ist_kein_erfolg(tmp_path):
+    """Der teuerste Fehlermodus, jetzt auch fuer den Ton. Vorher sah `stoppe`
+    den Tonstrom ueberhaupt nicht an: `ok: true` bei offenem Mikrofon."""
+    bericht = stoppe(lauf=Systemctl(), video=lambda: 0, ton=lambda: 2,
+                     runtime_dir=tmp_path)
+    assert bericht["ok"] is False
+    assert "Aufnahmestrom" in bericht["meldung"], bericht["meldung"]
+
+
+def test_ein_nicht_messbarer_tonstrom_auch_nicht(tmp_path):
+    """`None` und `0` sind zwei verschiedene Dinge -- hier wie ueberall."""
+    bericht = stoppe(lauf=Systemctl(), video=lambda: 0, ton=lambda: None,
+                     runtime_dir=tmp_path)
+    assert bericht["ok"] is False
+    assert "nicht messbar" in bericht["meldung"]
+
+
+def test_der_tonbeleg_steht_getrennt_im_bericht(tmp_path):
+    """Ein gemeinsames `strom_gemessen` liesse offen, WELCHER Strom gemessen
+    wurde -- und genau daran ist der Tonteil monatelang nicht aufgefallen."""
+    bericht = stoppe(lauf=Systemctl(), video=lambda: 0, ton=lambda: 0,
+                     runtime_dir=tmp_path)
+    assert bericht["beleg"] == "nur_unit_zustand"        # vorher kein Bild
+    assert bericht["ton_beleg"] == "nur_unit_zustand"    # vorher kein Ton
+
+    stroeme, toene = iter([1, 0]), iter([1, 0])
+    voll = stoppe(lauf=Systemctl(), video=lambda: next(stroeme),
+                  ton=lambda: next(toene), runtime_dir=tmp_path)
+    assert voll["beleg"] == voll["ton_beleg"] == "strom_gemessen"
+    assert voll["aufnahmestroeme_vorher"] == 1
+    assert voll["aufnahmestroeme_nachher"] == 0
 
 
 def test_fortsetzen_startet_rueckwaerts():
@@ -119,7 +173,7 @@ def test_fortsetzen_startet_rueckwaerts():
     bericht = fortsetzen(lauf=sc)
     assert bericht["ok"] is True
     gestartet = [r[3] for r in sc.rufe if r[2] == "start"]
-    assert gestartet == [EYES_UNIT, RECORDER_UNIT]
+    assert gestartet == [EARS_UNIT, EYES_UNIT, RECORDER_UNIT]
 
 
 # -- Die Ausloeser der automatischen Pause ---------------------------------
@@ -171,7 +225,8 @@ def test_herzschlag_veraltet_und_erlischt(tmp_path):
 
 def test_pause_loescht_den_herzschlag(tmp_path):
     herzschlag(tmp_path)
-    stoppe(lauf=Systemctl(), video=lambda: 0, runtime_dir=tmp_path)
+    stoppe(lauf=Systemctl(), video=lambda: 0, ton=lambda: 0,
+           runtime_dir=tmp_path)
     assert schneidet_mit(tmp_path) is False
     herzschlag_loeschen(tmp_path)          # zweimal loeschen ist kein Fehler
 
