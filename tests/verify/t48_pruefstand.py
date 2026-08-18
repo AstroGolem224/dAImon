@@ -112,14 +112,18 @@ class Bilanz:
     def __init__(self) -> None:
         self.gemessen: set[str] = set()
         self.rot: set[str] = set()
+        self.zahl: dict[str, list[int]] = {k: [0, 0] for k in KRITERIEN}
 
     def gut(self, k: str, text: str) -> None:
         self.gemessen.add(k)
+        self.zahl.setdefault(k, [0, 0])[0] += 1
         print(f"ok   [{k}] {text}", flush=True)
 
     def schlecht(self, k: str, text: str) -> None:
         self.gemessen.add(k)
         self.rot.add(k)
+        self.zahl.setdefault(k, [0, 0])[0] += 1
+        self.zahl[k][1] += 1
         print(f"FAIL [{k}] {text}", flush=True)
 
     def notiz(self, text: str) -> None:
@@ -140,6 +144,10 @@ class Bilanz:
 
     def abschluss(self) -> int:
         print("\n" + "=" * 72, flush=True)
+        print("Bilanz T-4.8:", flush=True)
+        for k in KRITERIEN:
+            n, r = self.zahl.get(k, [0, 0])
+            print(f"{k}: {n} Pruefungen, {r} rot", flush=True)
         for k in KRITERIEN:
             if k not in self.gemessen:
                 print(f"FAIL [{k}] NICHT GEMESSEN -- zaehlt als rot", flush=True)
