@@ -215,7 +215,8 @@ ersetze(
     "sandbox-privateusers", UNIT,
     "PrivateDevices=yes\n",
     "PrivateDevices=yes\n"
-    "PrivateUsers=yes  # MUTATION\n",
+    "# MUTATION\n"
+    "PrivateUsers=yes\n",
     "`PrivateUsers=yes` steht in Design 7.5 unter den Direktiven, die "
     "BRECHEN: es bricht uid-ACLs und Peer-Credentials. Damit faellt die "
     "Herkunftspruefung ueber den Socket -- also das, was nach Design 1.3/6.2 "
