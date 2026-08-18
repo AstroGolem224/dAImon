@@ -115,6 +115,11 @@ KERN_KURZBEFEHL = "Switch to Desktop 1"
 # auszuloesen.
 NICHTS_KURZBEFEHL = "daimon-t47-kein-kurzbefehl"
 
+# Der Name, unter dem der (abzuweisende) `loadScript`-Versuch laeuft. Er ist
+# benannt, damit ein Durchschlupf gezielt wieder ausgehaengt werden kann --
+# KWin quittiert `loadScript` auch fuer einen Pfad, den es nicht gibt.
+SKRIPTNAME = "daimon-t47-verifizierer"
+
 KWIN_DIENST = "org.kde.KWin"
 VD_PFAD = "/VirtualDesktopManager"
 VD_SCHNITTSTELLE = "org.kde.KWin.VirtualDesktopManager"
@@ -810,7 +815,8 @@ def k4_loadscript(b: Bericht, broker_modul, daemon_modul, pruefling: Path,
 
     cursor = proxy.cursor()
     e = gdbus(proxy.adresse, KWIN_DIENST, "/Scripting",
-              "org.kde.kwin.Scripting.loadScript", str(skriptpfad))
+              "org.kde.kwin.Scripting.loadScript", str(skriptpfad),
+              SKRIPTNAME)
     protokoll = proxy.seit(cursor)
     antwort = (e.stdout + e.stderr).strip()
     print(f"loadScript durch den Proxy: rc={e.returncode} {antwort[:160]}")
@@ -828,6 +834,22 @@ def k4_loadscript(b: Bericht, broker_modul, daemon_modul, pruefling: Path,
     b.pruefe("K4", not skriptpfad.exists(),
              f"auch der uebergebene Skriptpfad existiert weiterhin nicht "
              f"({skriptpfad.name})")
+
+    # Und im Compositor selbst: kein Skript dieses Namens. KWin quittiert
+    # `loadScript` mit einer Kennung, sobald der Aufruf ihn erreicht -- auch
+    # fuer einen Pfad, den es nicht gibt. Genau das ist hier die Grenze
+    # zwischen "abgewiesen" und "durchgekommen".
+    geladen = gdbus(bus, KWIN_DIENST, "/Scripting",
+                    "org.kde.kwin.Scripting.isScriptLoaded", SKRIPTNAME)
+    steht_drin = "true" in geladen.stdout
+    b.pruefe("K4", not steht_drin,
+             f"KWin kennt kein Skript {SKRIPTNAME!r}: {geladen.stdout.strip()}")
+    if steht_drin:
+        # Aufraeumen, laut: was durchkam, wird sofort wieder ausgehaengt.
+        weg = gdbus(bus, KWIN_DIENST, "/Scripting",
+                    "org.kde.kwin.Scripting.unloadScript", SKRIPTNAME)
+        print(f"ACHTUNG: `loadScript` kam durch. Wieder ausgehaengt: "
+              f"{weg.stdout.strip()} (gestartet wurde es nie)")
 
     # Positivkontrolle derselben Leitung: ein erlaubter Aufruf kommt durch.
     # Sonst waere "abgewiesen" von "der Proxy ist tot" nicht zu unterscheiden.
