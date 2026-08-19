@@ -1,6 +1,8 @@
 # Ledger T-5.9.v — Verifizierer: das Deklassifizierungs-Gate
 
-**Ausgang: `produktdefekt-rot`**
+**Ausgang 18.08.: `produktdefekt-rot`**
+**Ausgang 19.08.: `produktdefekt-rot` — UNVERAENDERT. NICHT eingefroren.**
+Siehe §Nachlauf am Ende.
 
 Der Verifizierer ist gebaut, gegen das Gut-Muster grün, gegen alle zwölf
 Mutanten rot — und gegen den echten Baum rot, an genau einem Punkt. Die
@@ -454,3 +456,90 @@ $ pgrep -af "[t]59_hub"; pgrep -af "[t]59_pruefstand"; ls -d /tmp/t59-*
   den Grund ausdrücklich unterscheidet.
 * T-5.9b.v anschließen: die eine Sache, die dieser Verifizierer bewusst nicht
   sehen kann, ist der Unitname des Mind-Prozesses am `kontext.sock`.
+
+---
+
+## Nachlauf 19.08.2026 — Reviewer-Sitzung, NICHT eingefroren
+
+| | |
+|---|---|
+| Rolle | reviewer (`DAIMON_ROLE=reviewer`), kein Produktivcode geschrieben |
+| Arbeitsbaum | `/mnt/data/AI/repos/dAImon`, Zweig `main`, Commit `9172fa5` |
+| Verifizierer unverändert | `T-5.9.sh`, `t59_pruefstand.py`, `t59_hub.py` |
+
+**Nicht eingefroren, weil rot.**
+
+### 1. Gegen `main` — rot, an genau demselben Kriterium
+
+```
+$ env -u DAIMON_FIXTURE tests/verify/T-5.9.sh; echo $?
+FAIL K9: der Umfang der Freigabe steht LESBAR im Datensatz
+         (Akzeptanz 4: "mit Umfang und turn_id");
+         gefunden [] von [('ocr', 1), ('titel', 0), ('vlm', 0)]
+Bilanz T-5.9:
+K1: 11 · K2: 12 · K3: 12 · K4: 13 · K5: 6 · K6: 7 · K7: 15 · K8: 14 ·
+K10: 12  — je 0 rot
+K9: 13 Pruefungen, 1 rot
+1
+```
+
+Eine von 115 Prüfungen rot, unverändert gegenüber dem 18.08. Die neun Commits
+vom 19.08. haben diesen Befund nicht berührt.
+
+### 2. Heute nachgelesen — warum der Umfang nicht lesbar ist
+
+Der geschriebene Datensatz aus dem Lauf:
+
+```json
+{"action_id": "context.declassify", "initiator": "foreground",
+ "mark_id": "f758fc4f…", "outcome": "ok",
+ "params_hash": "sha256:6f1d4479…",
+ "prompt_shown": "<redacted:sha256:89e2d324…:len=89>",
+ "schema": "daimon.audit.v1", "seq": 4, "turn_id": "f758fc4f…"}
+```
+
+`turn_id` steht drin. Der **Umfang** steht nicht drin — und die Ursache ist
+eine Zeile weiter oben, nicht eine fehlende:
+
+`daimon/hub/declassify.py:195–196`
+
+```python
+prompt_shown=f"{grund} {sorted(umfang.items())}",
+tainted=("prompt_shown",)
+```
+
+Der Umfang reist als Teil von `prompt_shown` mit, und `prompt_shown` ist
+**als `tainted` deklariert**. Die Redaktion ersetzt das ganze Feld durch
+`<redacted:sha256:…>` — mitsamt dem Umfang, der dort nur mitgefahren ist.
+
+Beide Zeilen sind für sich richtig: `prompt_shown` **gehört** redigiert (es
+trägt die Äußerung des Nutzers). Falsch ist, dass ein Pflichtfeld der
+Akzeptanzliste in einem redigierten Feld transportiert wird.
+
+**Fehlerszenario:** eine Deklassifizierung wird freigegeben. Wer später fragt,
+*was* freigegeben wurde — nur der Titel? auch das OCR? auch das VLM-Bild? —
+findet im Audit `initiator`, `turn_id` und einen Hash. Der Umfang, den
+Akzeptanzpunkt 4 ausdrücklich verlangt („mit Umfang und turn_id"), ist nicht
+rekonstruierbar. Damit ist die Frage „was hat das Modell an diesem Tag zu
+sehen bekommen" aus dem Audit nicht beantwortbar — und genau dafür gibt es
+das Audit.
+
+Der Verifizierer misst dabei mit Positivkontrolle: `gefunden []` steht neben
+`von [('ocr', 1), ('titel', 0), ('vlm', 0)]` — der Umfang, der hätte
+dastehen müssen, ist bekannt, und es ist nicht nur „nichts gefunden".
+
+### 3. Gut-Muster und Mutanten — der Verifizierer ist gesund
+
+```
+$ bash tests/verify/meta.sh T-5.9
+T-5.9: 12 Mutanten erzeugt.
+meta[T-5.9]: Gut-Muster ...
+… abgelaufene-marke-egal · audit-schweigt · bezug-immer-erkannt ·
+  bezug-nie-erkannt · freigabe-nicht-markiert · keine-marke-egal ·
+  kontingent-deklassifiziert · marke-aus-jeder-quelle · proaktiv-erlaubt ·
+  quarantaene-ohne-schein · senke-durchgang1 · titel-in-durchgang1
+  — alle erkannt.
+meta[T-5.9]: 12 Mutanten, alle erkannt.
+```
+
+`audit-schweigt` deckt genau diese Achse ab und wird erkannt.
