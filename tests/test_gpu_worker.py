@@ -26,6 +26,7 @@ from daimon.common.logging import get_logger
 from daimon.gpu import worker as W
 from daimon.hub.daemon import GPU_GRUENDE, GPU_SOCKET, Hub
 from daimon.hub.focus import FocusReceiver
+from conftest import eigene_unit
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -39,6 +40,18 @@ def stub(dir_: Path, name: str, rc: int, aus: str) -> None:
     p = dir_ / name
     p.write_text(f"#!/bin/sh\nprintf '%s\\n' {json.dumps(aus)}\nexit {rc}\n")
     p.chmod(0o755)
+
+
+@pytest.fixture(autouse=True)
+def _der_worker_darf_fragen(monkeypatch, tmp_path):
+    """Seit dem 19.08. laesst `gpu.sock` nur `daimon-gpu@*.service` heran.
+
+    Der Pruefstand laeuft unter keiner Instanz dieses Templates. Erlaubt wird
+    die Unit des Testprozesses, echt gemessen; geprueft wird die Sperre selbst
+    -- samt Instanzvergleich -- in `test_hub_socket_allowlisten.py`.
+    """
+    from daimon.hub import daemon as _D
+    monkeypatch.setattr(_D, "GPU_UNITS", (eigene_unit(tmp_path),))
 
 
 @pytest.fixture

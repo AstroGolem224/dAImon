@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import eigene_unit
 from daimon.common.config import Config
 from daimon.common.logging import get_logger
 from daimon.face import tts as T
@@ -79,6 +80,19 @@ def warte_auf_ausgabe(prot: Path, *, bytes_mindestens: int = 1,
             return zeilen
         time.sleep(0.05)
     return prot.read_text().splitlines() if prot.exists() else []
+
+
+@pytest.fixture(autouse=True)
+def _tts_darf_sprechen(monkeypatch, tmp_path):
+    """Seit dem 19.08. laesst `tts.sock` nur `daimon-tts.service` heran.
+
+    Diese Tests laufen nicht unter dieser Unit; dass sie vorher alle gruen
+    waren, zeigt genau das, was der Befund sagte -- es gab keine Pruefung.
+    Erlaubt wird die Unit des TESTPROZESSES, echt gemessen. Geprueft wird die
+    Sperre selbst in `test_hub_socket_allowlisten.py`.
+    """
+    from daimon.hub import daemon as _D
+    monkeypatch.setattr(_D, "TTS_UNITS", (eigene_unit(tmp_path),))
 
 
 @pytest.fixture

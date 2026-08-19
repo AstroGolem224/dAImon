@@ -25,6 +25,12 @@ import time
 from pathlib import Path
 
 from daimon.brokers import dienst
+# EINE Fassung: `ticket_beim_hub_einloesen` stand hier bis zum 19.08. ein
+# zweites Mal, Wort fuer Wort wie im Mantel -- gefunden beim Verdrahten der
+# Hub-Allowlisten. Haette jemand Zeitlimit oder Fehlerbehandlung an einer
+# Stelle geaendert, waere die Einmaligkeit der Auftragstickets je nach
+# Broker verschieden gewesen. Sie ist eine Aussage ueber ALLE zusammen.
+from daimon.brokers.dienst import ticket_beim_hub_einloesen
 from daimon.brokers.dbus.broker import DBusBroker
 from daimon.common import ipc
 from daimon.common.logging import get_logger
@@ -43,24 +49,6 @@ def katalog_lesen(pfad: Path) -> dict:
     with open(pfad, encoding="utf-8") as fh:
         roh = yaml.safe_load(fh) or {}
     return {e["id"]: e for e in (roh.get("actions") or []) if e.get("id")}
-
-
-def ticket_beim_hub_einloesen(hub_pfad: Path, ticket: str,
-                              timeout_s: float = 5.0) -> None:
-    """Wirft, wenn der Hub nicht einloest. Kein Rueckfall auf "dann eben ohne"."""
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as c:
-        c.settimeout(timeout_s)
-        c.connect(str(hub_pfad))
-        c.sendall(json.dumps(
-            {"v": 1, "art": "ticket_einloesen", "ticket": ticket}).encode()
-            + b"\n")
-        antwort = c.recv(4096).decode("utf-8", "replace").strip()
-    try:
-        daten = json.loads(antwort)
-    except ValueError as exc:
-        raise RuntimeError(f"Hub-Antwort unlesbar: {antwort[:120]}") from exc
-    if not daten.get("ok"):
-        raise RuntimeError(str(daten.get("grund") or "Hub hat abgelehnt"))
 
 
 def bediene(broker: DBusBroker, conn: socket.socket, hub_pfad: Path,

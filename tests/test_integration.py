@@ -416,6 +416,40 @@ def test_alle_units_laufen_gleichzeitig(sitzung, evidenz):
 # Szenario 2 — Sprachanfrage mit Bildschirmbezug und Folgeaktion
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# ZWEI SZENARIEN SIND SEIT DEM 19.08. AUSGESETZT -- und warum das hier steht
+# ---------------------------------------------------------------------------
+#
+# Dieser Pruefstand misst den LAUFENDEN Hub. Das ist sein Wert und war an
+# diesem Tag auch sein Fehler: T-4.4 wurde um 00:24 committet, der Hub-Prozess
+# lief bis 10:07 mit dem alten Code weiter -- und `test_sprachanfrage...` blieb
+# zehn Stunden gruen, obwohl die Zusage, die er misst, seit dem Commit eine
+# andere ist. Gemessen wurde ein Prozess, nicht der Stand des Repos.
+#
+# Beide Szenarien brauchen deshalb einen Umbau, und zwar aus zwei
+# unabhaengigen Gruenden:
+#
+#   1. `quelle: "parser"` gibt es nicht mehr (T-4.4). Der Socketweg setzt die
+#      Quelle selbst; eine Aktion geht durch die Vorschau und braucht eine
+#      Zustimmung. `verdikt == "allow"` ohne Mensch ist keine Zusage mehr.
+#   2. `aktion.sock` und `gpu.sock` tragen seit T-4.5 Unit-Allowlisten. Ein
+#      Testprozess steht auf keiner -- und kann es auch nicht: fuer jede der
+#      erlaubten Units existiert ein Fragment, und `systemd-run --unit=` lehnt
+#      solche Namen ab ("already loaded or has a fragment file", gemessen).
+#
+# Der ehrliche Ersatz misst nicht mehr die nachgespielte Zeile, sondern was
+# der echte Weg tut -- fuer die GPU-Sonde etwa `daimon-gpu@sonde.service`, die
+# nachweislich startet und auf der Allowlist steht. Das ist ein eigener
+# Schnitt und steht als Karte im PMTool.
+#
+# Ausgesetzt und nicht geloescht: ein `skip` mit Grund ist sichtbar, ein
+# entfernter Test ist es nicht.
+AUSGESETZT = (
+    "Umbau noetig (Karte im PMTool): der Weg misst `quelle: parser` (seit "
+    "T-4.4 weg) und braucht eine Unit von der Allowlist (seit T-4.5). "
+    "Details im Kommentar ueber dieser Konstante.")
+
+
 def test_sprachanfrage_mit_bildschirmbezug_und_folgeaktion(sitzung, evidenz):
     """Frage mit Bildschirmbezug an den Mind, Folgeaktion über den Hub.
 
@@ -425,6 +459,7 @@ def test_sprachanfrage_mit_bildschirmbezug_und_folgeaktion(sitzung, evidenz):
     Katalog `direct`, und ihre Wirkung steht in `wpctl` — nicht in der
     Antwortzeile des Hubs.
     """
+    pytest.skip(AUSGESETZT)
     with protokoll(evidenz, szenario="sprachanfrage_und_folgeaktion",
                    gestartet=["mind.sock frage (fensterliste)",
                               "auth.sock intent_mark",
@@ -647,6 +682,7 @@ def test_vollbild_gate_sperrt_gpu_ladung(sitzung, evidenz, tmp_path):
     das Gate öffnen, NACH dem Schließen muss es WIEDER öffnen. Ein Gate, das
     immer sperrt, bestünde sonst jede Zeile dieses Tests.
     """
+    pytest.skip(AUSGESETZT)
     with protokoll(evidenz, szenario="vollbild_gate",
                    gestartet=["tests/harness/vollbildfenster.py (tkinter, "
                               "Vollbild)", "gpu.sock Ladesonde (1 MiB)"],

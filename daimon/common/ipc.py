@@ -258,6 +258,32 @@ def pruefe_typ(produzent: str, typ: str) -> None:
         )
 
 
+def unit_erlaubt(unit: str, erlaubte: Iterable[str]) -> bool:
+    """Steht `unit` auf der Liste -- mit genau einer Ausnahme fuer Templates.
+
+    Ein Eintrag, der auf `@` endet, meint alle Instanzen dieses Templates:
+    `daimon-gpu@` erlaubt `daimon-gpu@qwen3.service` ebenso wie
+    `daimon-gpu@llama.service`. Anders geht es nicht -- der Instanzname steht
+    erst zur Laufzeit fest, und eine Liste kann ihn nicht vorwegnehmen.
+
+    **Der Instanzteil wird NICHT geprueft, und das ist der Preis.** Wer eine
+    eigene `daimon-gpu@beliebig.service` anlegt, steht damit auf der Liste.
+    Das ist hinnehmbar, weil die Peer-Pruefung ohnehin ein Wegweiser ist und
+    keine Authentifizierung (DESIGN.md 1.3): wer Units anlegen kann, laeuft
+    bereits unter dieser uid und braucht diesen Weg nicht. Eine Regel, die
+    hier mehr verspraeche, waere die schlechtere.
+
+    Alles ohne `@` am Ende wird exakt verglichen, wie vorher. Ein Praefix
+    „irgendwie aehnlich" gibt es nicht -- `daimon-gpu` erlaubt keine Instanz,
+    und `daimon-gpu@` erlaubt nicht `daimon-gpu.service`.
+    """
+    liste = set(erlaubte)
+    if unit in liste:
+        return True
+    return any(e.endswith("@") and unit.startswith(e) and unit.endswith(".service")
+               for e in liste)
+
+
 def accept(srv: socket.socket, produzent: str, *,
            erlaubte_uid: int | None = None,
            erlaubte_units: Iterable[str] | None = None,
@@ -283,7 +309,8 @@ def accept(srv: socket.socket, produzent: str, *,
         conn.close()
         raise PeerError(f"uid {peer.uid} != {soll_uid}")
 
-    if erlaubte_units is not None and peer.unit not in set(erlaubte_units):
+    if erlaubte_units is not None and not unit_erlaubt(peer.unit,
+                                                       erlaubte_units):
         if audit:
             audit("fremde_unit", peer)
         conn.close()

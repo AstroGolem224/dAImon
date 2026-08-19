@@ -71,6 +71,49 @@ AKTION_SOCKET = "aktion.sock"
 # Dienste kennen, und damit die schwaechste Tuer im Haus.
 KONTEXT_SOCKET = "kontext.sock"
 KONTEXT_UNITS = ("daimon-mind.service",)
+
+# Wer an den uebrigen Endpunkten sprechen darf. Bis zum 19.08. hatte NUR der
+# Kontextsocket eine Liste; die Reviewer-Sitzung hat es gemessen (T-4.5,
+# Abschnitt ZUSAETZLICH):
+#
+#     KONTEXT True -- AKTION False, TICKET False, GPU False, TTS False
+#
+# Jeder Eintrag unten ist ein gemessener Absender aus dem Quelltext, keiner
+# ist vorsorglich. Wer eine Liste raet, sperrt im Betrieb den Falschen aus.
+#
+# Was sie leisten: einen falsch verdrahteten eigenen Dienst aufhalten und im
+# Nachhinein sichtbar machen, wer gefragt hat. Einen Angreifer unter dieser
+# uid halten sie nicht auf, und das sollen sie nicht (DESIGN.md 1.3).
+
+# `aktion.sock` traegt ZWEI Dinge, und deshalb steht der Auth-Agent hier
+# neben den Brokern: er fragt lesend, was offen ist (auth/agent.py:330); die
+# vier Aktionsbroker loesen ihr Ticket unmittelbar vor der Ausfuehrung ein
+# (brokers/dienst.py, brokers/dbus/daemon.py).
+#
+# NICHT dabei: `daimon-mind.service`. Der Modulkopf oben sagt "der Mind
+# schickt eine Zeile und bekommt eine zurueck" -- im Quelltext tut das
+# niemand, dasselbe Ergebnis wie beim Waechter aus T-4.4. Ihn vorsorglich
+# einzutragen hiesse, eine Liste zu fuehren, die etwas behauptet. Wer den
+# Zulauf baut, merkt es beim ersten Lauf und traegt ihn ein.
+AKTION_UNITS = (
+    "daimon-auth.service",
+    "daimon-dbus.service",
+    "daimon-fs.service",
+    "daimon-exec.service",
+    "daimon-input.service",
+)
+# T-3.11: die Kontingente. Vier Verbraucher, alle im Quelltext belegt.
+TICKET_UNITS = (
+    "daimon-lokal-broker.service",
+    "daimon-egress.service",
+    "daimon-cli-broker.service",
+    "daimon-mind.service",
+)
+# Die Ladesperre. `daimon-gpu@.service` ist ein TEMPLATE -- der Instanzname
+# ist das Modell und steht erst zur Laufzeit fest. Der Eintrag endet deshalb
+# auf `@`; was das genau bedeutet, steht bei `ipc.unit_erlaubt`.
+GPU_UNITS = ("daimon-gpu@",)
+TTS_UNITS = ("daimon-tts.service",)
 # Wie lange der Hub auf die Antwort des Menschen wartet. Laenger als ein
 # Blick, kuerzer als ein Kaffee -- und danach `cancelled`, nicht `declined`.
 RUECKFRAGE_FRIST_S = 120.0
@@ -1204,17 +1247,29 @@ class Hub:
                 continue
             except OSError:
                 break
-            # T-5.9b: nur der Kontextsocket setzt `erlaubte_units`. Die
-            # Peer-Pruefung ist ein Wegweiser und keine Authentifizierung
-            # (Design 1.3) -- sie haelt einen falsch verdrahteten eigenen
-            # Dienst auf und macht im Nachhinein sichtbar, wer gefragt hat.
+            # Seit dem 19.08. setzen FUENF Endpunkte `erlaubte_units`, nicht
+            # mehr nur der Kontextsocket (T-5.9b): dazu Aktion, Ticket, GPU
+            # und TTS. Gemessen hatte die Reviewer-Sitzung genau eine gesetzte
+            # Liste von fuenf -- und ueber `aktion.sock` laufen Aktionsbitte
+            # und Ticketeinloesung.
+            #
+            # Die Peer-Pruefung bleibt, was sie ist: ein Wegweiser und keine
+            # Authentifizierung (DESIGN.md 1.3, dort seit dem 19.08. samt der
+            # Feststellung, dass ein Ersatz fuer die gestrichene Signatur
+            # nicht vorgesehen ist). Sie haelt einen falsch verdrahteten
+            # eigenen Dienst auf und macht im Nachhinein sichtbar, wer gefragt
+            # hat.
+            #
+            # `ipc.unit_erlaubt` und NICHT `not in` von Hand: die Templates
+            # (`daimon-gpu@`) brauchen den Instanzvergleich, und zwei
+            # Fassungen dieser Regel waeren eine Regel und eine Attrappe.
             if erlaubte_units is not None:
                 try:
                     peer = ipc.peer_of(conn, dateiname)
-                    if peer.unit not in erlaubte_units:
+                    if not ipc.unit_erlaubt(peer.unit, erlaubte_units):
                         raise ipc.PeerError(f"Unit {peer.unit!r}")
                 except ipc.PeerError as exc:
-                    self.log.warn("Kontextanfrage von fremder Unit",
+                    self.log.warn("Anfrage von fremder Unit",
                                   DAIMON_SOCKET=dateiname,
                                   DAIMON_GRUND=str(exc)[:120])
                     conn.close()
@@ -1316,22 +1371,29 @@ class Hub:
             self._threads.append(t)
         t = threading.Thread(target=self._horche_einfach,
                              args=(GPU_SOCKET, self.gpu_anfrage),
-                             kwargs={"liest": True}, daemon=True)
+                             kwargs={"liest": True,
+                                     "erlaubte_units": GPU_UNITS},
+                             daemon=True)
         t.start()
         self._threads.append(t)
         t = threading.Thread(target=self._horche_einfach,
                              args=(TTS_SOCKET, self.tts_anfrage),
-                             kwargs={"liest": True}, daemon=True)
+                             kwargs={"liest": True,
+                                     "erlaubte_units": TTS_UNITS},
+                             daemon=True)
         t.start()
         self._threads.append(t)
         t = threading.Thread(target=self._horche_einfach,
                              args=(TICKET_SOCKET, self.ticket_anfrage),
-                             kwargs={"liest": True}, daemon=True)
+                             kwargs={"liest": True,
+                                     "erlaubte_units": TICKET_UNITS},
+                             daemon=True)
         t.start()
         self._threads.append(t)
         t = threading.Thread(target=self._horche_einfach,
                              args=(AKTION_SOCKET, self.aktion_anfrage),
-                             kwargs={"liest": True, "nebenlaeufig": True},
+                             kwargs={"liest": True, "nebenlaeufig": True,
+                                     "erlaubte_units": AKTION_UNITS},
                              daemon=True)
         t.start()
         self._threads.append(t)

@@ -44,3 +44,44 @@ def kein_journal(monkeypatch):
     existiert genau dafuer und geht an dieser Fixture vorbei.
     """
     monkeypatch.setattr(_audit, "_ins_journal", lambda text: None)
+
+
+def eigene_unit(tmp_path) -> str:
+    """Unter welcher systemd-Unit dieser Pruefstand laeuft -- echt gemessen.
+
+    Seit dem 19.08. tragen fuenf Hub-Endpunkte und die Broker-Sockets
+    Unit-Allowlisten (T-4.5). Ein Pruefstand laeuft unter keiner davon; er
+    muss sich also selbst eintragen, sonst prueft er einen Weg, den es im
+    Betrieb nicht gibt.
+
+    Diese Funktion steht hier und ist KEINE autouse-Fixture, und beides mit
+    Absicht:
+
+    * hier, weil drei Dateien sie brauchen und drei Kopien drei Fassungen
+      derselben Regel waeren;
+    * nicht automatisch, weil eine Fixture, die still jede Allowlist aufmacht,
+      genau die Umgehung waere, gegen die die Listen gebaut sind. Wer sie
+      braucht, ruft sie und schreibt dazu, welche Liste er weitet.
+
+    Gemessen wird ueber eine echte Verbindung und `ipc.peer_of` -- dieselbe
+    Kette wie im Betrieb. Die Funktion zu ersetzen waere der Fehler, an dem
+    `test_hub_kontext.py` seinerzeit den Befund nicht finden konnte.
+    """
+    import socket
+
+    from daimon.common import ipc
+
+    pfad = tmp_path / "unitmessung.sock"
+    pfad.unlink(missing_ok=True)
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(str(pfad))
+    srv.listen(1)
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as c:
+            c.connect(str(pfad))
+            conn, _ = srv.accept()
+            with conn:
+                return ipc.peer_of(conn, "messung").unit
+    finally:
+        srv.close()
+        pfad.unlink(missing_ok=True)

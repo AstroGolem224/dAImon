@@ -23,9 +23,23 @@ from pathlib import Path
 import pytest
 
 from daimon.brokers.egress import broker as B
+from conftest import eigene_unit
 from daimon.common.config import Config
 from daimon.common.logging import get_logger
 from daimon.hub.daemon import Hub, TICKET_SOCKET
+
+
+@pytest.fixture(autouse=True)
+def _der_broker_darf_einloesen(monkeypatch, tmp_path):
+    """Seit dem 19.08. laesst `ticket.sock` nur die vier Kontingent-Verbraucher
+    heran (T-4.5, Abschnitt ZUSAETZLICH).
+
+    Dieser Pruefstand laeuft unter keiner davon. Erlaubt wird die Unit des
+    Testprozesses, echt gemessen; geprueft wird die Sperre selbst in
+    `test_hub_socket_allowlisten.py`.
+    """
+    from daimon.hub import daemon as _D
+    monkeypatch.setattr(_D, "TICKET_UNITS", (eigene_unit(tmp_path),))
 from daimon.mind import daemon as M
 from daimon.mind.persona import lade as persona_laden
 

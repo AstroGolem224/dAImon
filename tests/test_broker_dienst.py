@@ -15,29 +15,16 @@ from pathlib import Path
 
 import pytest
 
+from conftest import eigene_unit
 from daimon.brokers import dienst
 from daimon.common import ipc
 
 
 @pytest.fixture(autouse=True)
 def _hub_ist_dieser_test(monkeypatch, tmp_path):
-    """Die eigene Unit gilt als Hub -- echt gemessen, nicht geraten.
-
-    Nicht `ipc.peer_of` ersetzt: eine Attrappe an dieser Stelle wuerde die
-    Vorrichtung aus dem Weg raeumen, die hier gerade dazugekommen ist.
-    """
-    pfad = tmp_path / "unitmessung.sock"
-    srv = dienst.socket_anlegen(pfad)
-    try:
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as c:
-            c.connect(str(pfad))
-            conn, _ = srv.accept()
-            with conn:
-                eigene = ipc.peer_of(conn, "messung").unit
-    finally:
-        srv.close()
-        pfad.unlink(missing_ok=True)
-    monkeypatch.setattr(dienst, "HUB_UNIT", eigene)
+    """Die eigene Unit gilt als Hub. Geprueft wird die Sperre selbst in
+    `test_broker_herkunft.py`."""
+    monkeypatch.setattr(dienst, "HUB_UNIT", eigene_unit(tmp_path))
 
 
 def frage(pfad: Path, roh: bytes) -> dict:
