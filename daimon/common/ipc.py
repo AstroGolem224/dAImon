@@ -180,7 +180,33 @@ def _uid_gid(pid: int) -> tuple[int, int]:
     return uid, gid
 
 
-_UNIT = re.compile(r"/([^/]+\.(?:service|scope|slice))(?:/|$)")
+# `(?=/|$)` und NICHT `(?:/|$)`. Der Unterschied ist ein Zeichen und war ein
+# Befund: die konsumierende Fassung frisst den abschliessenden Schraegstrich
+# mit, sodass `findall` bei der naechsten Runde keinen fuehrenden mehr findet
+# und JEDES ZWEITE Segment ueberspringt.
+#
+# Am 19.08. gemessen, an zwei echten cgroup-Pfaden:
+#
+#   .../app.slice/daimon-fs.service
+#     -> [user.slice, user@1000.service, daimon-fs.service]     RICHTIG
+#   .../app.slice/app-daimon\x2dgpu.slice/daimon-gpu@sonde.service
+#     -> [user.slice, user@1000.service, app-daimon\x2dgpu.slice]  FALSCH
+#
+# Es war also nicht "meistens richtig", sondern richtig bei GERADER Zahl
+# uebriger Segmente und falsch bei ungerader -- und niemand konnte es merken,
+# weil die einzige Unit mit einer zusaetzlichen Ebene die Template-Instanz ist:
+# systemd gruppiert `foo@bar.service` unter `app.slice` in eine eigene
+# `app-foo.slice`. Der GPU-Worker ist das einzige Template im Projekt, und er
+# ist socket-aktiviert, laeuft also nur Sekunden.
+#
+# Tragweite: `_unit` ist die Grundlage JEDER Peer-Pruefung im Projekt --
+# `KONTEXT_UNITS` (T-5.9b), `ART_JE_UNIT` im Recorder (welche Art ein Absender
+# ablegen darf) und seit dem 19.08. die fuenf Hub-Allowlisten. Wer eine Ebene
+# tiefer laeuft, bekam einen Slice-Namen statt seiner Unit: er wird
+# abgewiesen, wo er darf. Die andere Richtung ist die schlimmere und war hier
+# nicht erreichbar, weil kein Slice-Name auf einer Liste steht -- eine Regel,
+# die auf so einem Zufall ruht, ist keine.
+_UNIT = re.compile(r"/([^/]+\.(?:service|scope|slice))(?=/|$)")
 
 
 def _unit(pid: int) -> str:

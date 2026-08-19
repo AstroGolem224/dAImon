@@ -235,3 +235,83 @@ def test_aufloesung_haelt_den_pidfd_bis_zum_schluss():
         for t in trys for stmt in t.finalbody for k in ast.walk(stmt)
     )
     assert schliesst_im_finally, "os.close(pidfd) steht nicht im finally"
+
+
+# ---------------------------------------------------------------------------
+# `_unit` -- die Grundlage JEDER Peer-Pruefung, und sie hatte keinen Test
+# ---------------------------------------------------------------------------
+#
+# BEFUND vom 19.08.: der Regex konsumierte den abschliessenden Schraegstrich
+# (`(?:/|$)` statt `(?=/|$)`) und uebersprang damit jedes zweite Segment des
+# cgroup-Pfades. Getroffen wurde die richtige Unit nur bei GERADER Zahl
+# uebriger Segmente.
+#
+# Aufgefallen ist es erst, als der GPU-Worker ueber seinen echten Weg ans
+# Gate sollte: er lief als `daimon-gpu@sonde.service` und wurde vom Hub als
+# `app-daimon\x2dgpu.slice` abgewiesen. systemd gruppiert Template-Instanzen
+# unter `app.slice` in eine eigene `app-<template>.slice` -- eine Ebene mehr,
+# und damit kippt die Paritaet. Der GPU-Worker ist das einzige Template im
+# Projekt und laeuft socket-aktiviert nur Sekunden.
+#
+# Diese Pfade sind ECHT, an dieser Maschine ausgelesen. Ein selbst gebauter
+# Pfad haette hier genau die Ebene weggelassen, um die es geht.
+
+CGROUP_FS = ("0::/user.slice/user-1000.slice/user@1000.service/app.slice/"
+             "daimon-fs.service")
+CGROUP_GPU = ("0::/user.slice/user-1000.slice/user@1000.service/app.slice/"
+              "app-daimon\\x2dgpu.slice/daimon-gpu@sonde.service")
+CGROUP_SCOPE = ("0::/user.slice/user-1000.slice/user@1000.service/"
+                "app.slice/app-org.kde.konsole.slice/"
+                "vte-spawn-1234.scope")
+
+
+def _unit_aus(text: str, tmp_path, monkeypatch) -> str:
+    """`_unit` gegen einen echten cgroup-Text, ohne echten Prozess.
+
+    Ersetzt wird `open` fuer GENAU diesen Pfad -- nicht `_unit` selbst. Eine
+    Attrappe an der Funktion haette den Befund nicht finden koennen, weil sie
+    genau die Zeile ersetzt haette, in der er stand.
+    """
+    datei = tmp_path / "cgroup"
+    datei.write_text(text, encoding="utf-8")
+    echt = open
+    monkeypatch.setattr(
+        "builtins.open",
+        lambda p, *a, **kw: (echt(datei, *a, **kw)
+                             if str(p).endswith("/cgroup")
+                             else echt(p, *a, **kw)))
+    return ipc._unit(4711)
+
+
+def test_die_unit_steht_am_ENDE_des_pfades(tmp_path, monkeypatch):
+    """DER BEFUND: hier stand `app-daimon\\x2dgpu.slice`."""
+    assert _unit_aus(CGROUP_GPU, tmp_path, monkeypatch) == \
+        "daimon-gpu@sonde.service"
+
+
+def test_der_einfache_fall_bleibt_richtig(tmp_path, monkeypatch):
+    """Er war es auch vorher -- aber aus dem falschen Grund. Ohne diese Zeile
+    bestuende der Test darueber auch eine Fassung, die immer das letzte
+    Segment nimmt, egal ob es eine Unit ist."""
+    assert _unit_aus(CGROUP_FS, tmp_path, monkeypatch) == "daimon-fs.service"
+
+
+def test_ein_scope_wird_auch_erkannt(tmp_path, monkeypatch):
+    """Ein Terminal ist ein Scope, keine Service-Unit. Wer von Hand startet,
+    soll einen Namen bekommen und nicht die Slice darueber."""
+    assert _unit_aus(CGROUP_SCOPE, tmp_path, monkeypatch) == \
+        "vte-spawn-1234.scope"
+
+
+def test_ohne_erkennbare_unit_kommt_leer_zurueck(tmp_path, monkeypatch):
+    """Fail-closed: ein leerer Name steht auf keiner Allowlist."""
+    assert _unit_aus("0::/\n", tmp_path, monkeypatch) == ""
+
+
+def test_die_paritaet_entscheidet_NICHT_mehr(tmp_path, monkeypatch):
+    """Der Kern des Befunds als eigene Zeile: derselbe Dienst, einmal eine
+    Ebene tiefer. Vorher kippte das Ergebnis, jetzt nicht mehr."""
+    flach = "0::/app.slice/daimon-x.service"
+    tief = "0::/app.slice/app-daimon.slice/daimon-x.service"
+    assert _unit_aus(flach, tmp_path, monkeypatch) == "daimon-x.service"
+    assert _unit_aus(tief, tmp_path, monkeypatch) == "daimon-x.service"

@@ -270,6 +270,144 @@ def evidenz():
     }, ensure_ascii=False, indent=2) + "\n")
 
 
+def _dienste_aelter_als_der_code() -> dict[str, float]:
+    """Welcher laufende Dienst ist älter als der Code, den er ausführt.
+
+    DER BEFUND VOM 19.08., und er betrifft diesen Prüfstand als Ganzes: T-4.4
+    wurde um 00:24 committet, der Hub-Prozess lief bis 10:07 mit dem alten
+    Code weiter. Zehn Stunden lang war das Aktionsszenario grün, obwohl es
+    einen Weg misst, den jener Commit geschlossen hat. Gemessen wurde ein
+    PROZESS, nicht der Stand des Repos — und die Suite sagte darüber nichts.
+
+    Das ist die Kehrseite dessen, was diesen Prüfstand wertvoll macht. Er
+    misst das laufende System, also auch dessen Alter.
+
+    Verglichen werden Prozessstart und die jüngste Änderung unter `daimon/`.
+    Keine Versionsnummer im Protokoll, kein neues Feld im Hub: eine Zahl, die
+    jemand hochzählen muss, ist genau dann falsch, wenn es darauf ankommt. Die
+    `mtime` lügt nicht, weil niemand sie pflegt.
+
+    Zurückgegeben wird, um wie viele Sekunden der Code jünger ist — nicht ein
+    Wahrheitswert. Die Zahl steht im Beleg, damit später nachvollziehbar ist,
+    WIE weit ein Ergebnis daneben lag.
+    """
+    veraltet: dict[str, float] = {}
+    for unit in list(DAUERLAST_UNITS) + list(ABRUF_UNITS):
+        jüngste = _jüngste_quelle(unit)
+        if jüngste is None:
+            continue
+        # `ActiveEnterTimestamp` und NICHT die `mtime` von `/proc/<pid>`. Die
+        # erste Fassung nahm die zweite und lieferte hier dieselben Zahlen --
+        # aber nur, weil sie bei diesen Prozessen zufällig zusammenfallen. Die
+        # `mtime` eines /proc-Verzeichnisses bewegt sich mit dem Prozess;
+        # systemds Zeitstempel IST definiert der Start. Auf Zufall gemessen
+        # heißt: irgendwann nicht mehr.
+        #
+        # Nicht die monotone Variante -- die zählt seit dem Systemstart und ist
+        # mit einer Dateizeit nicht vergleichbar.
+        roh = _systemctl("show", "-p", "ActiveEnterTimestampMonotonic",
+                         "-p", "ActiveEnterTimestamp", "-p", "MainPID", unit,
+                         timeout=15.0)
+        werte = dict(z.split("=", 1) for z in roh.stdout.splitlines()
+                     if "=" in z)
+        if werte.get("MainPID", "0") in ("0", ""):
+            continue                    # läuft nicht, kann nicht veraltet sein
+        stempel = werte.get("ActiveEnterTimestampMonotonic", "")
+        if not stempel.isdigit() or stempel == "0":
+            continue
+        # Wanduhr des Starts: aus dem menschenlesbaren Stempel, weil systemd
+        # dort keine Epoch-Sekunden ausgibt.
+        gestartet = _epoch_aus_systemd(werte.get("ActiveEnterTimestamp", ""))
+        if gestartet is None:
+            continue
+        if jüngste > gestartet:
+            veraltet[unit] = round(jüngste - gestartet, 1)
+    return veraltet
+
+
+def _jüngste_quelle(unit: str) -> float | None:
+    """Jüngste Änderung an dem Code, den GENAU DIESE Unit ausführt.
+
+    Nicht ganz `daimon/`: eine erste Fassung nahm den ganzen Baum und meldete
+    daraufhin den Fokusdienst als veraltet, weil sich `hub/daemon.py` bewegt
+    hatte. Ein Wächter, der bei jeder Änderung irgendwo alles aussetzt, setzt
+    in der Praxis nur sich selbst aus -- man schaltet ihn ab.
+
+    Das Paket kommt aus dem `ExecStart` der Unit, also aus derselben Quelle,
+    die den Prozess auch wirklich startet. Eine Tabelle hier wäre die zweite
+    Fassung und liefe beim ersten neuen Dienst auseinander.
+
+    `common/` zählt immer mit -- jeder Dienst lädt es, und die Peer-Prüfung
+    liegt dort.
+    """
+    text = ""
+    for kandidat in (unit, re.sub(r"@[^.]*\.service$", "@.service", unit)):
+        pfad = REPO / "config" / "systemd" / kandidat
+        if pfad.exists():
+            text = pfad.read_text(encoding="utf-8")
+            break
+    if not text:
+        return None
+    module = re.findall(r"-m\s+(daimon[\w.]*)", text)
+    if not module:
+        return None                     # kein Python-Dienst (Rust-Face, KWin)
+
+    verzeichnisse = {REPO / "daimon" / "common"}
+    for modul in module:
+        teile = modul.split(".")[1:]    # "daimon" weg
+        if teile:
+            verzeichnisse.add(REPO.joinpath("daimon", *teile[:-1]))
+    quellen = [p for v in verzeichnisse for p in v.rglob("*.py")
+               if "__pycache__" not in str(p)]
+    if not quellen:                     # Positivkontrolle gegen leeres Messen
+        raise AssertionError(
+            f"{unit}: keine Quelldateien unter {verzeichnisse} -- der "
+            "Vergleich wäre still und immer erfolgreich")
+    return max(p.stat().st_mtime for p in quellen)
+
+
+def _epoch_aus_systemd(stempel: str) -> float | None:
+    """`Wed 2026-08-19 10:07:09 CEST` -> Epoch-Sekunden. `None`, wenn leer.
+
+    Über `date -d`, nicht über ein eigenes Format: die Zeitzonenkürzel sind
+    lokalisiert, und ein selbstgebauter Parser wäre die Stelle, an der die
+    Messung im Winter still falsch wird.
+    """
+    stempel = stempel.strip()
+    if not stempel:
+        return None
+    e = _lauf(["date", "-d", stempel, "+%s"], timeout=10.0)
+    roh = e.stdout.strip()
+    return float(roh) if e.returncode == 0 and roh.isdigit() else None
+
+
+@pytest.fixture
+def frisch(sitzung):
+    """Gibt eine Prüfung zurück: laufen DIESE Dienste mit aktuellem Code.
+
+    Als Funktion und nicht als pauschale Fixture, weil die Frage je Szenario
+    eine andere ist. Ein Aktionsszenario hängt am Hub; dass die Hook-Bridge
+    seit gestern läuft, ändert an seinem Ergebnis nichts. Eine Fassung, die
+    bei jedem veralteten Dienst irgendwo alles aussetzt, wird abgeschaltet und
+    schützt dann gar nichts.
+
+    `skip` und nicht `fail`: ein alter Prozess ist kein Produktdefekt, sondern
+    ein vergessener `systemctl restart`. Aber sichtbar -- genau dieses
+    Vergessen hat am 19.08. zehn Stunden lang ein grünes Ergebnis erzeugt, das
+    nicht galt (T-4.4 committet 00:24, Hub neu gestartet 10:07).
+    """
+    def prüfen(*units: str) -> None:
+        alt = {u: s for u, s in (sitzung.get("veraltet") or {}).items()
+               if u in units}
+        if alt:
+            wo = ", ".join(f"{u} ({s:.0f} s)" for u, s in sorted(alt.items()))
+            pytest.skip(
+                f"laufen mit älterem Code als das Repo: {wo}. Erst "
+                "`systemctl --user restart`, dann messen -- sonst prüft "
+                "dieser Lauf einen Prozess und nicht den Stand des Repos.")
+    return prüfen
+
+
 @pytest.fixture(scope="module")
 def sitzung():
     """Die live Sitzung — und ihre Wiederherstellung.
@@ -304,9 +442,10 @@ def sitzung():
             break
         time.sleep(1.0)
 
+    veraltet = _dienste_aelter_als_der_code()
     units = list(DAUERLAST_UNITS) + list(ABRUF_UNITS)
     ursprung = {u: ist_aktiv(u) for u in units}
-    yield {"ursprung": ursprung, "rt": rt}
+    yield {"ursprung": ursprung, "rt": rt, "veraltet": veraltet}
 
     # Wiederherstellung — best effort, aber jede Unit einzeln.
     with contextlib.suppress(Exception):
@@ -450,7 +589,7 @@ AUSGESETZT = (
     "Details im Kommentar ueber dieser Konstante.")
 
 
-def test_sprachanfrage_mit_bildschirmbezug_und_folgeaktion(sitzung, evidenz):
+def test_sprachanfrage_mit_bildschirmbezug(sitzung, frisch, evidenz):
     """Frage mit Bildschirmbezug an den Mind, Folgeaktion über den Hub.
 
     Der Bildschirmbezug wird nicht aus der Antwort gelesen (das wäre das
@@ -458,8 +597,21 @@ def test_sprachanfrage_mit_bildschirmbezug_und_folgeaktion(sitzung, evidenz):
     gehalten. Die Folgeaktion ist `audio.volume.up/down`: selbstinvers, im
     Katalog `direct`, und ihre Wirkung steht in `wpctl` — nicht in der
     Antwortzeile des Hubs.
+
+    DIE FOLGEAKTION IST SEIT DEM 19.08. NICHT MEHR TEIL DIESES SZENARIOS,
+    und der Grund ist kein technischer Verzicht, sondern ein Befund. Sie ging
+    hier über `quelle: "parser"` -- also über den Weg, den T-4.4 als
+    Umgehung der Vorschau geschlossen hat. Ein Test, der die Vorschau
+    umgeht, misst nicht die Zusage, sondern ihre Lücke; dass er zehn Stunden
+    nach jenem Commit noch grün war, lag allein daran, dass der Hub-PROZESS
+    den alten Code fuhr.
+
+    Was an ihre Stelle tritt, steht in
+    `test_der_aktionsweg_hat_heute_keinen_erzeuger` -- ein Wächter statt
+    einer Nachstellung. Die Wirkungsmessung über `wpctl` fällt damit weg: der
+    Weg braucht jetzt eine bestätigte Vorschau, und die gibt ein Mensch.
     """
-    pytest.skip(AUSGESETZT)
+    frisch("daimon-hub.service", "daimon-mind.service")
     with protokoll(evidenz, szenario="sprachanfrage_und_folgeaktion",
                    gestartet=["mind.sock frage (fensterliste)",
                               "auth.sock intent_mark",
@@ -503,50 +655,6 @@ def test_sprachanfrage_mit_bildschirmbezug_und_folgeaktion(sitzung, evidenz):
         assert genannt == eigen, (
             f"Mind nennt {genannt} Fenster, eigene KWin-Abfrage zählt {eigen}")
 
-        # -- Folgeaktion ---------------------------------------------------
-        v0 = lautstaerke()
-        if v0 is None:
-            pytest.skip("wpctl nicht abfragbar — Aktionswirkung nicht messbar")
-        richtung = "up" if v0 <= 0.90 else "down"
-        umkehr = "down" if richtung == "up" else "up"
-
-        produzent_sende("auth.sock", "intent_mark", {})
-        time.sleep(0.3)     # die Marke entsteht im Hub, nicht in der Anfrage
-        ant = sock_frage("aktion.sock", {
-            "v": 1, "art": "ausfuehren", "action_id": f"audio.volume.{richtung}",
-            "params": {}, "quelle": "parser"})
-        satz["gemessen"]["aktion_antwort"] = ant
-        assert ant.get("ok") is True, f"Hub: {ant.get('grund')}"
-        assert ant.get("verdikt") == "allow", f"verdikt={ant.get('verdikt')}"
-        assert ant.get("direkt") is True
-        assert ant.get("ausgefuehrt") is True, f"Broker: {ant.get('grund')}"
-
-        # Die Wirkung, selbst gemessen — mit Frist, weil kglobalaccel über
-        # DBus arbeitet und die Antwort dem Effekt vorausgehen kann.
-        v1 = v0
-        frist = time.monotonic() + 3.0
-        while time.monotonic() < frist:
-            v1 = lautstaerke()
-            if v1 is not None and (
-                    (richtung == "up" and v1 > v0)
-                    or (richtung == "down" and v1 < v0)):
-                break
-            time.sleep(0.2)
-        satz["gemessen"]["lautstaerke_vorher"] = v0
-        satz["gemessen"]["lautstaerke_nachher"] = v1
-        try:
-            assert v1 is not None and v1 != v0, (
-                f"Lautstärke unverändert bei {v0:.2f} — die Aktion meldete "
-                "Erfolg, die Wirkung fehlt")
-        finally:
-            # Umkehr, egal wie die Prüfung ausging: das System gehört nicht
-            # dem Test.
-            produzent_sende("auth.sock", "intent_mark", {})
-            time.sleep(0.3)
-            sock_frage("aktion.sock", {
-                "v": 1, "art": "ausfuehren",
-                "action_id": f"audio.volume.{umkehr}", "params": {},
-                "quelle": "parser"})
 
 
 # ---------------------------------------------------------------------------
@@ -660,29 +768,133 @@ def test_ressourcen_im_budget_design_13(sitzung, evidenz):
             f"idle_rss_mb {idle_rss_mb} MB > {BUDGET_RSS_MB} MB (Design §13)")
 
 
+
+def test_der_aktionsweg_hat_heute_keinen_erzeuger(sitzung, frisch, evidenz):
+    """Der Ersatz für die ausgebaute Folgeaktion -- und ein Wächter, kein
+    Vorratscode.
+
+    Zwei Dinge sind heute wahr, und beide gehören gemessen:
+
+      1. `aktion.sock` nimmt nur von Units auf seiner Liste an (T-4.5). Ein
+         beliebiger Prozess -- dieser hier -- kommt nicht durch.
+      2. Es gibt im Betrieb NIEMANDEN, der eine Aktionsbitte stellt. Der
+         Modulkopf des Hubs sagt "der Mind schickt eine Zeile"; im Quelltext
+         tut das kein Modul. Deshalb steht `daimon-mind.service` auch nicht
+         auf der Allowlist -- eine Liste, die einen Absender führt, den es
+         nicht gibt, behauptet etwas.
+
+    Der Tag, an dem jemand den Zulauf baut, ist der Tag, an dem dieser Test
+    auffällt: dann gibt es einen Erzeuger, die zweite Prüfung wird rot, und
+    wer sie liest, findet hier, was zu tun ist -- die Unit auf die Allowlist,
+    und die Folgeaktion wieder als Szenario, diesmal MIT Vorschau.
+    """
+    with protokoll(evidenz, szenario="aktionsweg_ohne_erzeuger",
+                   gestartet=["aktion.sock (abgewiesen, erwartet)"],
+                   budget={}) as satz:
+        frisch("daimon-hub.service")
+
+        # 1. Die Sperre, an einer echten Verbindung.
+        try:
+            ant = sock_frage("aktion.sock", {
+                "v": 1, "art": "ausfuehren", "action_id": "audio.volume.up",
+                "params": {}})
+            abgewiesen = False
+            satz["gemessen"]["antwort"] = ant
+        except (OSError, ValueError) as fehler:
+            abgewiesen = True
+            satz["gemessen"]["abweisung"] = str(fehler)[:120]
+        assert abgewiesen, (
+            "aktion.sock hat von einem beliebigen Prozess angenommen -- die "
+            "Unit-Allowlist aus T-4.5 greift nicht")
+
+        # 2. Der Zulauf, am Quelltext. Dieselbe Suche wie der Wächter in
+        #    tests/test_direktbefehl_ausnahme.py, nur auf die Nachrichtenart.
+        erzeuger = []
+        for datei in sorted((REPO / "daimon").rglob("*.py")):
+            if "__pycache__" in str(datei):
+                continue
+            for nr, zeile in enumerate(
+                    datei.read_text(encoding="utf-8").splitlines(), 1):
+                nackt = zeile.strip()
+                if nackt.startswith("#") or "aktion.sock" not in nackt:
+                    continue
+                if "connect" in nackt or "sendall" in nackt:
+                    erzeuger.append(f"{datei.relative_to(REPO)}:{nr}")
+        satz["gemessen"]["erzeuger_im_quelltext"] = erzeuger
+        assert not erzeuger, (
+            "es gibt jetzt einen Erzeuger von Aktionsbitten: "
+            + ", ".join(erzeuger)
+            + " -- seine Unit gehört auf AKTION_UNITS, und die Folgeaktion "
+              "gehört wieder als Szenario hierher, diesmal MIT Vorschau")
+
+
 # ---------------------------------------------------------------------------
 # Szenario 4 — Verhalten bei laufendem Spiel (Vollbild-Gate)
 # ---------------------------------------------------------------------------
 
+# Die Sonde geht seit dem 19.08. den ECHTEN Weg -- durch den Worker.
+#
+# Vorher schickte dieser Prüfstand die Zeile selbst an `gpu.sock` und spielte
+# damit einen Worker nach. Das ging, solange der Endpunkt von jedem annahm;
+# seit T-4.5 trägt er eine Unit-Allowlist, und ein Testprozess steht auf
+# keiner. Der naheliegende Ausweg -- eine transiente Unit mit erlaubtem
+# Namen -- scheitert gemessen: für jede Unit auf einer Allowlist existiert
+# ein Fragment, und `systemd-run --unit=` lehnt solche Namen ab.
+#
+# Der Ersatz ist kein Umweg, sondern näher an der Sache: `daimon-gpu@.socket`
+# ist socket-aktiviert. Wer sich verbindet, lässt systemd den echten Worker
+# starten, und DER fragt das Gate. Gemessen wird damit die ganze Naht --
+# Socket-Aktivierung, Worker, Hub-Gate -- statt einer nachgespielten Zeile.
+#
+# Beim Umbau kam der Befund heraus, der den Weg überhaupt blockierte:
+# `ipc._unit` gab für die Template-Instanz die Slice zurück statt der Unit
+# (siehe tests/test_ipc.py). Ohne diesen Test wäre er weiter unsichtbar --
+# der GPU-Worker ist das einzige Template im Projekt.
+GPU_SONDE = "daimon-gpu@sonde"
+
+
 def _gpu_laden(vram_mib: int = 1) -> dict:
-    return sock_frage("gpu.sock", {"v": 1, "art": "laden", "modell": "sonde",
-                                   "vram_mib": vram_mib})
+    """Eine Ladeanfrage über den echten Worker. `vram_mib` bleibt in der
+    Signatur, wirkt aber nicht mehr: die Menge steht jetzt in der Unit, nicht
+    in der Anfrage -- was richtig ist, ein Client soll sie nicht wählen."""
+    e = _systemctl("start", f"{GPU_SONDE}.socket", timeout=30.0)
+    if e.returncode != 0:
+        return {"ok": False, "grund": "sonde_startet_nicht",
+                "meldung": e.stderr.strip()[:200]}
+    try:
+        return sock_frage(f"gpu-sonde.sock", {"v": 1, "art": "laden"},
+                          timeout_s=40.0)
+    except OSError as fehler:
+        return {"ok": False, "grund": "sonde_weg", "meldung": str(fehler)[:200]}
 
 
 def _gpu_fertig(sperre: str) -> None:
+    """Der Worker gibt selbst frei -- `sperre` wird nicht mehr gebraucht.
+
+    Er bleibt als Parameter, weil die Aufrufstellen ihn lesbar machen: dort
+    steht weiterhin, dass nach einer Ladung freigegeben gehört. Was hier
+    passiert, ist das Beenden der Sonde; die Freigabe hat der Worker schon
+    erledigt, und zwar unter derselben Sperre, unter der er sie erwarb.
+    """
     with contextlib.suppress(Exception):
-        sock_frage("gpu.sock", {"v": 1, "art": "fertig", "sperre": sperre})
+        _systemctl("stop", f"{GPU_SONDE}.service", f"{GPU_SONDE}.socket",
+                   timeout=30.0)
 
 
-def test_vollbild_gate_sperrt_gpu_ladung(sitzung, evidenz, tmp_path):
+def test_vollbild_gate_sperrt_gpu_ladung(sitzung, frisch, evidenz, tmp_path):
     """Bei Vollbild verweigert das Gate die GPU-Ladung — gemessen an der
     Gate-Entscheidung, am Diagnose-Zähler und am VRAM, nicht am Etikett.
 
     Der Positiv-Kanarienvogel steht an beiden Enden: VOR dem Fenster muss
     das Gate öffnen, NACH dem Schließen muss es WIEDER öffnen. Ein Gate, das
     immer sperrt, bestünde sonst jede Zeile dieses Tests.
+
+    Seit dem 19.08. geht die Sonde durch den ECHTEN Worker (siehe
+    `_gpu_laden`): der Prüfstand darf `gpu.sock` nicht mehr selbst ansprechen,
+    und das ist gut so -- gemessen wird jetzt die ganze Naht statt einer
+    nachgespielten Zeile.
     """
-    pytest.skip(AUSGESETZT)
+    frisch("daimon-hub.service")
     with protokoll(evidenz, szenario="vollbild_gate",
                    gestartet=["tests/harness/vollbildfenster.py (tkinter, "
                               "Vollbild)", "gpu.sock Ladesonde (1 MiB)"],
