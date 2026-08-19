@@ -1949,10 +1949,16 @@ in §6 (`daimon-recorder`).
 - **Abhängigkeiten:** T-7.3, T-3.8, T-7.4.v
 - **Akzeptanz:**
   - [ ] **Nur erkannte Sprachabschnitte** werden transkribiert, nicht die
-        Stille dazwischen — sonst liefe die GPU durchgehend, gegen die
-        Residenzpolitik aus §5.4
-  - [ ] Bei anhaltender Sprache bleibt der STT-Arbeitsprozess warm, bei Stille
-        beendet er sich wie gehabt
+        Stille dazwischen — sonst liefe das Rechenwerk durchgehend
+  - [ ] Der STT-Dienst **residiert**: er beendet sich bei Stille nicht.
+        Korrigiert am 19.08. (Befund T-7.4 K3) — hier stand „bei Stille
+        beendet er sich wie gehabt", während `daimon/gpu/stt.py:24` seit
+        jeher „Kein Leerlauf-Exit" sagt. Es gilt die Residenz: das Modell
+        liegt auf der CPU und belegt 0 VRAM, es gibt also nichts
+        zurückzugeben, was die Residenzpolitik aus §5.4 zurückfordern
+        könnte. Ein Neustart kostet 843 ms Ladezeit; das Modell im Speicher
+        **ist** die Latenzzusage. Socket-aktiviert bleibt der Dienst
+        trotzdem — gestartet beim ersten Wort, nicht beim Anmelden
   - [ ] **Rohaudio wird nie geschrieben.** Nur das Transkript überlebt den
         Abschnitt
   - [ ] Der Archivpfad hängt am **selben** Stream wie die Live-Wahrnehmung und

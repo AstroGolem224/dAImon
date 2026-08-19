@@ -379,7 +379,23 @@ Mikrofon (ein Stream)
   └─ Archiv-Pfad     → VAD → STT nur der Sprachabschnitte → SQLite (30 Tage)
 ```
 
-Der Archiv-Pfad transkribiert **nur erkannte Sprachabschnitte**, nicht die Stille dazwischen — sonst liefe die GPU durchgehend, was gegen die Residenzpolitik aus §5.4 verstößt. Bei anhaltender Sprache bleibt der STT-Arbeitsprozess warm, bei Stille beendet er sich wie gehabt.
+Der Archiv-Pfad transkribiert **nur erkannte Sprachabschnitte**, nicht die Stille dazwischen — sonst liefe das Rechenwerk durchgehend. Der STT-Dienst **residiert**: er beendet sich bei Stille nicht.
+
+> **Korrektur vom 19.08.** Hier stand „bei Stille beendet er sich wie gehabt",
+> und in `daimon/gpu/stt.py:24` steht seit jeher ein Abschnitt „Kein
+> Leerlauf-Exit". Zwei Fassungen einer Regel sind eine Regel und eine
+> Attrappe; welche gilt, entschied der Zufall dessen, der zuerst nachschlug
+> (Befund T-7.4 K3, Reviewer-Sitzung).
+>
+> Es gilt die Residenz, und der Grund ist gemessen: das Modell liegt auf der
+> **CPU und belegt 0 VRAM** (`stt.py:1`, `provider="cpu"` im Code und nicht in
+> der Konfiguration — sonst ließe sich die Zusage per Datei aushebeln). Es
+> gibt also nichts zurückzugeben, was §5.4 zurückfordern könnte, und ein
+> Neustart kostet 843 ms Ladezeit. Das Modell im Speicher **ist** die
+> Latenzzusage.
+>
+> Socket-aktiviert bleibt der Dienst trotzdem: gestartet wird er beim ersten
+> Wort, nicht beim Anmelden.
 
 **Rohaudio überlebt den Abschnitt nicht.** Nur das Transkript wird geschrieben. Der Ringpuffer bleibt, was er war: 20 Sekunden im Arbeitsspeicher, `mlock`, nie auf Platte.
 
@@ -704,6 +720,17 @@ Hermes hat den umgekehrten Weg gewählt — Markierung durch Aufzählung der unv
 ### 5.4 GPU-Residenz
 
 Kein Modell bleibt geladen. Idle-Timer → **Prozessende**, nicht `empty_cache()`. Der CUDA-Primärkontext (300–600 MB **[U]**) wird nur beim Prozessende frei, und auf Linux verdrängt der NVIDIA-Treiber nicht — Allokationen **scheitern**.
+
+**Diese Regel gilt für VRAM-Bewohner, und nur für sie.** Das ist keine
+Aufweichung, sondern ihre Begründung: der Idle-Timer existiert, weil ein
+belegter Primärkontext den nächsten Ladevorgang scheitern lässt. Wer kein VRAM
+hält, kann auch keinen blockieren — bei ihm kostet ein Prozessende Ladezeit
+und spart nichts.
+
+Der STT-Dienst ist der Fall (§4.1, sherpa-onnx auf der **CPU**, 0 VRAM
+gemessen): er residiert und beendet sich bei Stille nicht. Wer hier eine
+weitere Ausnahme einträgt, misst zuerst nach — `nvidia-smi` während der Dienst
+läuft, nicht die Erwartung.
 
 > **Ollama wird nicht verwendet.** Der Daemon hält Modelle nach Belieben und unterläuft die Selbstbeendigung. Stattdessen `llama-server --mmproj` auf einem Unix-Socket im Prozessbaum des Workers, der beim Beenden mitgeht. Nebeneffekt: beliebige GGUF-Quantisierungen werden nutzbar.
 
