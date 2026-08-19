@@ -1,6 +1,8 @@
 # LEDGER T-4.8.v — Verifizierer für den Undo-Broker mit Verifikation
 
-**Ausgang: `produktdefekt-rot`**
+**Ausgang 18.08.: `produktdefekt-rot`**
+**Ausgang 19.08.: `produktdefekt-rot` — UNVERAENDERT. NICHT eingefroren.**
+Siehe §Nachlauf am Ende.
 
 Der Verifizierer ist gebaut, gegen das Gut-Muster grün (53 Prüfungen in sieben
 Kriterien), gegen alle zwölf Mutanten rot, und gegen den Arbeitsbaum rot an
@@ -512,3 +514,80 @@ Namensraum-Mount lebte im Kindprozess und verschwand mit ihm.
 `.claude/hooks/**` unberührt. `freeze.sh` nicht aufgerufen. `git status` listet
 ausschließlich die neuen `T-4.8`-Pfade; die Bäume der parallel laufenden
 Sitzung (`T-3.*`, `T-4.4`–`T-4.7`, `T-5.*`, `T-7.*`) sind nicht angefasst.
+
+---
+
+## Nachlauf 19.08.2026 — Reviewer-Sitzung, NICHT eingefroren
+
+| | |
+|---|---|
+| Rolle | reviewer (`DAIMON_ROLE=reviewer`), kein Produktivcode geschrieben |
+| Arbeitsbaum | `/mnt/data/AI/repos/dAImon`, Zweig `main`, Commit `db9a5f5` |
+| Verifizierer unverändert | `T-4.8.sh`, `t48_pruefstand.py`, `t48_naht.py` |
+
+**Nicht eingefroren, weil rot.**
+
+### 1. Gegen `main` — rot, an genau demselben Kriterium
+
+```
+$ env -u DAIMON_FIXTURE tests/verify/T-4.8.sh; echo $?
+FAIL [K7] KEIN Koordinator bekommt ein `undo=` gereicht: `self.undo is None`,
+     der Undo-Hop wird uebersprungen. Die Zusage 'schlaegt die Vorbereitung
+     fehl, wird die Mutation abgebrochen' hat im Betrieb keinen Fall, in dem
+     sie greift -- es wird nie etwas vorbereitet
+FAIL [K7] und niemand ruft `vorbereiten`/`in_den_trash`/`kopie_anlegen`/
+     `stash_anlegen` -- das Modul hat ausserhalb der Tests keinen einzigen
+     Aufrufer
+Bilanz T-4.8:
+K1:  7 Pruefungen, 0 rot    K5: 20 Pruefungen, 0 rot
+K2:  6 Pruefungen, 0 rot    K6:  5 Pruefungen, 0 rot
+K3:  4 Pruefungen, 0 rot    K7:  4 Pruefungen, 2 rot
+K4:  7 Pruefungen, 0 rot
+T-4.8: ROT -- 1 von 7 Kriterien rot: K7
+1
+```
+
+Zwei von 53 Prüfungen rot, unverändert gegenüber dem 18.08.
+
+### 2. Heute nachgelesen
+
+`daimon/brokers/fs/undo.py` trägt `vorbereiten` (Z. 184), `in_den_trash`
+(Z. 89), `kopie_anlegen` (Z. 133) und `stash_anlegen` (Z. 157). Eine Suche
+über den ganzen Produktbaum findet als Aufrufer **nur `vorbereiten` selbst**
+(Z. 191/193/195, der Dispatch auf die drei) — sonst niemanden.
+
+Das ist der Fehler, den `CLAUDE.md` sechsmal in Folge auflistet, ein siebtes
+Mal: ein Stück ist gebaut, dokumentiert und mit grünen Tests belegt, und im
+Betrieb ruft es niemand auf. Der Verifizierer misst hier genau die NAHT und
+nicht das Stück — deshalb sieht er es, und `pytest tests/test_undo.py`
+(20 Prüfungen unter K5, alle grün) sieht es nicht.
+
+**Fehlerszenario:** eine genehmigte Mutation läuft. Die Zusage von T-4.8
+lautet „schlägt die Vorbereitung fehl, wird die Mutation abgebrochen". Im
+Betrieb ist `self.undo is None`, der Undo-Hop wird übersprungen, und die
+Mutation läuft **ohne** Rückholpunkt durch. Die Zusage hat keinen Fall, in
+dem sie greift.
+
+### 3. Gut-Muster und Mutanten — der Verifizierer ist gesund
+
+```
+$ bash tests/verify/meta.sh T-4.8
+T-4.8: 12 Mutanten erzeugt.
+meta[T-4.8]: Gut-Muster ...
+… groesse-egal · kopie-ohne-reflink · kopie-verschiebt · stash-nicht-vorher ·
+  stash-zaehlt-nicht · trash-grenze-egal · trashinfo-falscher-name ·
+  trashinfo-nur-name · undo-fehler-verschluckt · verifikation-fort ·
+  verifiziert-vor-der-pruefung · zulauf-fort — alle erkannt.
+meta[T-4.8]: 12 Mutanten, alle erkannt.
+```
+
+`zulauf-fort` ist der Mutant für genau dieses Kriterium: er nimmt den Zulauf
+im Gut-Muster wieder heraus und wird erkannt. Der Prüfstand kann „kein
+Aufrufer" also von „nicht gemessen" unterscheiden.
+
+### 4. Rücksicht auf den laufenden Betrieb
+
+Der Vorschalter des Prüfstands hat 48 Aufrufe protokolliert
+(`{'cp': 9, 'gio': 1, 'git': 38}`) und keinen an `systemctl`, `trash` oder
+`trash-put` durchgelassen — die Sperre aus `t48_pruefstand.py:102` hat
+gehalten. Der Papierkorb des Nutzers ist nicht angefasst worden.
