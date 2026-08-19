@@ -1,9 +1,11 @@
 # Ledger T-7.3.v — Verifizierer für den Pausenschalter
 
-**Ausgang: `produktdefekt-rot`**
+**Ausgang 18.08.: `produktdefekt-rot`** — B1 (K8) ist mit `d521148` behoben,
+B2 (K9) und B3 (K5) mit `b41cd41`.
+**Ausgang 19.08.: `gruen`, eingefroren.** Siehe §Nachlauf am Ende.
 
-Der Verifizierer ist gebaut, er kann grün werden (Gut-Muster: 10 von 10), er
-kann rot werden (13 von 13 Mutanten erkannt) — und gegen den echten Baum ist
+Stand 18.08.: der Verifizierer ist gebaut, er kann grün werden
+(Gut-Muster: 10 von 10), er kann rot werden (13 von 13 Mutanten erkannt) — und gegen den echten Baum ist
 er rot an drei Kriterien. Alle drei sind Befunde am Produkt, keiner ist ein
 Werkzeugfehler.
 
@@ -423,3 +425,76 @@ Drei Änderungen, alle klein, alle im Gut-Muster vorgeführt:
    einlösen. **Zwei Zeilen und ein Listenblock.**
 
 Danach ist `tests/verify/T-7.3.sh` grün, und zwar gemessen und nicht behauptet.
+
+---
+
+## Nachlauf 19.08.2026 — Reviewer-Sitzung, Einfrieren
+
+| | |
+|---|---|
+| Rolle | reviewer (`DAIMON_ROLE=reviewer`), kein Produktivcode geschrieben |
+| Arbeitsbaum | `/mnt/data/AI/repos/dAImon`, Zweig `main` |
+| Ausgangs-Commit | `e5a3fc3` (nach dem Einfrieren von T-7.2) |
+| Verifizierer unverändert | `T-7.3.sh` `f02b6812…`, `t73_pruefstand.py` `3cb5b013…` |
+
+Der uncommittete `FROZEN`-Eintrag der abgebrochenen Sitzung war kein Beleg.
+Zurückgenommen, von vorn gemessen.
+
+### 1. Gegen `main` — grün
+
+```
+$ env -u DAIMON_FIXTURE tests/verify/T-7.3.sh; echo $?
+…
+T-7.3: GRUEN -- alle 10 Kriterien gemessen und erfuellt
+0
+```
+
+Alle drei Befunde von gestern sind zu, und zwar an der Stelle, die sie
+messen:
+
+* **B1 (K8) — der Ton.** Der Schalter setzt jetzt drei `stop`-Zeilen ab, und
+  der Prüfstand misst nicht die Zeilen, sondern die **Ströme**:
+  `gewaegt: Aufnahmestroeme um den Eingriff herum {rec:1, eyes:1, ears:1,
+  still:1} -> {rec:0, eyes:0, ears:0, still:1}`. Der vierte Strom ist die
+  Unterscheidungskontrolle: ein bloß angehaltener Strom steht danach **noch**
+  in `pw-dump`. „Verschwunden" heißt damit geschlossen und nicht still.
+* **B2 (K9) — der Zähler.** `mitschnitt_indikator_gezeichnet` steht im
+  Face-Diagnosezustand, und das Ergebnis von `mitschnitt_malen()` wird
+  weitergereicht.
+* **B3 (K5) — die Konferenzliste.** Sie kommt aus
+  `config/daemon/redaktion.yaml` und hat einen Aufrufer.
+
+### 2. Gegen das Gut-Muster und alle dreizehn Mutanten
+
+```
+$ bash tests/verify/meta.sh T-7.3
+T-7.3: 13 Mutanten erzeugt.
+meta[T-7.3]: Gut-Muster ...
+… eigener-strom-zaehlt-mit · fremdes-mikrofon-loest-nicht-aus ·
+  herzschlag-ohne-frist · hotkey-in-fremder-komponente · konferenzliste-leer ·
+  konferenz-loest-nicht-aus · kuerzel-nicht-verteilt · nicht-messbar-heisst-ok ·
+  nur-der-recorder · pause-schaltet-stumm · rc-null-heisst-ok ·
+  restart-always · schalter-schaltet-nicht-um — alle erkannt.
+meta[T-7.3]: 13 Mutanten, alle erkannt.
+```
+
+Drei liegen genau auf den reparierten Achsen und werden erkannt:
+`pause-schaltet-stumm` (B1 — stumm statt geschlossen), `nur-der-recorder` (B1
+— nur ein Pfad), `konferenzliste-leer` (B3). Dazu die beiden
+Blindheits-Mutanten `nicht-messbar-heisst-ok` und `rc-null-heisst-ok`, die
+prüfen, ob der Verifizierer „nicht gemessen" für grün nimmt — auch sie werden
+erkannt.
+
+### 3. Rücksicht auf den laufenden Betrieb
+
+Die Sperre des Prüfstands hat gehalten:
+
+```
+SPERRE: 3 Aufruf(e) durchgereicht.
+SPERRE: kein Aufruf an eine echte Unit.
+```
+
+Der `systemctl`-Vorschalter hat jeden Aufruf auf die transienten Units dieses
+Laufs (`t73v796216*`) begrenzt. **Anders als am 18.08.** (siehe §Zwischenfall
+oben) ist in diesem Nachlauf kein echter Dienst des Nutzers gestartet oder
+gestoppt worden.
