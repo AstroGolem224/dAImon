@@ -1,9 +1,12 @@
 # Ledger T-7.1.v — Verifizierer: Archivdienst und Schema
 
-**Ausgang: `produktdefekt-rot`**
+**Ausgang 18.08.: `produktdefekt-rot`** — der Befund unten ist mit `6cdf0e4`
+behoben.
+**Ausgang 19.08.: `gruen`, eingefroren.** Siehe §Nachlauf am Ende.
 
-Der Verifizierer ist gebaut, gegen das Gut-Muster grün, gegen alle dreizehn
-Mutanten rot — und gegen den echten Baum **rot an genau einer Stelle**:
+Stand 18.08.: der Verifizierer ist gebaut, gegen das Gut-Muster grün, gegen
+alle dreizehn Mutanten rot — und gegen den echten Baum **rot an genau einer
+Stelle**:
 
 > **`daimon-fs.service` darf ins Archivverzeichnis schreiben.** Akzeptanzpunkt 1
 > von T-7.1 sagt, `daimon-recorder` sei der **einzige** Prozess mit Schreibrecht
@@ -500,3 +503,71 @@ Diese Sitzung hat **keinen** `daimon-*`-Dienst gestartet und keinen gestoppt.
   `transkript`, das über den echten Socket in die echte Datenbank ging — die
   Naht „Ohren → Recorder → Archiv" ist damit **nicht** gemessen, nur ihr
   letztes Stück.
+
+---
+
+## Nachlauf 19.08.2026 — Reviewer-Sitzung, Einfrieren
+
+| | |
+|---|---|
+| Rolle | reviewer (`DAIMON_ROLE=reviewer`), kein Produktivcode geschrieben |
+| Arbeitsbaum | `/mnt/data/AI/repos/dAImon`, Zweig `main` |
+| Ausgangs-Commit | `db3a14c` (nach dem Einfrieren von T-4.5) |
+| Verifizierer unverändert | `T-7.1.sh` `89080bb8…`, `t71_pruefstand.py` `751894fb…`, `t71_dienst.py` `1fa923d7…` |
+
+Der uncommittete `FROZEN`-Eintrag der abgebrochenen Sitzung war kein Beleg.
+Zurückgenommen, von vorn gemessen.
+
+### 1. Gegen `main` — grün
+
+```
+$ env -u DAIMON_FIXTURE tests/verify/T-7.1.sh; echo $?
+Bilanz T-7.1:
+K1: 26 Pruefungen, 0 rot    K6: 11 Pruefungen, 0 rot
+K2: 12 Pruefungen, 0 rot    K7:  8 Pruefungen, 0 rot
+K3: 20 Pruefungen, 0 rot    K8: 10 Pruefungen, 0 rot
+K4: 10 Pruefungen, 0 rot    K9: 10 Pruefungen, 0 rot
+K5: 19 Pruefungen, 0 rot
+0
+```
+
+126 Prüfungen, keine rot. K1 war am 18.08. rot (`daimon-fs.service` durfte
+ins Archiv schreiben) und ist es nicht mehr — `6cdf0e4` hat
+`ProtectHome=tmpfs` samt vollständiger `BindPaths=`-Liste in
+`config/systemd/daimon-fs.service` zurückgeholt.
+
+**Der Fix ist nicht auf den Verifizierer zugeschnitten.** K1 misst nicht den
+Text der Unit, sondern lässt jede Unit mit *ihren* Direktiven in einer
+transienten Unit einen echten Schreibversuch aufs Archiv machen. Ein Fix, der
+nur die gelesene Zeile bedient, käme dort nicht durch. Zusätzlich stehen im
+Produktbaum seit `6cdf0e4` zwei Wächter (`tests/test_units_werden_gezogen.py`)
+für die beiden Wege hinein: eine fehlende `ProtectHome`-Zeile und ein
+`BindPaths=` auf einen `$HOME`-Pfad.
+
+**Betriebslage geprüft, nicht angenommen:** `daimon-fs.service` ist seit
+`Wed 2026-08-19 12:02:37 CEST` aktiv, also **nach** dem Fix von 08:04 — der
+laufende Prozess trägt die reparierte Sandbox. `NeedDaemonReload=no`.
+
+### 2. Gegen das Gut-Muster und alle dreizehn Mutanten
+
+```
+$ bash tests/verify/meta.sh T-7.1
+T-7.1: 13 Mutanten erzeugt.
+meta[T-7.1]: Gut-Muster ...
+… datei-0644 · eyes-darf-schreiben · frist-einheitlich ·
+  grenze-verdraengt-nicht · recorder-laedt-modelltext · recorder-mit-netz ·
+  recorder-ohne-protecthome · rohaudio-erlaubt · shm-nur-lesbar ·
+  stufe-vorgabe-full · tainted-verloren · transient-schreibt ·
+  volltextindex-ohne-trigger — alle erkannt.
+meta[T-7.1]: 13 Mutanten, alle erkannt.
+```
+
+Entscheidend sind die drei rund um die Sandbox — `eyes-darf-schreiben`,
+`recorder-ohne-protecthome`, `transient-schreibt`. Sie liegen genau auf der
+Achse, an der repariert wurde, und werden erkannt. Der Verifizierer ist dort
+nicht blind geworden.
+
+### 3. Was dieser Nachlauf NICHT ändert
+
+Alle Grenzen des Ledgers gelten unverändert; keine ist heute neu gemessen
+worden.
