@@ -612,10 +612,13 @@ def test_sprachanfrage_mit_bildschirmbezug(sitzung, frisch, evidenz):
     Weg braucht jetzt eine bestätigte Vorschau, und die gibt ein Mensch.
     """
     frisch("daimon-hub.service", "daimon-mind.service")
-    with protokoll(evidenz, szenario="sprachanfrage_und_folgeaktion",
+    # Der Name des Satzes hiess bis zum 19.08. "..._und_folgeaktion" und
+    # nannte `aktion.sock` unter den gestarteten Wegen -- beides galt nach
+    # dem Ausbau nicht mehr. Ein Beleg, der mehr behauptet, als der Lauf
+    # gemessen hat, ist genau die Sorte Zusage, die dieses Projekt sammelt.
+    with protokoll(evidenz, szenario="sprachanfrage_mit_bildschirmbezug",
                    gestartet=["mind.sock frage (fensterliste)",
-                              "auth.sock intent_mark",
-                              "aktion.sock ausfuehren (audio.volume)"],
+                              "auth.sock intent_mark"],
                    budget={}) as satz:
         if not ist_aktiv("daimon-mind.service"):
             pytest.skip("daimon-mind läuft nicht (Szenario 1)")
