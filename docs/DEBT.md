@@ -78,11 +78,11 @@ Nachschreiben, und dafür ist der `grep` oben da.
 
 ## `daimon/hub/daemon.py`
 
-- **Zeile 1046** — der Ersatzsatz hat KEINE eigene Frist. Obergrenze: er ist
+- **Zeile 1063** — der Ersatzsatz hat KEINE eigene Frist. Obergrenze: er ist
 
 ## `daimon/hub/state.py`
 
-- **Zeile 207** — nur ein Wahrheitswert plus Ablauf. Obergrenze: die Sperre
+- **Zeile 231** — nur ein Wahrheitswert plus Ablauf. Obergrenze: die Sperre
 
 ## `daimon/mind/daemon.py`
 

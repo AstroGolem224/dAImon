@@ -33,6 +33,9 @@ from daimon.hub import daemon as D
 
 REPO = Path(__file__).resolve().parents[1]
 UNITS = REPO / "config" / "systemd"
+# Dienste, die NICHT zu dAImon gehoeren und trotzdem auf einer
+# Allowlist stehen. Siehe `test_fremde_dienste_stehen_hier_ausdruecklich`.
+FREMDE_DIENSTE = ("mimic-worker.service",)
 
 # Endpunkt -> (Liste im Code, die Module, die dort nachweislich hinschreiben)
 ABSENDER = {
@@ -67,10 +70,32 @@ def test_jeder_eintrag_ist_eine_unit_die_es_gibt(endpunkt):
     faellt erst im Betrieb auf. Geprueft gegen die Unit-DATEIEN."""
     liste, _ = ABSENDER[endpunkt]
     for eintrag in liste:
+        if eintrag in FREMDE_DIENSTE:
+            continue
         datei = (eintrag[:-1] + "@.service" if eintrag.endswith("@")
                  else eintrag)
         assert (UNITS / datei).exists(), (
             f"{endpunkt}_UNITS nennt {eintrag!r} -- {datei} gibt es nicht")
+
+
+def test_fremde_dienste_stehen_hier_ausdruecklich():
+    """Ein Eintrag, der zu keiner Unit im Repo gehoert, ist entweder ein
+    Tippfehler oder eine Entscheidung. Diese Liste macht den Unterschied
+    sichtbar -- wer einen fremden Dienst zulaesst, traegt ihn HIER ein und
+    schreibt dazu, warum.
+
+    `mimic-worker.service` ist der einzige, und er ist ein Beispiel dafuer,
+    wozu das GPU-Gate da ist: ein fremder Nutzer der Grafikkarte, der vor dem
+    Laden um Erlaubnis fragt und alle drei Absagegruende respektiert. Wer
+    sich an die Serialisierung haelt, gehoert an sie herangelassen.
+    """
+    aus_listen = {e for liste, _ in ABSENDER.values() for e in liste}
+    unbekannt = {e for e in aus_listen
+                 if not e.endswith("@")
+                 and not (UNITS / e).exists()}
+    assert unbekannt == set(FREMDE_DIENSTE), (
+        f"fremde Eintraege ohne Vermerk: {unbekannt - set(FREMDE_DIENSTE)}; "
+        f"Vermerke ohne Eintrag: {set(FREMDE_DIENSTE) - unbekannt}")
 
 
 def test_die_verdrahtung_steht_am_start(endpunkt=None):

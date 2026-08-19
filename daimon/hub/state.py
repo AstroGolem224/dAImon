@@ -185,6 +185,30 @@ class HubState:
                 self._rev += 1
             return geaendert
 
+    def warnblase(self, titel: str, text: str) -> None:
+        """Eine dringende Blase OHNE Sitzung. T-4.6 K5.
+
+        `apply()` ist der Weg fuer Blasen, die zu einem Ereignis gehoeren --
+        es verlangt eine `session_id` und eine Stimmung. Der Hub hat beim
+        Start weder das eine noch das andere, und genau dort entsteht die
+        Meldung, um die es hier geht: die Audit-Kette wird beim Start
+        geprueft.
+
+        BEFUND T-4.6 K5 (Reviewer-Sitzung 19.08.): eine gerissene Kette
+        meldete sich nur im Journal. Design 7.5 verlangt eine "Bubble mit
+        hoher Dringlichkeit", und es gab auf diesem Weg keinen Aufrufer --
+        das Muster aus CLAUDE.md, diesmal an der Stelle, an der jemand
+        MERKEN soll, dass die Vergangenheit verfaelscht wurde. Eine Warnung
+        im Journal liest niemand, der nicht ohnehin schon sucht.
+
+        `urgent` ist fest und kein Parameter: diese Methode existiert fuer
+        genau die Faelle, die der Nutzer sehen MUSS. Wer eine beilaeufige
+        Blase will, hat ein Ereignis und nimmt `apply()`.
+        """
+        with self._lock:
+            self._bubble = {"title": titel, "body": text, "urgent": True}
+            self._rev += 1
+
     def clear_bubble(self) -> None:
         with self._lock:
             if self._bubble is not None:

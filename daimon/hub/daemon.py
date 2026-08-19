@@ -112,7 +112,24 @@ TICKET_UNITS = (
 # Die Ladesperre. `daimon-gpu@.service` ist ein TEMPLATE -- der Instanzname
 # ist das Modell und steht erst zur Laufzeit fest. Der Eintrag endet deshalb
 # auf `@`; was das genau bedeutet, steht bei `ipc.unit_erlaubt`.
-GPU_UNITS = ("daimon-gpu@",)
+GPU_UNITS = (
+    "daimon-gpu@",
+    # Fremder GPU-Nutzer, und genau dafuer gibt es dieses Gate: mimic fragt
+    # vor dem Laden um Erlaubnis, prueft die Antwort streng und respektiert
+    # alle drei Absagegruende (mimic/worker.py:987 `request_gpu_permission`).
+    # Wer sich an die Serialisierung haelt, gehoert an sie herangelassen --
+    # sonst laden zwei Modelle gleichzeitig und beide scheitern am VRAM des
+    # jeweils anderen (Design 5.4).
+    #
+    # NACHGETRAGEN am 19.08., nachdem die Allowlist ihn ausgesperrt hatte.
+    # Das war keine bloss unbequeme Abweisung, sondern eine STILLE
+    # Regression: `worker.py:992` faengt `OSError` und faellt dann OFFEN --
+    # "nur ein nicht erreichbarer Hub faellt offen". Ein Connection reset
+    # sieht fuer ihn aus wie ein toter Hub, also lud er ohne Sperre weiter.
+    # Die Serialisierung war fuer ihn ausgefallen, ohne dass es irgendwo
+    # rot wurde.
+    "mimic-worker.service",
+)
 TTS_UNITS = ("daimon-tts.service",)
 
 # Die PRODUZENTEN-Sockets. Sie fehlten am 19.08. bei `d5c012b` -- die Listen
@@ -1213,10 +1230,39 @@ class Hub:
         # `ok` verlangt Anker. Beim ALLERERSTEN Lauf gibt es noch keine, und
         # das ist kein Fund -- gemeldet wird, was die Kette selbst sagt.
         kette_kaputt = [f for f in befund["fehler"] if "Anker" not in f]
+        # „Datei fehlt" ist zweideutig, und die Blase macht den Unterschied
+        # teuer: beim ALLERERSTEN Start hat noch niemand geschrieben, und
+        # eine dringende Warnung bei jeder Neuinstallation ist genau die
+        # Sorte, die man nach dem dritten Mal wegklickt.
+        #
+        # Die Unterscheidung liefert der zweite Strom, und dafuer gibt es
+        # ihn: existieren ANKER im Journal, hat die Kette einmal existiert --
+        # dann ist die fehlende Datei ein Fund. Ohne Anker ist es der erste
+        # Lauf.
+        #
+        # Bis zum 19.08. stand das nicht da, weil der Befund nur ins Journal
+        # ging und dort niemanden stoerte. Wer eine Meldung sichtbar macht,
+        # erbt ihre Falschalarme.
+        if befund["anker_gefunden"] == 0:
+            kette_kaputt = [f for f in kette_kaputt if f != "Datei fehlt"]
         if kette_kaputt:
             self.log.warn("AUDIT-KETTE GERISSEN", DAIMON_ACTION="audit_kaputt",
                           DAIMON_SAETZE=befund["saetze"],
                           DAIMON_FEHLER="; ".join(kette_kaputt)[:300])
+            # T-4.6 K5: und der Nutzer SIEHT es. Bis zum 19.08. stand hier
+            # nur die Zeile darueber -- eine Warnung im Journal liest
+            # niemand, der nicht ohnehin schon sucht, und das Overlay blieb
+            # ruhig. Design 7.5 verlangt eine Blase mit hoher Dringlichkeit,
+            # und es gab auf diesem Weg keinen Aufrufer.
+            #
+            # Der Text nennt KEINEN Pfad und keinen Satzinhalt: die Blase
+            # steht auf dem Bildschirm, und was in der Kette steht, ist genau
+            # das, was nicht dorthin gehoert. Wo nachzusehen ist, weiss
+            # `--verify`.
+            self.state.warnblase(
+                "Audit-Kette gerissen",
+                f"{len(kette_kaputt)} Abweichung(en) in der Vergangenheit. "
+                "Pruefen mit: daimon-hub --verify")
         else:
             self.log.info("Audit geprueft", DAIMON_ACTION="audit_geprueft",
                           DAIMON_SAETZE=befund["saetze"],

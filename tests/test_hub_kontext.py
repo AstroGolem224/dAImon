@@ -169,7 +169,16 @@ def test_der_speicher_wird_je_anfrage_von_der_platte_gelesen(tmp_path,
     class Stub:
         pass
 
+    # T-4.6 K5 (19.08.): der Hub setzt bei gerissener Kette jetzt eine
+    # dringende Blase. Der Stub braucht die Stelle, sonst stirbt dieser Test
+    # am AttributeError statt zu messen -- geprueft wird die Blase selbst in
+    # test_audit_blase.py.
+    class _State:
+        def __init__(self): self.blasen = []
+        def warnblase(self, titel, text): self.blasen.append((titel, text))
+
     stub = Stub()
+    stub.state = _State()
     stub._gate = None
     stub._speicher = None
     # Das Audit gehoert seit dem 17.08. dazu: `_gate_teile` holt es ueber
@@ -217,6 +226,12 @@ def _audit_hub(tmp_path, monkeypatch):
         pass
 
     stub = Stub()
+    # Dieselbe Vorkehrung wie oben, T-4.6 K5: der Hub setzt bei gerissener
+    # Kette eine dringende Blase.
+    class _State:
+        def __init__(self): self.blasen = []
+        def warnblase(self, titel, text): self.blasen.append((titel, text))
+    stub.state = _State()
     stub._gate = None
     stub._speicher = None
     stub._audit = None
