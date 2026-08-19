@@ -1,6 +1,8 @@
 # Ledger T-4.6.v — Verifizierer: Audit mit Hash-Kette und Verankerung
 
-**Ausgang: `produktdefekt-rot`**
+**Ausgang 18.08.: `produktdefekt-rot`**
+**Ausgang 19.08.: `produktdefekt-rot` — UNVERAENDERT. NICHT eingefroren.**
+Siehe §Nachlauf am Ende.
 
 Der Verifizierer ist gebaut, gegen das Gut-Muster grün, gegen alle vier
 Anhang-D-Mutanten rot — und gegen den echten Baum rot, an genau einem
@@ -280,3 +282,83 @@ $ pgrep -af "daimon.hub.daemon"                    # nach allen Läufen
   dass er das Kriterium und nicht eine Implementierung prüft.
 * Die Frage aus Grenze 5 entscheiden: `sd_journal_send()` oder den Designsatz
   streichen. Zwei Fassungen einer Regel sind eine Regel und eine Attrappe.
+
+---
+
+## Nachlauf 19.08.2026 — Reviewer-Sitzung, NICHT eingefroren
+
+| | |
+|---|---|
+| Rolle | reviewer (`DAIMON_ROLE=reviewer`), kein Produktivcode geschrieben |
+| Arbeitsbaum | `/mnt/data/AI/repos/dAImon`, Zweig `main`, Commit `5d1253c` |
+| Verifizierer unverändert | `T-4.6.sh`, `t46_pruefstand.py` — dieselben Dateien wie am 18.08. |
+
+**Dieser Verifizierer wird nicht eingefroren, weil er rot ist.** Ein
+eingefrorener roter Verifizierer wäre eine festgeschriebene Lüge. `freeze.sh`
+würde ihn ohnehin ablehnen — es verlangt einen grünen Lauf gegen den echten
+Baum.
+
+### 1. Gegen `main` — rot, an genau derselben Stelle wie am 18.08.
+
+```
+$ env -u DAIMON_FIXTURE tests/verify/T-4.6.sh; echo $?
+FAIL K5: der Hub meldet die gerissene Kette als dringende Blase
+         (Design 7.6: "Bubble mit hoher Dringlichkeit"); bubble=None
+Bilanz T-4.6:
+K1:  6 Pruefungen, 0 rot    K5: 19 Pruefungen, 1 rot
+K2:  5 Pruefungen, 0 rot    K6: 17 Pruefungen, 0 rot
+K3: 13 Pruefungen, 0 rot    K7:  9 Pruefungen, 0 rot
+K4: 12 Pruefungen, 0 rot    K8: 10 Pruefungen, 0 rot
+1
+```
+
+Eine von 91 Prüfungen rot, dieselbe wie gestern. Die neun Commits vom 19.08.
+haben diesen Befund nicht berührt — er stand auch nicht in der Liste der
+bearbeiteten.
+
+### 2. Der Befund am Produkt, heute nachgelesen
+
+`daimon/hub/daemon.py:1176–1179`:
+
+```python
+kette_kaputt = [f for f in befund["fehler"] if "Anker" not in f]
+if kette_kaputt:
+    self.log.warn("AUDIT-KETTE GERISSEN", DAIMON_ACTION="audit_kaputt", …)
+```
+
+Eine gerissene Kette geht ins **Journal** und sonst nirgendwohin. Es gibt
+keinen `set_bubble`-Aufruf auf diesem Weg. `docs/DESIGN.md:1034` sagt:
+
+> `daimon-hub` prüft die Kette **beim Start** gegen die Journal-Anker und
+> meldet eine Abweichung als Bubble mit hoher Dringlichkeit.
+
+Fehlerszenario: jemand ändert eine Zeile in `$XDG_STATE_HOME/daimon/audit/`.
+Beim nächsten Hub-Start steht eine Warnung im Journal, die niemand liest, und
+das Overlay bleibt ruhig. Die Zusage ist, dass der Nutzer es **sieht**.
+
+### 3. Die Messung ist nicht das Problem — beide Positivkontrollen sind grün
+
+Der Prüfstand kann zwischen „keine Blase" und „nicht gemessen" unterscheiden,
+und beide Klammern haben heute gehalten:
+
+* **Vorbedingung:** „die Kette, die der Hub gleich liest, ist nachweislich
+  gerissen" — grün, mit dem Befund von `pruefe()` im Text.
+* **Positivkontrolle nach der Messung:** eine dringende Blase, über
+  `hookbridge.sock` gesetzt, **ist** im Schnappschuss sichtbar — grün.
+
+Ohne die zweite wäre `bubble=None` von „der Schnappschuss zeigt nie eine
+Blase" nicht zu unterscheiden.
+
+### 4. Gut-Muster und Mutanten — der Verifizierer ist gesund
+
+```
+$ bash tests/verify/meta.sh T-4.6
+T-4.6: 4 Mutanten erzeugt.
+meta[T-4.6]: Gut-Muster ...
+… kette-ohne-journal-anker · redaktion-nur-bei-sensitive ·
+  rotation-traegt-hash-nicht-weiter · tainted-im-klartext — alle erkannt.
+meta[T-4.6]: 4 Mutanten, alle erkannt.
+```
+
+Das Gut-Muster ist grün: die eine rote Prüfung ist also eine Aussage über den
+Arbeitsbaum und nicht über den Prüfstand.
