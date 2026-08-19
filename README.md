@@ -163,19 +163,32 @@ greift, wäre schlimmer als keines.
 selbst beendet, sobald die Konferenz weg ist, wäre ein Mitschnitt, der wieder
 anläuft, ohne dass jemand es gesagt hat.
 
-### Der Privatmodus ist gebaut und nicht einschaltbar
+### Der Privatmodus
 
-`daimon.recorder.redaktion.privat_setzen()` legt einen zeitlich begrenzten
-Privatmodus an — die Redaktion sperrt dann **jede** Ablage, Bild wie Ton.
-Geprüft ist er, und `privat_bis()` liest ihn korrekt.
+**Menü des Pets → „Mitschnitt pausieren (15 min)".** Danach legt die
+Redaktion **nichts** ab, Bild wie Ton, bis die Frist abläuft.
 
-**Nur ruft ihn niemand auf.** Kein Tastenkürzel, kein Menüpunkt, keine CLI
-(Stand 17.08., nachgemessen). Wer den Privatmodus heute will, nimmt
-`Meta+Shift+P` — das hält den Mitschnitt an, ist aber nicht dasselbe: der
-Privatmodus überlebt einen Neustart absichtlich **nicht**, die Pause schon.
+Er ist die einzige Sperre, die den **Tonpfad** erreicht. Die
+Anwendungs-Denylist sperrt Fenster, und ein gesprochener Satz hat keines —
+`urteil_ton()` prüft deshalb genau diesen einen Zustand. Wer während eines
+offenen Passwortmanagers spricht, ist ohne ihn nicht geschützt: der Bildteil
+wäre gesperrt, der Tonteil nicht.
 
-Das ist dieselbe Sorte Lücke, die diese Woche elfmal aufgefallen ist: das
-Stück ist gebaut, sein Zulauf fehlt. Siehe `CLAUDE.md`.
+**Die Frist ist Absicht, kein Komfortverzicht.** Ein Privatmodus, den man
+einschaltet und vergisst, ist ein abgeschalteter Mitschnitt mit einem
+beruhigenden Namen. Er überlebt einen Neustart absichtlich **nicht** — die
+Pause aus `Meta+Shift+P` schon, und das ist der Unterschied zwischen beiden.
+
+**Es gibt kein Ausschalten.** Das Overlay kann ihn anfordern und sonst
+nichts; eine Meldung, die ihn beendet, gäbe einem kompromittierten Face den
+Weg, den Mitschnitt wieder anzuschalten. Auch die Dauer kommt nicht aus der
+Nachricht, sondern steht im Hub.
+
+Bis zum 19.08. stand hier, er sei „gebaut und nicht einschaltbar" — gebaut,
+geprüft, und im Betrieb rief ihn niemand auf. Das war dieselbe Sorte Lücke,
+die diese Woche elfmal aufgefallen ist; siehe `CLAUDE.md`. Aufgefallen ist
+sie durch einen Wächter, der genau darauf wartete
+(`tests/test_gate_zulauf.py`).
 
 Beide Schalter geben JSON zurück und setzen `ok` erst, wenn die **Wirkung**
 gemessen ist — nicht, wenn `systemctl` mit 0 endet. Ein Dienst, der beim

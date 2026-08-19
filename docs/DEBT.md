@@ -78,7 +78,7 @@ Nachschreiben, und dafür ist der `grep` oben da.
 
 ## `daimon/hub/daemon.py`
 
-- **Zeile 941** — der Ersatzsatz hat KEINE eigene Frist. Obergrenze: er ist
+- **Zeile 1006** — der Ersatzsatz hat KEINE eigene Frist. Obergrenze: er ist
 
 ## `daimon/hub/state.py`
 
@@ -94,11 +94,11 @@ Nachschreiben, und dafür ist der `grep` oben da.
 
 ## `face/src/main.rs`
 
-- **Zeile 1076** — // ponytail: kein Grund-Unterscheiden. Der Compositor sagt nicht, warum
+- **Zeile 1118** — // ponytail: kein Grund-Unterscheiden. Der Compositor sagt nicht, warum
 
 ## `face/src/menu.rs`
 
-- **Zeile 270** — /// ponytail: relative Pfade. Ein absoluter gehoert in die Konfiguration,
+- **Zeile 293** — /// ponytail: relative Pfade. Ein absoluter gehoert in die Konfiguration,
 
 ## `tools/generate-action-candidates.py`
 

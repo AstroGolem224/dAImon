@@ -75,6 +75,17 @@ pub enum Aktion {
     /// und ein dritter Nachrichtentyp haette T-2.7 rot gemacht, das
     /// `PRODUZENTEN["face"]` als exakte Menge prueft.
     BildschirmWiderrufen,
+    /// T-7.4: Mitschnitt pausieren, auf Zeit. Bild UND Ton.
+    ///
+    /// Der einzige Menuepunkt, der den TONPFAD erreicht: die
+    /// Anwendungs-Denylist sperrt Fenster, und ein gesprochener Satz hat
+    /// keines. `redaktion.urteil_ton` prueft genau einen Zustand, und das
+    /// ist dieser -- nur konnte ihn bis zum 19.08. niemand einschalten.
+    ///
+    /// Kein Gegenstueck zum Ausschalten, und das ist kein Vergessen: der
+    /// Modus laeuft von selbst ab. Ein Overlay, das ihn beenden koennte,
+    /// koennte den Mitschnitt wieder anschalten -- die falsche Richtung.
+    Privatmodus,
     Beenden,
     /// Index in [`personas()`]. Der Index statt des Namens, damit `Aktion`
     /// `Copy` bleibt -- und weil ein Index nur dann existiert, wenn die Datei
@@ -99,6 +110,7 @@ impl Aktion {
             // nimmt die Portal-Erlaubnis zurueck, was etwas anderes ist --
             // wer nur die Unit stoppt, laesst den Token liegen.
             Self::BildschirmWiderrufen => "bildschirm_widerrufen".to_owned(),
+            Self::Privatmodus => "privatmodus".to_owned(),
             Self::Beenden => "beenden".to_owned(),
             Self::Persona(index) => match personas().get(index) {
                 Some(p) => format!("persona:{}", p.datei),
@@ -113,6 +125,7 @@ impl Aktion {
             "ears_aus" => Some(Self::EarsAus),
             "eyes_aus" => Some(Self::EyesAus),
             "bildschirm_widerrufen" => Some(Self::BildschirmWiderrufen),
+            "privatmodus" => Some(Self::Privatmodus),
             "beenden" => Some(Self::Beenden),
             _ => {
                 let datei = name.strip_prefix("persona:")?;
@@ -140,7 +153,13 @@ impl Aktion {
             // Kein Ziel: der Widerruf schaltet KEINE Unit ab. Stuende hier
             // "eyes", wuerde ein Klick die Wahrnehmung stoppen und die
             // Erlaubnis behalten -- genau andersherum als gemeint.
-            Self::Beenden | Self::Persona(_) | Self::BildschirmWiderrufen => None,
+            Self::Beenden
+            | Self::Persona(_)
+            | Self::BildschirmWiderrufen
+            // Kein Ziel: der Privatmodus schaltet KEINE Unit ab. Er
+            // pausiert die ABLAGE, das Mikrofon bleibt an -- wer nur
+            // still sein will, soll nicht die Ohren verlieren.
+            | Self::Privatmodus => None,
         }
     }
 }
@@ -201,6 +220,10 @@ pub fn eintraege() -> Vec<Eintrag> {
     // Ans Ende, nicht zwischen die Wahrnehmungseintraege: der Widerruf ist
     // die seltenste und folgenreichste Aktion im Menue, und die Positionen
     // der ersten fuenf Eintraege sind in den Tests unten festgeschrieben.
+    // Vor dem Widerruf und nach der Persona-Auswahl: die Positionen der
+    // ersten fuenf Eintraege sind in den Tests unten festgeschrieben, und die
+    // Zahl der Personas ist es nicht -- ans Ende gehoert also, was neu ist.
+    liste.push(fest("Mitschnitt pausieren (15 min)", Some(Aktion::Privatmodus)));
     liste.push(fest(
         "Bildschirmzugriff widerrufen",
         Some(Aktion::BildschirmWiderrufen),
@@ -736,7 +759,9 @@ mod tests {
                 None
                 | Some(Aktion::Beenden)
                 | Some(Aktion::Persona(_))
-                | Some(Aktion::BildschirmWiderrufen) => {}
+                | Some(Aktion::BildschirmWiderrufen)
+                // Ebenfalls kein Einschalten: er PAUSIERT die Ablage.
+                | Some(Aktion::Privatmodus) => {}
                 Some(aktion) => assert!(
                     eintrag.text.ends_with("aus"),
                     "{} traegt eine Aktion {:?}, die nicht abschaltet",

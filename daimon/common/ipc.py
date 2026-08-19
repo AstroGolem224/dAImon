@@ -96,7 +96,31 @@ PRODUZENTEN: dict[str, frozenset[str]] = {
     # Typ mit freiem Unit-Namen ergaenzen will, hebt genau das auf, was T-1.7
     # und T-2.7 zusammen halten -- und braucht dafuer eine eigene
     # Entscheidung, keine Erweiterung dieser Zeile.
-    "face": frozenset({"bubble_dismiss", "wahrnehmung_aus"}),
+    # T-7.4 laesst diese Menge um genau einen weiteren Typ wachsen:
+    # `privatmodus`. Der Anlass ist ein Loch, kein Wunsch -- der Tonpfad hat
+    # genau eine Sperre (`urteil_ton` prueft den Privatmodus und sonst
+    # nichts), und die konnte niemand einschalten: `privat_setzen` hatte im
+    # Produktivcode keinen Aufrufer. Wer ein Passwort diktierte, hatte es im
+    # Archiv.
+    #
+    # Dieselbe Pruefung wie bei T-2.7 und T-3.14, mit denselben drei Punkten:
+    #
+    #   1. EINSEITIG. Nur einschalten. Es gibt kein Gegenstueck -- der Modus
+    #      laeuft von selbst ab. Genau deshalb traegt er eine Frist und ist
+    #      kein Schalter: einer, den man einschaltet und vergisst, ist ein
+    #      abgeschalteter Mitschnitt mit einem beruhigenden Namen.
+    #   2. FAIL-SAFE. Schlimmster Missbrauch: es wird weniger archiviert.
+    #      Dieselbe Richtung wie bei `wahrnehmung_aus`.
+    #   3. KEINE FAEHIGKEIT. Die Nutzlast ist LEER. Keine Unit wird benannt,
+    #      keine gestartet oder gestoppt, keine Freigabe erteilt, keine
+    #      Rundenmarke erzeugt. Selbst die Dauer kommt nicht aus der
+    #      Nachricht, sondern steht im Hub (`PRIVAT_DAUER_S`).
+    #
+    # Was er ausdruecklich NICHT kann: den Modus BEENDEN. Wer hier
+    # `privatmodus_aus` ergaenzen will, dreht die Richtung um -- aus einer
+    # fail-safen Meldung wuerde eine, mit der ein kompromittiertes Overlay
+    # den Mitschnitt wieder anschaltet.
+    "face": frozenset({"bubble_dismiss", "wahrnehmung_aus", "privatmodus"}),
     # T-3.14 laesst diese Menge um genau einen Typ wachsen: `ptt`. Dieselbe
     # Pruefung wie bei T-2.7, mit denselben drei Punkten:
     #

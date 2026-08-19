@@ -136,6 +136,15 @@ PR_SET_DUMPABLE = 4
 # die zweite Haelfte derselben Grenze: sie deckelt, welche
 # Konfigurationseintraege ueberhaupt erreichbar sind.
 WAHRNEHMUNG_ZIELE = frozenset({"ears", "eyes"})
+# T-7.4: wie lange ein Privatmodus laeuft. Im Hub und NICHT in der Nachricht:
+# ein Absender, der die Dauer waehlt, kann auch `0` waehlen -- und haette
+# einen Privatmodus angefordert, der nichts tut, aber im Journal steht.
+#
+# Fuenfzehn Minuten, weil das die Groessenordnung eines Telefonats oder eines
+# diktierten Passworts ist. Laenger waere ein abgeschalteter Mitschnitt mit
+# einem beruhigenden Namen -- genau das, was `privat_setzen` mit seiner Frist
+# verhindern soll.
+PRIVAT_DAUER_S = 15 * 60.0
 # Ein haengendes `systemctl` darf den Produzenten-Thread nicht festhalten.
 SYSTEMCTL_TIMEOUT_S = 10.0
 
@@ -361,6 +370,8 @@ class Hub:
                     # zurueck -- und es gibt kein Einschalten.
                     if event.type == "wahrnehmung_aus":
                         self._wahrnehmung_aus((event.payload or {}).get("ziel"))
+                    elif event.type == "privatmodus":
+                        self._privatmodus()
                     else:
                         self.state.clear_bubble()
                     continue
@@ -409,6 +420,60 @@ class Hub:
         self.log.info("wahrnehmung_aus", DAIMON_ACTION="stop", DAIMON_ZIEL=str(ziel),
                       DAIMON_UNIT=unit, DAIMON_RC=lauf.returncode,
                       DAIMON_GRUND=(lauf.stderr or "").strip()[:200])
+
+    def _privatmodus(self) -> None:
+        """T-7.4: der Mitschnitt pausiert -- Bild UND Ton, auf Zeit.
+
+        DER ANLASS (Karte 62b90c95, abgespalten von T-7.2): der Tonpfad hat
+        genau eine Sperre, und das ist dieser Modus. `urteil_ton` prueft ihn
+        und sonst nichts, mit Begruendung: die Anwendungs-Denylist sperrt
+        FENSTER, und ein gesprochener Satz hat keines. Nur konnte ihn bis
+        heute niemand einschalten -- `privat_setzen` hatte im Produktivcode
+        keinen einzigen Aufrufer, festgehalten vom Waechter in
+        `tests/test_gate_zulauf.py`. Wer ein Passwort diktierte, hatte es im
+        Archiv.
+
+        **Warum ueber eine Nachricht und nicht per Datei aus dem Face.** Das
+        Face DARF nach `%t/daimon` schreiben (`ReadWritePaths`), und der
+        Bildschirm-Widerruf geht genau so -- er vermerkt eine leere Datei.
+        Hier waere das falsch: diese Datei traegt einen WERT, den Ablauf in
+        Sekunden. Das Format stuende dann einmal in Rust und einmal in
+        Python, und zwei Fassungen einer Regel sind eine Regel und eine
+        Attrappe. Wer den Ablauf in einer der beiden Sprachen anfasst, merkt
+        es nicht. So schreibt genau eine Stelle: `redaktion.privat_setzen`,
+        also das Modul, das ihn auch liest.
+
+        **Warum ein neuer Nachrichtentyp vertretbar ist.** Dieselben drei
+        Punkte, an denen `ipc.py` schon `wahrnehmung_aus` (T-2.7) und `ptt`
+        (T-3.14) gemessen hat:
+
+          1. EINSEITIG. Nur einschalten. Ein Gegenstueck gibt es nicht -- der
+             Modus laeuft von selbst ab, und das ist der Grund, warum er eine
+             Frist traegt und kein Schalter ist.
+          2. FAIL-SAFE. Schlimmster Missbrauch: es wird weniger archiviert.
+             Das ist die Richtung, in die ein Fehler laufen darf.
+          3. KEINE FAEHIGKEIT. Keine Unit wird benannt, keine gestartet oder
+             gestoppt, keine Freigabe erteilt, keine Rundenmarke erzeugt. Die
+             Nutzlast ist leer -- selbst die Dauer kommt nicht aus der
+             Nachricht, sondern steht hier.
+
+        Die Dauer steht im Hub und nicht in der Nachricht, weil ein Absender,
+        der sie waehlt, auch `0` waehlen kann -- und damit einen Privatmodus
+        anfordern wuerde, der nichts tut, aber im Journal steht.
+        """
+        from daimon.recorder.redaktion import privat_setzen
+
+        try:
+            ablauf = privat_setzen(self.runtime_dir, PRIVAT_DAUER_S)
+        except OSError as exc:
+            # Laut scheitern: ein Privatmodus, der nicht greift, ist der
+            # gefaehrlichste Zustand hier -- der Nutzer glaubt, es sei still.
+            self.log.error("Privatmodus NICHT gesetzt", DAIMON_ACTION="privat",
+                           DAIMON_GRUND=str(exc)[:200])
+            self.diag.verworfen("privatmodus")
+            return
+        self.log.info("Privatmodus", DAIMON_ACTION="privat",
+                      DAIMON_DAUER_S=PRIVAT_DAUER_S, DAIMON_ABLAUF=ablauf)
 
     def _zaehle_abweisung(self, typ: str) -> None:
         """Diagnose-Zaehler fuer abgewiesene Anfragen. Nur zaehlen -- keine

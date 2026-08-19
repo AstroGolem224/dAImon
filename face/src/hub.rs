@@ -194,6 +194,27 @@ impl HubVerbindung {
         ))
     }
 
+    /// T-7.4: Mitschnitt pausieren -- Bild UND Ton, fuer eine feste Frist.
+    ///
+    /// **Die Nutzlast ist leer, und das ist der Punkt.** Die Dauer steht im
+    /// Hub (`PRIVAT_DAUER_S`), nicht hier: ein Absender, der sie waehlt, kann
+    /// auch `0` waehlen -- und haette einen Privatmodus angefordert, der
+    /// nichts tut, aber im Journal steht.
+    ///
+    /// Ebenso bewusst schreibt das Face die Datei NICHT selbst, obwohl es
+    /// `%t/daimon` beschreiben darf und der Bildschirm-Widerruf genau so
+    /// geht. Der Unterschied: jene Datei ist leer, diese traegt den Ablauf
+    /// als Wert. Das Format stuende dann einmal hier und einmal in
+    /// `redaktion.privat_setzen` -- zwei Fassungen einer Regel sind eine
+    /// Regel und eine Attrappe. Geschrieben wird dort, wo auch gelesen wird.
+    ///
+    /// Kein Gegenstueck zum Beenden: der Modus laeuft ab. Wer hier ein
+    /// `privatmodus_aus` ergaenzt, gibt einem kompromittierten Overlay den
+    /// Weg, den Mitschnitt wieder anzuschalten.
+    pub fn privatmodus_melden(&self) -> Result<(), String> {
+        self.senden("{\"v\":1,\"type\":\"privatmodus\",\"payload\":{}}\n")
+    }
+
     fn senden(&self, zeile: &str) -> Result<(), String> {
         let mut strom = UnixStream::connect(&self.melde_pfad)
             .map_err(|fehler| format!("Face-Meldeweg {}: {fehler}", self.melde_pfad.display()))?;

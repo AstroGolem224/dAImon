@@ -123,13 +123,24 @@ def test_face_darf_nur_melden_und_abschalten():
     """T-1.7 bleibt bestehen: keine Marke und keine Freigabe vom Face.
 
     T-2.7 nimmt `wahrnehmung_aus` dazu -- einseitig und mit Ziel aus einer
-    Allowlist im Hub. Die Zusage, die dieser Test haelt, ist deshalb nicht
-    mehr "genau ein Typ", sondern "genau diese zwei und nichts sonst".
+    Allowlist im Hub. T-7.4 nimmt `privatmodus` dazu, weil der Tonpfad sonst
+    KEINE einschaltbare Sperre hat: `urteil_ton` prueft genau diesen Zustand,
+    und `privat_setzen` hatte im Produktivcode keinen Aufrufer.
+
+    Die Zusage, die dieser Test haelt, ist deshalb nicht mehr "genau ein Typ",
+    sondern "genau diese DREI und nichts sonst". Dass er bei jeder Erweiterung
+    rot wird, ist seine Aufgabe -- jede der drei musste einzeln begruendet
+    werden, und die Begruendungen stehen bei den Eintraegen in `ipc.py`.
+
+    Was UNVERAENDERT gilt, seit T-1.7: keine Marke, keine Freigabe. Beide
+    Zeilen unten stehen deshalb weiter da.
     """
     assert ipc.PRODUZENTEN["face"] == frozenset({"bubble_dismiss",
-                                                 "wahrnehmung_aus"})
+                                                 "wahrnehmung_aus",
+                                                 "privatmodus"})
     ipc.pruefe_typ("face", "bubble_dismiss")
     ipc.pruefe_typ("face", "wahrnehmung_aus")
+    ipc.pruefe_typ("face", "privatmodus")
     with pytest.raises(ipc.MessageTypeError):
         ipc.pruefe_typ("face", "intent_mark")
     with pytest.raises(ipc.MessageTypeError):

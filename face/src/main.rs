@@ -753,6 +753,7 @@ impl App {
             }
             menu::Aktion::Persona(index) => self.persona_waehlen(index),
             menu::Aktion::BildschirmWiderrufen => self.bildschirm_widerrufen(),
+            menu::Aktion::Privatmodus => self.privatmodus(),
             // Geordnet: die Hauptschleife laeuft aus, und erst dadurch
             // raeumen Diagnose- und Steuer-Socket ihre Dateien ab.
             menu::Aktion::Beenden => self.beendet = true,
@@ -762,6 +763,47 @@ impl App {
             Ok(mut zustand) => zustand.menu_aktion_gezaehlt(&name),
             Err(vergiftet) => vergiftet.into_inner().menu_aktion_gezaehlt(&name),
         }
+    }
+
+    /// T-7.4: den Mitschnitt pausieren, Bild und Ton.
+    ///
+    /// Gemeldet und nicht selbst geschrieben -- die Begruendung steht bei
+    /// `hub::privatmodus_melden`. Die Blase sagt, wie lange es gilt: ein
+    /// Modus, dessen Frist man nicht sieht, ist einer, auf den man sich
+    /// faelschlich verlaesst.
+    fn privatmodus(&mut self) {
+        let (titel, text, gescheitert) = match self.hub.as_ref() {
+            Some(hub) => match hub.privatmodus_melden() {
+                Ok(()) => (
+                    "Mitschnitt pausiert".to_owned(),
+                    "15 Minuten lang wird nichts abgelegt -- Bild und Ton"
+                        .to_owned(),
+                    false,
+                ),
+                Err(fehler) => {
+                    eprintln!("Privatmodus nicht gemeldet: {fehler}");
+                    ("Privatmodus NICHT aktiv".to_owned(), fehler, true)
+                }
+            },
+            None => {
+                eprintln!("Kein Hub-Meldeweg; Privatmodus bleibt aus");
+                (
+                    "Privatmodus NICHT aktiv".to_owned(),
+                    "Kein Meldeweg zum Hub".to_owned(),
+                    true,
+                )
+            }
+        };
+        self.aktuelle_bubble = Some(Bubble {
+            title: titel,
+            body: text,
+            // Eine Fehlmeldung MUSS auffallen: der Nutzer glaubt sonst, es
+            // sei still, und spricht weiter. Der Widerruf daneben kommt ohne
+            // aus -- dort ist die Folge eines Fehlschlags, dass etwas
+            // ERLAUBT bleibt, hier, dass etwas AUFGEZEICHNET wird.
+            urgent: gescheitert,
+        });
+        self.bubble_aktualisieren();
     }
 
     /// T-5.2: den Bildschirmzugriff widerrufen.
