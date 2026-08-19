@@ -1044,7 +1044,27 @@ InaccessiblePaths=%h/.ssh %h/.gnupg %h/.local/share/keyrings %h/.pki
 
 Unter voller Härtung getestet **[V]**: DBus funktioniert, Wayland-Socket sichtbar, `wl-paste` funktioniert; blockiert sind Schreiben in `$HOME` und `/dev/uinput`.
 
-**Direktiven, die brechen:** `ProtectHome=yes` (versteckt `~/.config`), `PrivateUsers=yes` (bricht uid-ACLs und Peer-Credentials), `RestrictAddressFamilies` ohne `AF_UNIX` (killt DBus **und** Wayland), `MemoryDenyWriteExecute=yes` (bricht jeden JIT), `PrivateDevices=yes` in `input`/`gpu@`.
+**Direktiven, die brechen:** `ProtectHome=yes` (versteckt `~/.config`), `PrivateUsers=yes` (bricht uid-ACLs; zur Peer-Prüfung siehe Messung unten), `RestrictAddressFamilies` ohne `AF_UNIX` (killt DBus **und** Wayland), `MemoryDenyWriteExecute=yes` (bricht jeden JIT), `PrivateDevices=yes` in `input`/`gpu@`.
+
+> **Nachgemessen am 19.08.: `PrivateUsers=yes` bricht die Peer-Prüfung für
+> gleiche uid nicht.** Hier stand „bricht uid-ACLs und Peer-Credentials", und
+> `daimon-dbus.service` setzte die Direktive trotzdem — zwei Aussagen über
+> dieselbe Zeile (Befund T-4.7 K5). Zwei transiente Units, sonst gleich, ein
+> Client aus fremder Unit:
+>
+> ```
+> ohne PrivateUsers   peercred uid=1000, SO_PEERPIDFD ok, cgroup lesbar
+> mit  PrivateUsers   peercred uid=1000, SO_PEERPIDFD ok, cgroup lesbar
+> ```
+>
+> systemd bildet die eigene uid des Dienstes in den Namensraum ab. Gemessen
+> ist **nur** der Peer-Teil und **nur** für gleiche uid — was die Direktive
+> sonst bricht, ist damit nicht widerlegt, und die uid-ACLs stehen weiter da.
+>
+> Die Zeile ist trotzdem aus der Unit entfernt (Entscheidung vom 19.08.): von
+> den beiden Wegen aus dem Widerspruch ist das der konservative. Die Unit
+> verliert eine Härtung, deren Wirkung dort nie belegt war, statt dass eine
+> Designregel aufgeweicht wird, deren übrige Gründe ungeprüft sind.
 
 ### 7.6 Audit
 

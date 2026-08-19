@@ -178,3 +178,55 @@ def test_POSITIVKONTROLLE_der_schreibende_dienst_wird_auch_gefunden():
                for z in text.splitlines()), (
         "der Recorder holt sich das Archiv nicht mehr per BindPaths -- "
         "dann misst die Pruefung darueber nichts")
+
+
+# -- Direktiven, die brechen (T-4.7 K5) -----------------------------------
+
+def test_keine_unit_setzt_was_das_design_als_brechend_fuehrt():
+    """`PrivateUsers=yes` steht in DESIGN.md unter "Direktiven, die brechen"
+    -- und `daimon-dbus.service` setzte sie trotzdem.
+
+    Zwei Aussagen ueber dieselbe Zeile, und welche galt, entschied der Zufall
+    dessen, der zuerst nachschlug (Befund T-4.7 K5, Reviewer-Sitzung 19.08.).
+    Am 19.08. entschieden: die Zeile geht aus der Unit.
+
+    Der Waechter steht hier und nicht bei den Sandbox-Tests, weil er dieselbe
+    Frage stellt wie die Datei drumherum: gilt, was im Repo steht -- oder
+    steht es nur da.
+
+    Geprueft wird gegen die WIRKSAMEN Zeilen. Der Grund fuer die Entfernung
+    steht als Kommentar in genau dieser Unit, und eine nackte Textsuche
+    faende ihn und meldete einen Verstoss.
+    """
+    # NUR `PrivateUsers=yes`. Eine erste Fassung nahm die ganze Liste aus
+    # DESIGN.md und schlug bei 17 Units an, die `MemoryDenyWriteExecute=yes`
+    # setzen -- zu Recht, denn dort steht "bricht jeden JIT", und wer keinen
+    # JIT laedt, bricht nichts. Die Liste ist eine WARNLISTE mit Kontext und
+    # keine Verbotsliste; ein Waechter, der sie als solche liest, schlaegt
+    # bei richtigen Zeilen an und wird abgeschaltet.
+    #
+    # (Dass DESIGN.md diesen Unterschied nicht ausschreibt, ist ein eigener
+    # Befund und steht als Karte im PMTool.)
+    verboten = ("PrivateUsers=yes",)
+    treffer = []
+    for unit in DIENSTE:
+        for nr, zeile in enumerate(unit.read_text(encoding="utf-8").splitlines(), 1):
+            nackt = zeile.strip()
+            if nackt.startswith("#"):
+                continue
+            if nackt in verboten:
+                treffer.append(f"{unit.name}:{nr} {nackt}")
+    assert not treffer, (
+        "eine Unit setzt eine Direktive, die DESIGN.md unter 'Direktiven, "
+        f"die brechen' fuehrt: {treffer}")
+
+
+def test_POSITIVKONTROLLE_die_verbotsliste_kann_ueberhaupt_treffen(tmp_path):
+    """Ohne diese Zeile bestuende der Test darueber auch dann, wenn die
+    Schreibweise nicht mehr passt -- etwa nach `PrivateUsers = yes` mit
+    Leerzeichen. Beide Listen waeren leer und der Vergleich stumm."""
+    probe = tmp_path / "daimon-probe.service"
+    probe.write_text("[Service]\nPrivateUsers=yes\n")
+    zeilen = [z.strip() for z in probe.read_text().splitlines()
+              if not z.strip().startswith("#")]
+    assert "PrivateUsers=yes" in zeilen

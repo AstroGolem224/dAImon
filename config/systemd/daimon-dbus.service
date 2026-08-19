@@ -27,7 +27,28 @@ RestartSec=2
 # nach draußen.
 NoNewPrivileges=yes
 PrivateDevices=yes
-PrivateUsers=yes
+# PrivateUsers=yes -- am 19.08. ENTFERNT (Befund T-4.7 K5).
+#
+# docs/DESIGN.md fuehrt die Direktive unter "Direktiven, die brechen": sie
+# breche uid-ACLs und Peer-Credentials. Diese Unit setzte sie trotzdem. Zwei
+# Aussagen ueber dieselbe Zeile standen im Repo, und welche galt, entschied
+# der Zufall dessen, der zuerst nachschlug.
+#
+# Die Reviewer-Sitzung hat die BEGRUENDUNG nachgemessen statt sie zu
+# uebernehmen -- zwei transiente Units, sonst gleich, ein Client aus fremder
+# Unit:
+#
+#     ohne PrivateUsers   peercred uid=1000, SO_PEERPIDFD ok, cgroup lesbar
+#     mit  PrivateUsers   peercred uid=1000, SO_PEERPIDFD ok, cgroup lesbar
+#
+# Fuer einen Peer DERSELBEN uid bricht sie also nichts. Die Zeile stand
+# damit weder aus dem genannten Grund hier, noch war der Grund der einzige:
+# gemessen ist nur der Peer-Teil und nur fuer gleiche uid.
+#
+# Entfernt wird sie trotzdem, und zwar als Entscheidung: der Widerspruch
+# musste weg, und von den beiden Wegen ist dieser der konservative -- die
+# Unit verliert eine Haertung, deren Wirkung hier nie belegt war, statt dass
+# eine Designregel aufgeweicht wird, deren uebrige Gruende ungeprueft sind.
 ProtectClock=yes
 ProtectControlGroups=yes
 ProtectHostname=yes
