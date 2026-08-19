@@ -319,6 +319,24 @@ impl App {
         zustand.voice_indikator_gezeichnet += 1;
     }
 
+    /// T-7.3: dasselbe fuer den Mitschnitt-Punkt. Eine eigene Funktion und
+    /// ein eigenes Feld, weil er etwas anderes sagt: der erste heisst "ich
+    /// hoere gerade zu", der zweite "das hier wird aufbewahrt".
+    ///
+    /// Bis zum 19.08. gab es sie nicht -- `surface.rs` warf das Ergebnis von
+    /// `mitschnitt_malen` weg, und der Kommentar daneben behauptete das
+    /// Gegenteil (BEFUND T-7.3 K9).
+    fn mitschnitt_indikator_zaehlen(&self, gemalt: bool) {
+        if !gemalt {
+            return;
+        }
+        let mut zustand = match self.diagnose.lock() {
+            Ok(z) => z,
+            Err(vergiftet) => vergiftet.into_inner(),
+        };
+        zustand.mitschnitt_indikator_gezeichnet += 1;
+    }
+
     fn diagnose_voice_setzen(&self, voice: &str) {
         let mut zustand = match self.diagnose.lock() {
             Ok(z) => z,
@@ -583,10 +601,11 @@ impl App {
                 )
         };
         match ergebnis {
-            Ok((commits, indikator)) => {
+            Ok((commits, indikator, mitschnitt_indikator)) => {
                 self.commits_zaehlen(commits);
                 self.diagnose_sprite_setzen(&name);
                 self.indikator_zaehlen(indikator);
+                self.mitschnitt_indikator_zaehlen(mitschnitt_indikator);
             }
             Err(fehler) => {
                 // Ein fehlgeschlagener Request darf frame_pending nicht fuer
@@ -1125,9 +1144,10 @@ impl LayerShellHandler for App {
                     )
             };
             match sprite_ergebnis {
-                Ok((commits, indikator)) => {
+                Ok((commits, indikator, mitschnitt_indikator)) => {
                     self.commits_zaehlen(commits);
                     self.indikator_zaehlen(indikator);
+                    self.mitschnitt_indikator_zaehlen(mitschnitt_indikator);
                     self.diagnose_sprite_setzen(&self.aktueller_zustand);
                     self.bubble_aktualisieren();
                     println!("READY pid={}", std::process::id());

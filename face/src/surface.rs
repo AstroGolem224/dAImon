@@ -223,7 +223,12 @@ impl OverlaySurface {
     /// Beide Surfaces laufen vor ihrem jeweiligen Commit durch ihr eigenes
     /// Sicherheits-Gate.
     ///
-    /// Rueckgabewert ist die Anzahl tatsaechlicher Wayland-Commits.
+    /// Rueckgabewert ist die Anzahl tatsaechlicher Wayland-Commits sowie,
+    /// je Indikator, ob er wirklich in den Puffer gemalt wurde. ZWEI
+    /// Wahrheitswerte und nicht einer: der Sprach- und der
+    /// Mitschnitt-Punkt sagen Verschiedenes, und der zweite ist der
+    /// rechtlich schwerere. Bis zum 19.08. wurde er hier verworfen
+    /// (BEFUND T-7.3 K9).
     pub fn sprite_committen(
         &mut self,
         compositor: &CompositorState,
@@ -236,7 +241,7 @@ impl OverlaySurface {
         sichtbar: bool,
         qh: &QueueHandle<crate::App>,
         callback_armieren: bool,
-    ) -> Result<(u64, bool), String> {
+    ) -> Result<(u64, bool, bool), String> {
         let abbildung = zustand_abbilden(zustand, &atlas.layout);
         let mut frame = sichtbaren_frame_bauen(
             &frame_toenen(&atlas.frame(abbildung.zeile, 0)?, toenung),
@@ -265,7 +270,6 @@ impl OverlaySurface {
                 atlas.layout.cell_w,
                 atlas.layout.cell_h,
             );
-        let _ = mitschnitt_gemalt;
         let breite = i32::try_from(atlas.layout.cell_w)
             .map_err(|_| "Sprite-Breite passt nicht in i32".to_string())?;
         let hoehe = i32::try_from(atlas.layout.cell_h)
@@ -293,7 +297,7 @@ impl OverlaySurface {
                     .frame(qh, FrameCallbackData(self.sprite.surface.clone()));
                 self.sprite.surface.commit();
             }
-            return Ok((0, indikator_gemalt));
+            return Ok((0, indikator_gemalt, mitschnitt_gemalt));
         }
 
         // Erst alle falliblen Pufferschritte abschliessen. So kann danach kein
@@ -351,7 +355,7 @@ impl OverlaySurface {
         }
         self.sprite.surface.commit();
         self.sprite.letzter_frame = frame;
-        Ok((1, indikator_gemalt))
+        Ok((1, indikator_gemalt, mitschnitt_gemalt))
     }
 
     /// Zeichnet ausschliesslich die Blasen-Subsurface. Der Sprite-Puffer wird

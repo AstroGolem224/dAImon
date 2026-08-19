@@ -39,7 +39,8 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from daimon.common import ipc
-from daimon.common.config import denylist_laden, denylist_pfade, load
+from daimon.common.config import (denylist_laden, denylist_pfade,
+                                  konferenz_laden, load)
 from daimon.common.logging import get_logger
 from daimon.recorder import pause
 from daimon.recorder.redaktion import Redaktion
@@ -427,16 +428,25 @@ def main(argv: list[str] | None = None) -> int:
         # Grund, den Dienst zu verweigern: unbekannte Fenster sperrt die
         # Redaktion ohnehin. Laut im Journal, damit es auffaellt.
         log.warn("keine Denylist gefunden -- nur der Fail-closed-Pfad greift")
+    # T-7.3 K5: die Konferenzliste ERGAENZT die Vorgabe aus `pause.py`. Bis
+    # zum 19.08. stand der Parameter da und wurde hier nie gefuellt -- die
+    # Zusage aus dem Kommentar in `pause.py` ("ergaenzt wird in
+    # config/redaktion.yaml unter `konferenz`") galt nicht.
+    zusatz, konf_herkunft = konferenz_laden(denylist_pfade())
     dienst = Recorder(
         runtime_dir=rt,
         archiv=Archiv(args.archiv, grenze_bytes=int(grenze)),
         redaktion=Redaktion(denylist=denylist, runtime_dir=rt,
                             wahrnehmung_an=lambda: _wahrnehmung_an(rt)),
+        konferenz=tuple(pause.KONFERENZ_VORGABE) + tuple(zusatz),
         aufraeum_intervall_s=float(cfg.get("archiv.aufraeum_intervall_s",
                                            3600.0)),
         log=log)
     log.info("Denylist geladen", DAIMON_QUELLE=str(herkunft or ""),
              DAIMON_EINTRAEGE=len(denylist))
+    log.info("Konferenzliste geladen", DAIMON_QUELLE=str(konf_herkunft or ""),
+             DAIMON_VORGABE=len(pause.KONFERENZ_VORGABE),
+             DAIMON_ZUSATZ=len(zusatz))
 
     def halt(*_: object) -> None:
         dienst.stop()

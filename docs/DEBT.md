@@ -94,7 +94,7 @@ Nachschreiben, und dafür ist der `grep` oben da.
 
 ## `face/src/main.rs`
 
-- **Zeile 1057** — // ponytail: kein Grund-Unterscheiden. Der Compositor sagt nicht, warum
+- **Zeile 1076** — // ponytail: kein Grund-Unterscheiden. Der Compositor sagt nicht, warum
 
 ## `face/src/menu.rs`
 

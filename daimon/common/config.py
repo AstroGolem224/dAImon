@@ -186,6 +186,40 @@ def denylist_laden(pfade: Iterable[Path]) -> tuple[list[str], Path | None]:
     return [], None
 
 
+def konferenz_laden(pfade: Iterable[Path]) -> tuple[list[str], Path | None]:
+    """T-7.3 K5: zusaetzliche Konferenzanwendungen, bei denen pausiert wird.
+
+    **Ergaenzt, ersetzt nicht** -- anders als die Denylist. Der Unterschied
+    ist gewollt: eine Denylist ist eine Aussage darueber, was NICHT
+    mitgeschnitten werden darf, und wer sie ueberschreibt, will genau das.
+    Die Konferenzliste sagt, wann automatisch pausiert wird; wer Zoom
+    ergaenzen will, soll nicht Teams und Jitsi neu tippen muessen und sie
+    beim naechsten Vergessen verlieren.
+
+    Die Vorgabe steht in `recorder/pause.py` und nicht hier: sie ist keine
+    Einstellung, sondern eine Liste, die mit dem Code gepflegt wird.
+
+    Bis zum 19.08. gab es diese Funktion nicht. `Recorder.__init__` nahm
+    `konferenz=` entgegen, `main()` fuellte es nie, und `redaktion.yaml`
+    hatte den Schluessel nicht -- obwohl der Kommentar in `pause.py`
+    ausdruecklich dorthin verwies (BEFUND T-7.3 K5).
+    """
+    import yaml
+
+    for pfad in pfade:
+        try:
+            daten = yaml.safe_load(Path(pfad).read_text(encoding="utf-8"))
+        except OSError:
+            continue
+        except yaml.YAMLError as exc:
+            # Dieselbe Haltung wie bei der Denylist: eine kaputte Datei sieht
+            # aus, als wirke sie. Laut scheitern.
+            raise ConfigError(f"{pfad}: {exc}") from exc
+        eintraege = (daten or {}).get("konferenz") or []
+        return [str(e) for e in eintraege], Path(pfad)
+    return [], None
+
+
 def denylist_pfade() -> list[Path]:
     """Eigene Datei vor mitgelieferter -- wer ergaenzt, verliert die Vorgabe
     beim naechsten `git pull` nicht."""

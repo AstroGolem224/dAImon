@@ -60,6 +60,15 @@ pub struct FaceState {
     /// T-3.14: +1 je tatsaechlich in den Sprite-Puffer gezeichnetem
     /// Indikator. `idle` bewegt ihn nicht -- dort wird nichts gemalt.
     pub voice_indikator_gezeichnet: u64,
+    /// T-7.3: dasselbe fuer den Mitschnitt-Punkt, und getrennt gezaehlt --
+    /// er sagt etwas anderes als der erste.
+    ///
+    /// Bis zum 19.08. wurde er GAR NICHT gezaehlt: `surface.rs` verwarf das
+    /// Ergebnis von `mitschnitt_malen` mit `let _ = ...`, waehrend der
+    /// Kommentar daneben "getrennt gezaehlt" behauptete (BEFUND T-7.3 K9).
+    /// Damit war "das Face zeigt an, dass mitgeschnitten wird" eine
+    /// Selbstauskunft -- bei genau der Anzeige, die rechtlich zaehlt.
+    pub mitschnitt_indikator_gezeichnet: u64,
 }
 
 /// Von Hand statt abgeleitet, wegen genau eines Feldes: `voice_state` faengt
@@ -88,6 +97,7 @@ impl Default for FaceState {
             letzte_menu_aktion: String::new(),
             voice_state: "idle".to_owned(),
             voice_indikator_gezeichnet: 0,
+            mitschnitt_indikator_gezeichnet: 0,
         }
     }
 }
@@ -104,7 +114,8 @@ impl FaceState {
                 "\"output\":\"{}\",\"output_wechsel\":{},",
                 "\"menu_offen\":{},\"menu_aktionen\":{},",
                 "\"letzte_menu_aktion\":\"{}\",",
-                "\"voice_state\":\"{}\",\"voice_indikator_gezeichnet\":{}}}"
+                "\"voice_state\":\"{}\",\"voice_indikator_gezeichnet\":{},",
+                "\"mitschnitt_indikator_gezeichnet\":{}}}"
             ),
             self.rev,
             escape(&self.mood),
@@ -124,7 +135,8 @@ impl FaceState {
             self.menu_aktionen,
             escape(&self.letzte_menu_aktion),
             escape(&self.voice_state),
-            self.voice_indikator_gezeichnet
+            self.voice_indikator_gezeichnet,
+            self.mitschnitt_indikator_gezeichnet
         )
     }
 
@@ -233,6 +245,7 @@ mod tests {
             letzte_menu_aktion: "ears_aus".into(),
             voice_state: "speaking".into(),
             voice_indikator_gezeichnet: 5,
+            mitschnitt_indikator_gezeichnet: 9,
         };
         let j = s.als_json();
         for feld in [
@@ -269,6 +282,32 @@ mod tests {
         s.voice_indikator_gezeichnet = 12;
         assert!(s.als_json().contains("\"voice_state\":\"listening\""));
         assert!(s.als_json().contains("\"voice_indikator_gezeichnet\":12"));
+    }
+
+    /// T-7.3 K9: derselbe Beleg fuer den Mitschnitt-Punkt.
+    ///
+    /// Er ist die rechtlich schwerere der beiden Anzeigen -- "das hier wird
+    /// aufbewahrt". Bis zum 19.08. stand er ueberhaupt nicht in der
+    /// Diagnose: `surface.rs` verwarf das Ergebnis von `mitschnitt_malen`
+    /// mit `let _ = ...`, waehrend der Kommentar daneben "getrennt gezaehlt"
+    /// behauptete. Ein Verifizierer konnte die Anzeige damit nicht von einer
+    /// Selbstauskunft unterscheiden.
+    ///
+    /// Zwei GETRENNTE Zaehler und nicht einer: waere es einer, liesse sich
+    /// "ich hoere zu" nicht von "das wird aufbewahrt" trennen -- und genau
+    /// die Trennung ist der Grund, warum es zwei Punkte sind.
+    #[test]
+    fn mitschnitt_indikator_steht_wortwoertlich_im_json() {
+        let mut s = FaceState::default();
+        assert!(
+            s.als_json().contains("\"mitschnitt_indikator_gezeichnet\":0"),
+            "{}",
+            s.als_json()
+        );
+        s.mitschnitt_indikator_gezeichnet = 7;
+        assert!(s.als_json().contains("\"mitschnitt_indikator_gezeichnet\":7"));
+        // Der Sprachzaehler bleibt davon unberuehrt.
+        assert!(s.als_json().contains("\"voice_indikator_gezeichnet\":0"));
     }
 
     /// Der Verifizierer liest genau diese zwei Schluessel zur Laufzeit. Der

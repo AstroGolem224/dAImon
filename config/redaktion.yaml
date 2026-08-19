@@ -39,3 +39,24 @@ denylist:
 
 # Eigene Ergaenzungen gehoeren hierunter oder in eine Kopie dieser Datei
 # unter $XDG_CONFIG_HOME/daimon/redaktion.yaml -- die hat Vorrang.
+
+
+# T-7.3 -- bei welchen Anwendungen der Mitschnitt automatisch pausiert.
+#
+# ANDERS ALS DIE DENYLIST: was hier steht, ERGAENZT die mitgelieferte Liste
+# (Zoom, Teams, Skype, Discord, Jitsi, Webex, Signal -- sie steht in
+# daimon/recorder/pause.py). Wer Zoom ergaenzen will, soll nicht Teams neu
+# tippen muessen. Die Denylist dagegen ersetzt, weil wer sie ueberschreibt
+# genau das will.
+#
+# Verglichen wird als TEILTREFFER und ohne Ruecksicht auf Gross- und
+# Kleinschreibung: `zoom` fangt auch `Zoom Workplace`. Die Richtung des
+# Irrtums ist die harmlose -- ein Fehltreffer pausiert den Mitschnitt, er
+# startet keinen.
+#
+# Leer gelassen gilt die Vorgabe. Der Abschnitt steht hier, weil der
+# Parameter bis zum 19.08. im Code stand, ohne dass ihn je jemand fuellte.
+
+konferenz: []
+  # - element                     # Matrix-Klient mit Anrufen
+  # - org.mozilla.firefox         # falls Konferenzen im Browser laufen
