@@ -767,6 +767,28 @@ sequenceDiagram
 ```
 
 - **Herkunft über den Socket.** Broker nehmen nur Verbindungen vom Hub an (Peer-Prüfung im Sinne von §1.2 — Wegweiser, keine Authentifizierung).
+
+> **Damit hat der Auftrag keinen Herkunftsnachweis, und das ist beabsichtigt.**
+> Diese Feststellung steht hier, weil der Satz darüber sich zweimal lesen ließ
+> und prompt zweimal gelesen wurde. `common/order.py` hielt die Peer-Prüfung
+> für den *Ersatz* der gestrichenen Signatur — „ein Auftrag, der dort ankommt,
+> kommt vom Hub, oder er kommt gar nicht an" —, während `hub/daemon.py` sie
+> einen Wegweiser nannte und sich dabei auf dieselbe Stelle berief. Zwei
+> Fassungen einer Regel sind eine Regel und eine Attrappe; welche gilt,
+> entschied der Zufall des Aufrufs (Reviewer-Sitzung 18.08., Befund T-4.5).
+>
+> Was gilt: Ein Angreifer, der bereits unter dieser uid Code ausführt, kann
+> die Unit ersetzen, ihren Socket erben oder den Hub direkt lesen. Gegen ihn
+> half weder der gestrichene HMAC noch die Peer-Prüfung — §1.3 wehrt ihn
+> ausdrücklich nicht ab, und die Grenze ist der Benutzeraccount, nicht das
+> Netz. Ein Ersatz für die Signatur ist deshalb **nicht** vorgesehen; wer
+> einen einführt, muss zuerst das Bedrohungsmodell ändern.
+>
+> Was die Peer-Prüfung dennoch leistet und wofür sie bleibt: sie hält einen
+> falsch verdrahteten eigenen Dienst auf und macht im Nachhinein sichtbar,
+> wer gefragt hat. Bis zum 19.08. fand sie an den Broker-Sockets gar nicht
+> statt (`ipc.peer_of` 0× gerufen, Nutzlast 1× gelesen) — die einzige Zusage
+> ihrer Art an dieser Stelle, und sie galt nicht.
 - **`audience`** bindet an genau einen Broker; ein DBus-Auftrag ist bei `daimon-fs` nicht einreichbar.
 - **`schema`** plus festgelegte kanonische Serialisierung — Hub und Broker lesen denselben Auftrag gleich.
 - **`deadline_monotonic`** nutzt die monotone Uhr; eine Zeitumstellung verlängert nichts.
