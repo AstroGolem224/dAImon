@@ -1,0 +1,382 @@
+# T-4.2 — der geprüfte Aktionskatalog. VON HAND freigegeben.
+#
+# Das hier ist die Whitelist. `config/actions/candidates.yaml` ist es nicht --
+# dort steht, was kglobalaccel anbietet, hier steht, was das Pet ausführen
+# darf. Der Generator aus T-4.1 kann diese Datei nicht schreiben.
+#
+# Freigegeben am 09.08. von Matthias, Begründung je Eintrag im `rationale`
+# und ausführlich in docs/action-review.md.
+#
+# ----------------------------------------------------------------------------
+# Die Felder, und was sie bedeuten
+# ----------------------------------------------------------------------------
+# destructive        Wirkung vernichtet Zustand, den niemand wiederherstellen
+#                    kann. Nicht "stört", sondern "weg".
+# reversible_by      Die ID der Umkehraktion. Design §846: die EXISTENZ einer
+#                    Inversen ist die operative Definition von umkehrbar --
+#                    nicht die Absicht, eine zu bauen. `null` heißt: es gibt
+#                    keine.
+# externally_visible Die Wirkung hat den Rechner verlassen. Dann nie umkehrbar,
+#                    auch mit technischem Undo. Alles hier drin ist lokal.
+# open_world         Das Ergebnis hängt von etwas ab, das wir nicht kennen
+#                    (fremder Dienst, Netz, Fremdanwendung).
+# never_cacheable    Das Ergebnis darf nicht wiederverwendet werden -- es gilt
+#                    nur für diesen Augenblick.
+# direct             Design §263: der Hub-Parser darf diese Aktion aus der
+#                    Äußerung selbst erkennen, ohne Vorschau. NUR für
+#                    nebenwirkungsarme, wertbeschränkte Aktionen. Eine Aktion
+#                    aus einer MODELLAUSGABE geht immer durch die Vorschau,
+#                    egal was hier steht.
+# foreground/background/scheduled
+#                    Vorgabe je Auslöseweg: allow | ask | deny. `foreground`
+#                    ist der Mensch vor dem Rechner, `background` eine
+#                    Hintergrundschleife, `scheduled` ein Zeitplan.
+#                    Hintergrund und Zeitplan sind hier überall `deny`: es gibt
+#                    in P4 keinen Anlass, bei dem das Pet ungefragt handelt.
+# params             Typisiert und wertbeschränkt. Ein Parameter ohne Schranke
+#                    ist ein Loch, durch das der nächste Wert passt.
+# quelle             Woher die Aktion technisch kommt. `kglobalaccel:<komponente>`
+#                    heißt: sie steht so in candidates.yaml.
+#
+# `status: approved` steht nur an Einträgen mit `rationale`. Alles andere --
+# org_kde_powerdevil, kwin.script.load, Aktivitäten, Sitzungsverwaltung und
+# jede nicht eingeordnete Aktion -- bleibt `candidate` und steht hier gar
+# nicht erst drin.
+version: 1
+actions:
+
+  # -- Medien -----------------------------------------------------------------
+  # Die ganze Gruppe ist selbstinvers: dieselbe oder die Gegenaktion stellt den
+  # vorigen Zustand her. Sie ist der Grund, warum es `direct` überhaupt gibt.
+
+  - id: media.playpause
+    quelle: "kglobalaccel:mediacontrol"
+    kglobalaccel: ["mediacontrol", "playpausemedia"]
+    params: {}
+    destructive: false
+    reversible_by: media.playpause
+    externally_visible: false
+    open_world: true
+    never_cacheable: true
+    direct: true
+    foreground: allow
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: >-
+      Selbstinvers und folgenlos: derselbe Aufruf stellt den vorigen Zustand
+      wieder her. `open_world`, weil der Empfänger eine beliebige
+      MPRIS-Anwendung ist und wir nicht wissen, welche.
+
+  - id: media.next
+    quelle: "kglobalaccel:mediacontrol"
+    kglobalaccel: ["mediacontrol", "nextmedia"]
+    params: {}
+    destructive: false
+    reversible_by: media.previous
+    externally_visible: false
+    open_world: true
+    never_cacheable: true
+    direct: true
+    foreground: allow
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: >-
+      Umkehrbar durch media.previous. Der schlimmste Fehlgriff ist ein
+      übersprungenes Stück.
+
+  - id: media.previous
+    quelle: "kglobalaccel:mediacontrol"
+    kglobalaccel: ["mediacontrol", "previousmedia"]
+    params: {}
+    destructive: false
+    reversible_by: media.next
+    externally_visible: false
+    open_world: true
+    never_cacheable: true
+    direct: true
+    foreground: allow
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: Gegenstück zu media.next, dieselbe Begründung.
+
+  - id: media.stop
+    quelle: "kglobalaccel:mediacontrol"
+    kglobalaccel: ["mediacontrol", "stopmedia"]
+    params: {}
+    destructive: false
+    reversible_by: media.playpause
+    externally_visible: false
+    open_world: true
+    never_cacheable: true
+    direct: true
+    foreground: allow
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: >-
+      Anhalten vernichtet keinen Zustand; die Wiedergabe beginnt mit
+      media.playpause von vorn. Bei manchen Abspielern geht die
+      Abspielposition verloren -- das ist der Grund, warum hier `stop` und
+      nicht `pause` die schwächere Zusage trägt.
+
+  - id: media.seek.forward
+    quelle: "kglobalaccel:mediacontrol"
+    kglobalaccel: ["mediacontrol", "seekforwardmedia"]
+    params: {}
+    destructive: false
+    reversible_by: media.seek.backward
+    externally_visible: false
+    open_world: true
+    never_cacheable: true
+    direct: true
+    foreground: allow
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: Fünf Sekunden vor, umkehrbar durch fünf Sekunden zurück.
+
+  - id: media.seek.backward
+    quelle: "kglobalaccel:mediacontrol"
+    kglobalaccel: ["mediacontrol", "seekbackwardmedia"]
+    params: {}
+    destructive: false
+    reversible_by: media.seek.forward
+    externally_visible: false
+    open_world: true
+    never_cacheable: true
+    direct: true
+    foreground: allow
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: Gegenstück zu media.seek.forward.
+
+  # -- Lautstärke -------------------------------------------------------------
+  # Mikrofonlautstärke und mic_mute sind AUSDRÜCKLICH NICHT freigegeben, siehe
+  # docs/action-review.md: ein Pet, das das Mikrofon aufdrehen kann, ist genau
+  # das, was das Bedrohungsmodell dieses Projekts ausschließt.
+
+  - id: audio.volume.up
+    quelle: "kglobalaccel:kmix"
+    kglobalaccel: ["kmix", "increase_volume"]
+    params: {}
+    destructive: false
+    reversible_by: audio.volume.down
+    externally_visible: false
+    open_world: false
+    never_cacheable: true
+    direct: true
+    foreground: allow
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: >-
+      Schrittweise, umkehrbar, wertbeschränkt durch die Anlage selbst (0 bis
+      100 %). Der schlimmste Fehlgriff ist zu laut -- hörbar und in einem
+      Schritt zurücknehmbar.
+
+  - id: audio.volume.down
+    quelle: "kglobalaccel:kmix"
+    kglobalaccel: ["kmix", "decrease_volume"]
+    params: {}
+    destructive: false
+    reversible_by: audio.volume.up
+    externally_visible: false
+    open_world: false
+    never_cacheable: true
+    direct: true
+    foreground: allow
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: Gegenstück zu audio.volume.up.
+
+  - id: audio.mute.toggle
+    quelle: "kglobalaccel:kmix"
+    kglobalaccel: ["kmix", "mute"]
+    params: {}
+    destructive: false
+    reversible_by: audio.mute.toggle
+    externally_visible: false
+    open_world: false
+    never_cacheable: true
+    direct: true
+    foreground: allow
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: >-
+      Selbstinvers. Betrifft die AUSGABE; das Mikrofon hat einen eigenen
+      Schalter, und der ist nicht freigegeben.
+
+  - id: audio.volume.set
+    # Kein kglobalaccel-Eintrag: eine Tastenkombination kennt keinen Wert.
+    # Der Broker dafür entsteht in T-4.7; bis dahin ist dieser Eintrag eine
+    # Zusage über die Schranken, keine Behauptung über eine Fähigkeit.
+    quelle: "broker:audio"
+    params:
+      value:
+        type: float
+        value_between: [0.0, 1.0]
+        required: true
+    destructive: false
+    reversible_by: audio.volume.set
+    externally_visible: false
+    open_world: false
+    never_cacheable: true
+    direct: true
+    foreground: allow
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: >-
+      Der einzige Eintrag mit freiem Wert, deshalb der einzige mit einer
+      Zahlenschranke. Umkehrbar, indem der vorige Wert erneut gesetzt wird --
+      den kennt der Ausführungsauftrag aus T-4.5, nicht diese Datei.
+
+  # -- Fenster und Arbeitsflächen ---------------------------------------------
+
+  - id: kde.window.raise
+    # Design §1545: KWin 6 hat `activateWindow()` aus dem Workspace-Wrapper
+    # entfernt. Anheben geht, FOKUSSIEREN NICHT -- und eine Aktion, die mehr
+    # verspricht als sie tut, ist schlimmer als eine fehlende. Deshalb heißt
+    # sie raise und nicht focus.
+    quelle: "broker:kwin"
+    params:
+      window_id:
+        type: string
+        pattern: "^[0-9a-fA-F-]{1,64}$"
+        required: true
+    destructive: false
+    reversible_by: null
+    externally_visible: false
+    open_world: false
+    never_cacheable: true
+    direct: false
+    foreground: ask
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: >-
+      Keine Umkehraktion: welches Fenster vorher oben lag, weiß der Katalog
+      nicht. Deshalb `foreground: ask` -- die Regel aus T-4.4 lautet, dass
+      ohne `reversible_by` gefragt wird, und hier gilt sie zum ersten Mal.
+      Und deshalb auch `direct: false`: Design §263 gibt die Abkürzung nur
+      nebenwirkungsarmen Aktionen, und eine ohne Inverse ist keine.
+
+  - id: desktop.next
+    quelle: "kglobalaccel:kwin"
+    kglobalaccel: ["kwin", "Switch to Next Desktop"]
+    params: {}
+    destructive: false
+    reversible_by: desktop.previous
+    externally_visible: false
+    open_world: false
+    never_cacheable: true
+    direct: true
+    foreground: allow
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: >-
+      Umkehrbar und rein visuell. Kein Fenster ändert seinen Zustand, nur der
+      Blick darauf.
+
+  - id: desktop.previous
+    quelle: "kglobalaccel:kwin"
+    kglobalaccel: ["kwin", "Switch to Previous Desktop"]
+    params: {}
+    destructive: false
+    reversible_by: desktop.next
+    externally_visible: false
+    open_world: false
+    never_cacheable: true
+    direct: true
+    foreground: allow
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: Gegenstück zu desktop.next.
+
+  - id: window.to_next_desktop
+    quelle: "kglobalaccel:kwin"
+    kglobalaccel: ["kwin", "Window to Next Desktop"]
+    params: {}
+    destructive: false
+    reversible_by: window.to_previous_desktop
+    externally_visible: false
+    open_world: false
+    never_cacheable: true
+    direct: false
+    foreground: ask
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: >-
+      Verschiebt das AKTIVE Fenster, also etwas, woran gerade jemand
+      arbeitet. Umkehrbar, aber nicht `direct`: ein Parser, der sich hier
+      verhört, räumt einem Menschen das Fenster weg.
+
+  - id: window.to_previous_desktop
+    quelle: "kglobalaccel:kwin"
+    kglobalaccel: ["kwin", "Window to Previous Desktop"]
+    params: {}
+    destructive: false
+    reversible_by: window.to_next_desktop
+    externally_visible: false
+    open_world: false
+    never_cacheable: true
+    direct: false
+    foreground: ask
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: Gegenstück zu window.to_next_desktop, dieselbe Begründung.
+
+  # -- Bildschirmfoto ---------------------------------------------------------
+  # Freigegeben am 09.08. auf ausdrückliche Ansage. Die Aufnahme erzeugt eine
+  # Datei mit Bildschirminhalt -- genau das Material, das dieses Projekt sonst
+  # in Quarantäne hält (Phase 5). Deshalb: nie `direct`, nie im Hintergrund,
+  # nie geplant, und im Vordergrund gefragt.
+
+  - id: screenshot.fullscreen
+    quelle: "kglobalaccel:org.kde.spectacle.desktop"
+    kglobalaccel: ["org.kde.spectacle.desktop", "FullScreenScreenShot"]
+    params: {}
+    destructive: false
+    reversible_by: null
+    externally_visible: false
+    open_world: false
+    never_cacheable: true
+    direct: false
+    foreground: ask
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: >-
+      Erzeugt eine Datei mit dem gesamten Bildschirminhalt. Nicht destruktiv,
+      aber ohne Umkehraktion, und der Inhalt ist alles, was gerade offen ist --
+      deshalb gefragt statt erlaubt. Die Datei verlässt den Rechner nicht;
+      wer sie verschickt, tut das über eine andere Aktion, die es nicht gibt.
+
+  - id: screenshot.region
+    quelle: "kglobalaccel:org.kde.spectacle.desktop"
+    kglobalaccel: ["org.kde.spectacle.desktop", "RectangularRegionScreenShot"]
+    params: {}
+    destructive: false
+    reversible_by: null
+    externally_visible: false
+    open_world: false
+    never_cacheable: true
+    direct: false
+    foreground: ask
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: >-
+      Wie screenshot.fullscreen, aber der Mensch zieht den Bereich selbst auf --
+      der Auslöser bestimmt nicht, was aufgenommen wird. Das ist die
+      schwächere und damit bevorzugte Variante.

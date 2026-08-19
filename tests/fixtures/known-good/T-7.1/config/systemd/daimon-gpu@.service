@@ -1,0 +1,93 @@
+# dAImon GPU-Worker (T-3.7): ein Modellprozess, der sich selbst beendet.
+#
+# EINE Template-Unit fuer alle Modelltypen; die Instanz (%i) IST der
+# Modelltyp. Zwei Modelltypen heissen zwei Sockets und zwei Instanzen, nicht
+# zwei Unit-Dateien -- eine kopierte Unit driftet, eine Instanz nicht.
+#
+# Gestartet wird ausschliesslich ueber daimon-gpu@%i.socket. Der Worker laeuft,
+# solange Arbeit kommt, und beendet sich nach `gpu.idle_s` Leerlauf. Das ist
+# kein Fehler und kein Absturz: Design 7.4 kennt fuer die GPU genau eine
+# belastbare Groesse, und das ist das Prozessende. Spike T−1.2 hat die
+# VRAM-Rueckgabe NACH dem Exit gemessen (1392 MiB idle -> 4341 MiB waehrend
+# der Inferenz -> 1362 MiB nach dem Exit).
+#
+# Haertung nach Design 7.5. Jede Direktive ist begruendet, damit eine spaetere
+# "Vereinfachung" sichtbar macht, welche Schicht sie abtraegt -- und damit die
+# vier Direktiven sichtbar sind, die hier ABSICHTLICH FEHLEN (unten).
+#
+# Installation: systemctl --user link <dieser Pfad>
+#               systemctl --user enable --now daimon-gpu@stt.socket
+
+[Unit]
+Description=dAImon GPU-Worker (%i)
+# Ohne den Socket gibt es keinen Deskriptor zum Erben. Requires statt Wants:
+# ein Worker ohne Socket waere gestartet und unerreichbar.
+Requires=daimon-gpu@%i.socket
+After=daimon-gpu@%i.socket daimon-hub.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+
+# WICHTIG: Projekt-venv, nicht System-Python. T-1.2 hat den Interpreter auf
+# 3.12 festgenagelt (cuobjdump-Nachweis fuer onnxruntime-gpu); das Modell aus
+# T-3.8 laedt unter keinem anderen.
+ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
+    -m daimon.gpu.worker --modell %i --hub-socket %t/daimon/gpu.sock
+
+# KEIN Restart=. Der Regelfall des Beendens ist der Leerlauf, und ein
+# Restart=on-failure wuerde daran zwar nichts aendern (Exit 0), aber
+# Restart=always haette den Task aufgehoben: der Socket startet den Worker
+# wieder, wenn er gebraucht wird, und sonst nicht. SuccessExitStatus bleibt
+# Vorgabe -- 0 ist der Leerlaufausgang UND der Ausgang nach einer Absage.
+Restart=no
+
+# Kein Erwerb neuer Privilegien; ein Modellprozess fuehrt nichts Privilegiertes
+# aus. Die GPU braucht keine Capability, nur den Geraeteknoten.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+# Systemverzeichnisse nur lesbar. Home read-only reicht: das Modell wird aus
+# dem HF-Cache GELESEN (T-3.8 laedt nicht herunter, das Modell liegt vor).
+ProtectSystem=strict
+ProtectHome=read-only
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+# Ein Modellprozess bekommt Nutzeraeusserungen zu sehen. Fremde Prozesse und
+# die Nicht-PID-Teile von /proc gehen ihn nichts an.
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+# Keine Core-Dumps: ein Dump enthielte den Audiopuffer.
+LimitCORE=0
+UMask=0077
+# Der Worker spricht mit dem Hub und mit seinem Aufrufer, beides ueber
+# Unix-Sockets. Er laedt NICHTS herunter -- ein Modell, das erst beim ersten
+# Wort aus dem Netz kommt, waere ein Kaltstart, den niemand messen kann.
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @obsolete @mount @swap @reboot @module
+# Der Leerlauf endet im Prozessende, nicht im Warten. Kommt der Worker beim
+# Beenden nicht durch, nimmt systemd ihn nach dieser Frist hart -- sonst waere
+# "weg heisst weg" von einem sauberen Aufraeumpfad abhaengig, und genau darauf
+# soll sich hier nichts verlassen.
+TimeoutStopSec=10
+
+# --- Was hier ABSICHTLICH FEHLT ------------------------------------------
+# @resources ist NICHT gefiltert (der Hub filtert es). Ein CUDA-Prozess setzt
+#   Speicherlimits und Affinitaeten; mit dem Filter stirbt T-3.8 an einer
+#   Direktive, die hier nichts schuetzt, was PrivateDevices nicht besser
+#   schuetzen wuerde.
+# PrivateDevices=yes fehlt, weil es /dev/nvidia* mit ausblendet. Das ist die
+#   eine Stelle, an der dieser Dienst weniger gehaertet ist als die anderen
+#   vier -- benannt, nicht uebersehen.
+# MemoryDenyWriteExecute=yes fehlt: der CUDA-JIT braucht W+X. Wer es setzt,
+#   bekommt einen Worker, der ohne Meldung nie laedt.
+# DevicePolicy=closed waere die richtige Verschaerfung, sobald T-3.8 belegt
+#   hat, WELCHE Knoten wirklich gebraucht werden. Vorher waere es geraten.
+
+# Kein [Install]: dieser Dienst wird nie direkt aktiviert, sondern
+# ausschliesslich vom Socket gestartet. Ein `enable` waere ein Modell, das beim
+# Anmelden VRAM belegt -- aktiviert wird der Socket (daimon-gpu@%i.socket).

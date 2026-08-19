@@ -1,0 +1,57 @@
+GUT-MUSTER fuer tests/verify/T-5.9.sh
+
+Kopie des Arbeitsbaums auf Commit eddcc29, aber nur die IMPORTHUELLE, die der
+Pruefstand braucht (40 Dateien und diese, 368 K -- nicht das ganze Paket):
+
+  common/{atomar,config,ipc,logging,protocol,taint}.py
+  hub/{daemon,declassify,marks,audit,state,diag,bus,tickets,
+       abkuehlung,sprechtext}.py      (der Hub, den der Treiber startet)
+  eyes/context.py                     (die Quarantaene aus T-5.7)
+  mind/{router,answer,proactive,threshold}.py
+                                      (Durchgang 1 und 2, K8 und K10)
+  recorder/{store,suche,pause}.py     (Archivsuche T-7.5, `schneidet_mit`)
+  brokers/egress/broker.py            (`redigieren`, von eyes/context nachgeladen)
+  auth/preview.py, gpu/worker.py, ears/killswitch.py, eyes/killswitch.py
+                                      (Importe des Hubs bzw. der obigen)
+
+Die Huelle ist mit `sys.modules` gemessen, nicht geschaetzt: alles, was beim
+Import der zwoelf vom Pruefstand geladenen Module und beim Start des Hubs
+tatsaechlich gezogen wird. Zwei Module kommen erst zur Laufzeit dazu
+(`hub/daemon.py::__init__` holt `recorder.pause`, `eyes/context.py` holt
+`brokers.egress.broker`); sie stehen deshalb mit in der Liste.
+
+`.venv` gibt es hier nicht: der Wrapper faellt auf `python3` zurueck, und die
+Huelle ist reine Standardbibliothek. `config/` fehlt ebenfalls -- der Hub
+laeuft im Prueflauf gegen ein eigenes `XDG_CONFIG_HOME` und braucht keine
+Datei daraus.
+
+EINE ABWEICHUNG vom Arbeitsbaum, und sie ist der Grund, warum dieses Muster
+existiert:
+
+  hub/declassify.py::Deklassifizierung._schreiben() legt den Umfang der
+  Freigabe ZUSAETZLICH als eigenes, lesbares Feld in den Audit-Datensatz
+  (`umfang=dict(umfang)`, dazu `grund=grund`).
+
+Im Arbeitsbaum vom 18.08. steht der Umfang ausschliesslich in `prompt_shown`
+-- und `Audit.schreiben` redigiert dieses Feld IMMER (`daimon/hub/audit.py`,
+Kommentar „Der Vorschautext ist IMMER redigiert"). Uebrig bleibt ein
+`<redacted:sha256:...:len=89>`; aus ihm laesst sich nicht lesen, WIE VIEL
+Bildschirmkontext herausgegeben wurde. Akzeptanzpunkt 4 von T-5.9 verlangt
+aber: „Jede Freigabe landet im Audit mit Umfang und `turn_id`." Die `turn_id`
+steht im Klartext da, der Umfang nicht.
+
+Das Gut-Muster ist damit die Fassung, die die Akzeptanzliste ERFUELLT -- und
+zugleich die Positivkontrolle des Verifizierers: er wird gegen sie gruen und
+bleibt gegen den Arbeitsbaum rot (K9). Waere er gegen beide gruen, koennte er
+das Kriterium nicht sehen.
+
+Die Messung schreibt NICHT vor, wie repariert wird: sie sucht die Zahlen des
+Umfangs in irgendeinem Feld des Datensatzes, in jeder Schreibweise, die ein
+Mensch als Umfang lesen wuerde (`"ocr": 1`, `('ocr', 1)`, `ocr=1`). Wer den
+Umfang stattdessen aus `prompt_shown` heraushaelt und ihn in ein anderes
+unredigiertes Feld legt, wird ebenso gruen.
+
+Jeder Mutantenbaum unter tests/mutants/T-5.9/ entsteht als bytegleiche Kopie
+dieses Musters (tests/mutants/T-5.9/erzeugen.sh, die Baeume sind NICHT
+eingecheckt) und bricht danach genau die in seiner mutation.txt benannte
+Grenze.

@@ -1,0 +1,46 @@
+GUT-MUSTER fuer tests/verify/T-7.5.sh
+
+Kopie des Arbeitsbaums auf Commit 5724d23, aber nur die IMPORTHUELLE, die der
+Pruefstand braucht (40 Dateien und diese, 464 K -- nicht das ganze Paket):
+
+  common/{atomar,config,ipc,logging,protocol,taint}.py
+  hub/{daemon,declassify,marks,audit,state,diag,bus,tickets,
+       abkuehlung,sprechtext}.py      (der Hub, den der Treiber startet)
+  eyes/context.py                     (die Quarantaene aus T-5.7)
+  mind/{router,answer,proactive,threshold}.py
+                                      (Durchgang 2, der proaktive Pfad)
+  recorder/{store,suche,pause}.py     (das Archiv T-7.1 und die Suche T-7.5)
+  brokers/egress/broker.py            (`redigieren`, von eyes/context nachgeladen)
+  auth/preview.py, gpu/worker.py, ears/killswitch.py, eyes/killswitch.py
+                                      (Importe des Hubs bzw. der obigen)
+
+Die Huelle ist dieselbe wie bei T-5.9 und dort mit `sys.modules` gemessen
+worden: alles, was beim Import der vom Pruefstand geladenen Module und beim
+Start des Hubs tatsaechlich gezogen wird. T-7.5.v laedt dieselben Module und
+zusaetzlich `recorder.store`, `recorder.suche` und `mind.proactive` -- alle
+drei stehen bereits in der Liste.
+
+`.venv` gibt es hier nicht: der Wrapper faellt auf `python3` zurueck, und die
+Huelle ist reine Standardbibliothek. `config/` fehlt ebenfalls -- der Hub
+laeuft im Prueflauf gegen ein eigenes `XDG_CONFIG_HOME` und braucht keine
+Datei daraus.
+
+KEINE ABWEICHUNG vom Arbeitsbaum. Jede der 40 Dateien ist bytegleich mit
+ihrem Original auf 5724d23 (sha256 je Datei abgeglichen). Das ist der
+Unterschied zu tests/fixtures/known-good/T-5.9: jenes Muster traegt eine
+absichtliche Abweichung in `hub/declassify.py::_schreiben`, weil T-5.9
+Akzeptanzpunkt 4 im Arbeitsbaum nicht erfuellt. T-7.5.v misst diesen Punkt
+NICHT -- der Umfang der Freigabe wird hier aus der Antwort auf `kontext.sock`
+gelesen, nicht aus der Audit-Kette. Ein Gut-Muster, das den fremden Befund
+mitschleppte, haette diesen Verifizierer an einen Fehler gebunden, den er
+nicht prueft.
+
+Dass Gut-Muster und Arbeitsbaum uebereinstimmen, heisst: dieser Verifizierer
+ist gegen BEIDE gruen. Dass er trotzdem etwas misst, steht nicht in dieser
+Datei, sondern in tests/mutants/T-7.5/erzeugen.sh -- elf Baeume, jeder mit
+genau einer gebrochenen Grenze, jeder von diesem Verifizierer zurueckgewiesen.
+
+Jeder Mutantenbaum entsteht als bytegleiche Kopie dieses Musters
+(tests/mutants/T-7.5/erzeugen.sh, die Baeume sind NICHT eingecheckt) und
+bricht danach genau die in seiner mutation.txt benannte Grenze. Der Erzeuger
+bricht ab, wenn ein Mutationsanker nicht genau einmal im Muster steht.

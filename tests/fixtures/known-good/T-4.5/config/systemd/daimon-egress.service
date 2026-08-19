@@ -1,0 +1,92 @@
+# dAImon Egress (T-3.11): die EINZIGE Unit mit Netzzugang.
+#
+# Sie transportiert und interpretiert nicht. Was sie protokolliert, sind vier
+# Felder: {ticket, bytes, status, dauer_ms}. Kein Koerper, kein Antworttext, kein
+# Modellname -- der Plantext nennt sie einzeln, und der Pruefstand sucht eine
+# Kanarienzeichenkette in JEDER Logzeile, im Journal und in jeder Absage.
+#
+# Der Token kommt ueber LoadCredential=, nie aus der Umgebung: eine
+# Umgebungsvariable stuende in /proc/<pid>/environ und waere fuer jeden Prozess
+# desselben Nutzers lesbar.
+#
+# Installation: systemctl --user link <dieser Pfad>
+#               systemctl --user enable --now daimon-egress.socket
+# Vorher den Token ablegen -- siehe docs/TOKEN-ROTATION.md.
+
+[Unit]
+Description=dAImon Egress-Broker (einziger Netzzugang)
+# `Wants=` und nicht `Requires=`: eine Unit mit `Requires=` auf eine Socket-Unit
+# ist NICHT KOPIERBAR -- `systemctl start` einer Kopie bricht mit "Unit
+# daimon-egress.socket not found" und Exit 5 ab, auch wenn ein Drop-in
+# `Requires=` leert. Genau daran ist am 04.08. der Pruefstand gescheitert, der
+# die Haertung am laufenden Prozess messen will und dafuer eine Kopie startet.
+# Unerreichbar wird der Dienst dadurch nicht: ohne uebergebenen Socket bindet er
+# den dokumentierten Vorgabepfad selbst.
+Wants=daimon-egress.socket
+After=daimon-egress.socket daimon-hub.service
+# Ohne den Hub gibt es keine Kontingente, also auch keine erlaubte Anfrage.
+# Requires waere falsch: der Egress soll ANLAUFEN und `ticket_ungueltig` sagen,
+# nicht sterben -- eine tote Unit ist von einer stummen nicht zu unterscheiden.
+Wants=daimon-hub.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
+    -m daimon.brokers.egress.broker
+
+Restart=on-failure
+RestartSec=2
+
+# --- Der Token ------------------------------------------------------------
+# LoadCredential legt die Datei in ein tmpfs, das nur dieser Unit gehoert
+# (0400, uid des Dienstes, unter $CREDENTIALS_DIRECTORY). Sie ueberlebt keinen
+# Stopp und steht in keiner Umgebung.
+LoadCredential=anthropic-token:%h/.config/daimon/anthropic-token
+# Zweites Netz: Proxy-Variablen werden ENTFERNT, nicht geleert. `Environment=X=`
+# setzt sie auf den leeren Wert -- sie stehen dann weiterhin in der Umgebung des
+# Dienstes, und eine Bibliothek, die auf `"HTTP_PROXY" in os.environ` prueft
+# statt auf den Wert, sieht einen gesetzten Proxy. Am 04.08. im Arbeitsbaumlauf
+# aufgefallen: der Pruefstand las vier leere Variablen statt keiner. Der Code
+# loescht sie zusaetzlich, weil eine Drop-in-Datei sie zurueckbringen kann --
+# und `http.client` fragt sie ohnehin nicht. Drei Lagen fuer eine Zusage, weil
+# ein Proxy die ganze TLS-Kette umleitet.
+UnsetEnvironment=HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy
+
+# --- Haertung nach Design 7.5 --------------------------------------------
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=read-only
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+# Dieser Dienst haelt ein Geheimnis. Fremde Prozesse gehen ihn nichts an, und er
+# soll fuer fremde Prozesse auch nicht sichtbar sein.
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+# KEINE Core-Dumps. Ein Dump dieses Prozesses enthaelt den Token im Klartext --
+# das ist hier keine Vorsichtsmassnahme, sondern die Zusage selbst.
+LimitCORE=0
+UMask=0077
+# HIER ist Netz erlaubt, und nur hier: AF_UNIX fuer Mind und Hub, AF_INET/INET6
+# fuer die API. Das ist der Unterschied zu allen anderen Units des Projekts.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+MemoryDenyWriteExecute=yes
+PrivateDevices=yes
+TimeoutStopSec=10
+
+# --- Was hier ABSICHTLICH FEHLT ------------------------------------------
+# `IPAddressAllow=`/`IPAddressDeny=` sind NICHT gesetzt, obwohl sie hier am
+#   sinnvollsten waeren: sie brauchen Zugriff auf eBPF/BPF-Filter, und in einer
+#   `--user`-Unit ohne Delegation stehen die nicht zur Verfuegung. Die Zusage
+#   traegt stattdessen die feste Domain im Code plus TLS-Verifikation. Wer den
+#   Dienst als System-Unit fuehrt, sollte `IPAddressAllow=` nachziehen.
+# Kein `[Install]`: gestartet wird ueber den Socket. Ein `enable` waere ein
+#   Prozess mit Token im Speicher, der beim Anmelden anlaeuft, ohne dass jemand
+#   etwas gefragt hat.

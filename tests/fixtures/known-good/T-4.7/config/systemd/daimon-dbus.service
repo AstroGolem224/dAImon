@@ -1,0 +1,77 @@
+[Unit]
+# T-4.7 — der DBus-Broker. Führt genehmigte Aktionen aus, und nur die.
+Description=dAImon DBus-Broker (feste Operation je genehmigter Aktion)
+PartOf=graphical-session.target
+After=daimon-hub.service
+Requires=daimon-hub.service
+# GUT-MUSTER (Reviewer, T-4.7.v): die zweite Schicht ist nicht nur
+# konfiguriert, sie liegt im Weg. Ohne diese beiden Zeilen und ohne
+# `Environment=DBUS_SESSION_BUS_ADDRESS=` unten spricht der Broker mit dem
+# echten Sitzungsbus, und `config/dbus-filter.conf` ist Dekoration.
+After=daimon-dbus-proxy.service
+Requires=daimon-dbus-proxy.service
+
+[Service]
+# Type=simple, NICHT notify: der Broker meldet sich nicht per sd_notify
+# zurück. Mit `notify` wartete systemd auf eine Bereitschaftsmeldung, die nie
+# kam, lief in den Timeout und startete neu -- gemessen am 09.08., ein
+# Restart-Karussell wie in Fall 4 der Übergabe. Wer sd_notify einbaut, darf
+# die Zeile zurückdrehen.
+Type=simple
+# Der Broker ruft `gdbus call --session`. Welcher Bus das ist, entscheidet
+# diese Zeile -- und sie zeigt auf den Proxy, nicht auf %t/bus.
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/daimon/dbus-proxy.sock
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
+    -m daimon.brokers.dbus.daemon \
+    --socket %t/daimon/dbus-broker.sock \
+    --katalog /home/itiger013/Dokumente/Github/dAImon/config/actions/core.yaml
+Restart=on-failure
+RestartSec=2
+
+# Sandbox nach Design §7.5. Dieselbe Linie wie beim Hub, mit einem
+# Unterschied: dieser Dienst spricht MIT dem Sitzungsbus und braucht dessen
+# Socket -- deshalb steht er unten ausdrücklich in ReadWritePaths, und
+# deshalb ist AF_UNIX hier nicht bloß IPC, sondern die einzige Verbindung
+# nach draußen.
+NoNewPrivileges=yes
+# Design 7.5, Grundzeile fuer alle Units ausser egress. Fehlt sie, behaelt der
+# Dienst den vollen Capability-Satz seines Elternprozesses.
+CapabilityBoundingSet=
+PrivateDevices=yes
+# `PrivateUsers=yes` steht in Design 7.5 unter "Direktiven, die brechen":
+# es bricht uid-ACLs und Peer-Credentials -- also genau die Herkunftspruefung,
+# die an die Stelle der gestrichenen Signatur getreten ist (Design 1.3/6.2,
+# T-4.5.v). Im Arbeitsbaum steht die Zeile; hier nicht.
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=strict
+ProtectHome=read-only
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+LimitCORE=0
+UMask=0077
+# Kein Netz. Ein Broker, der Aktionen ausführt, hat keinen Anlass, mit
+# irgendetwas außerhalb dieser Maschine zu sprechen -- und die Wirkung einer
+# Aktion, die den Rechner verlässt, ist nie umkehrbar (Katalogfeld
+# `externally_visible`).
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+# Kein Ausführen fremder Programme außer den beiden, die der Broker braucht:
+# `gdbus` für den Aufruf. Ein Broker, der beliebige Programme starten kann,
+# ist der Exec-Broker (T-4.10) -- und der hat eine eigene Unit mit eigenen
+# Schranken.
+SystemCallFilter=~@debug
+
+[Install]
+WantedBy=graphical-session.target

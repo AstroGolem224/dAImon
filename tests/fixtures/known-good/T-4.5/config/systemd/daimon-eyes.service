@@ -1,0 +1,105 @@
+# dAImon Augen (T-5.13): die Wahrnehmung kann nicht telefonieren.
+#
+# Der Dienst haelt die Portal-ScreenCast-Sitzung (T-5.2), holt Frames ueber
+# PipeWire (T-5.3), entscheidet mit der Gatterkette (T-5.5), laesst OCR im
+# eigenen Arbeitsprozess laufen (T-5.6) und legt das Ergebnis in den
+# Kontextspeicher unter Quarantaene (T-5.7). Hinaus kommt davon nichts ausser
+# durch das Deklassifizierungs-Gate (T-5.9).
+#
+# Diese Unit ist zugleich der Kill-Switch (T-5.12). Es gibt keinen zweiten Weg,
+# das Sehen abzuschalten -- kein Steuer-Socket, kein Signal, keine
+# Konfigurationsflagge. Ein zweiter Weg waere eine zweite Angriffsflaeche.
+#
+# `daimon/eyes/daemon.py` steht in KEINEM Task des Implementierungsplans --
+# T-5.12 und T-5.13 setzen es beide voraus, und die Luecke fiel erst beim
+# Schreiben dieser Unit auf, deren ExecStart ins Leere zeigte. Es ist
+# nachgebaut worden und traegt.
+#
+# Installation: systemctl --user link <dieser Pfad>
+#               systemctl --user enable --now daimon-eyes.service
+
+[Unit]
+Description=dAImon Augen (ScreenCast, OCR, Kontext unter Quarantaene)
+# Ohne Hub keine Rundenmarke -- und ohne Rundenmarke verlaesst kein Kontext
+# die Quarantaene. `Wants` statt `Requires`: ein neu startender Hub soll die
+# Augen nicht mitreissen.
+Wants=daimon-hub.service
+After=daimon-hub.service
+PartOf=graphical-session.target
+
+[Service]
+# Type=dbus, damit der Fokus-Watcher aus T-0.12 einen Empfaenger vorfindet:
+# `callDBus` aus einem KWin-Script ist fire-and-forget und verschluckt Aufrufe
+# an tote Dienste. Ein eigener Name neben `de.daimon.Focus` -- zwei Dienste
+# koennen sich einen Busnamen nicht teilen.
+Type=dbus
+BusName=de.daimon.Eyes
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+
+# /usr/bin/python3 und NICHT das venv. Gemessen am 12.08.: `dbus-python`,
+# `PyGObject` und die GStreamer-Bindings liegen im System-Python; unter dem
+# venv stirbt schon der Import mit `No module named 'dbus'`. Dieselbe Lage
+# wie beim Auth-Agenten (T-4.2) und beim Fokus-Watcher.
+ExecStart=/usr/bin/python3 -m daimon.eyes.daemon
+Environment=PYTHONPATH=/home/itiger013/Dokumente/Github/dAImon
+
+# Restart=on-failure, NICHT always: `systemctl stop` ist der Kill-Switch und
+# muss ein Ende bleiben. `always` hoebe ihn nach RestartSec auf -- der Nutzer
+# haette das Sehen abgeschaltet und der Bildschirm waere von selbst wieder
+# gelesen worden.
+Restart=on-failure
+RestartSec=2
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=read-only
+
+# Das EINZIGE Schreibrecht: das Zustandsverzeichnis. Dort liegen der
+# Kontextspeicher (T-5.7) und der `restore_token` (T-5.2). Der Token lag
+# zuerst unter $XDG_CONFIG_HOME -- diese Direktive hat den Fehler aufgedeckt,
+# und er ist in `screencast.py` behoben: ein maschinell erzeugter Token ist
+# Zustand, keine Konfiguration.
+StateDirectory=daimon
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=%t/daimon
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+# Im Konfigurationsverzeichnis liegt der `anthropic-token`. Ein Dienst, der
+# den Bildschirm liest, hat dort auch nichts zu SUCHEN.
+InaccessiblePaths=-%h/.config/daimon
+
+# Dieser Dienst sieht alles, was angezeigt wird. Fremde Prozesse und die
+# Nicht-PID-Teile von /proc gehen ihn nichts an.
+ProtectProc=invisible
+ProcSubset=pid
+PrivateTmp=yes
+# Keine Core-Dumps: ein Dump enthielte einen 22-MB-Frame des Bildschirms.
+LimitCORE=0
+UMask=0077
+
+# Die Zusage aus der Akzeptanzliste. Der Dienst spricht mit dem Hub, mit
+# PipeWire, mit dem Portal und mit dem OCR-Arbeitsprozess -- alles ueber
+# Unix-Sockets. Ein Bildschirmleser mit Netzzugang ist die falsche
+# Kombination, unabhaengig davon, ob er ihn heute nutzt.
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @obsolete @mount @swap @reboot @module
+# MemoryDenyWriteExecute FEHLT, und das ist ueberlegt, nicht vergessen: der
+# OCR-Arbeitsprozess laedt libtesseract ueber ctypes, und GStreamer laedt
+# seine Plugins zur Laufzeit nach. Dieselbe Lage wie bei den Ohren (cffi) und
+# beim GPU-Worker (CUDA-JIT).
+# PrivateDevices=yes: der Zugang zu PipeWire laeuft ueber
+# $XDG_RUNTIME_DIR/pipewire-0, nicht ueber /dev/. Kein GPU-Zugriff -- das VLM
+# laeuft im eigenen Worker (T-5.8), nicht hier.
+PrivateDevices=yes
+TimeoutStopSec=10
+# Der Busname wird vor dem Aufbau genommen, der Start ist also in
+# Millisekunden bereit. Die Frist deckt trotzdem den EINEN Fall ab, in dem sie
+# gebraucht wird: der allererste Start ohne gueltigen `restore_token`, bei dem
+# das Portal einen Dialog zeigt und auf einen Menschen wartet. Die Vorgabe von
+# 15 s hat genau daran den ersten Startversuch am 13.08. abgebrochen.
+TimeoutStartSec=180
+
+[Install]
+WantedBy=graphical-session.target

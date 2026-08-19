@@ -1,0 +1,82 @@
+GUT-MUSTER fuer tests/verify/T-4.7.sh
+
+Kopie des Arbeitsbaums auf Commit d610d4d (Branch reviewer/p4-T-4.7v):
+
+  daimon/**                       (ohne __pycache__ -- VOLLSTAENDIG, nicht als
+                                  Importhuelle: der Pruefstand durchsucht den
+                                  ganzen Produktivbaum nach einer Stelle, die
+                                  `xdg-dbus-proxy` STARTET. Eine getrimmte
+                                  Kopie koennte einen Starter verstecken, und
+                                  der Leser meldete dann "kein Zulauf", wo
+                                  einer ist.)
+  config/**                       (Katalog, Filterdatei und die Units -- die
+                                  drei Gegenstaende von K1/K2, K3 und K5.)
+  docs/DESIGN.md                  (7.5 ist der MASSSTAB fuer K5 und wird zur
+                                  Laufzeit daraus gelesen, nicht abgeschrieben:
+                                  die Basiszeilen kommen aus dem ini-Block,
+                                  und die verbotenen Direktiven werden gegen
+                                  den Absatz "Direktiven, die brechen"
+                                  gegengelesen.)
+  pyproject.toml
+
+`.venv` gibt es hier nicht: der Wrapper faellt auf `python3` zurueck. Der
+Pruefstand braucht ausser der Standardbibliothek nur `PyYAML` (fuer den
+Kandidatenkatalog) und die Programme `gdbus` und `xdg-dbus-proxy`.
+
+DREI ABWEICHUNGEN vom Arbeitsbaum. Alle drei betreffen die zweite Schicht und
+die Sandbox -- also die Akzeptanzpunkte 3 und 5 von T-4.7.
+
+1. config/dbus-filter.conf: die fuenf "AUSDRUECKLICH NICHT"-Zeilen sind fort.
+
+       --own=org.kde.kwin.Scripting=none      'org.kde...=none' is not a valid
+       --own=none                             'none' is not a valid dbus name
+       --broadcast=none                       'none' is not a valid name + rule
+       --call=org.kde.KWin=none               (wirkungslos: RULE ist eine
+       --call=org.kde.kwin.Scripting=none      ERLAUBNIS, keine Verweigerung)
+
+   `xdg-dbus-proxy` kennt keinen Verbots-Operator (man 1 xdg-dbus-proxy): die
+   Voreinstellung IST Verweigerung, erlaubt wird mit --see/--talk/--own/--call.
+   Die drei ersten Zeilen sind harte Startfehler -- der Proxy bricht bei der
+   ersten ab und laeuft gar nicht. Damit fallen auch die drei ERLAUBNISSE aus
+   derselben Datei aus: die Datei, die die zweite Schicht beschreibt, macht
+   sie unbenutzbar. Die letzten zwei sind keine Verbote, sondern erlauben eine
+   Methode namens "none"; sie sind hier ersatzlos fort, weil das Verbot in der
+   Abwesenheit besteht.
+
+2. config/systemd/daimon-dbus-proxy.service ist NEU. Im Arbeitsbaum startet
+   den Proxy niemand: `grep -rn xdg-dbus-proxy` findet ihn im Kopf von
+   broker.py (Prosa), in dieser Filterdatei (Prosa) und in DESIGN.md -- in
+   keiner Unit und in keinem Aufruf. Dazu setzt daimon-dbus.service hier
+   `Environment=DBUS_SESSION_BUS_ADDRESS=` auf den Proxy-Socket: der Broker
+   ruft `gdbus call --session`, und welcher Bus das ist, entscheidet die
+   Umgebung. Ohne diese Zeile spraeche er mit dem echten Sitzungsbus, auch
+   wenn ein Proxy liefe.
+
+3. config/systemd/daimon-dbus.service: `CapabilityBoundingSet=` ergaenzt (erste
+   Zeile der Basis aus Design 7.5, fehlte), `PrivateUsers=yes` entfernt (steht
+   in Design 7.5 unter "Direktiven, die brechen": bricht uid-ACLs und
+   Peer-Credentials -- also die Herkunftspruefung, die nach Design 1.3/6.2 an
+   die Stelle der gestrichenen Signatur getreten ist; siehe LEDGER-T-4.5.v).
+
+WAS NICHT ABWEICHT
+
+Der Broker selbst (daimon/brokers/dbus/broker.py, daemon.py) ist UNVERAENDERT.
+K1, K2, K4-erste-Schicht und K6 messen also den echten Produktivcode -- und
+sie sind gegen den Arbeitsbaum gruen. Der Riss liegt an der zweiten Schicht
+und an der Unit, nicht an der Operationstabelle.
+
+Das Gut-Muster ist die Fassung, die die Akzeptanzliste ERFUELLT -- und
+zugleich die Positivkontrolle des Verifizierers: er wird gegen sie gruen und
+bleibt gegen den Arbeitsbaum rot (K3, K4, K5). Waere er gegen beide gruen,
+koennte er diese Kriterien nicht sehen.
+
+Die Messung schreibt NICHT vor, wie repariert wird. Sie prueft: startet ein
+Proxy mit den Optionen dieser Datei, filtert er (`--filter`), protokolliert er
+(`--log`), startet ihn im Betrieb jemand, und zeigt der Broker auf seinen
+Socket. Wer das anders aufhaengt -- ExecStartPre statt eigener Unit, ein
+anderer Socketpfad, ein Wrapper-Skript -- wird ebenso gruen.
+
+Jeder Mutantenbaum unter tests/mutants/T-4.7/ entsteht als bytegleiche Kopie
+dieses Musters (tests/mutants/T-4.7/erzeugen.sh, die Baeume sind NICHT
+eingecheckt) und bricht danach genau die in seiner mutation.txt benannte
+Grenze.

@@ -24,6 +24,7 @@ Fail closed.
 import json
 import os
 import re
+import shlex
 import sys
 import tomllib
 from fnmatch import fnmatch
@@ -32,13 +33,187 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 ROLES = REPO / ".claude" / "roles.toml"
 
-# Bash-Kommandos, die schreiben koennen. Absichtlich grosszuegig: lieber eine
-# Rueckfrage zu viel als eine umgangene Grenze.
-WRITING_CMD = re.compile(
-    r"(^|[|;&]|\s)(tee|dd|truncate|install|cp|mv|rm|rmdir|ln|sed\s+-i|"
-    r"perl\s+-i|chmod|chown|touch|mkdir|git\s+(checkout|restore|apply|add))\b"
-    r"|>\s*\S|>>\s*\S"
-)
+# ---------------------------------------------------------------------------
+# Bash: Ausfuehrung von Aenderung trennen.
+#
+# Bis zum 18.08. lief das in zwei groben Schritten: ein Regex entschied, ob das
+# Kommando ueberhaupt schreiben kann (`>\s*\S` -- also auch `2>&1`), und traf
+# er, galt JEDES pfadaehnliche Wort im Kommandotext als Schreibziel. Der
+# Builder ist daran sechsmal haengengeblieben, jedes Mal bei einem lesenden
+# Kommando.
+#
+# Jetzt wird das Kommando zerlegt und ein Ziel nur dort gesucht, wo tatsaechlich
+# geschrieben wird: hinter einer Schreib-Umleitung und hinter einem schreibenden
+# Verb. Die Verbliste ist unveraendert -- neu ist nur, WO nach ihr gesucht wird.
+# ---------------------------------------------------------------------------
+
+SCHREIBVERBEN = {
+    "tee", "dd", "truncate", "install", "cp", "mv", "rm", "rmdir", "ln",
+    "chmod", "chown", "touch", "mkdir",
+}
+# Quelle ... Ziel: nur das letzte Argument wird geschrieben.
+NUR_LETZTES = {"cp", "mv", "ln", "install"}
+# Schreiben erst mit In-Place-Schalter.
+INPLACE_VERBEN = {"sed", "perl"}
+GIT_SCHREIBEND = {"checkout", "restore", "apply", "add"}
+SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
+
+SCHREIB_UMLEITUNG = {">", ">>", ">|", "&>", "&>>", ">&"}
+LESE_UMLEITUNG = {"<", "<<", "<<<", "<&", "<>"}
+UMLEITUNG = SCHREIB_UMLEITUNG | LESE_UMLEITUNG
+TRENNER = {";", ";;", "&", "&&", "|", "||", "|&", "(", ")"}
+
+HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1")
+PFADWORT = re.compile(r"[\w./~-]+")
+
+
+def _ohne_heredoc(text: str) -> str:
+    """Den Rumpf eines Heredocs entfernen: das ist Text, kein Kommando.
+
+    Anlass 17.08.: ein `cat <<EOF`, dessen Rumpf Verifiziererpfade nannte,
+    galt als Schreibversuch auf genau diese Pfade.
+    """
+    zeilen = text.split("\n")
+    aus: list[str] = []
+    i = 0
+    while i < len(zeilen):
+        zeile = zeilen[i]
+        aus.append(zeile)
+        marken = [m.group(2) for m in HEREDOC.finditer(zeile)]
+        i += 1
+        for marke in marken:
+            while i < len(zeilen) and zeilen[i].strip() != marke:
+                i += 1
+            i += 1  # die Schlussmarke selbst
+    return "\n".join(aus)
+
+
+def _lex(text: str) -> list[str]:
+    """Zerlegen wie eine Shell: Anfuehrungszeichen halten zusammen,
+    Operatoren stehen fuer sich."""
+    lex = shlex.shlex(text, posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
+    lex.commenters = ""
+    return list(lex)
+
+
+def _ketten(toks: list[str]) -> list[list[str]]:
+    """An `;`, `|`, `&&`, `(` ... in einzelne Kommandos zerlegen."""
+    ketten: list[list[str]] = [[]]
+    for t in toks:
+        if t in TRENNER:
+            ketten.append([])
+        else:
+            ketten[-1].append(t)
+    return [k for k in ketten if k]
+
+
+def _umleitungen(toks: list[str]) -> tuple[list[str], list[str]]:
+    """(Worte ohne Umleitungen, Ziele der Schreib-Umleitungen).
+
+    `2>&1` und `2>/dev/null` landen hier -- das erste als Dateideskriptor-
+    Kopie (kein Ziel), das zweite mit Ziel `/dev/null` ausserhalb des Repos.
+    """
+    worte: list[str] = []
+    ziele: list[str] = []
+    i = 0
+    while i < len(toks):
+        t = toks[i]
+        nachfolger = toks[i + 1] if i + 1 < len(toks) else None
+        if t.isdigit() and nachfolger in UMLEITUNG:
+            i += 1  # der Dateideskriptor vor der Umleitung
+            continue
+        if t in SCHREIB_UMLEITUNG:
+            if nachfolger is not None and not (
+                t == ">&" and (nachfolger.isdigit() or nachfolger == "-")
+            ):
+                ziele.append(nachfolger)
+            i += 2
+            continue
+        if t in LESE_UMLEITUNG:
+            i += 2
+            continue
+        worte.append(t)
+        i += 1
+    return worte, ziele
+
+
+def _zieltokens(args: list[str]) -> list[str]:
+    """Aus Argumenten die, die ein Pfad sein koennen. `of=x`, `--file=x`
+    zaehlen mit ihrem Wert, Schalter und blosse Zahlen nicht."""
+    aus = []
+    for a in args:
+        if "=" in a:
+            a = a.split("=", 1)[1]
+        elif a.startswith("-"):
+            continue
+        if a and not a.isdigit():
+            aus.append(a)
+    return aus
+
+
+def _ziele_der_verben(worte: list[str], tiefe: int) -> list[str]:
+    """Jedes Wort, das GENAU ein schreibendes Verb ist, oeffnet die Zielsuche
+    auf seinen Argumenten. Deshalb faellt `xargs rm x` mit auf -- und der Text
+    einer Commit-Botschaft nicht, denn der ist ein einzelnes Wort."""
+    ziele: list[str] = []
+    for i, wort in enumerate(worte):
+        args = worte[i + 1:]
+        if wort in SHELLS and tiefe < 3:
+            if "-c" in args:
+                unterkommando = args[args.index("-c") + 1:]
+                if unterkommando:
+                    ziele += _schreibziele(unterkommando[0], tiefe + 1)
+        elif wort == "eval" and tiefe < 3:
+            if args:
+                ziele += _schreibziele(args[0], tiefe + 1)
+        elif wort == "git":
+            unterbefehle = [a for a in args if not a.startswith("-")]
+            if unterbefehle and unterbefehle[0] in GIT_SCHREIBEND:
+                ziele += _zieltokens(unterbefehle[1:])
+        elif wort in INPLACE_VERBEN:
+            if any(a.startswith("-i") or a == "--in-place" for a in args):
+                ziele += _zieltokens(args)
+        elif wort in SCHREIBVERBEN:
+            kandidaten = _zieltokens(args)
+            if wort in NUR_LETZTES:
+                ziele += kandidaten[-1:]
+            else:
+                ziele += kandidaten
+    return ziele
+
+
+def _grobe_ziele(kommando: str) -> list[str]:
+    """Rueckfall fuer unzerlegbaren Text (offenes Anfuehrungszeichen): der alte,
+    grobe Weg. Lieber eine Rueckfrage zu viel als eine umgangene Grenze."""
+    return [m.group(0) for m in PFADWORT.finditer(kommando)
+            if "/" in m.group(0) or m.group(0).endswith((".sh", ".toml", ".py"))]
+
+
+def _schreibziele(kommando: str, tiefe: int = 0) -> list[str]:
+    # Rueckwaerts-Anfuehrung ist eine Kommandosubstitution: als eigenes
+    # Kommando behandeln, sonst ginge `echo `rm x`` durch.
+    text = _ohne_heredoc(kommando).replace("`", ";")
+    try:
+        toks = _lex(text)
+    except ValueError:
+        return _grobe_ziele(kommando)
+    if "xargs" in toks and any(
+        t in SCHREIBVERBEN or t in INPLACE_VERBEN for t in toks
+    ):
+        # Die Ziele von `xargs rm` stehen in der Standardeingabe und sind aus
+        # dem Text nicht bestimmbar. Fuer diesen Fall der grobe Weg.
+        return _grobe_ziele(kommando)
+    ziele: list[str] = []
+    for kette in _ketten(toks):
+        worte, umgeleitet = _umleitungen(kette)
+        ziele += umgeleitet
+        ziele += _ziele_der_verben(worte, tiefe)
+    if any("$" in z for z in ziele):
+        # Ein Ziel hinter einer Variablen (`rm $Z`) steht im Text nicht.
+        # Auch hier der grobe Weg statt einer Luecke.
+        return _grobe_ziele(kommando)
+    return ziele
 
 
 def deny(reason: str) -> None:
@@ -131,14 +306,7 @@ def main() -> None:
         if fp := inp.get("file_path") or inp.get("notebook_path"):
             targets.append(fp)
     elif tool == "Bash":
-        cmd = inp.get("command", "")
-        if not WRITING_CMD.search(cmd):
-            allow_through()
-        # Jedes Wort, das wie ein Pfad in geschuetzte Bereiche aussieht.
-        for m in re.finditer(r"[\w./~-]+", cmd):
-            tok = m.group(0)
-            if "/" in tok or tok.endswith((".sh", ".toml", ".py")):
-                targets.append(tok)
+        targets = _schreibziele(inp.get("command", ""))
     else:
         allow_through()
 

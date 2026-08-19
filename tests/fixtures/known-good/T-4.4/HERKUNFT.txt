@@ -1,0 +1,62 @@
+GUT-MUSTER fuer tests/verify/T-4.4.sh
+
+Kopie des Arbeitsbaums auf Commit 5724d23 (Branch reviewer/p4-T-4.4v),
+107 Dateien, 1,3 MB:
+
+  daimon/**                       (ohne __pycache__ -- vollstaendig, nicht als
+                                  Importhuelle: der Pruefstand durchsucht den
+                                  Produktivbaum nach Aufrufern von
+                                  `geste_gesehen()` und nach Erzeugern von
+                                  `quelle="parser"`. Eine getrimmte Kopie
+                                  koennte einen Aufrufer verstecken, und der
+                                  Waechter meldete dann Ruhe, wo keine ist.)
+  config/actions/core.yaml        (der Katalog, den `Policy.laden()` liest)
+  config/policy.yaml              (die Regelebenen, zweite Datei aus T-4.4)
+  tests/test_policy.py            (die Tests aus T-4.3.t -- K1)
+  tests/conftest.py               (die Vorkehrung "kein Pruefstand schreibt
+                                  ins Journal dieser Maschine")
+  pyproject.toml                  (rootdir und pytest-Konfiguration)
+
+`.venv` gibt es hier nicht: der Wrapper faellt auf `python3` zurueck. Ausser
+PyYAML (das der Pruefling selbst braucht) und pytest ist alles
+Standardbibliothek.
+
+EINE ABWEICHUNG vom Arbeitsbaum, und sie ist der Grund, warum dieses Muster
+existiert:
+
+  daimon/hub/daemon.py::aktion_anfrage nimmt `quelle` NICHT aus der Anfrage.
+  Im Arbeitsbaum vom 18.08. steht dort
+
+      quelle=str(anfrage.get("quelle") or "modell"),
+
+  und im Gut-Muster
+
+      quelle="modell",
+
+`quelle == "parser"` ist die eine Bedingung, die die Vorschau abschaltet
+(daimon/hub/policy.py:280, Design 263). Akzeptanzpunkt 8 von T-4.4 sagt dazu:
+"Direktbefehl-Ausnahme ist Hub-Eigentum: greift nur bei `direct: true` im
+Katalog UND Erkennung durch den deterministischen Hub-Parser." Ein solcher
+Parser existiert in diesem Baum nicht -- gemessen, nicht vermutet: der
+Pruefstand sucht im ganzen Produktivbaum nach einer Stelle, die
+`quelle="parser"` ERZEUGT, und findet keine. Damit ist der einzige Weg zu
+`quelle == "parser"` das gleichnamige Feld der Anfrage, und die Ausnahme
+gehoert dem Absender statt dem Hub. Solange es keinen Parser gibt, ist jede
+Anfrage an diesem Endpunkt eine Modellaktion und geht durch die Vorschau.
+
+Das Gut-Muster ist damit die Fassung, die die Akzeptanzliste ERFUELLT -- und
+zugleich die Positivkontrolle des Verifizierers: er wird gegen sie gruen und
+bleibt gegen den Arbeitsbaum rot (K8). Waere er gegen beide gruen, koennte er
+das Kriterium nicht sehen.
+
+Die Messung schreibt NICHT vor, wie repariert wird. Sie prueft zwei Dinge:
+dieselbe Anfrage muss mit und ohne `quelle: parser` dasselbe Verdikt bekommen,
+und keine Anfrage vom Endpunkt darf `direkt: true` erreichen. Wer stattdessen
+einen deterministischen Hub-Parser baut, der `quelle` selbst setzt, wird
+ebenso gruen -- dann ist die Positivkontrolle des Verifizierers zu erweitern
+(siehe "Grenzen" im Ledger).
+
+Jeder Mutantenbaum unter tests/mutants/T-4.4/ entsteht als bytegleiche Kopie
+dieses Musters (tests/mutants/T-4.4/erzeugen.sh, die Baeume sind NICHT
+eingecheckt) und bricht danach genau die in seiner mutation.txt benannte
+Grenze.

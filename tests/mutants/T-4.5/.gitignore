@@ -1,0 +1,9 @@
+# Mutantenbaeume werden ERZEUGT, nicht eingecheckt: zwoelf Kopien des
+# Gut-Musters sind rund 17 MB auf der Platte (1,4 MB je Baum), und sie waeren
+# eine zweite Fassung desselben Codes, die beim naechsten Fix stillschweigend
+# veraltet.
+#
+#   bash tests/verify/meta.sh T-4.5      (ruft erzeugen.sh selbst auf)
+*
+!.gitignore
+!erzeugen.sh

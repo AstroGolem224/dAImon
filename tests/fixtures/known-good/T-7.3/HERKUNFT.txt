@@ -1,0 +1,40 @@
+Gut-Muster fuer T-7.3.v -- der Pausenschalter.
+
+HERKUNFT
+========
+Kopiert aus dem Reviewer-Worktree /mnt/data/AI/repos/dAImon-t73 auf Branch
+reviewer/p4-T-7.3v, Ausgangsstand d610d4d. Uebernommen wurde nur, was der
+Pruefstand tatsaechlich anfasst (Importabschluss von daimon.auth.agent,
+daimon.recorder.daemon, daimon.hub.state und daimon.recorder.pause), dazu
+die Recorder-Unit, config/redaktion.yaml und die drei Rust-Quellen des
+Sprites.
+
+WAS HIER ANDERS IST ALS IM ECHTEN BAUM
+======================================
+Ein Gut-Muster ist der Zustand, in dem T-7.3 seine Akzeptanzliste ERFUELLT.
+Der echte Baum tut das an drei Stellen nicht; genau diese drei sind hier
+berichtigt, und zwar so knapp wie moeglich:
+
+1. K5 -- die Konferenzliste ist im BETRIEB konfigurierbar.
+   `config/redaktion.yaml` bekommt einen `konferenz:`-Schluessel (auf den
+   `daimon/recorder/pause.py` ohnehin schon verweist), und
+   `daimon/recorder/daemon.py:main()` liest ihn und uebergibt ihn.
+
+2. K8 -- der TON-Pfad wird mit abgeschaltet.
+   `PAUSE_UNITS` in `daimon/recorder/pause.py` enthaelt zusaetzlich die
+   Ohren-Unit. Sie stand in `ERLAUBTE_UNITS` schon drin.
+
+3. K9 -- das Face fuehrt einen Diagnosezaehler fuer den Mitschnitt-Punkt.
+   `face/src/diag.rs` bekommt das Feld `mitschnitt_indikator_gezeichnet`,
+   und `face/src/surface.rs` reicht `mitschnitt_gemalt` weiter, statt es
+   mit `let _ = ...` wegzuwerfen.
+
+Diese drei Aenderungen sind die Befunde dieses Verifizierers. Sie stehen
+hier, damit belegt ist, dass der Verifizierer gegen einen ERFUELLTEN Stand
+gruen wird -- ein Verifizierer, der immer rot ist, misst so wenig wie einer,
+der immer gruen ist.
+
+WAS NICHT UEBERNOMMEN WURDE
+===========================
+Kein __pycache__, keine .venv, keine Datenbanken, keine Modelle. Der
+Wrapper setzt PYTHONDONTWRITEBYTECODE=1, damit ein Lauf hier nichts ablegt.

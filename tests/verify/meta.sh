@@ -21,6 +21,25 @@ mutdir="$REPO/tests/mutants/${task}"
 [[ -d "$good"    ]] || { echo "meta: Gut-Muster $good fehlt" >&2; exit 1; }
 [[ -d "$mutdir"  ]] || { echo "meta: Mutantenverzeichnis $mutdir fehlt" >&2; exit 1; }
 
+# EINE Quelle der Wahrheit. Gibt es einen Erzeuger, gilt SEIN Ergebnis --
+# nicht eine eingecheckte Kopie daneben. Zwei Fassungen derselben Regel sind
+# eine Regel und eine Attrappe: bei T-4.6 lagen vier fertige Mutantenbaeume
+# im Repo, waehrend erzeugen.sh sie deterministisch aus dem Gut-Muster
+# herstellte -- und von niemandem aufgerufen wurde. Passte der Erzeuger nicht
+# mehr zum Gut-Muster, haette er das laut gesagt; gemessen wurde trotzdem
+# gegen die festgetackerten Kopien, und der gruene Lauf bedeutete nichts.
+#
+# Scheitert die Erzeugung, bricht meta.sh ab. Ein Meta-Lauf, der bei kaputter
+# Erzeugung gegen alte Kopien weitermisst, waere schlimmer als gar keiner.
+gen="$mutdir/erzeugen.sh"
+if [[ -f "$gen" ]]; then
+    echo "meta[$task]: Mutanten werden erzeugt ($gen) ..."
+    if ! bash "$gen"; then
+        echo "meta[$task]: FEHLER -- Erzeugung der Mutanten gescheitert." >&2
+        exit 1
+    fi
+fi
+
 mapfile -t mutants < <(find "$mutdir" -mindepth 1 -maxdepth 1 -type d | sort)
 (( ${#mutants[@]} > 0 )) || { echo "meta: keine Mutanten fuer $task" >&2; exit 1; }
 
