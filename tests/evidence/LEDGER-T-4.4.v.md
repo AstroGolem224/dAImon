@@ -1,11 +1,13 @@
 # LEDGER T-4.4.v — Verifizierer für die Policy-Engine
 
-**Ausgang: `produktdefekt-rot`**
+**Ausgang 18.08.: `produktdefekt-rot`** — der Befund unten ist mit `c092539`
+behoben.
+**Ausgang 19.08.: `gruen`, eingefroren.** Siehe §Nachlauf am Ende.
 
-Der Verifizierer ist gebaut, gegen das Gut-Muster grün, gegen alle neun
-Mutanten rot, und gegen den Arbeitsbaum rot — an genau einer Stelle, mit
-Beleg. Der Befund ist Akzeptanzpunkt 8: die Direktbefehl-Ausnahme gehört im
-Betrieb dem Absender, nicht dem Hub.
+Stand 18.08.: der Verifizierer ist gebaut, gegen das Gut-Muster grün, gegen
+alle neun Mutanten rot, und gegen den Arbeitsbaum rot — an genau einer
+Stelle, mit Beleg. Der Befund ist Akzeptanzpunkt 8: die Direktbefehl-Ausnahme
+gehört im Betrieb dem Absender, nicht dem Hub.
 
 ---
 
@@ -366,3 +368,85 @@ Sitzungsbeginn bereits `inactive dead` — vorgefunden, nicht von dieser
 Sitzung gestoppt.
 
 `.claude/hooks/**` unberührt. `freeze.sh` nicht aufgerufen.
+
+---
+
+## Nachlauf 19.08.2026 — Reviewer-Sitzung, Einfrieren
+
+| | |
+|---|---|
+| Rolle | reviewer (`DAIMON_ROLE=reviewer`), kein Produktivcode geschrieben |
+| Arbeitsbaum | `/mnt/data/AI/repos/dAImon`, Zweig `main` |
+| Ausgangs-Commit | `029a557` (Merge von `reviewer/p4-verifizierer`) |
+| Verifizierer unverändert | `T-4.4.sh` `d5cfe4fe…`, `t44_pruefstand.py` `20d6256a…` — dieselben Hashes wie am 18.08. |
+
+**Warum überhaupt ein Nachlauf.** Die abgebrochene Reviewer-Sitzung hatte
+`T-4.4.sh` bereits in `tests/verify/FROZEN` eingetragen, ohne einen Beleg zu
+hinterlassen, dass sie ihn gefahren hat. Der Eintrag war nicht committet und
+ist deshalb als offene Frage behandelt worden: zurückgenommen und von vorn
+gemessen, mitsamt Mutanten.
+
+### 1. Gegen `main` — grün
+
+```
+$ env -u DAIMON_FIXTURE tests/verify/T-4.4.sh; echo $?
+Bilanz T-4.4:
+K1: 4 Pruefungen, 0 rot     K5: 8 Pruefungen, 0 rot
+K2: 10 Pruefungen, 0 rot    K6: 10 Pruefungen, 0 rot
+K3: 11 Pruefungen, 0 rot    K7: 12 Pruefungen, 0 rot
+K4: 9 Pruefungen, 0 rot     K8: 14 Pruefungen, 0 rot
+0
+```
+
+78 Prüfungen, keine rot. K8 war am 18.08. an zwei Stellen rot; beide sind zu.
+Der Lauf zeigt jetzt
+
+```
+Naht K8: ehrlich={… 'verdikt': 'ask', 'direkt': False …}
+      behauptet={… 'verdikt': 'ask', 'direkt': False …}
+```
+
+— dieselbe Anfrage einmal ohne und einmal mit `"quelle": "parser"` ergibt
+dasselbe Verdikt. Die beiden Wächter melden weiter Ruhe und dürfen das:
+`Waechter Hub-Parser: []` (es gibt keinen Erzeuger von `parser`) und
+`Waechter Gestenfenster: Katalogeintraege [], Aufrufer []`.
+
+**Der Fix ist gelesen, nicht nur bestanden** (Übergabe §4.1 — „ich habe gegen
+den Verifizierer gebaut"). `daimon/hub/daemon.py:917` setzt jetzt
+`quelle="modell"` **fest**, statt das Feld aus der Anfrage zu lesen. Das ist
+keine Prüfung, die genau die gemessene Stelle abdeckt, sondern die
+strukturelle Antwort: über `aktion.sock` kommt per Definition eine fremde
+Anfrage, und ein deterministischer Hub-Parser liefe im Hub. Ein Absender kann
+den Wert nicht mehr setzen — auch nicht auf einem Weg, den der Prüfstand
+nicht misst.
+
+### 2. Gegen das Gut-Muster und alle neun Mutanten
+
+```
+$ bash tests/verify/meta.sh T-4.4
+T-4.4: 9 Mutanten erzeugt.
+meta[T-4.4]: Gut-Muster ...
+meta[T-4.4]: Mutante 'cache-ohne-hash' erkannt.
+meta[T-4.4]: Mutante 'direkt-fuer-jede-quelle' erkannt.
+meta[T-4.4]: Mutante 'geste-immer-offen' erkannt.
+meta[T-4.4]: Mutante 'hash-aus-dem-request' erkannt.
+meta[T-4.4]: Mutante 'initiator-aus-dem-request' erkannt.
+meta[T-4.4]: Mutante 'naht-quelle-vom-absender' erkannt.
+meta[T-4.4]: Mutante 'schranke-nur-unverstanden' erkannt.
+meta[T-4.4]: Mutante 'ttl-ohne-frist' erkannt.
+meta[T-4.4]: Mutante 'when-als-glob' erkannt.
+meta[T-4.4]: 9 Mutanten, alle erkannt.
+```
+
+Der Mutant `naht-quelle-vom-absender` ist der wichtigste: er stellt genau den
+Zustand von gestern wieder her (`quelle` aus der Anfrage) und wird erkannt.
+Der Verifizierer ist an der Stelle, an der repariert wurde, also **nicht**
+blind geworden.
+
+### 3. Was dieser Nachlauf NICHT ändert
+
+Alle neun Grenzen aus §„Was er NICHT misst" gelten unverändert; keine ist
+heute gemessen worden. Insbesondere läuft die Naht weiter in-process und
+nicht über `aktion.sock`, und der dort genannte fehlende
+`erlaubte_units`-Eintrag ist inzwischen gesetzt (`daemon.py:1461`,
+`AKTION_UNITS`) — gelesen, nicht von diesem Verifizierer gemessen.

@@ -40,3 +40,16 @@ tests/verify/t314_pruefstand.py tests/verify/T-2.4.sh
 tests/verify/t314_pruefstand.py tests/verify/T-2.5.sh
 tests/verify/t314_pruefstand.py tests/verify/T-3.4.sh
 tests/verify/t314_pruefstand.py tests/verify/T-3.9.sh
+# Phase 4/7, eingefroren am 19.08. Die Treiber (t71_dienst, t72_dienst,
+# t75_hub) werden zur Laufzeit ueber `Path(__file__).parent / "..."` gestartet
+# und von der statischen Entdeckung NICHT gefunden -- die Laufzeitspur von
+# freeze.sh sieht sie sehr wohl. Sie stehen deshalb hier von Hand.
+tests/verify/T-4.4.sh tests/verify/t44_pruefstand.py
+tests/verify/T-4.5.sh tests/verify/t45_pruefstand.py
+tests/verify/T-7.1.sh tests/verify/t71_pruefstand.py
+tests/verify/t71_pruefstand.py tests/verify/t71_dienst.py
+tests/verify/T-7.2.sh tests/verify/t72_pruefstand.py
+tests/verify/t72_pruefstand.py tests/verify/t72_dienst.py
+tests/verify/T-7.3.sh tests/verify/t73_pruefstand.py
+tests/verify/T-7.5.sh tests/verify/t75_pruefstand.py
+tests/verify/t75_pruefstand.py tests/verify/t75_hub.py
