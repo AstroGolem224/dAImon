@@ -1,4 +1,11 @@
-"""Der Dienstmantel: eine Zeile, eine Antwort, und Grenzen, die halten."""
+"""Der Dienstmantel: eine Zeile, eine Antwort, und Grenzen, die halten.
+
+Seit T-4.5 K6 (19.08.) nimmt der Mantel nur noch vom Hub an. Diese Tests
+laufen nicht als `daimon-hub.service` -- dass sie vorher alle gruen waren,
+zeigt genau den Befund: die Peer-Pruefung lag nicht auf ihrem Weg. Die
+Fixture unten setzt die erlaubte Unit auf die des Testprozesses; geprueft
+wird die Pruefung selbst in `test_broker_herkunft.py`.
+"""
 from __future__ import annotations
 
 import json
@@ -6,7 +13,31 @@ import socket
 import threading
 from pathlib import Path
 
+import pytest
+
 from daimon.brokers import dienst
+from daimon.common import ipc
+
+
+@pytest.fixture(autouse=True)
+def _hub_ist_dieser_test(monkeypatch, tmp_path):
+    """Die eigene Unit gilt als Hub -- echt gemessen, nicht geraten.
+
+    Nicht `ipc.peer_of` ersetzt: eine Attrappe an dieser Stelle wuerde die
+    Vorrichtung aus dem Weg raeumen, die hier gerade dazugekommen ist.
+    """
+    pfad = tmp_path / "unitmessung.sock"
+    srv = dienst.socket_anlegen(pfad)
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as c:
+            c.connect(str(pfad))
+            conn, _ = srv.accept()
+            with conn:
+                eigene = ipc.peer_of(conn, "messung").unit
+    finally:
+        srv.close()
+        pfad.unlink(missing_ok=True)
+    monkeypatch.setattr(dienst, "HUB_UNIT", eigene)
 
 
 def frage(pfad: Path, roh: bytes) -> dict:

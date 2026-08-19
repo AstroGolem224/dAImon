@@ -26,6 +26,8 @@ import socket
 from pathlib import Path
 from typing import Callable
 
+from daimon.common import ipc
+
 # Groesser als jeder ehrliche Auftrag, klein genug, dass niemand hier
 # Speicher fuellt.
 MAX_BYTES = 64 * 1024
@@ -34,6 +36,44 @@ LESE_TIMEOUT_S = 10.0
 # (Egress), hier die Auftragstickets aus T-4.5. Zwei Buecher, zwei Sockets --
 # und der Broker fragt das Buch, in dem sein Ticket steht.
 HUB_SOCKET = "aktion.sock"
+# Wer einen Auftrag einreichen darf. EINE Unit, fest.
+HUB_UNIT = "daimon-hub.service"
+
+
+def annehmen(srv: socket.socket, name: str, *, log=None):
+    """Verbindung annehmen -- und zwar nur vom Hub.
+
+    BEFUND T-4.5 K6 (Reviewer-Sitzung 18.08.): hier stand `srv.accept()`, und
+    der Rumpf der Nachricht wurde gelesen, ohne dass jemand fragte, wer
+    schreibt. Gemessen: `ipc.peer_of` 0x gerufen, Nutzlast 1x gelesen.
+
+    Das wog schwerer als eine fehlende Zusatzpruefung, denn der Auftrag traegt
+    BEWUSST keine Signatur: Design 6.2 hat den HMAC gestrichen, weil sein
+    Schluessel unter derselben uid laege und damit genau den Angreifer nicht
+    abwehrt, um den es geht. An seine Stelle tritt laut Design 7.4 die
+    Herkunft ueber den Socket -- "Broker nehmen nur Verbindungen vom Hub an".
+    Diese Zusage war die einzige ihrer Art, und sie fand nicht statt.
+
+    Was sie leistet und was nicht: sie ist ein WEGWEISER, keine
+    Authentifizierung (Design 1.3). Sie faengt einen falsch verdrahteten
+    eigenen Dienst und macht im Nachhinein sichtbar, wer gefragt hat. Einen
+    Angreifer, der bereits unter dieser uid Code ausfuehrt, haelt sie nicht
+    auf -- der ersetzt die Unit oder liest den Hub direkt. Das Bedrohungs-
+    modell wehrt ihn ausdruecklich nicht ab, und eine Zusage, die etwas
+    anderes verspraeche, waere die schlechtere Antwort.
+
+    Die Abweisung steht im Log, nicht nur im Nichts: eine Verbindung, die
+    still verschwindet, ist bei der Fehlersuche nicht von einem toten Broker
+    zu unterscheiden.
+    """
+    def notiz(was: str, peer) -> None:
+        if log is None or was == "angenommen":
+            return
+        log.warn("Auftrag von fremdem Absender", DAIMON_SOCKET=name,
+                 DAIMON_GRUND=was, DAIMON_PEER_UNIT=peer.unit,
+                 DAIMON_PEER_PID=peer.pid)
+
+    return ipc.accept(srv, name, erlaubte_units=(HUB_UNIT,), audit=notiz)
 
 
 def ticket_beim_hub_einloesen(hub_pfad: Path, ticket: str,
@@ -85,7 +125,10 @@ def lauf(pfad: Path, verarbeite: Callable[[bytes], dict], *,
     print(f"READY pid={os.getpid()} socket={pfad}")
     try:
         while True:
-            conn, _ = srv.accept()
+            try:
+                conn, _ = annehmen(srv, pfad.name, log=log)
+            except ipc.PeerError:
+                continue          # abgewiesen, steht im Log -- weiterlaufen
             with conn:
                 conn.settimeout(LESE_TIMEOUT_S)
                 stuecke, gesamt = [], 0

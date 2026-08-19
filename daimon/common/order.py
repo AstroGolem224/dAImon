@@ -11,11 +11,27 @@ Schluessel per `ptrace` lesbar. Eine Signatur haette also genau die Angreifer
 abgewehrt, die es hier nicht gibt, und dafuer den Anschein erweckt, der
 Auftrag sei fremdsicher.
 
-Was stattdessen traegt: die **Herkunft ueber den Socket**. Wer am
-Broker-Socket haengt, wird per `SO_PEERCRED` geprueft (Design 1.3); ein
-Auftrag, der dort ankommt, kommt vom Hub, oder er kommt gar nicht an. Und die
-**Einmaligkeit** haengt am Ticket, das beim Hub eingeloest wird -- nicht an
-einem Feld, das der Auftrag ueber sich selbst behauptet.
+Was stattdessen traegt -- und was NICHT
+----------------------------------------------------------------------------
+Bis zum 19.08. stand hier, die **Herkunft ueber den Socket** trete an die
+Stelle der Signatur: wer am Broker-Socket haenge, werde geprueft, ein Auftrag
+komme also vom Hub oder gar nicht an. Zwei Dinge daran waren falsch.
+
+Erstens fand die Pruefung nicht statt (BEFUND T-4.5 K6): der Mantel las den
+Rumpf direkt nach `accept()`. Das ist repariert, `dienst.annehmen` fragt
+jetzt.
+
+Zweitens -- und das bleibt -- ist sie kein Ersatz fuer eine Signatur. Sie ist
+ein WEGWEISER, keine Authentifizierung; DESIGN.md fuehrt "`SO_PEERCRED`
+verhindert Faelschung" ausdruecklich in der Tabelle der Irrtuemer. Gegen den
+Angreifer, den das Bedrohungsmodell nicht abwehrt, hilft sie so wenig wie der
+gestrichene HMAC. Der Auftrag hat damit KEINEN Herkunftsnachweis, der einem
+same-uid-Angreifer standhaelt, und das ist eine bewusste Entscheidung und
+kein Versehen. Ein Modulkopf, der etwas anderes verspricht, erweckt genau den
+Anschein, vor dem der Absatz darueber warnt.
+
+Die **Einmaligkeit** haengt am Ticket, das beim Hub eingeloest wird -- nicht
+an einem Feld, das der Auftrag ueber sich selbst behauptet.
 
 Die vier Schranken, die dieses Format traegt
 ----------------------------------------------------------------------------

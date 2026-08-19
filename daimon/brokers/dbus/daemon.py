@@ -24,7 +24,9 @@ import sys
 import time
 from pathlib import Path
 
+from daimon.brokers import dienst
 from daimon.brokers.dbus.broker import DBusBroker
+from daimon.common import ipc
 from daimon.common.logging import get_logger
 
 # Groesser als jeder ehrliche Auftrag und klein genug, dass niemand hier
@@ -32,7 +34,7 @@ from daimon.common.logging import get_logger
 MAX_BYTES = 64 * 1024
 # Siehe daimon/brokers/dienst.py: die Auftragstickets liegen an
 # `aktion.sock`, nicht am Kontingent-Socket aus T-3.11.
-HUB_SOCKET = "aktion.sock"
+HUB_SOCKET = dienst.HUB_SOCKET
 
 
 def katalog_lesen(pfad: Path) -> dict:
@@ -121,7 +123,14 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         while True:
-            conn, _ = srv.accept()
+            # DIESELBE Annahme wie im Mantel -- T-4.5 K6. Dieser Broker hat
+            # eine eigene Schleife (historisch), und genau deshalb steht die
+            # Peer-Pruefung NICHT hier, sondern in `dienst.annehmen`: zwei
+            # Fassungen einer Regel sind eine Regel und eine Attrappe.
+            try:
+                conn, _ = dienst.annehmen(srv, pfad.name, log=log)
+            except ipc.PeerError:
+                continue
             with conn:
                 try:
                     bediene(broker, conn, hub_pfad, log)
