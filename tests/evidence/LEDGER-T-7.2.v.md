@@ -1,9 +1,11 @@
 # Ledger T-7.2.v — Verifizierer: Redaktion vor dem Schreiben
 
-**Ausgang: `produktdefekt-rot`**
+**Ausgang 18.08.: `produktdefekt-rot`** — der Befund unten ist mit `ae7c72e`
+behoben.
+**Ausgang 19.08.: `gruen`, eingefroren.** Siehe §Nachlauf am Ende.
 
-Der Verifizierer ist gebaut, gegen das Gut-Muster grün, gegen alle acht
-Mutanten rot — und gegen den echten Baum rot, an genau einem Punkt. Die
+Stand 18.08.: der Verifizierer ist gebaut, gegen das Gut-Muster grün,
+gegen alle acht Mutanten rot — und gegen den echten Baum rot, an genau einem Punkt. Die
 Redaktion **vor dem Schreiben** hält, was T-7.2 zusagt; die Prüfung **vor dem
 Diff** hält es nicht. Der Kanarienvogel kommt nicht auf die Platte, aber das
 Fenster wird trotzdem gelesen.
@@ -375,3 +377,71 @@ active                                             # vor wie nach den Läufen
   Akzeptanzliste sagt „werden gar nicht erfasst" und meint Fenster.
 * Grenze 5 nachziehen: `stufe` gehört zum Absender wie `art`, oder die
   Akzeptanzliste sagt ausdrücklich, dass sie es nicht tut.
+
+---
+
+## Nachlauf 19.08.2026 — Reviewer-Sitzung, Einfrieren
+
+| | |
+|---|---|
+| Rolle | reviewer (`DAIMON_ROLE=reviewer`), kein Produktivcode geschrieben |
+| Arbeitsbaum | `/mnt/data/AI/repos/dAImon`, Zweig `main` |
+| Ausgangs-Commit | `0d62ec5` (nach dem Einfrieren von T-7.1) |
+| Verifizierer unverändert | `T-7.2.sh` `3e2d943a…`, `t72_pruefstand.py` `7badf985…`, `t72_dienst.py` `1f632d5b…` |
+
+Der uncommittete `FROZEN`-Eintrag der abgebrochenen Sitzung war kein Beleg.
+Zurückgenommen, von vorn gemessen.
+
+### 1. Gegen `main` — grün
+
+```
+$ env -u DAIMON_FIXTURE tests/verify/T-7.2.sh; echo $?
+Bilanz T-7.2:
+K1:  4 Pruefungen, 0 rot    K5: 11 Pruefungen, 0 rot
+K2:  9 Pruefungen, 0 rot    K6:  9 Pruefungen, 0 rot
+K3: 20 Pruefungen, 0 rot    K7: 16 Pruefungen, 0 rot
+K4:  8 Pruefungen, 0 rot    K8:  8 Pruefungen, 0 rot
+0
+```
+
+85 Prüfungen, keine rot. K8 war am 18.08. mit zwei roten Prüfungen der
+Befund: die Denylist entschied an drei Stellen, und nur eine löste die
+`.desktop`-Kennung auf.
+
+**Der Fix ist gelesen, nicht nur bestanden.** `ae7c72e` hat keine zwei
+Vergleiche nachgezogen, sondern die Entscheidung an **eine** Stelle gelegt —
+`recorder/redaktion.py::gesperrt()`. Die beiden anderen Aufrufer
+(`eyes/change.py`, `eyes/context.py`) rufen sie jetzt. Das ist genau die
+Bauform, die CLAUDE.md Regel 4 verlangt, und nicht ein dritter Vergleich
+neben zwei anderen. Der Commit hält zusätzlich fest, dass ein erster Anlauf
+(`kennungen or {}`) still die schwächere Prüfung ergab und vom Verifizierer
+gefangen wurde.
+
+### 2. Gegen das Gut-Muster und alle acht Mutanten
+
+```
+$ bash tests/verify/meta.sh T-7.2
+T-7.2: 8 Mutanten erzeugt.
+meta[T-7.2]: Gut-Muster ...
+… art-nicht-an-unit-gebunden · denylist-greift-nicht · drm-ignoriert ·
+  kennung-ueber-rohklasse · privatmodus-ohne-wirkung ·
+  rohkopie-vor-der-redaktion · unbekanntes-fenster-durchgelassen ·
+  wahrnehmung-egal — alle erkannt.
+meta[T-7.2]: 8 Mutanten, alle erkannt.
+```
+
+`kennung-ueber-rohklasse` ist der Mutant auf der reparierten Achse: er stellt
+den rohen Klassenvergleich wieder her und wird erkannt.
+
+### 3. Betriebslage — was hier NICHT gilt
+
+Der laufende `daimon-eyes.service` ist seit `Wed 2026-08-19 15:15:02 CEST`
+aktiv, also **nach** `ae7c72e` (18.08. 21:50). Der laufende Prozess trägt die
+eine Fassung der Regel.
+
+Die Grenze aus dem Commit gilt unverändert und ist heute nicht neu gemessen:
+**der Tonpfad kennt die Denylist nicht.** Seine einzige Sperre ist der
+Privatmodus — und der laufende `daimon-hub.service` (seit 12:02:37) ist
+**älter** als `91e59aa` (13:00), der den Privatmodus überhaupt erst
+einschaltbar gemacht hat. Im Repo ist der Weg belegt, im laufenden Prozess
+ist er es heute nicht. Siehe Bericht der Sitzung, Befund 2.
