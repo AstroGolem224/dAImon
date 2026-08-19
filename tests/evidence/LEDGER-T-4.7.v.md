@@ -1,6 +1,8 @@
 # LEDGER T-4.7.v — Verifizierer für den DBus-Broker mit Argumentvalidierung
 
-**Ausgang: `produktdefekt-rot`**
+**Ausgang 18.08.: `produktdefekt-rot`**
+**Ausgang 19.08.: `produktdefekt-rot` — UNVERAENDERT. NICHT eingefroren.**
+Siehe §Nachlauf am Ende; dort steht auch eine Korrektur an einem der Belege.
 
 Der Verifizierer ist gebaut, gegen das Gut-Muster grün (51 Prüfungen), gegen
 alle zwölf Mutanten rot, und gegen den Arbeitsbaum rot an drei von sechs
@@ -474,3 +476,101 @@ $ systemctl --user list-units 'daimon*' --state=active
 ausschließlich die neuen `T-4.7`-Pfade; die Bäume der parallel laufenden
 Sitzungen (`T-3.*`, `T-4.4`, `T-4.5`, `T-4.6`, `T-5.*`, `T-7.*`) sind nicht
 angefasst.
+
+---
+
+## Nachlauf 19.08.2026 — Reviewer-Sitzung, NICHT eingefroren
+
+| | |
+|---|---|
+| Rolle | reviewer (`DAIMON_ROLE=reviewer`), kein Produktivcode geschrieben |
+| Arbeitsbaum | `/mnt/data/AI/repos/dAImon`, Zweig `main`, Commit `eb10c41` |
+| Verifizierer unverändert | `T-4.7.sh`, `t47_pruefstand.py` |
+
+**Nicht eingefroren, weil rot.**
+
+### 1. Gegen `main` — rot, an denselben drei Kriterien
+
+```
+$ env -u DAIMON_FIXTURE tests/verify/T-4.7.sh; echo $?
+FAIL K3: ein Proxy laesst sich mit genau diesen Optionen STARTEN:
+         'org.kde.kwin.Scripting=none' is not a valid dbus name
+FAIL K3: im Betrieb startet ihn jemand: NIEMAND
+FAIL K3: und der Broker spricht durch ihn -- `gdbus call --session` nimmt die
+         Adresse aus der Umgebung: daimon-dbus.service setzt sie nicht
+FAIL K4: ohne startbaren Proxy ist die zweite Schicht nicht messbar
+FAIL K5: jede Basiszeile aus Design 7.5 steht in der Unit:
+         ['CapabilityBoundingSet= (hat: nichts)']
+FAIL K5: und die Unit setzt PrivateUsers=yes NICHT (hat: ['yes'])
+Bilanz T-4.7:
+K1: 8 Pruefungen, 0 rot    K4:  3 Pruefungen, 1 rot
+K2: 5 Pruefungen, 0 rot    K5: 12 Pruefungen, 2 rot
+K3: 9 Pruefungen, 3 rot    K6:  3 Pruefungen, 0 rot
+1
+```
+
+Sechs von 40 Prüfungen rot, unverändert gegenüber dem 18.08.
+
+### 2. Der Kern von K3/K4, heute nachgelesen
+
+`config/dbus-filter.conf` sagt in seinem eigenen Kopf:
+
+> Aufruf (steht so in `config/systemd/daimon-dbus.service`):
+> `xdg-dbus-proxy --args=<fd> …`
+
+**Er steht dort nicht.** Gemessen im ganzen Baum: `xdg-dbus-proxy` kommt in
+`daimon/brokers/dbus/broker.py` (Kommentar), `docs/broker-sandboxes.md`,
+`docs/DESIGN.md` und `docs/IMPLEMENTATION-PLAN.md` vor — in **keiner**
+Unit-Datei und in **keiner** Codezeile, die ihn startet. Die zweite Schicht
+ist beschrieben, dokumentiert, konfiguriert und wird von niemandem gestartet.
+
+Das ist exakt das Muster aus `CLAUDE.md` §„Prüfe den Zulauf, nicht nur das
+Stück": ein Stück ist gebaut und belegt, und im Betrieb ruft es niemand auf.
+Hier ist es die Konfigurationsdatei, die den nicht existierenden Aufrufer
+beschreibt.
+
+### 3. Korrektur an einem Beleg: `PrivateUsers=yes` bricht die Peer-Prüfung hier NICHT
+
+Die K5-Prüfung ist **richtig rot**: `config/systemd/daimon-dbus.service:30`
+setzt `PrivateUsers=yes`, und `docs/DESIGN.md:1020` führt genau diese Zeile
+unter den „Direktiven, die brechen" — mit der Begründung „bricht uid-ACLs und
+**Peer-Credentials**".
+
+Die Begründung ist auf dieser Maschine **nachgemessen und trifft für den
+Peer-Teil nicht zu.** Zwei transiente Units, sonst gleich, ein Client aus
+einer fremden Unit:
+
+```
+ohne PrivateUsers   peercred {'pid': 829575, 'uid': 1000, 'gid': 1000}
+                    SO_PEERPIDFD ok, cgroup lesbar
+mit  PrivateUsers   peercred {'pid': 829591, 'uid': 1000, 'gid': 1000}
+                    SO_PEERPIDFD ok, cgroup lesbar
+```
+
+systemd bildet die eigene uid des Dienstes in den Namensraum ab; für einen
+Peer **derselben** uid ändert sich nichts, und `ipc.peer_of` löst weiter auf.
+Was `PrivateUsers=yes` sonst bricht (uid-ACLs auf fremde Nutzer, `PrivateDevices`
+in `input`/`gpu@`) ist damit **nicht** widerlegt — gemessen ist nur der
+Peer-Teil, und nur für den Fall gleicher uid.
+
+**Der Befund bleibt trotzdem stehen.** Zwei Aussagen über dieselbe Zeile
+widersprechen sich im Repo, und eine von beiden ist falsch: entweder gehört
+`PrivateUsers=yes` aus der Unit heraus, oder die Begründung in
+`docs/DESIGN.md:1020` gehört korrigiert. Was nicht bleiben kann, ist beides
+nebeneinander — welche Fassung gilt, entscheidet dann der Zufall des Lesers.
+
+`CapabilityBoundingSet=` fehlt in der Unit tatsächlich; `docs/DESIGN.md:994`
+führt sie unter den Basiszeilen.
+
+### 4. Gut-Muster und Mutanten — der Verifizierer ist gesund
+
+```
+$ bash tests/verify/meta.sh T-4.7
+T-4.7: 12 Mutanten erzeugt.
+meta[T-4.7]: Gut-Muster ...
+… broker-fuehrt-nicht-aus · dienst-aus-katalog · filter-ohne-filter ·
+  filter-ohne-log · filter-startet-nicht · kwin-durch-den-filter ·
+  operation-generisch · proxy-ohne-zulauf · sandbox-ohne-caps ·
+  sandbox-privateusers · shortcut-aus-auftrag · status-egal — alle erkannt.
+meta[T-4.7]: 12 Mutanten, alle erkannt.
+```
