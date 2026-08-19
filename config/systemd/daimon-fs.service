@@ -27,7 +27,26 @@ ProtectKernelModules=yes
 ProtectKernelTunables=yes
 ProtectSystem=strict
 
-# ProtectHome=tmpfs
+# --- DIE Zusage aus T-7.1 Akzeptanzpunkt 1 -------------------------------
+# BEFUND vom 18.08.: diese Zeile war auskommentiert, und `ProtectSystem=strict`
+# schuetzt /usr, nicht $HOME. Das Archiv liegt unter $XDG_DATA_HOME -- der
+# Dateibroker konnte also hineinschreiben. Gemessen hat es der Verifizierer,
+# indem er jede Unit einen Schreibversuch machen liess:
+#
+#     daimon-recorder.service  SCHRIEB      (richtig)
+#     daimon-eyes.service      VERWEIGERT   (richtig)
+#     daimon-fs.service        SCHRIEB      (falsch)
+#
+# Damit gab es zwei schreibende Dienste statt einem, und einer davon ist der
+# modellgetriebene: wer den Broker erreicht, konnte die Aufzeichnung dessen
+# aendern, was wahrgenommen wurde.
+#
+# Die Abwaegung darunter war richtig und ist es geblieben -- nur ihre
+# Nebenwirkung aufs Archiv hat am 09.08. niemand nachverfolgt. Die Antwort
+# stand da schon im eigenen Text: was schreibbar sein soll, kommt mit
+# `BindPaths=` zurueck. Diese Liste ist inzwischen vollstaendig (vier
+# Wurzeln, unten), also kostet die Zeile nichts mehr.
+ProtectHome=tmpfs
 # ProtectHome=tmpfs blendet $HOME komplett aus. Zwei Folgen, beide am 09.08.
 # als 226/NAMESPACE gemessen:
 #

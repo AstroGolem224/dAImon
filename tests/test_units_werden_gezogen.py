@@ -107,3 +107,74 @@ def test_die_mind_unit_widerspricht_sich_nicht_mehr():
     assert "[Install]" in text
     assert not (UNITS / "daimon-mind.socket").exists()
     assert "Kein `[Install]`: gestartet wird ueber den Socket" not in text
+
+
+# -- Wer darf ins Archiv schreiben (T-7.1 K1) -----------------------------
+#
+# BEFUND vom 18.08.: `daimon-fs.service` hatte keine `ProtectHome`-Zeile --
+# der Block war am 09.08. auskommentiert worden, weil `ReadWritePaths=` unter
+# `tmpfs` scheiterte. Die Abwaegung war richtig; ihre Nebenwirkung hat
+# niemand nachverfolgt. `ProtectSystem=strict` schuetzt /usr, nicht $HOME,
+# und das Archiv liegt unter $XDG_DATA_HOME.
+#
+# Der Verifizierer mass es, indem er drei Units schreiben liess:
+# recorder SCHRIEB (richtig), eyes VERWEIGERT (richtig), fs SCHRIEB (falsch).
+# Damit gab es zwei schreibende Dienste statt einem -- und der zweite ist der
+# modellgetriebene. Wer ihn erreicht, aendert die Aufzeichnung dessen, was
+# wahrgenommen wurde, also die Grundlage der Archivsuche aus T-7.5.
+#
+# Hier stehen ZWEI Pruefungen und nicht eine. Die erste haelt die Zeile fest,
+# die gefehlt hat. Die zweite faengt den Weg, den die erste offenliesse:
+# `ProtectHome=read-only` sperrt das Schreiben, aber ein `BindPaths=` auf
+# einen $HOME-Pfad holt es wieder herein -- und genau so bekommt der Recorder
+# sein Archiv zurueck. Eine Unit, die es ihm nachmacht, waere derselbe Befund
+# mit einer anderen Zeile.
+
+ARCHIV_MARKE = "share/daimon"
+SCHREIBENDER_DIENST = "daimon-recorder.service"
+
+
+@pytest.mark.parametrize("unit", DIENSTE, ids=lambda p: p.name)
+def test_jede_unit_sagt_etwas_ueber_HOME(unit: Path):
+    """Eine fehlende Zeile faellt in keinem Diff auf -- deshalb steht sie
+    hier als Pruefung. Ausgeschrieben und nicht geraten: was `ProtectHome`
+    nicht nennt, ist offen."""
+    zeilen = [z.strip() for z in unit.read_text(encoding="utf-8").splitlines()
+              if not z.strip().startswith("#")]
+    assert any(z.startswith("ProtectHome=") for z in zeilen), (
+        f"{unit.name} sagt nichts ueber $HOME -- ProtectSystem=strict "
+        "schuetzt /usr, nicht das Archiv (T-7.1 K1)")
+
+
+def test_nur_EIN_dienst_holt_sich_das_archiv_zurueck():
+    """Der zweite Weg hinein, und der schwerer zu sehende.
+
+    Gesucht wird in den wirksamen Zeilen, nicht im ganzen Text: der Befund
+    steht als Kommentar in genau diesen Dateien, und eine nackte Textsuche
+    faende ihn und meldete Ruhe.
+    """
+    holen = []
+    for unit in DIENSTE:
+        for nr, zeile in enumerate(unit.read_text(encoding="utf-8").splitlines(), 1):
+            nackt = zeile.strip()
+            if nackt.startswith("#") or ARCHIV_MARKE not in nackt:
+                continue
+            if nackt.startswith(("BindPaths=", "ReadWritePaths=",
+                                 "StateDirectory=", "ExecStartPre=")):
+                holen.append(unit.name)
+                break
+    assert holen == [SCHREIBENDER_DIENST], (
+        "genau ein Dienst darf ins Archiv schreiben (T-7.1 Akzeptanzpunkt 1), "
+        f"hier sind es: {holen or 'keiner'}")
+
+
+def test_POSITIVKONTROLLE_der_schreibende_dienst_wird_auch_gefunden():
+    """Ohne diese Zeile bestuende der Test darueber auch dann, wenn die Suche
+    ins Leere greift -- `holen == []` waere nie gleich `[recorder]`, aber ein
+    Tippfehler in ARCHIV_MARKE machte beide Listen leer und den Vergleich
+    stumm. Vier Falschbefunde an einem Tag kamen genau daher."""
+    text = (UNITS / SCHREIBENDER_DIENST).read_text(encoding="utf-8")
+    assert any(z.strip().startswith("BindPaths=") and ARCHIV_MARKE in z
+               for z in text.splitlines()), (
+        "der Recorder holt sich das Archiv nicht mehr per BindPaths -- "
+        "dann misst die Pruefung darueber nichts")
