@@ -78,7 +78,7 @@ Nachschreiben, und dafür ist der `grep` oben da.
 
 ## `daimon/hub/daemon.py`
 
-- **Zeile 1006** — der Ersatzsatz hat KEINE eigene Frist. Obergrenze: er ist
+- **Zeile 1046** — der Ersatzsatz hat KEINE eigene Frist. Obergrenze: er ist
 
 ## `daimon/hub/state.py`
 

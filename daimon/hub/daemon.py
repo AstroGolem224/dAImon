@@ -114,6 +114,39 @@ TICKET_UNITS = (
 # auf `@`; was das genau bedeutet, steht bei `ipc.unit_erlaubt`.
 GPU_UNITS = ("daimon-gpu@",)
 TTS_UNITS = ("daimon-tts.service",)
+
+# Die PRODUZENTEN-Sockets. Sie fehlten am 19.08. bei `d5c012b` -- die Listen
+# oben sitzen in `_horche_einfach`, und `_horche_produzent` ist eine ANDERE
+# Funktion, die `ipc.accept` ohne `erlaubte_units` rief. Gefunden hat es die
+# Reviewer-Sitzung am laufenden System, mit Positiv- und
+# Unterscheidungskontrolle: kontext/aktion/ticket wiesen ihre Unit ab,
+# auth/face/ears/hookbridge nahmen sie an.
+#
+# Das wog schwerer als die vier Endpunkte davor: `auth.sock` gibt auf
+# `intent_mark` eine frische RUNDENMARKE aus -- genau die Marke, auf die sich
+# `aktion.sock` verlaesst. Der Wegweiser stand an den unwichtigeren Tueren.
+#
+# Die Uebergabe hatte an dieser Stelle die falsche Vermutung notiert (4.2):
+# ein Absender, der den Socketpfad zusammensetzt statt ihn zu nennen. Den
+# gibt es nicht. Die Luecke war eine ganze Funktion, und meine Suche ging
+# ueber die Aufrufer statt ueber die Annahmestellen.
+PRODUZENT_UNITS: dict[str, tuple[str, ...]] = {
+    # hookbridge/bridge.py:249 -- der einzige Schreiber.
+    "hookbridge": ("daimon-hookbridge.service",),
+    # face/src/hub.rs:139. Das Overlay meldet Blasen, Abschaltungen und seit
+    # T-7.4 den Privatmodus.
+    "face": ("daimon-face.service",),
+    # auth/agent.py ueber `--hub-socket %t/daimon/auth.sock` in der Unit.
+    "auth": ("daimon-auth.service",),
+    # KEIN gemessener Schreiber: `utterance` sendet im Quelltext niemand, der
+    # Ohren-Dienst meldet sein Transkript ueber `recorder.sock`. Der Eintrag
+    # steht hier trotzdem, und zwar aus einem anderen Grund als bei
+    # `AKTION_UNITS`: dort haette `daimon-mind.service` eine Vermutung
+    # ueber einen kuenftigen Absender bedeutet. Hier ist die Zuordnung
+    # definiert -- der Socket heisst nach dem Dienst, und `ipc.PRODUZENTEN`
+    # weist `utterance` genau ihm zu. Wer das aendert, aendert die Tabelle.
+    "ears": ("daimon-ears.service",),
+}
 # Wie lange der Hub auf die Antwort des Menschen wartet. Laenger als ein
 # Blick, kuerzer als ein Kaffee -- und danach `cancelled`, nicht `declined`.
 RUECKFRAGE_FRIST_S = 120.0
@@ -560,6 +593,13 @@ class Hub:
             try:
                 conn, peer = ipc.accept(
                     srv, produzent,
+                    # Seit dem 19.08. auch hier -- die Listen aus `d5c012b`
+                    # sassen nur in `_horche_einfach`, und diese Funktion ist
+                    # eine andere. `None` fuer einen unbekannten Produzenten
+                    # heisst weiterhin "keine Pruefung": ein Prueflauf ohne
+                    # systemd startet eigene Produzenten, und der soll nicht
+                    # an einer Liste scheitern, die es fuer ihn nicht gibt.
+                    erlaubte_units=PRODUZENT_UNITS.get(produzent),
                     audit=lambda was, p: self.log.info(
                         "ipc", DAIMON_ACTION=was, DAIMON_PRODUZENT=produzent,
                         DAIMON_PEER_PID=p.pid, DAIMON_PEER_UNIT=p.unit),

@@ -21,6 +21,22 @@ from daimon.common import ipc
 from daimon.common.logging import get_logger
 from daimon.hub.daemon import STATE_SOCKET, Hub
 from daimon.hub.state import DENK_FRIST_S, PTT_FRIST_S, HubState
+from conftest import eigene_unit
+
+@pytest.fixture(autouse=True)
+def _produzenten_duerfen_melden(monkeypatch, tmp_path):
+    """Seit dem 19.08. tragen die Produzentensockets Unit-Allowlisten.
+
+    Dieser Pruefstand laeuft unter keiner der vier Units; dass er vorher
+    gruen war, IST der Befund (die Reviewer-Sitzung hat ihn am laufenden
+    System gefunden). Erlaubt wird die Unit des TESTPROZESSES, echt gemessen
+    -- `ipc.peer_of` wird NICHT ersetzt. Geprueft wird die Sperre selbst in
+    `test_hub_socket_allowlisten.py`.
+    """
+    from daimon.hub import daemon as _D
+    eigene = eigene_unit(tmp_path)
+    monkeypatch.setattr(_D, "PRODUZENT_UNITS",
+                        {p: (eigene,) for p in _D.PRODUZENT_UNITS})
 
 
 def stiller_logger():

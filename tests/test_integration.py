@@ -39,6 +39,7 @@ import math
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -143,12 +144,42 @@ def socket_verbinden(name: str, *, timeout_s: float):
     return c
 
 
+class Abgewiesen(RuntimeError):
+    """Der Hub hat die Produzentenzeile nicht angenommen."""
+
+
 def produzent_sende(name: str, typ: str, payload: dict) -> None:
-    """Eine Produzentenzeile (auth.sock) — ohne Antwort, wie im Betrieb."""
+    """Eine Produzentenzeile (auth.sock) — ohne Antwort, wie im Betrieb.
+
+    **Wirft, wenn der Hub die Verbindung zurücksetzt.** Seit dem 19.08.
+    tragen die Produzentensockets Unit-Allowlisten, und dieser Prüfstand
+    steht auf keiner — er kann sich auch nicht eintragen, der Hub ist ein
+    fremder Prozess.
+
+    Das schweigend zu schlucken hat sofort einen Falschbefund erzeugt: der
+    Ohren-Kill-Switch schickte `ptt: an`, bekam nichts, sah keinen
+    Aufnahmestrom und meldete „Mikrofon nicht verfügbar?". Gemessen im
+    Journal des Hubs: drei Abweisungen `auth/fremde_unit` in genau diesem
+    Lauf. Der Grund war falsch, und ein falscher Grund ist schlimmer als
+    keiner — er beendet die Suche.
+
+    Der zweite Lesevorgang ist der Trick: ein zurückgesetzter Socket meldet
+    sich erst beim Lesen, nicht beim Schreiben.
+    """
     c = socket_verbinden(name, timeout_s=10.0)
     try:
         c.sendall(json.dumps(
             {"v": 1, "type": typ, "payload": payload}).encode() + b"\n")
+        try:
+            c.settimeout(1.0)
+            c.recv(1)          # erwartet: leer (Hub antwortet nicht)
+        except socket.timeout:
+            pass               # er schweigt und hält — angenommen
+        except OSError as fehler:
+            raise Abgewiesen(
+                f"{name}: der Hub hat die Zeile nicht angenommen ({fehler}). "
+                "Der Prüfstand steht auf keiner Unit-Allowlist — das ist "
+                "kein Befund über das Produkt.") from fehler
     finally:
         c.close()
 
@@ -1027,7 +1058,10 @@ def test_killswitch_ohren(sitzung, evidenz):
         if not ist_aktiv("daimon-ears.service"):
             pytest.skip("daimon-ears läuft nicht (Szenario 1)")
 
-        produzent_sende("auth.sock", "ptt", {"an": True})
+        try:
+            produzent_sende("auth.sock", "ptt", {"an": True})
+        except Abgewiesen as grund:
+            pytest.skip(str(grund))
         frist = time.monotonic() + 6.0
         strom = ohren.aufnahmestroeme()
         while time.monotonic() < frist and not strom:

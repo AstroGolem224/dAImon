@@ -17,6 +17,23 @@ from daimon.common import ipc
 from daimon.common.logging import get_logger
 from daimon.hub.daemon import DIAG_SOCKET, Hub
 from daimon.hub.marks import MarkenFehler
+from conftest import eigene_unit
+
+@pytest.fixture(autouse=True)
+def _produzenten_duerfen_melden(monkeypatch, tmp_path):
+    """Seit dem 19.08. tragen die Produzentensockets Unit-Allowlisten.
+
+    Erlaubt wird die Unit des Testprozesses, echt gemessen. Die Zusagen, die
+    diese Datei haelt -- keine Marke und keine Freigabe vom Face, keine
+    turn_id aus der Nachricht -- liegen eine Schicht TIEFER als die
+    Peer-Pruefung und muessen auch fuer einen zugelassenen Absender gelten.
+    Genau deshalb darf die Allowlist sie hier nicht verdecken.
+    """
+    from daimon.hub import daemon as _D
+    eigene = eigene_unit(tmp_path)
+    monkeypatch.setattr(_D, "PRODUZENT_UNITS",
+                        {p: (eigene,) for p in _D.PRODUZENT_UNITS})
+
 
 
 def stiller_logger():
