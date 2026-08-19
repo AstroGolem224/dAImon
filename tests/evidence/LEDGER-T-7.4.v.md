@@ -1,6 +1,8 @@
 # Ledger T-7.4.v — Verifizierer für den Tonmitschnitt in die Datenbank
 
-**Ausgang: `produktdefekt-rot`**
+**Ausgang 18.08.: `produktdefekt-rot`** (K3 und K7)
+**Ausgang 19.08.: `produktdefekt-rot` — nur noch K3. NICHT eingefroren.**
+Siehe §Nachlauf am Ende.
 
 Der Verifizierer ist gebaut, er kann grün werden (Gut-Muster: 9 von 9), er
 kann rot werden (10 von 10 Mutanten erkannt, jeder am zugedachten Kriterium)
@@ -497,3 +499,102 @@ selbst (drei Dateien) kostet das nichts.
    `melde_transkript` macht den Weg dorthin in einem Diff sichtbar. Von den
    fünf Akzeptanzpunkten sind drei ganz erfüllt, einer (Punkt 2) hängt an
    einer Dokumentenentscheidung, einer (Punkt 4) ist zur Hälfte verletzt.
+
+---
+
+## Nachlauf 19.08.2026 — Reviewer-Sitzung, NICHT eingefroren
+
+| | |
+|---|---|
+| Rolle | reviewer (`DAIMON_ROLE=reviewer`), kein Produktivcode geschrieben |
+| Arbeitsbaum | `/mnt/data/AI/repos/dAImon`, Zweig `main`, Commit `5c94c3c` |
+| Verifizierer unverändert | `T-7.4.sh`, `t74_pruefstand.py` |
+
+**Nicht eingefroren, weil rot** — aber nur noch an einem der beiden Kriterien
+von gestern.
+
+### 1. Gegen `main` — K7 ist zu, K3 nicht
+
+```
+$ env -u DAIMON_FIXTURE tests/verify/T-7.4.sh; echo $?
+ok   [K7] der BILD-Pfad wird gestoppt (daimon-eyes.service)
+ok   [K7] der TON-Pfad wird gestoppt (daimon-ears.service)
+ok   [K7] Unterscheidungskontrolle: der nur ANGEHALTENE Strom ist noch da --
+     'verschwunden' heisst hier geschlossen und nicht still
+ok   [K7] der Mikrofonstrom des Ohren-Dienstes ist nach der Pause geschlossen
+FAIL [K3] der STT-Prozess laeuft bei Stille WEITER: `lauf()` in
+     daimon/gpu/stt.py hat keine Leerlauffrist.
+T-7.4: ROT -- 1 von 9 Kriterien rot: K3
+1
+```
+
+**K7 ist mit `d521148` geschlossen** — derselbe Commit, der T-7.3 B1 behoben
+hat. Der Nachweis läuft hier nicht über die Zeilen des Schalters, sondern über
+die Ströme, mit der Unterscheidungskontrolle daneben.
+
+### 2. K3 ist kein Versehen, sondern ein Widerspruch im Repo
+
+Das ist der Unterschied zu den vier anderen offenen Befunden dieser Sitzung,
+und er gehört benannt: hier fehlt nichts, hier stehen **zwei Fassungen einer
+Regel** nebeneinander.
+
+`docs/DESIGN.md:382`:
+
+> Bei anhaltender Sprache bleibt der STT-Arbeitsprozess warm, **bei Stille
+> beendet er sich wie gehabt.**
+
+`daimon/gpu/stt.py:24–30`, Abschnittsüberschrift **„Kein Leerlauf-Exit"**:
+
+> Anders als der GPU-Worker aus T-3.7, und aus demselben Grund wie beim TTS:
+> dort war die belastbare Größe die VRAM-Rückgabe nach dem Exit. Hier gibt es
+> kein VRAM zurückzugeben, und ein Neustart kostet 843 ms Ladezeit. Das Modell
+> im Speicher IST die Latenzzusage.
+
+`daimon/gpu/stt.py:384–385` setzt das um: `def lauf(...)` mit dem Docstring
+„Kein Leerlauf-Exit — siehe Modulkopf" und einer `while True`-Schleife ohne
+Frist.
+
+Beide Fassungen tragen eine Begründung, und beide Begründungen sind für sich
+tragfähig. **Was nicht tragfähig ist, ist ihr Nebeneinander:** welche gilt,
+entscheidet der Zufall dessen, der zuerst nachschlägt. Genau davor warnt
+`CLAUDE.md` Regel 4.
+
+**Fehlerszenario, falls DESIGN §382 gilt:** der STT-Dienst wird beim ersten
+Wort socket-aktiviert und läuft danach unbegrenzt weiter — mit
+parakeet-tdt-0.6b-v3 im Speicher, bis jemand die Unit stoppt. Die
+Residenzpolitik aus §5.4 hat für diesen Dienst keinen Fall, in dem sie greift.
+**Fehlerszenario, falls `stt.py` gilt:** DESIGN §382 und Akzeptanzpunkt 2 von
+T-7.4 beschreiben Verhalten, das es nicht gibt, und jeder künftige
+Verifizierer misst dagegen — so wie dieser.
+
+Dieser Verifizierer misst gegen die Akzeptanzliste. Solange die steht, ist er
+zu Recht rot. Die Entscheidung, welche der beiden Fassungen fällt, gehört
+nicht in einen Prüfstand.
+
+### 3. Gut-Muster und Mutanten — der Verifizierer ist gesund
+
+```
+$ bash tests/verify/meta.sh T-7.4
+T-7.4: 10 Mutanten erzeugt.
+meta[T-7.4]: Gut-Muster ...
+… audio-parameter-am-melder · eintrag-ohne-erkannte-sprache ·
+  melder-schreibt-am-recorder-vorbei · pause-laesst-den-ton-offen ·
+  rohaudio-bleibt-liegen · stille-gilt-als-sprache · stt-ohne-leerlauf ·
+  transkript-nicht-tainted · verbotene-arten-leer ·
+  zweiter-stt-aufruf-fuers-archiv — alle erkannt.
+meta[T-7.4]: 10 Mutanten, alle erkannt.
+```
+
+`stt-ohne-leerlauf` ist der Mutant für K3 und `pause-laesst-den-ton-offen`
+der für K7 — beide werden erkannt. Der Verifizierer ist an der reparierten
+Achse (K7) also nicht blind geworden.
+
+### 4. Rücksicht auf den laufenden Betrieb
+
+```
+SPERRE: 0 Aufruf(e).
+SPERRE: kein Aufruf an eine echte Unit.
+```
+
+Der `systemctl`-Vorschalter hat keinen Aufruf an eine echte Unit
+durchgelassen.
