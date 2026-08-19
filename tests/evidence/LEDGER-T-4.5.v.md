@@ -1,9 +1,11 @@
 # LEDGER T-4.5.v — Verifizierer für den Ausführungsauftrag
 
-**Ausgang: `produktdefekt-rot`**
+**Ausgang 18.08.: `produktdefekt-rot`** — der Befund unten ist mit `590ee02`
+und `d5c012b` behoben.
+**Ausgang 19.08.: `gruen`, eingefroren.** Siehe §Nachlauf am Ende.
 
-Der Verifizierer ist gebaut, gegen das Gut-Muster grün (115 Prüfungen), gegen
-alle zwölf Mutanten rot — einschließlich der beiden **umgekehrten**, die eine
+Stand 18.08.: der Verifizierer ist gebaut, gegen das Gut-Muster grün
+(115 Prüfungen), gegen alle zwölf Mutanten rot — einschließlich der beiden **umgekehrten**, die eine
 HMAC-Prüfung *einführen* — und gegen den Arbeitsbaum rot an genau einem
 Kriterium, mit Beleg.
 
@@ -526,3 +528,87 @@ bereits inaktiv — vorgefunden, nicht von dieser Sitzung gestoppt.
 listet ausschließlich die vier neuen `T-4.5`-Pfade; die Bäume der parallel
 laufenden Sitzung (`T-7.1`, `T-7.2`, `T-7.5`, `T-4.4`, `T-4.6`, `T-5.9`)
 sind nicht angefasst.
+
+---
+
+## Nachlauf 19.08.2026 — Reviewer-Sitzung, Einfrieren
+
+| | |
+|---|---|
+| Rolle | reviewer (`DAIMON_ROLE=reviewer`), kein Produktivcode geschrieben |
+| Arbeitsbaum | `/mnt/data/AI/repos/dAImon`, Zweig `main` |
+| Ausgangs-Commit | `9034ce3` (nach dem Einfrieren von T-4.4) |
+| Verifizierer unverändert | `T-4.5.sh` `b7b86cb6…`, `t45_pruefstand.py` `f05dec35…` |
+
+Wie bei T-4.4: der uncommittete `FROZEN`-Eintrag der abgebrochenen Sitzung
+war kein Beleg. Zurückgenommen, von vorn gemessen.
+
+### 1. Gegen `main` — grün
+
+```
+$ env -u DAIMON_FIXTURE tests/verify/T-4.5.sh; echo $?
+Bilanz T-4.5:
+K1: 14 Pruefungen, 0 rot    K5: 13 Pruefungen, 0 rot
+K2: 16 Pruefungen, 0 rot    K6:  6 Pruefungen, 0 rot
+K3: 25 Pruefungen, 0 rot    K7: 23 Pruefungen, 0 rot
+K4: 18 Pruefungen, 0 rot
+0
+```
+
+115 Prüfungen, keine rot. K6 war am 18.08. das rote Kriterium; die Belege
+heute:
+
+```
+Eigene Unit dieses Pruefstands: 'app-com.anthropic.Claude-58898.scope'
+Peer-Pruefung gerufen: 1x, Rumpf erreicht: 0x, Antwort b''
+Manipulation 'Gegenstelle einmal als fremde, einmal als
+              `daimon-hub.service` aufgeloest': 0 -> 1
+Unit-Allowlisten der Hub-Sockets: {'GPU_SOCKET': True, 'TTS_SOCKET': True,
+  'TICKET_SOCKET': True, 'AKTION_SOCKET': True, 'KONTEXT_SOCKET': True,
+  'datei': False}
+```
+
+Die Peer-Prüfung findet statt (`590ee02`), sie hat Zähne (eine fremde
+Gegenstelle erreicht den Broker-Rumpf **nicht**, `daimon-hub.service` sehr
+wohl), und `aktion.sock` trägt seit `d5c012b` eine Unit-Allowlist.
+
+**Die Kriterien gelesen, nicht nur den Ausgang** (Übergabe §4.1). Der Fix ist
+nicht auf die gemessene Stelle zugeschnitten: `brokers/dienst.py:76` ruft
+`ipc.accept(..., erlaubte_units=(HUB_UNIT,))`, also die **eine** Fassung der
+Regel, die auch `kontext.sock` benutzt — nicht eine zweite daneben.
+
+### 2. Gegen das Gut-Muster und alle zwölf Mutanten
+
+```
+$ bash tests/verify/meta.sh T-4.5
+T-4.5: 12 Mutanten erzeugt.
+meta[T-4.5]: Gut-Muster ...
+… audience-egal · broker-frist-nach-wanduhr · feld-faellt-weg ·
+  frist-nach-wanduhr · hmac-optional · hmac-pflicht · params-hash-egal ·
+  peer-egal · schema-egal · serialisierung-egal · ticket-nach-der-tat ·
+  ticket-wieder-einloesbar — alle erkannt.
+meta[T-4.5]: 12 Mutanten, alle erkannt.
+```
+
+Die beiden **umgekehrten** Mutanten (`hmac-pflicht`, `hmac-optional`), die
+Kryptografie *hinzufügen*, werden weiter erkannt — der AST-Leser aus K1 ist
+nicht stumpf geworden. Und `peer-egal` — der Mutant, der genau den Zustand
+von gestern wiederherstellt — wird erkannt.
+
+### 3. Was dieser Nachlauf offenlässt
+
+Die Grenzen des Ledgers gelten unverändert. Zusätzlich hat der Nachlauf
+**zwei Stellen gesehen, die dieser Verifizierer nicht misst** und die
+deshalb hier stehen, statt still zu bleiben:
+
+1. **`horch_aufrufe` liest nur `_horche_einfach`.** Die vier
+   Produzentensockets (`hookbridge`, `face`, `auth`, `ears`) entstehen in
+   `_horche_produzent` (`daimon/hub/daemon.py:555–574`) und bekommen dort
+   **kein** `erlaubte_units`. Der Reader kann das nicht sehen. Gemessen am
+   laufenden System, mit Positivkontrolle — siehe Bericht der Sitzung,
+   Befund 1.
+2. **Der Eintrag `'datei': False`** in der Ausgabe oben ist die Schleife für
+   `state.sock` und `diag.sock`. Beide sind absichtlich ohne Liste (lesende
+   Diagnose); der Reader kann sie aber nicht auseinanderhalten, weil er den
+   Namen der Schleifenvariablen sieht. Wer dort einen dritten, schreibenden
+   Endpunkt einhängt, fällt K6 nicht auf.
