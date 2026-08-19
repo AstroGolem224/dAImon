@@ -1,10 +1,11 @@
 # Ledger T-7.5.v — Verifizierer: Archivsuche mit Deklassifizierung
 
-**Ausgang: `gruen`**
+**Ausgang 18.08.: `gruen`** — als einziger der elf ohne Produktbefund.
+**Ausgang 19.08.: `gruen`, eingefroren.** Siehe §Nachlauf am Ende.
 
-Der Verifizierer ist gebaut, gegen das Gut-Muster grün, gegen alle elf Mutanten
-rot — und gegen den echten Baum grün. Die zentrale Prüffrage dieses Auftrags
-ist beantwortet: **nein**, ein Archivtreffer erreicht das Modell nicht ohne
+Stand 18.08.: der Verifizierer ist gebaut, gegen das Gut-Muster grün,
+gegen alle elf Mutanten rot — und gegen den echten Baum grün. Die
+zentrale Prüffrage dieses Auftrags ist beantwortet: **nein**, ein Archivtreffer erreicht das Modell nicht ohne
 frische Rundenmarke; und mit Marke kommt **nur der Treffer**, nicht seine
 Umgebung. Beides ist an der Naht gemessen, nicht am Stück.
 
@@ -433,3 +434,78 @@ letzter Zustandswechsel war um **07:38:53**, also vor dieser Sitzung
 * Der zweite gehört **T-5.9**: der Umfang einer Freigabe steht im Audit nur
   redigiert. Dieser Prüfstand liest ihn deshalb aus der Socket-Antwort — und
   bleibt davon unberührt.
+
+---
+
+## Nachlauf 19.08.2026 — Reviewer-Sitzung, Einfrieren
+
+| | |
+|---|---|
+| Rolle | reviewer (`DAIMON_ROLE=reviewer`), kein Produktivcode geschrieben |
+| Arbeitsbaum | `/mnt/data/AI/repos/dAImon`, Zweig `main` |
+| Ausgangs-Commit | `d94814e` (nach dem Einfrieren von T-7.3) |
+| Verifizierer unverändert | `T-7.5.sh` `8559244b…`, `t75_pruefstand.py` `620da652…`, `t75_hub.py` `a338db78…` |
+
+Der uncommittete `FROZEN`-Eintrag der abgebrochenen Sitzung war kein Beleg.
+Zurückgenommen, von vorn gemessen.
+
+**Dieser Verifizierer ist der einzige der elf, der schon am 18.08. grün war.**
+Er ist damit auch der einzige, bei dem „grün gegen `main`" allein nichts sagt
+— das Gut-Muster ist bytegleich mit dem Arbeitsbaum. Was er misst, steht in
+den Mutanten, und deshalb ist der Mutantenlauf hier nicht die Kontrolle,
+sondern die Messung.
+
+### 1. Gegen `main` — grün
+
+```
+$ env -u DAIMON_FIXTURE tests/verify/T-7.5.sh; echo $?
+Pruefling: /mnt/data/AI/repos/dAImon
+Treiber:   /mnt/data/AI/repos/dAImon/tests/verify/t75_hub.py
+Unit des Pruefstands: 'app-com.anthropic.Claude-58898.scope'
+
+Bilanz T-7.5:
+K1:  8 Pruefungen, 0 rot    K5:  5 Pruefungen, 0 rot
+K2: 20 Pruefungen, 0 rot    K6: 13 Pruefungen, 0 rot
+K3: 19 Pruefungen, 0 rot    K7: 12 Pruefungen, 0 rot
+K4: 18 Pruefungen, 0 rot    K8: 15 Pruefungen, 0 rot
+0
+```
+
+110 Prüfungen, keine rot. Neun Commits liegen zwischen dem Bau und diesem
+Lauf, darunter `fe4a33a` (`ipc._unit`) und `d5c012b` (Hub-Allowlisten) — beide
+berühren die Naht, an der K2 und K8 messen. Kein Kriterium ist dadurch rot
+geworden.
+
+### 2. Gegen das Gut-Muster und alle elf Mutanten
+
+```
+$ bash tests/verify/meta.sh T-7.5
+T-7.5: 11 Mutanten erzeugt.
+meta[T-7.5]: Gut-Muster ...
+… archiv-eigener-schein · archiv-ohne-marke · archiv-ohne-schein ·
+  archiv-ohne-zeitbezug · proaktiv-sucht · router-verwirft-archiv ·
+  titel-nicht-durchsucht · treffer-mit-umgebung · treffer-trusted ·
+  zeitbezug-immer-erkannt · zeitbezug-nie-erkannt — alle erkannt.
+meta[T-7.5]: 11 Mutanten, alle erkannt.
+```
+
+Die Zuordnung aus dem Lauf, unverändert gegenüber dem 18.08.:
+
+```
+{"archiv-ohne-schein": "K2 (das Archiv als zweite Tuer)",
+ "archiv-ohne-marke": "K2", "archiv-ohne-zeitbezug": "K3, K7",
+ "zeitbezug-immer-erkannt": "K3",
+ "zeitbezug-nie-erkannt": "K1, K4 (er toetet die Positivkontrollen)",
+ "titel-nicht-durchsucht": "K1", "treffer-mit-umgebung": "K4",
+ "treffer-trusted": "K5", "proaktiv-sucht": "K6",
+ "archiv-eigener-schein": "K8", "router-verwirft-archiv": "K8"}
+```
+
+Jedes der acht Kriterien wird weiterhin in mindestens einem Lauf rot.
+
+### 3. Was dieser Nachlauf NICHT ändert
+
+Alle Grenzen des Ledgers gelten unverändert; keine ist heute neu gemessen
+worden. Grenze 9 (lesende `mode=ro`-Verbindung neben einem *laufenden*
+Schreiber) ist am 18.08. von T-7.1.v K9 beantwortet worden und heute dort
+erneut grün gelaufen.
