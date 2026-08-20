@@ -4,6 +4,12 @@ Description=dAImon DBus-Broker (feste Operation je genehmigter Aktion)
 PartOf=graphical-session.target
 After=daimon-hub.service
 Requires=daimon-hub.service
+# Die zweite Schicht ist nicht nur konfiguriert, sie muss im Weg liegen. Ohne
+# diese beiden Zeilen und ohne `Environment=DBUS_SESSION_BUS_ADDRESS=` unten
+# spricht der Broker mit dem echten Sitzungsbus, und config/dbus-filter.conf
+# ist Dekoration (Befund T-4.7 K3).
+After=daimon-dbus-proxy.service
+Requires=daimon-dbus-proxy.service
 
 [Service]
 # Type=simple, NICHT notify: der Broker meldet sich nicht per sd_notify
@@ -12,6 +18,9 @@ Requires=daimon-hub.service
 # Restart-Karussell wie in Fall 4 der Übergabe. Wer sd_notify einbaut, darf
 # die Zeile zurückdrehen.
 Type=simple
+# Der Broker ruft `gdbus call --session`. Welcher Bus das ist, entscheidet
+# diese Zeile -- und sie zeigt auf den Proxy, nicht auf %t/bus.
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/daimon/dbus-proxy.sock
 WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
 ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
     -m daimon.brokers.dbus.daemon \
@@ -26,6 +35,10 @@ RestartSec=2
 # deshalb ist AF_UNIX hier nicht bloß IPC, sondern die einzige Verbindung
 # nach draußen.
 NoNewPrivileges=yes
+# Design 7.5, Grundzeile fuer alle Units ausser egress. Fehlte -- der Dienst
+# behielt sonst den vollen Capability-Satz seines Elternprozesses (Befund
+# T-4.7 K5).
+CapabilityBoundingSet=
 PrivateDevices=yes
 # PrivateUsers=yes -- am 19.08. ENTFERNT (Befund T-4.7 K5).
 #

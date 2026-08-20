@@ -178,17 +178,22 @@ def test_kein_katalogeintrag_erzeugt_eine_scripting_operation():
 
 
 def test_der_proxy_filter_schliesst_loadscript_aus():
-    """Die zweite Schicht, gelesen als Datei statt behauptet."""
+    """Die zweite Schicht, gelesen als Datei statt behauptet.
+
+    `xdg-dbus-proxy` kennt keinen Verbots-Operator (man 1 xdg-dbus-proxy):
+    die Voreinstellung ist Verweigerung, erlaubt wird mit --see/--talk/--own/
+    --call. Ein `--call=X=none` ist deshalb KEIN Verbot, sondern eine
+    Erlaubnis fuer eine Methode namens "none" -- und ein ungueltiger
+    Diensteintrag, an dem der Proxy beim Start abbricht (Befund T-4.7 K3,
+    LEDGER-T-4.7.v.md). Das Verbot besteht in der ABWESENHEIT einer Regel.
+    """
     from pathlib import Path
     text = Path("config/dbus-filter.conf").read_text(encoding="utf-8")
     zeilen = [z.strip() for z in text.splitlines()
               if z.strip() and not z.strip().startswith("#")]
     assert "--filter" in zeilen
     assert "--log" in zeilen
-    assert any(z == "--call=org.kde.kwin.Scripting=none" for z in zeilen)
-    assert any(z == "--call=org.kde.KWin=none" for z in zeilen)
     # Positivkontrolle: der eine erlaubte Aufruf steht auch wirklich drin.
     assert any("invokeShortcut" in z for z in zeilen)
-    # Und nichts erlaubt Scripting.
-    assert not any("Scripting" in z and z.endswith(("@/", "Scripting"))
-                   for z in zeilen if "=none" not in z)
+    # Und nichts erlaubt Scripting oder KWin ausserhalb von kglobalaccel.
+    assert not any("Scripting" in z or "org.kde.KWin" in z for z in zeilen)

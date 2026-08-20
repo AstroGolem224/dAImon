@@ -1020,13 +1020,23 @@ Dazu ein globaler Hotkey, der beide Wahrnehmungs-Units stoppt, und ein Tray-Item
 NoNewPrivileges=yes
 CapabilityBoundingSet=
 ProtectSystem=strict
-ProtectProc=invisible
-ProcSubset=pid
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
 RestrictAddressFamilies=AF_UNIX
 InaccessiblePaths=%h/.ssh %h/.gnupg %h/.local/share/keyrings %h/.pki
 ```
+
+> **Berichtigt am 20.08. (Befund T-4.14 K1).** Hier standen zusätzlich
+> `ProtectProc=invisible` und `ProcSubset=pid`. Beide sind in einer
+> `--user`-Unit **wirkungslos** — `systemd.exec(5)` sagt es zu `ProcSubset=`
+> ausdrücklich: „it is only available to system services". Gemessen,
+> dreifach: `/proc/meminfo` und `/proc/1/cmdline` bleiben sichtbar, die
+> `/proc`-Mountoption im Lauf ist zeichengleich mit einem Lauf ganz ohne die
+> Direktiven, und `systemctl show` nimmt beide Zeilen trotzdem an (mit
+> `PrivateMounts=no` daneben) — eine Zusage, die sich gut liest und nichts
+> tut, ist schlimmer als keine. Zwei Wege führten heraus: die Basis
+> eindampfen, oder die betroffenen Dienste in den System-Manager verschieben.
+> Dieser Eintrag nimmt den ersten, als kleineren Eingriff.
 
 | Unit | Abweichung |
 |---|---|
@@ -1039,8 +1049,12 @@ InaccessiblePaths=%h/.ssh %h/.gnupg %h/.local/share/keyrings %h/.pki
 | `fs` | `ProtectHome=tmpfs` + enge `ReadWritePaths=` für Arbeits-, Trash- und Undo-Pfade |
 | `exec` | `ProtectHome=read-only`; gestartete Apps landen über `systemd-run --user` **außerhalb** dieser Sandbox |
 | `input` | `PrivateDevices=no`, `DeviceAllow=/dev/uinput rw`, `RuntimeMaxSec=` |
-| `gpu@` | `PrivateDevices=no` (braucht `/dev/nvidia*`), kein `MemoryDenyWriteExecute` |
-| `recorder` | `ProtectHome=tmpfs` + `ReadWritePaths=` nur fürs Archivverzeichnis; kein Netz; kein Modelltext |
+| `gpu@` | `PrivateDevices=no` (braucht `/dev/nvidia*`), kein `MemoryDenyWriteExecute` (CUDA-JIT braucht W+X), `SystemCallFilter` ohne `@resources` (ein CUDA-Prozess setzt Speicherlimits und Affinitäten; der Hub filtert stattdessen) |
+| `recorder` | `ProtectHome=tmpfs` + `ReadWritePaths=` nur fürs Archivverzeichnis; kein Netz; kein Modelltext; `SystemCallFilter` ohne `@resources` — `pw-dump` für die automatische Pause (T-7.3) ruft einen PipeWire-Client, der Echtzeitpriorität setzt und `mlock` ruft, beides liegt in `@resources` |
+| `stt` | `SystemCallFilter` ohne `@resources` — ein PipeWire-Client setzt Echtzeitpriorität und ruft `mlock`, beides liegt in `@resources`; gesperrt stirbt der Dienst mit `status=31/SYS` (gemessen) |
+| `tts` | dieselbe `@resources`-Ausnahme wie `stt`, aus demselben Grund (PipeWire-Client, gemessen mit `coredumpctl`) |
+| `lokal-broker` | `RestrictAddressFamilies=AF_UNIX AF_INET` — spricht mit Ollama auf `127.0.0.1` (siehe §7.2); die Loopback-Grenze steht im Code (`ZIEL` fest verdrahtet), nicht in `IPAddressAllow` — das ist in `--user`-Units wirkungslos |
+| `cli-broker` | **keine** `RestrictAddressFamilies`-Zeile — startet `claude -p`, „die CLI MUSS ins Netz" (siehe §7.2); `SystemCallFilter` ohne `@resources` (node heftet Threads an Kerne); kein `MemoryDenyWriteExecute` (node braucht seinen JIT); alle übrigen Basiszeilen gelten trotzdem |
 
 Unter voller Härtung getestet **[V]**: DBus funktioniert, Wayland-Socket sichtbar, `wl-paste` funktioniert; blockiert sind Schreiben in `$HOME` und `/dev/uinput`.
 

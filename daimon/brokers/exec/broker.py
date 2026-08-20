@@ -144,7 +144,15 @@ class ExecBroker:
         else:
             # `--collect` raeumt die transiente Unit nach dem Ende ab; ohne
             # das bliebe je Start eine tote Unit stehen.
+            #
+            # `KillMode=none`: `gio launch` gabelt die Anwendung und kehrt
+            # sofort zurueck. Ohne diese Zeile ist `gio` der Hauptprozess der
+            # transienten Unit, die Unit gilt mit seinem Ende als beendet,
+            # und systemd raeumt ihre cgroup ab -- samt der eben gestarteten
+            # Anwendung (Befund T-4.10 K4: `systemd-run` meldete `rc=0`, der
+            # Broker meldete `ok`, und nichts lief).
             argv = ["systemd-run", "--user", "--collect", "--quiet",
+                    "--property=KillMode=none",
                     f"--unit=daimon-app-{anwendung.dbus_name}",
                     "gio", "launch", str(anwendung.pfad)]
 

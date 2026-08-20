@@ -814,18 +814,63 @@ class Hub:
                 audit=self.audit_buch(),
                 broker=self._auftrag_zustellen,
                 vorschau=self._vorschau_bauen,
-                sprechen=self._sprechen)
+                sprechen=self._sprechen,
+                undo=self._undo_vorbereiten)
         return self._aktion
 
+    def _undo_vorbereiten(self, *, action_id: str, params: dict):
+        """T-4.8: das Artefakt VOR der Mutation. Faellt es, faellt die Aktion.
+
+        Wirft `UndoFehler`, und dann ruft der Koordinator den Broker
+        gar nicht erst. Eine Aktion, die nichts zu verlieren hat,
+        braucht kein Artefakt -- die steht hier nicht drin.
+        """
+        from daimon.brokers.fs import undo
+
+        ziel = Path(str((params or {}).get("pfad") or ""))
+        if action_id == "fs.file.delete":
+            return undo.vorbereiten("trash", quelle=ziel)
+        if action_id == "fs.file.write":
+            return undo.vorbereiten(
+                "kopie", quelle=ziel,
+                ablage=Path(self.cfg.state_dir) / "undo")
+        if action_id == "git.discard":
+            return undo.vorbereiten("git-stash", repo=ziel)
+        return None
+
     def _vorschau_bauen(self, *, action_id: str, params: dict) -> str:
-        """Feste Vorlage, escapte Werte (T-1.7). Kein Modelltext."""
-        from daimon.auth.preview import VorschauFehler, pfad_saeubern
+        """Feste Vorlage aus Design 2.4, escapte Werte (T-1.7). Kein Modelltext.
+
+        Bis zum 20.08. baute diese Methode ihren eigenen Text
+        (`f"Aktion: {action_id}..."`) statt `preview.vorschau()` zu rufen --
+        eine zweite Fassung derselben Regel, gemessen und benannt in
+        LEDGER-T-4.12.v.md (K6). Der Katalogeintrag entscheidet die
+        Umkehr-Beschriftung: eine Gegenaktion (`reversible_by`) heisst
+        `gegenaktion`, eine folgenlose Aktion ohne Gegenaktion `unkritisch`,
+        und `destructive: true` ohne Gegenaktion `keine`.
+        """
+        from daimon.auth.preview import VorschauFehler, pfad_saeubern, vorschau
+        from daimon.hub.policy import Policy
 
         try:
             ziel = pfad_saeubern(str(next(iter((params or {}).values()), "")))
         except VorschauFehler:
             ziel = "(unlesbar)"
-        return f"Aktion: {action_id}\n  Wert: \"{ziel}\""
+        eintrag = Policy.laden().katalog.get(action_id, {})
+        if eintrag.get("reversible_by"):
+            umkehr = "gegenaktion"
+        elif eintrag.get("destructive"):
+            umkehr = "keine"
+        else:
+            umkehr = "unkritisch"
+        try:
+            return vorschau(aktion=action_id, ziel=ziel, umkehr=umkehr)
+        except VorschauFehler:
+            # Ein unbekannter Aktionsschluessel ist nach Policy schon
+            # abgewiesen (unknown_action, deny) -- kommt er trotzdem hierher,
+            # zeigt diese Vorlage weder den rohen Schluessel noch bricht sie
+            # den Aktionsweg ab.
+            return "Ember will eine unbekannte Aktion ausführen. Bitte ablehnen."
 
     def _sprechen(self, text: str) -> None:
         """Ueber den TTS-Torwaechter, nicht am ihm vorbei.

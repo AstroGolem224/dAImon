@@ -133,12 +133,39 @@ AKTIONS_BESCHRIFTUNGEN: dict[str, str] = {
     "datei.verschieben": "Datei verschieben",
     "befehl.ausfuehren": "Befehl ausführen",
     "prozess.beenden": "Prozess beenden",
+    # config/actions/core.yaml -- der Katalog, den der Hub im Betrieb
+    # tatsaechlich anfragt (Befund T-4.12 K6: ohne diese Eintraege faellt
+    # `Hub._vorschau_bauen` auf einen selbstgebauten Text mit dem rohen
+    # Aktionsschluessel zurueck, statt diese Vorlage zu nutzen).
+    "media.playpause": "Wiedergabe pausieren oder fortsetzen",
+    "media.next": "Zum naechsten Titel springen",
+    "media.previous": "Zum vorigen Titel springen",
+    "media.stop": "Wiedergabe stoppen",
+    "media.seek.forward": "5 Sekunden vorspulen",
+    "media.seek.backward": "5 Sekunden zurueckspulen",
+    "audio.volume.up": "Lautstaerke erhoehen",
+    "audio.volume.down": "Lautstaerke verringern",
+    "audio.mute.toggle": "Stummschaltung umschalten",
+    "audio.volume.set": "Lautstaerke auf einen Wert setzen",
+    "kde.window.raise": "Fenster in den Vordergrund holen",
+    "desktop.next": "Zur naechsten Arbeitsflaeche wechseln",
+    "desktop.previous": "Zur vorigen Arbeitsflaeche wechseln",
+    "window.to_next_desktop": "Fenster auf die naechste Arbeitsflaeche verschieben",
+    "window.to_previous_desktop": "Fenster auf die vorige Arbeitsflaeche verschieben",
+    "screenshot.fullscreen": "Bildschirmfoto des ganzen Schirms erstellen",
+    "screenshot.region": "Bildschirmfoto eines Bereichs erstellen",
 }
 
 UMKEHR_BESCHRIFTUNGEN: dict[str, str] = {
     "papierkorb": "möglich (Papierkorb)",
     "git": "möglich (git)",
     "keine": "nicht möglich",
+    # Der Katalogeintrag nennt eine Gegenaktion (`reversible_by`), die
+    # dieselbe Wirkung aufhebt -- z. B. media.next/media.previous.
+    "gegenaktion": "möglich (Gegenaktion)",
+    # Kein `reversible_by` und nicht destruktiv: die Aktion aendert keinen
+    # Zustand, der eine Umkehr braucht (z. B. ein Bildschirmfoto).
+    "unkritisch": "nicht nötig (folgenlos)",
 }
 
 _VORLAGE = (
