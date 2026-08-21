@@ -54,6 +54,10 @@ MIND_SOCKET = "mind.sock"
 TICKET_SOCKET = "ticket.sock"
 EGRESS_SOCKET = "egress.sock"
 STATE_SOCKET = "state.sock"
+# T-4.16 K1: der einzige Weg zu einer Aktion. `daimon-mind.service` steht seit
+# diesem Zulauf in AKTION_UNITS (daimon/hub/daemon.py) -- vorher zu Recht
+# nicht, siehe der Kommentar dort ("wer den Zulauf baut, traegt ihn ein").
+AKTION_SOCKET = "aktion.sock"
 LISTEN_FDS_START = 3
 MAX_ZEILE = 1 << 20
 
@@ -95,6 +99,58 @@ def koerper_hash(koerper: object) -> str:
     return hashlib.sha256(roh).hexdigest()
 
 
+def _tool_schema(eintrag: dict) -> dict:
+    """Ein Katalogeintrag-`params` als Anthropic `input_schema`.
+
+    Dieselben zwei Typen wie in der Policy (`daimon/hub/policy.py:
+    _params_pruefen`) -- absichtlich dieselben, sonst waere das Schema, das
+    das Modell sieht, eine zweite Fassung der Schranke, die die Policy
+    tatsaechlich durchsetzt.
+    """
+    eigenschaften: dict = {}
+    pflicht: list = []
+    for name, regel in (eintrag.get("params") or {}).items():
+        art = regel.get("type")
+        if art in ("float", "int"):
+            js: dict = {"type": "number" if art == "float" else "integer"}
+            schranke = regel.get("value_between")
+            if schranke:
+                js["minimum"], js["maximum"] = schranke
+        elif art == "string":
+            js = {"type": "string"}
+            if regel.get("pattern"):
+                js["pattern"] = regel["pattern"]
+        else:
+            js = {}
+        eigenschaften[name] = js
+        if regel.get("required"):
+            pflicht.append(name)
+    schema = {"type": "object", "properties": eigenschaften}
+    if pflicht:
+        schema["required"] = pflicht
+    return schema
+
+
+def werkzeuge_aus_katalog(katalog: dict) -> tuple[list[dict], dict[str, str]]:
+    """Der freigegebene Katalog als Anthropic-Tool-Liste.
+
+    Anthropic-Werkzeugnamen erlauben keinen Punkt (`^[a-zA-Z0-9_-]+$`), eine
+    `action_id` wie `media.playpause` aber schon -- deshalb die Abbildung
+    zurueck, statt den Punkt fortzulassen und zwei IDs kollidieren zu lassen.
+    """
+    werkzeuge: list[dict] = []
+    namen: dict[str, str] = {}
+    for action_id, eintrag in sorted(katalog.items()):
+        name = action_id.replace(".", "_")
+        namen[name] = action_id
+        werkzeuge.append({
+            "name": name,
+            "description": (eintrag.get("rationale") or action_id).strip()[:1024],
+            "input_schema": _tool_schema(eintrag),
+        })
+    return werkzeuge, namen
+
+
 # Die Ausgabeform. Sie steht in der ANFRAGE, nicht in einer Filterstufe
 # danach -- am 09.08. live gelernt: Nordom antwortete zweizeilig, der
 # Validator aus T-3.9 wies `mehrzeilig` zurueck, und das Pet sagte den
@@ -128,6 +184,9 @@ class Mind:
     def __init__(self, *, hub_socket: str, egress_socket: str,
                  persona: Persona, modell: str = MODELL,
                  max_tokens: int = MAX_TOKENS,
+                 aktion_socket: str | None = None,
+                 werkzeuge: list[dict] | None = None,
+                 werkzeug_namen: dict[str, str] | None = None,
                  log: Logger | None = None) -> None:
         self.hub_socket = hub_socket
         self.egress_socket = egress_socket
@@ -136,8 +195,15 @@ class Mind:
         self.max_tokens = int(max_tokens)
         self.log = log or get_logger("daimon-mind")
         self.anfragen = 0
+        # T-4.16 K1: Durchgang 1, werkzeugfaehig. `aktion_socket` bleibt
+        # `None` erlaubt (Handlauf/Pruefstaende ohne Hub) -- `frage_werkzeug`
+        # weist dann klar ab statt am Verbindungsversuch zu haengen.
+        self.aktion_socket = aktion_socket
+        self._werkzeuge = werkzeuge or []
+        self._werkzeug_namen = werkzeug_namen or {}
 
-    def koerper(self, frage: str, kontext: dict | None = None) -> dict:
+    def koerper(self, frage: str, kontext: dict | None = None,
+                werkzeuge: list[dict] | None = None) -> dict:
         """Der API-Koerper. Der Systemprompt kommt WOERTLICH aus der Persona.
 
         `kontext` traegt in T-3.12 ausschliesslich **opake Referenzen**
@@ -145,6 +211,12 @@ class Mind:
         Fenstertitel, nie Bildschirmtext. Er wird als eigener, klar abgesetzter
         Block angehaengt und nicht in den Nutzertext gemischt: was das Modell
         als Anweisung lesen koennte, soll wenigstens sichtbar getrennt sein.
+
+        `werkzeuge` (T-4.16 K1) und `kontext` schliessen sich in der Praxis
+        aus: Durchgang 1 (werkzeugfaehig) sieht keinen markierten Inhalt,
+        Durchgang 2 (kontextfaehig) hat kein Schema fuer ein Werkzeug. Diese
+        Methode erzwingt das nicht -- der Aufrufer traegt die Zusage, wie
+        `daimon/mind/answer.py`'s Modulkopf es beschreibt.
         """
         inhalt = frage
         if kontext:
@@ -154,16 +226,86 @@ class Mind:
         # darueber. Der Systemprompt bleibt unberuehrt: T-3.10 gibt die Persona
         # WOERTLICH weiter, und eine Ausgabeform ist keine Persona.
         inhalt = f"{inhalt}\n\n{SPRECHFORM}"
-        return {
+        koerper: dict = {
             "model": self.modell,
             "max_tokens": self.max_tokens,
             "system": self.persona.prompt(),
             "messages": [{"role": "user", "content": inhalt}],
         }
+        if werkzeuge:
+            koerper["tools"] = werkzeuge
+        return koerper
 
     def frage_api(self, frage: str, kontext: dict | None = None) -> dict:
         """Der Weg nach draussen, wie ihn der Router benutzt."""
         return self.frage(frage, kontext)
+
+    def frage_werkzeug(self, frage: str) -> dict:
+        """T-4.16 K1, Durchgang 1: werkzeugfaehig, KEIN Kontext.
+
+        Erkennt der Antwortblock `tool_use`, wird die Aktion ueber
+        `aktion.sock` an den Koordinator gereicht -- `quelle="modell"` setzt
+        der Hub selbst (daemon.py:1049), diese Methode kann sie nicht
+        beeinflussen. Ein erfundener oder unbekannter Werkzeugname fuehrt zu
+        `tool_erkannt=False`, nicht zu einem Rateversuch.
+        """
+        if not isinstance(frage, str) or not frage.strip():
+            return {"v": 1, "ok": False, "grund": "keine_frage",
+                    "meldung": "Feld `text` fehlt oder ist leer"}
+        if not self._werkzeuge or not self.aktion_socket:
+            return {"v": 1, "ok": False, "grund": "kein_werkzeug",
+                    "meldung": "kein Katalog geladen oder kein aktion.sock"}
+
+        koerper = self.koerper(frage, werkzeuge=self._werkzeuge)
+        ticket = hub_anfrage(self.hub_socket, {
+            "v": 1, "art": "ausgeben", "zweck": "api",
+            "auftrag_hash": koerper_hash(koerper)})
+        if not ticket.get("ok"):
+            self.log.warn("Kein Kontingent", DAIMON_ACTION="mind_kein_ticket",
+                          DAIMON_GRUND=str(ticket.get("grund", ""))[:60])
+            return {"v": 1, "ok": False, "grund": "kein_kontingent",
+                    "meldung": str(ticket.get("grund", ""))[:120]}
+
+        antwort = hub_anfrage(self.egress_socket, {
+            "v": 1, "art": "anfrage", "ticket": ticket["ticket"],
+            "koerper": koerper})
+        self.anfragen += 1
+        if not antwort.get("ok"):
+            self.log.warn("Egress hat abgelehnt",
+                          DAIMON_ACTION="mind_werkzeug_abgelehnt",
+                          DAIMON_GRUND=str(antwort.get("grund", ""))[:60])
+            return {"v": 1, "ok": False, "grund": str(antwort.get("grund", "")),
+                    "meldung": str(antwort.get("meldung", ""))[:200]}
+
+        inhalt = (antwort.get("antwort") or {}).get("content")
+        bloecke = inhalt if isinstance(inhalt, list) else []
+        text = "\n".join(str(b.get("text", "")) for b in bloecke
+                         if isinstance(b, dict) and b.get("type") == "text").strip()
+        werkzeug = next((b for b in bloecke if isinstance(b, dict)
+                         and b.get("type") == "tool_use"), None)
+        if werkzeug is None:
+            return {"v": 1, "ok": True, "tool_erkannt": False, "antwort": text}
+
+        action_id = self._werkzeug_namen.get(str(werkzeug.get("name") or ""))
+        if action_id is None:
+            self.log.warn("Unbekanntes Werkzeug genannt",
+                          DAIMON_ACTION="mind_werkzeug_unbekannt",
+                          DAIMON_NAME=str(werkzeug.get("name"))[:60])
+            return {"v": 1, "ok": True, "tool_erkannt": False,
+                    "grund": "unbekanntes_werkzeug", "antwort": text}
+
+        lauf = hub_anfrage(self.aktion_socket, {
+            "v": 1, "art": "ausfuehren", "action_id": action_id,
+            "params": werkzeug.get("input") or {},
+            "tool_use_id": str(werkzeug.get("id") or "")})
+        self.log.info("Werkzeug ausgefuehrt", DAIMON_ACTION="mind_werkzeug",
+                      DAIMON_AKTION_ID=action_id[:60],
+                      DAIMON_AUSGEFUEHRT=str(bool(lauf.get("ausgefuehrt"))))
+        return {"v": 1, "ok": True, "tool_erkannt": True,
+                "action_id": action_id,
+                "ausgefuehrt": bool(lauf.get("ausgefuehrt")),
+                "verdikt": lauf.get("verdikt"), "grund": lauf.get("grund"),
+                "gesprochen": lauf.get("gesprochen"), "antwort": text}
 
     def frage(self, frage: object, kontext: dict | None = None) -> dict:
         if not isinstance(frage, str) or not frage.strip():
@@ -301,9 +443,25 @@ def main(argv: list[str] | None = None) -> int:
         # Persona ein Fehler ist, und dieser Dienst darf sie nicht umgehen.
         raise SystemExit(f"Persona nicht ladbar: {exc}")
 
+    # T-4.16 K1: derselbe freigegebene Katalog wie der Hub (Policy.laden()),
+    # nicht eine zweite Lesart derselben Datei. Scheitert das Laden, startet
+    # der Dienst trotzdem -- ohne Werkzeuge ist `frage_werkzeug` nur ohne
+    # Aktion nutzbar (`aktion_socket`/`_werkzeuge` bleiben leer).
+    werkzeuge: list[dict] = []
+    werkzeug_namen: dict[str, str] = {}
+    try:
+        from daimon.hub.policy import Policy
+        werkzeuge, werkzeug_namen = werkzeuge_aus_katalog(Policy.laden().katalog)
+    except Exception as exc:  # noqa: BLE001 -- Start darf davon nicht abhaengen
+        get_logger("daimon-mind").warn(
+            "Katalog fuer Werkzeuge nicht ladbar", DAIMON_ACTION="mind_start",
+            DAIMON_GRUND=f"{type(exc).__name__}: {str(exc)[:160]}")
+
     mind = Mind(
         hub_socket=args.hub_socket or str(cfg.runtime_dir / TICKET_SOCKET),
         egress_socket=args.egress_socket or str(cfg.runtime_dir / EGRESS_SOCKET),
+        aktion_socket=str(cfg.runtime_dir / AKTION_SOCKET),
+        werkzeuge=werkzeuge, werkzeug_namen=werkzeug_namen,
         persona=persona,
         modell=str(cfg.get("mind.modell", MODELL)),
         max_tokens=int(cfg.get("mind.max_tokens", MAX_TOKENS)))
@@ -313,10 +471,12 @@ def main(argv: list[str] | None = None) -> int:
     # wer das eine mit dem anderen mischt, hat zwei Zusagen an einer Stelle.
     # Seit T-3.13 sitzt zwischen Router und Mind der zweite Durchgang: der
     # Router waehlt den Weg, Durchgang 2 fuehrt ihn nach draussen -- ohne
-    # Werkzeugliste und mit einer Antwort, die nur Text sein kann.
+    # Werkzeugliste und mit einer Antwort, die nur Text sein kann. Durchgang 1
+    # (T-4.16 K1) ist `mind` selbst -- `Mind.frage_werkzeug` sieht dafuer nie
+    # den Kontext, den Durchgang 2 bekommt.
     router = Router(quellen=quellen_aus_umgebung(
         hub_socket=str(cfg.runtime_dir / STATE_SOCKET)),
-        mind=Durchgang2(mind=mind))
+        mind=Durchgang2(mind=mind), executor=mind)
 
     if args.frage is not None:
         antwort = router.frage({"v": 1, "art": "frage", "text": args.frage,

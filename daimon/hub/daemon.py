@@ -85,21 +85,20 @@ KONTEXT_UNITS = ("daimon-mind.service",)
 # Nachhinein sichtbar machen, wer gefragt hat. Einen Angreifer unter dieser
 # uid halten sie nicht auf, und das sollen sie nicht (DESIGN.md 1.3).
 
-# `aktion.sock` traegt ZWEI Dinge, und deshalb steht der Auth-Agent hier
+# `aktion.sock` traegt DREI Dinge, und deshalb steht der Auth-Agent hier
 # neben den Brokern: er fragt lesend, was offen ist (auth/agent.py:330); die
 # vier Aktionsbroker loesen ihr Ticket unmittelbar vor der Ausfuehrung ein
-# (brokers/dienst.py, brokers/dbus/daemon.py).
-#
-# NICHT dabei: `daimon-mind.service`. Der Modulkopf oben sagt "der Mind
-# schickt eine Zeile und bekommt eine zurueck" -- im Quelltext tut das
-# niemand, dasselbe Ergebnis wie beim Waechter aus T-4.4. Ihn vorsorglich
-# einzutragen hiesse, eine Liste zu fuehren, die etwas behauptet. Wer den
-# Zulauf baut, merkt es beim ersten Lauf und traegt ihn ein.
+# (brokers/dienst.py, brokers/dbus/daemon.py); `daimon-mind.service` schickt
+# seit T-4.16 K1 `art: "ausfuehren"` (`Mind.frage_werkzeug`, Durchgang 1) --
+# der Eintrag fehlte bis dahin ABSICHTLICH, siehe LEDGER-T-4.16.v.md K1: der
+# Zulauf existierte nicht, ihn vorsorglich einzutragen haette eine Liste
+# geführt, die etwas behauptet. Jetzt existiert er, jetzt steht er hier.
 AKTION_UNITS = (
     "daimon-auth.service",
     "daimon-dbus.service",
     "daimon-fs.service",
     "daimon-exec.service",
+    "daimon-mind.service",
     "daimon-input.service",
 )
 # T-3.11: die Kontingente. Vier Verbraucher, alle im Quelltext belegt.

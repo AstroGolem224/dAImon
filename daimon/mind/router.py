@@ -362,9 +362,15 @@ class Router:
     Umgebungsvariable darueber entscheidet, was echt ist.
     """
 
-    def __init__(self, *, quellen, mind, log=None, testprofil: bool = False):
+    def __init__(self, *, quellen, mind, executor=None, log=None,
+                 testprofil: bool = False):
         self._quellen = quellen
         self._mind = mind
+        # T-4.16 K1: der werkzeugfaehige Weg fuer `was == "aktion"`. Getrennt
+        # von `mind` (Durchgang 2, kontextfaehig/werkzeuglos) -- derselbe
+        # Schnitt wie in `daimon/mind/answer.py`'s Modulkopf. `None` bleibt
+        # gueltig: ein Router ohne Executor sagt es, statt es vorzutaeuschen.
+        self._executor = executor
         self._log = log
         self.testprofil = bool(testprofil) or bool(
             getattr(quellen, "testprofil", False))
@@ -505,12 +511,46 @@ class Router:
                     "antwort": "Was soll ich womit machen?",
                     "marke": "trusted", "api": False}
         if was == "aktion":
-            # Kein Executor existiert. Ein Router, der so tut, als koennte er
-            # handeln, ist schlimmer als einer, der es sagt.
-            return {"v": 1, "ok": True, "weg": "abgelehnt", "absicht": "aktion",
-                    "antwort": "Das kann ich noch nicht — es fehlt der "
-                               "Ausfuehrer.",
-                    "marke": "trusted", "api": False}
+            if self._executor is None:
+                # Kein Executor existiert. Ein Router, der so tut, als
+                # koennte er handeln, ist schlimmer als einer, der es sagt.
+                return {"v": 1, "ok": True, "weg": "abgelehnt",
+                        "absicht": "aktion",
+                        "antwort": "Das kann ich noch nicht — es fehlt der "
+                                   "Ausfuehrer.",
+                        "marke": "trusted", "api": False}
+            # T-4.16 K1: Durchgang 1. `text` ist an dieser Stelle `user_ptt`
+            # und nennt ein Ziel (beide oben geprueft) -- kein Kontext, keine
+            # Bildschirmreferenz geht mit, Design 5.2/Modulkopf answer.py.
+            ergebnis = self._executor.frage_werkzeug(text)
+            if not ergebnis.get("ok"):
+                grund = str(ergebnis.get("grund", ""))
+                if grund in ("kein_kontingent", "kontingent_fenster"):
+                    return self._nein("kein_kontingent", grund, weg="aktion",
+                                      antwort="Ich habe gerade kein "
+                                              "Kontingent.", marke="trusted")
+                return self._nein("egress_weg",
+                                  grund or "Egress hat abgelehnt",
+                                  weg="aktion",
+                                  antwort="Ich komme gerade nicht an die "
+                                          "API.", marke="trusted")
+            if not ergebnis.get("tool_erkannt"):
+                # Das Modell hat geantwortet, ohne ein Werkzeug zu waehlen --
+                # kein Fehler, nur keine Aktion. Freier Modelltext bleibt
+                # `tainted` wie jede Modellausgabe (Design 5.2).
+                text_antwort = str(ergebnis.get("antwort") or "").strip()
+                return {"v": 1, "ok": True, "weg": "aktion",
+                        "absicht": "aktion",
+                        "antwort": text_antwort or
+                                   "Dafuer habe ich kein passendes "
+                                   "Werkzeug gefunden.",
+                        "marke": "tainted" if text_antwort else "trusted",
+                        "api": True}
+            return {"v": 1, "ok": True, "weg": "aktion", "absicht": "aktion",
+                    "action_id": ergebnis.get("action_id"),
+                    "ausgefuehrt": ergebnis.get("ausgefuehrt"),
+                    "antwort": ergebnis.get("gesprochen") or "",
+                    "marke": "trusted", "api": True}
         if was != "api":
             return self._lokal(was)
         return self._api(text)
