@@ -164,14 +164,20 @@ class Koordinator:
                             outcome="denied")
                 lauf.grund = offen["grund"]
                 return self._melden(lauf, offen["grund"])
-            rueckfrage = self.consent.stellen(
-                action_id=action_id, params_hash=entscheidung.params_hash,
-                prompt_shown=prompt, absender="auth", jetzt=self.uhr())
-            lauf.dauer_ms["vorschau"] = round((self.uhr() - t) * 1000, 3)
-
             t = self.uhr()
-            antwort = self.consent_abwarten(rueckfrage)
-            self.schlange.rueckfrage_schliessen(tool_use_id)
+            try:
+                rueckfrage = self.consent.stellen(
+                    action_id=action_id, params_hash=entscheidung.params_hash,
+                    prompt_shown=prompt, absender="auth", jetzt=self.uhr())
+                lauf.dauer_ms["vorschau"] = round((self.uhr() - t) * 1000, 3)
+
+                t = self.uhr()
+                antwort = self.consent_abwarten(rueckfrage)
+            finally:
+                # Platz muss auch beim Fehler zwischen Oeffnen und Schliessen
+                # zurueckkommen (T-4.15.v K4: sonst wird aus der Obergrenze
+                # ein Countdown, der die Sitzung dauerhaft sperrt).
+                self.schlange.rueckfrage_schliessen(tool_use_id)
             lauf.dauer_ms["freigabe"] = round((self.uhr() - t) * 1000, 3)
             if antwort != "granted":
                 lauf.grund = antwort
@@ -211,7 +217,12 @@ class Koordinator:
         t = self.uhr()
         ergebnis = self.broker(auftrag)
         lauf.dauer_ms["broker"] = round((self.uhr() - t) * 1000, 3)
-        self.schlange.bestaetigen(auftrag.ticket, ok=bool(ergebnis.get("ok")))
+        # broker_weg/broker_antwort_unlesbar sind kein Urteil des Brokers,
+        # sondern das Ausbleiben eines Urteils -- bestaetigen() bleibt aus,
+        # das Ticket bleibt "unterwegs" und ausgang() liefert "unknown"
+        # (T-4.15.v K2: sonst nicht von einer echten Ablehnung zu unterscheiden).
+        if ergebnis.get("grund") not in ("broker_weg", "broker_antwort_unlesbar"):
+            self.schlange.bestaetigen(auftrag.ticket, ok=bool(ergebnis.get("ok")))
         lauf.ausgefuehrt = bool(ergebnis.get("ok"))
 
         # 5. Audit. Der Ausgang kommt aus der Schlange, nicht aus dem Broker:
