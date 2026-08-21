@@ -335,7 +335,8 @@ class Ohren:
         # Treffer, Timeout) faellt still auf den bisherigen Weg zurueck --
         # dieser Pfad ist eine Abkuerzung, keine neue Huerde.
         parser = self._ruf(str(self.runtime_dir / PARSER_SOCKET),
-                           {"v": 1, "art": "erkennen", "text": text})
+                           {"v": 1, "art": "erkennen", "text": text,
+                            "marke": marke})
         if parser.get("ok") and parser.get("erkannt"):
             self.log.info("Hub-Parser hat gewirkt", DAIMON_ACTION="ears_parser",
                           DAIMON_AKTION_ID=str(parser.get("action_id"))[:60])

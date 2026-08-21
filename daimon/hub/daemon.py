@@ -1512,6 +1512,17 @@ class Hub:
         text = anfrage.get("text")
         if not isinstance(text, str) or not text.strip():
             return {"v": 1, "ok": False, "grund": "kein_text"}
+        # T-4.16.v Runde 2, K3: `marken.aktuelle()` bleibt 120 s offen und
+        # wird vom Aktionspfad absichtlich nicht eingeloest ("sonst waere
+        # eine Runde mit zwei Aktionen nach der ersten tot", `_verarbeite_
+        # aktion`-Kommentar). Ohne diese Pruefung haette jede MITGEHOERTE
+        # Aeusserung in diesem Fenster gewirkt, ohne Vorschau -- derselbe
+        # Angriff, den T-4.19 fuer den Mind-Weg schon verbietet
+        # (`router.py`: `was == "aktion" and marke != "user_ptt"`). Der
+        # Hub-Parser ist der MAECHTIGERE Weg (keine Vorschau) und braucht
+        # mindestens dieselbe Schranke.
+        if str(anfrage.get("marke") or "") != "user_ptt":
+            return {"v": 1, "ok": True, "erkannt": False}
 
         normalisiert = " ".join(text.strip().lower().split())
         action_id = DIREKT_PHRASEN.get(normalisiert)
