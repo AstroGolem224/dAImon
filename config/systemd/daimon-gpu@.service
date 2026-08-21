@@ -57,8 +57,6 @@ ReadWritePaths=%t/daimon
 InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
 # Ein Modellprozess bekommt Nutzeraeusserungen zu sehen. Fremde Prozesse und
 # die Nicht-PID-Teile von /proc gehen ihn nichts an.
-ProtectProc=invisible
-ProcSubset=pid
 PrivateTmp=yes
 # Keine Core-Dumps: ein Dump enthielte den Audiopuffer.
 LimitCORE=0

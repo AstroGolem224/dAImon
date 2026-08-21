@@ -6,6 +6,7 @@ Ein Test haelt das fest: die Produzententabelle bleibt unveraendert.
 from __future__ import annotations
 
 import json
+import threading
 
 import pytest
 
@@ -62,6 +63,7 @@ def hub(tmp_path, monkeypatch, *, marke_gueltig=True, broker_ok=True,
     h.consent = zustimmung
     h.runtime_dir = tmp_path
     h._aktion = None
+    h._aktion_lock = threading.RLock()
     # Seit dem 17.08. teilen Aktionsweg und Gate EIN Audit -- eine
     # Kette, ein Objekt. `__new__` legt keine Attribute an, also
     # gehoert es hierher.

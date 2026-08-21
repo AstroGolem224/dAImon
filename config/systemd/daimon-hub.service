@@ -45,8 +45,6 @@ RuntimeDirectoryPreserve=yes
 ReadWritePaths=%t/daimon %h/.local/state/daimon
 InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
 # Fremde Prozesse und Nicht-PID-Teile von /proc sind fuer den Hub unsichtbar.
-ProtectProc=invisible
-ProcSubset=pid
 # Keine gemeinsam sichtbaren Temp-Dateien und keine Core-Dumps.
 PrivateTmp=yes
 LimitCORE=0

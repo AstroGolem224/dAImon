@@ -19,8 +19,6 @@ InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
 # "invisible" wuerde genau die zu messenden /proc/<pid>/stat-Dateien
 # verstecken. "ptraceable" laesst gleichbenutzereigene dAImon-Prozesse
 # sichtbar, verbirgt aber nicht ptracebare fremde Prozesse.
-ProtectProc=ptraceable
-ProcSubset=pid
 PrivateTmp=yes
 LimitCORE=0
 UMask=0077

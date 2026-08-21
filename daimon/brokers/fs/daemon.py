@@ -53,21 +53,40 @@ def main(argv: list[str] | None = None) -> int:
             return {"ok": False, "grund": "keine_operation",
                     "meldung": f"{auftrag.action_id} gibt es hier nicht"}
         relativ = str((auftrag.params or {}).get("pfad") or "")
-        wurzel = next((w for w in wurzeln), None)
+        schreibend = auftrag.action_id == "fs.file.write"
+        # Aufgeloest wird VOR der Ticket-Einloesung, nicht danach: sonst
+        # laege genau zwischen Genehmigung und Mutation eine Aufloesung, und
+        # das ist der Riss aus Befund T-4.9 K2. Jede der `--wurzel`-Angaben
+        # zaehlt, nicht nur die erste (derselbe Befund, K6) -- die naechste
+        # wird erst versucht, wenn die vorige unterhalb ihrer Wurzel nichts
+        # findet.
+        griff = None
+        letzter_fehler: OSError | None = None
+        for wurzel in wurzeln:
+            try:
+                griff = fs.aufloesen(wurzel, relativ, schreibend=schreibend)
+                break
+            except OSError as fehler:
+                letzter_fehler = fehler
+        if griff is None:
+            return {"ok": False, "grund": "fs",
+                    "meldung": str(letzter_fehler or "kein Ziel")[:160]}
         try:
-            dienst.ticket_beim_hub_einloesen(hub_pfad, auftrag.ticket)
-        except Exception as fehler:
-            return {"ok": False, "grund": "ticket", "meldung": str(fehler)[:160]}
-        try:
-            with fs.aufloesen(wurzel, relativ) as griff:
+            try:
+                dienst.ticket_beim_hub_einloesen(hub_pfad, auftrag.ticket)
+            except Exception as fehler:
+                return {"ok": False, "grund": "ticket", "meldung": str(fehler)[:160]}
+            try:
                 if auftrag.action_id == "fs.file.read":
                     inhalt = fs.lesen(griff, 64 * 1024)
                     return {"ok": True, "bytes": len(inhalt)}
                 geschrieben = fs.schreiben(
                     griff, str((auftrag.params or {}).get("inhalt") or "").encode())
                 return {"ok": True, "bytes": geschrieben}
-        except OSError as fehler:
-            return {"ok": False, "grund": "fs", "meldung": str(fehler)[:160]}
+            except OSError as fehler:
+                return {"ok": False, "grund": "fs", "meldung": str(fehler)[:160]}
+        finally:
+            griff.schliessen()
 
     log.info("FS-Broker bereit", DAIMON_WURZELN=",".join(str(w) for w in wurzeln))
     return dienst.lauf(pfad, verarbeite, log=log)

@@ -1,0 +1,39 @@
+[Unit]
+# T-4.7 — die zweite Schicht als eigene Unit, mit eigenem Zulauf.
+#
+# Ohne diese Unit startet niemand xdg-dbus-proxy: config/dbus-filter.conf war
+# eine Datei ohne Leser (Befund T-4.7 K3/K4). Hier hat sie einen, und der
+# DBus-Broker spricht über den Socket, den sie öffnet.
+Description=dAImon DBus-Proxy (Methodenfilter vor dem DBus-Broker)
+PartOf=graphical-session.target
+Before=daimon-dbus.service
+
+[Service]
+Type=simple
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+# `--args=FD` liest NUL-getrennte Argumente. Kommentar- und Leerzeilen aus
+# config/dbus-filter.conf fallen weg, der Rest geht als Argumentliste hinein.
+# --args=FD gehoert HINTER ADDRESS PATH: xdg-dbus-proxy liest die
+# Optionen [OPTION...] [ADDRESS PATH [OPTION...]...], --filter/--log/--call
+# sind Optionen DES BUS-PAARS, nicht global (man 1 xdg-dbus-proxy). Davor
+# gestellt meldet der Proxy "Unknown argument --filter" und startet nicht --
+# am 20.08. am laufenden Prozess nachgemessen.
+ExecStart=/bin/sh -c 'exec 3< <(grep -v "^[[:space:]]*\\(#\\|$$\\)" /home/itiger013/Dokumente/Github/dAImon/config/dbus-filter.conf | tr "\\n" "\\0"); exec xdg-dbus-proxy unix:path=%t/bus %t/daimon/dbus-proxy.sock --args=3'
+Restart=on-failure
+RestartSec=2
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateDevices=yes
+ReadWritePaths=%t/daimon
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+UMask=0077
+
+[Install]
+WantedBy=graphical-session.target

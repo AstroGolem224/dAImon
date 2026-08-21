@@ -312,9 +312,11 @@ def ohne_kommentare(text: str) -> str:
 
 def test_unit_ist_gehaertet():
     text = ohne_kommentare(UNIT_SERVICE.read_text())
+    # `ProtectProc=`/`ProcSubset=` sind in `--user`-Units wirkungslos
+    # (Befund T-4.14 K1, systemd.exec(5): "only available to system
+    # services") -- aus der Basis entfernt, nicht mehr erwartet.
     for direktive in ("NoNewPrivileges=yes", "CapabilityBoundingSet=",
                       "ProtectSystem=strict", "ProtectHome=read-only",
-                      "ProtectProc=invisible", "ProcSubset=pid",
                       "PrivateTmp=yes", "LimitCORE=0", "UMask=0077",
                       "RestrictAddressFamilies=AF_UNIX",
                       "MemoryDenyWriteExecute=yes", "PrivateDevices=yes",

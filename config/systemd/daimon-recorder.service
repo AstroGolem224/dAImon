@@ -74,8 +74,11 @@ RestrictAddressFamilies=AF_UNIX
 NoNewPrivileges=yes
 CapabilityBoundingSet=
 ProtectSystem=strict
-ProtectProc=invisible
-ProcSubset=pid
+# Die einzige Unit ohne diese Basiszeile (Befund T-4.14 K1). `ProtectHome=
+# tmpfs` verdeckt die Pfade zwar ohnehin -- Design 7.5 fuehrt beide
+# nebeneinander, damit eine spaetere Lockerung von ProtectHome nicht lautlos
+# ausfaellt (dieselbe Begruendung wie in daimon-fs.service).
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
 PrivateTmp=yes
 PrivateDevices=yes
 # Kein Core-Dump: er enthielte den Mitschnitt.

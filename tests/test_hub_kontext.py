@@ -7,6 +7,8 @@ pruefte der Rest nur, dass die Verdrahtung fehlt.
 """
 from __future__ import annotations
 
+import threading
+
 import pytest
 
 import daimon.hub.daemon as D
@@ -185,6 +187,7 @@ def test_der_speicher_wird_je_anfrage_von_der_platte_gelesen(tmp_path,
     # `audit_buch()`, und ein Stub ohne diese Felder pruefte einen Hub, den
     # es nicht gibt.
     stub._audit = None
+    stub._aktion_lock = threading.RLock()
     stub.cfg = type("Cfg", (), {"state_dir": tmp_path / "state"})()
     stub.marken = MarkenBuch(log=Log())
     stub.log, stub.diag = Log(), Diag()
@@ -235,6 +238,7 @@ def _audit_hub(tmp_path, monkeypatch):
     stub._gate = None
     stub._speicher = None
     stub._audit = None
+    stub._aktion_lock = threading.RLock()
     stub.cfg = type("Cfg", (), {"state_dir": tmp_path / "state"})()
     stub.marken = MarkenBuch(log=Log())
     stub.log, stub.diag = Log(), Diag()

@@ -43,8 +43,6 @@ RuntimeDirectory=daimon
 RuntimeDirectoryPreserve=yes
 ReadWritePaths=%t/daimon %h/.local/state/daimon/audit
 InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
-ProtectProc=invisible
-ProcSubset=pid
 PrivateTmp=yes
 LimitCORE=0
 # Insbesondere hook-token und Auditdatei muessen als 0600 entstehen.

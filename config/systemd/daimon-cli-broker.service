@@ -52,12 +52,16 @@ InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
 # Der API-Token des Egress geht diesen Prozess nichts an: er hat sein eigenes
 # Anmeldeverfahren, und zwei Wege zum selben Ziel sind einer zu viel.
 InaccessiblePaths=-%h/.config/daimon/anthropic-token
-ProtectProc=invisible
-ProcSubset=pid
 PrivateTmp=yes
 LimitCORE=0
 UMask=0077
 TimeoutStopSec=15
+# Design 7.5, Grundzeile fuer alle Units ausser egress (Befund T-4.14 K1).
+# OHNE `@resources`: node heftet Threads an Kerne (sched_setaffinity) --
+# gesperrt stuerbe der Prozess beim Start, dieselbe Klasse Problem wie beim
+# GPU-Worker mit CUDA. Die uebrigen sechs Gruppen gelten trotzdem.
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @obsolete @mount @swap @reboot @module
 
 # --- Was hier ABSICHTLICH FEHLT ------------------------------------------
 # Kein RestrictAddressFamilies=AF_UNIX: die CLI MUSS ins Netz. Das ist der
@@ -66,7 +70,7 @@ TimeoutStopSec=15
 #   solange diese Unit nicht laeuft.
 # Kein MemoryDenyWriteExecute: node braucht seinen JIT. Gemessen beim
 #   Ohren-Dienst, dieselbe Klasse Problem wie dort mit cffi.
-# Kein SystemCallFilter=~@resources: node heftet Threads an Kerne.
+# Kein SystemCallFilter=~@resources: node heftet Threads an Kerne (siehe oben).
 
 [Install]
 WantedBy=graphical-session.target

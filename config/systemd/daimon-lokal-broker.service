@@ -53,13 +53,11 @@ ReadWritePaths=%t/daimon
 InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
 # Der API-Token geht diesen Prozess nichts an: er ruft kein fremdes Ziel.
 InaccessiblePaths=-%h/.config/daimon/anthropic-token
-ProtectProc=invisible
-ProcSubset=pid
 PrivateTmp=yes
 LimitCORE=0
 UMask=0077
 SystemCallFilter=@system-service
-SystemCallFilter=~@privileged @obsolete @mount @swap @reboot @module
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
 MemoryDenyWriteExecute=yes
 # Kein Geraeteknoten: die GPU gehoert Ollama, nicht diesem Prozess. Er
 # schickt Text ueber einen Socket und bekommt Text zurueck.

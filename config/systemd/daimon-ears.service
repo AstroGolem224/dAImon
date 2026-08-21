@@ -45,8 +45,6 @@ ReadWritePaths=%t/daimon
 InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
 # Dieser Dienst hoert alles, was gesprochen wird. Fremde Prozesse und die
 # Nicht-PID-Teile von /proc gehen ihn nichts an.
-ProtectProc=invisible
-ProcSubset=pid
 PrivateTmp=yes
 # Keine Core-Dumps: ein Dump enthielte den Audiopuffer.
 LimitCORE=0
@@ -58,7 +56,7 @@ UMask=0077
 # davon, ob er ihn heute nutzt.
 RestrictAddressFamilies=AF_UNIX
 SystemCallFilter=@system-service
-SystemCallFilter=~@privileged @obsolete @mount @swap @reboot @module
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
 # MemoryDenyWriteExecute FEHLT hier, und das ist gemessen, nicht vergessen.
 # Mit der Direktive stirbt der erste Aufnahmeversuch:
 #

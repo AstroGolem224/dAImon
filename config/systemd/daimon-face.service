@@ -52,8 +52,6 @@ RuntimeDirectoryPreserve=yes
 # Menueeintrag. Der Mind liest die Auswahl beim Start vor der Konfiguration.
 ReadWritePaths=%t/daimon %h/.local/state/daimon
 InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
-ProtectProc=invisible
-ProcSubset=pid
 PrivateTmp=yes
 LimitCORE=0
 # Diagnose- und Steuersockets entstehen damit hoechstens als 0600.

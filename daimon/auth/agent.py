@@ -376,16 +376,24 @@ class AuthAgent:
             self.log.warn("Antwort verworfen", DAIMON_GRUND=str(fehler)[:120])
             return
         if antwort != modal.ANTWORT_AUSFUEHREN:
-            # Ablehnung und Abbruch werden NICHT gemeldet: der Hub kennt nur
-            # die Freigabe, alles andere laeuft dort in die Frist. Zwei Wege
-            # fuer "nein" waeren zwei Wege, auf denen sich etwas verheddern
-            # kann -- und der teure Fehler waere ein faelschlich gemeldetes Ja.
+            # Gemeldet wird trotzdem -- mit `antwort` in der Nachricht.
+            # Bis zum 20.08. kehrte diese Stelle wortlos zurueck: der Hub
+            # kennt dann nur die Freigabe, und ein Nein lief bei ihm in die
+            # 120s-Frist wie ein Wegklicken. Das Freigabebuch bleibt
+            # trotzdem unberuehrt (`daemon.py` liest `antwort` und ruft
+            # `freigaben.bestaetigen` nur beim impliziten oder expliziten
+            # `granted`) -- der teure Fehler waere weiter ein faelschlich
+            # gemeldetes Ja, nicht ein gemeldetes Nein (Befund T-4.11 K5/K9).
             self.log.info("Aktion nicht freigegeben",
                           DAIMON_ACTION="aktion_dialog",
                           DAIMON_ANTWORT=antwort)
+            self._an_hub("freigabe", {"nonce": rueckfrage.get("nonce", ""),
+                                      "action_hash": rueckfrage.get("action_hash", ""),
+                                      "antwort": antwort})
             return
         if self._an_hub("freigabe", {"nonce": rueckfrage.get("nonce", ""),
-                                     "action_hash": rueckfrage.get("action_hash", "")}):
+                                     "action_hash": rueckfrage.get("action_hash", ""),
+                                     "antwort": antwort}):
             self.freigaben_gesendet += 1
             self.log.info("Aktion freigegeben", DAIMON_ACTION="aktion_dialog")
 

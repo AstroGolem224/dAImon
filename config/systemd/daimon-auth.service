@@ -67,8 +67,6 @@ ProtectHome=read-only
 # des Projekts tragen den Praefix; diese hier war die Ausnahme.
 InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
 # Kein Mitsehen auf fremde Prozesse; /proc nur die eigene Sicht.
-ProtectProc=invisible
-ProcSubset=pid
 # Eigenes /tmp: ein Bestaetigungsdialog hat keinen Grund, fremde
 # Temp-Dateien zu sehen.
 PrivateTmp=yes

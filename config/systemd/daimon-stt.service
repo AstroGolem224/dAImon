@@ -47,8 +47,6 @@ ReadWritePaths=%t/daimon
 InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
 # Dieser Dienst sieht ALLES, was ins Mikrofon gesprochen wurde. Fremde Prozesse
 # und die Nicht-PID-Teile von /proc gehen ihn nichts an.
-ProtectProc=invisible
-ProcSubset=pid
 PrivateTmp=yes
 # Keine Core-Dumps: ein Dump enthielte den Audiopuffer und den Text.
 LimitCORE=0

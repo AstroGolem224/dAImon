@@ -9,7 +9,8 @@ Type=oneshot
 WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
 ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
     -m daimon.brokers.input.daemon \
-    --socket %t/daimon/input-broker.sock
+    --socket %t/daimon/input-broker.sock \
+    --katalog /home/itiger013/Dokumente/Github/dAImon/config/actions/core.yaml
 
 # Das Zwangsende. Der Broker beendet sich selbst nach seiner einen Folge --
 # diese Zeile ist für den Fall, dass er es nicht schafft. Ein Prozess, der
@@ -20,7 +21,15 @@ RuntimeMaxSec=30
 Restart=no
 
 NoNewPrivileges=yes
-PrivateDevices=yes
+# Design 7.5, Grundzeile fuer alle Units ausser egress (Befund T-4.14 K1).
+CapabilityBoundingSet=
+# Die EINE Ausnahme im ganzen Katalog (Design 7.5). `PrivateDevices=yes`
+# wuerde /dev/uinput mit ausblenden -- dann staende das DeviceAllow daneben
+# und gaelte nicht, und das waere die schlimmere Fassung: eine Regel, die
+# sich gut liest und nichts tut. Keine andere Unit traegt diese beiden
+# Zeilen (Befund T-4.13 K9).
+PrivateDevices=no
+DeviceAllow=/dev/uinput rw
 ProtectClock=yes
 ProtectControlGroups=yes
 ProtectHostname=yes
@@ -33,8 +42,6 @@ RuntimeDirectory=daimon
 RuntimeDirectoryPreserve=yes
 ReadWritePaths=%t/daimon
 InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
-ProtectProc=invisible
-ProcSubset=pid
 PrivateTmp=yes
 LimitCORE=0
 UMask=0077

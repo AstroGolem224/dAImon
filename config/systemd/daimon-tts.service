@@ -51,8 +51,6 @@ ReadWritePaths=%t/daimon
 InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
 # Dieser Dienst bekommt Antworten zu sehen, die aus Bildschirmmaterial stammen
 # koennen. Fremde Prozesse gehen ihn nichts an.
-ProtectProc=invisible
-ProcSubset=pid
 PrivateTmp=yes
 # Keine Core-Dumps: ein Dump enthielte den Sprechtext und die Samples.
 LimitCORE=0

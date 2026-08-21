@@ -93,18 +93,30 @@ def openat2(dirfd: int, name: str, *, flags: int = os.O_RDONLY,
 
 @dataclass
 class Griff:
-    """Ein einmal aufgeloester Ort: Verzeichnis-FD plus Name.
+    """Ein einmal aufgeloester Ort: Verzeichnis-FD, Name UND der bereits
+    geoeffnete Ziel-FD.
 
-    Nach dem Aufloesen wird der Pfad NICHT mehr angefasst. Alles Weitere
-    laeuft ueber `dirfd` -- das ist der Unterschied zwischen "die Datei, ueber
-    die entschieden wurde" und "die Datei, die jetzt unter dem Namen liegt".
+    Nach dem Aufloesen wird der Pfad NICHT mehr angefasst -- auch nicht der
+    letzte Namensteil. `fd` zeigt auf die Datei, ueber die entschieden wurde;
+    `lesen`/`schreiben` operieren auf diesem FD, nicht auf einem neuen
+    `openat2(dirfd, name)`. Ein zweiter Namenslookup zwischen Genehmigung und
+    Mutation liesse ein Hardlink- oder Verzeichnistausch-Angriff durch, den
+    `RESOLVE_NO_SYMLINKS` nicht sieht -- dort steht kein Symlink im Spiel
+    (Befund T-4.9 K2, LEDGER-T-4.9.v.md).
+
+    `dirfd` bleibt fuer `umbenennen()` erhalten, das `rename(2)` ueber
+    Verzeichnis-FDs braucht.
     """
 
     dirfd: int
+    fd: int
     name: str
     anzeige: str
 
     def schliessen(self) -> None:
+        if self.fd >= 0:
+            os.close(self.fd)
+            object.__setattr__(self, "fd", -1)
         if self.dirfd >= 0:
             os.close(self.dirfd)
             object.__setattr__(self, "dirfd", -1)
@@ -116,12 +128,19 @@ class Griff:
         self.schliessen()
 
 
-def aufloesen(wurzel: Path, relativ: str) -> Griff:
-    """Einmal aufloesen, unterhalb der Wurzel, ohne Symlinks.
+def aufloesen(wurzel: Path, relativ: str, *, schreibend: bool = False) -> Griff:
+    """Einmal aufloesen, unterhalb der Wurzel, ohne Symlinks -- BIS ZUR DATEI.
 
     `relativ` darf nicht absolut sein und kein `..` enthalten -- beides
     weist schon `RESOLVE_BENEATH` ab, aber eine Meldung, die den Grund nennt,
     ist besser als `EXDEV` aus dem Kernel.
+
+    Der letzte Namensteil wird HIER geoeffnet, nicht erst bei `lesen`/
+    `schreiben` -- sonst waere genau zwischen Genehmigung (Ticket) und
+    Mutation eine zweite Aufloesung noetig, und die ist der Riss aus K2.
+    Schreibend oeffnet **ohne** `O_TRUNC`: die Datei wird erst nach der
+    Ticket-Einloesung tatsaechlich geleert (in `schreiben`), ueber denselben
+    FD -- nicht per erneutem Pfadzugriff.
     """
     wurzel = Path(wurzel)
     teil = Path(relativ)
@@ -135,6 +154,7 @@ def aufloesen(wurzel: Path, relativ: str) -> Griff:
 
     wurzel_fd = os.open(wurzel, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
     aktuell = wurzel_fd
+    ziel_fd = -1
     try:
         for stueck in teil.parts[:-1]:
             naechster = openat2(aktuell, stueck,
@@ -142,9 +162,14 @@ def aufloesen(wurzel: Path, relativ: str) -> Griff:
             if aktuell != wurzel_fd:
                 os.close(aktuell)
             aktuell = naechster
-        return Griff(dirfd=aktuell, name=teil.parts[-1],
+        name = teil.parts[-1]
+        ziel_flags = os.O_RDWR if schreibend else os.O_RDONLY
+        ziel_fd = openat2(aktuell, name, flags=ziel_flags)
+        return Griff(dirfd=aktuell, fd=ziel_fd, name=name,
                      anzeige=str(wurzel / teil))
     except Exception:
+        if ziel_fd >= 0:
+            os.close(ziel_fd)
         if aktuell != wurzel_fd:
             os.close(aktuell)
         os.close(wurzel_fd)
@@ -152,22 +177,21 @@ def aufloesen(wurzel: Path, relativ: str) -> Griff:
 
 
 def lesen(griff: Griff, groesse: int = -1) -> bytes:
-    fd = openat2(griff.dirfd, griff.name, flags=os.O_RDONLY)
-    try:
-        with os.fdopen(fd, "rb", closefd=False) as fh:
-            return fh.read() if groesse < 0 else fh.read(groesse)
-    finally:
-        os.close(fd)
+    with os.fdopen(os.dup(griff.fd), "rb", closefd=True) as fh:
+        fh.seek(0)
+        return fh.read() if groesse < 0 else fh.read(groesse)
 
 
 def schreiben(griff: Griff, daten: bytes) -> int:
-    """Ueberschreibt die Datei AN DIESEM Griff -- nicht den Pfad."""
-    fd = openat2(griff.dirfd, griff.name,
-                 flags=os.O_WRONLY | os.O_TRUNC, mode=0o600)
-    try:
-        return os.write(fd, daten)
-    finally:
-        os.close(fd)
+    """Ueberschreibt die Datei AN DIESEM Griff -- nicht den Pfad.
+
+    Leert die Datei erst HIER (`ftruncate` auf dem schon offenen FD aus
+    `aufloesen`), nicht beim Oeffnen -- sonst waere ein Ticket-Fehlschlag
+    NACH dem Truncate ein Datenverlust ohne Genehmigung.
+    """
+    os.ftruncate(griff.fd, 0)
+    os.lseek(griff.fd, 0, os.SEEK_SET)
+    return os.write(griff.fd, daten)
 
 
 def umbenennen(griff: Griff, neuer_name: str) -> None:

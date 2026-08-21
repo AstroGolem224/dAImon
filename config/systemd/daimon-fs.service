@@ -18,6 +18,8 @@ Restart=on-failure
 RestartSec=2
 
 NoNewPrivileges=yes
+# Design 7.5, Grundzeile fuer alle Units ausser egress (Befund T-4.14 K1).
+CapabilityBoundingSet=
 PrivateDevices=yes
 ProtectClock=yes
 ProtectControlGroups=yes
@@ -71,8 +73,6 @@ RuntimeDirectory=daimon
 RuntimeDirectoryPreserve=yes
 ReadWritePaths=%t/daimon
 InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
-ProtectProc=invisible
-ProcSubset=pid
 PrivateTmp=yes
 LimitCORE=0
 UMask=0077

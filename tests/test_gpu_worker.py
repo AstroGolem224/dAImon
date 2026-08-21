@@ -420,9 +420,10 @@ def test_unit_uebergibt_die_instanz_als_modell():
 
 def test_unit_ist_gehaertet():
     text = ohne_kommentare(UNIT.read_text())
+    # ProtectProc=/ProcSubset= wirkungslos in --user Units (T-4.14 K1,
+    # systemd.exec(5): "only available to system services") - entfernt.
     for direktive in ("NoNewPrivileges=yes", "CapabilityBoundingSet=",
                       "ProtectSystem=strict", "ProtectHome=read-only",
-                      "ProtectProc=invisible", "ProcSubset=pid",
                       "PrivateTmp=yes", "LimitCORE=0", "UMask=0077",
                       "RestrictAddressFamilies=AF_UNIX"):
         assert direktive in text, direktive

@@ -65,8 +65,6 @@ ReadWritePaths=%t/daimon
 InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
 # Dieser Dienst haelt ein Geheimnis. Fremde Prozesse gehen ihn nichts an, und er
 # soll fuer fremde Prozesse auch nicht sichtbar sein.
-ProtectProc=invisible
-ProcSubset=pid
 PrivateTmp=yes
 # KEINE Core-Dumps. Ein Dump dieses Prozesses enthaelt den Token im Klartext --
 # das ist hier keine Vorsichtsmassnahme, sondern die Zusage selbst.

@@ -21,6 +21,7 @@ Diese Datei fährt die Naht: manipulierte Kette -> `_audit_pruefen` ->
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,7 @@ def _hub(tmp_path) -> D.Hub:
     h.log = _Log()
     h.state = HubState()
     h._audit = None
+    h._aktion_lock = threading.RLock()
 
     class Cfg:
         state_dir = tmp_path / "state"

@@ -93,8 +93,6 @@ ProtectHome=read-only
 RuntimeDirectory=daimon
 RuntimeDirectoryPreserve=yes
 ReadWritePaths=%t/daimon
-ProtectProc=invisible
-ProcSubset=pid
 PrivateTmp=yes
 # Ein Dump enthielte den Persona-Prompt und die Frage des Nutzers.
 LimitCORE=0

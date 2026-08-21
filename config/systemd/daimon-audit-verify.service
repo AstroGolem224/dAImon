@@ -41,8 +41,6 @@ ProtectHome=read-only
 # KEIN ReadWritePaths. Wer das ergaenzt, nimmt dieser Unit ihren Sinn.
 InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
 InaccessiblePaths=-%h/.config/daimon/anthropic-token
-ProtectProc=invisible
-ProcSubset=pid
 PrivateTmp=yes
 PrivateDevices=yes
 LimitCORE=0

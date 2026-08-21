@@ -309,6 +309,13 @@ class Hub:
         # T-4.16: erst beim ersten Aufruf gebaut, siehe `_aktionsteile`.
         self._aktion = None
         self.consent = None
+        # `aktion.sock` bedient nebenlaeufig (ein Thread je Verbindung).
+        # Ohne dieses Schloss bauen zwei gleichzeitige ERSTE Aktions-
+        # anfragen je eigene Koordinatoren/Consents/Schlangen/Auftrags-
+        # buecher und mehrere Audit-Objekte auf demselben Verzeichnis
+        # (Befund T-4.11 K8) -- `audit_buch()` sagt im eigenen Docstring,
+        # warum das kaputt ist.
+        self._aktion_lock = threading.RLock()
         self._gpu_lock = threading.Lock()
         self._gpu_sperre: tuple[str, float] | None = None
         self.gpu_frist_s = float(self.cfg.get("gpu.sperrfrist_s", GPU_FRIST_S))
@@ -534,8 +541,9 @@ class Hub:
         elif typ == "freigabe":
             self.diag.zaehle("aktionsfreigabe", "abgelehnt")
 
-    def _rueckfrage_schliessen(self, nonce: str) -> None:
-        """Die zum Nonce gehoerende Rueckfrage auf `granted` setzen.
+    def _rueckfrage_schliessen(self, nonce: str, *,
+                               zustand: str = "granted") -> None:
+        """Die zum Nonce gehoerende Rueckfrage auf `zustand` setzen.
 
         Ohne offene Rueckfrage passiert nichts -- der eingefrorene Pruefstand
         T-1.7 schickt Freigaben ohne Rueckfrage, und die sollen weiter genau
@@ -550,7 +558,7 @@ class Hub:
             self.consent.antwort(rueckfrage_id=rueckfrage.id,
                                  nonce=rueckfrage.nonce,
                                  absender=rueckfrage.absender,
-                                 zustand="granted", jetzt=time.monotonic())
+                                 zustand=zustand, jetzt=time.monotonic())
         except Exception as fehler:
             self.log.warn("Rueckfrage nicht schliessbar",
                           DAIMON_GRUND=str(fehler)[:120])
@@ -584,17 +592,32 @@ class Hub:
                                      turn_id=secrets.token_hex(16))
                 self.diag.zaehle("rundenmarke", "ausgegeben")
             else:  # "freigabe"
-                # Nonce und Hash kommen aus der Nachricht, alles andere
-                # nicht.
-                self.freigaben.bestaetigen(
-                    nonce=p.get("nonce", ""),
-                    action_hash=p.get("action_hash", ""))
-                self.diag.zaehle("aktionsfreigabe", "ausgegeben")
-                # Und dieselbe Antwort schliesst die offene Rueckfrage, falls
-                # es eine gibt. REIHENFOLGE: erst das Buch, dann hier. Das
-                # Buch ist die eingefrorene Zusage aus T-1.7; scheitert es,
-                # darf hier nichts passiert sein.
-                self._rueckfrage_schliessen(p.get("nonce", ""))
+                # `antwort` fehlt -> `granted` (T-1.7 ist eingefroren und
+                # schickt das Feld nie; sie soll weiter genau wie bisher
+                # laufen). Bei `declined`/`cancelled` bleibt das
+                # FREIGABEBUCH UNBERUEHRT -- ein Nein erzeugt keine
+                # Freigabe (Befund T-4.11 K5/K9); nur die offene Rueckfrage
+                # wird mit genau diesem Zustand geschlossen.
+                antwort = str(p.get("antwort") or "granted")
+                if antwort == "granted":
+                    # Nonce und Hash kommen aus der Nachricht, alles andere
+                    # nicht.
+                    self.freigaben.bestaetigen(
+                        nonce=p.get("nonce", ""),
+                        action_hash=p.get("action_hash", ""))
+                    self.diag.zaehle("aktionsfreigabe", "ausgegeben")
+                    # REIHENFOLGE: erst das Buch, dann hier. Das Buch ist die
+                    # eingefrorene Zusage aus T-1.7; scheitert es, darf hier
+                    # nichts passiert sein.
+                    self._rueckfrage_schliessen(p.get("nonce", ""),
+                                                zustand="granted")
+                elif antwort in ("declined", "cancelled"):
+                    self.diag.zaehle("aktionsfreigabe", "abgelehnt")
+                    self._rueckfrage_schliessen(p.get("nonce", ""),
+                                                zustand=antwort)
+                else:
+                    self.log.warn("Unbekannte Antwort verworfen",
+                                  DAIMON_ANTWORT=antwort[:40])
             return True
         except MarkenFehler as exc:
             self.log.warn("Auth-Anfrage abgewiesen, Verbindung ab",
@@ -772,51 +795,58 @@ class Hub:
         stirbt an einer kaputten `core.yaml`, auch wenn nie eine Aktion
         kommt. Die Anzeige der Sitzungen ist das taegliche Versprechen; sie
         darf nicht an einer Datei haengen, die nur der Aktionspfad braucht.
+
+        Unter `self._aktion_lock`: `aktion.sock` bedient nebenlaeufig, und
+        zwei gleichzeitige ERSTE Aufrufe bauten sonst zwei Koordinatoren mit
+        je eigenem Consent/Schlange/Auftragsbuch (Befund T-4.11 K8).
         """
-        if self.consent is None:
-            from daimon.hub.consent import Consent
-            # EIN Buch: die Autoritaet bleibt `self.freigaben` (T-1.7,
-            # eingefroren). Consent haelt daneben nur, was dort fehlt --
-            # offene Rueckfragen, Absender, Persistenz und den Unterschied
-            # zwischen `declined` und `cancelled`.
-            self.consent = Consent.laden(Path(self.cfg.state_dir) / "consent",
-                                         buch=self.freigaben)
-        if self._aktion is None:
-            from daimon.hub.action_queue import Aktionsschlange
-            from daimon.hub.coordinator import Koordinator
-            from daimon.hub.order import Auftragsbuch
-            from daimon.hub.policy import Policy
+        with self._aktion_lock:
+            if self.consent is None:
+                from daimon.hub.consent import Consent
+                # EIN Buch: die Autoritaet bleibt `self.freigaben` (T-1.7,
+                # eingefroren). Consent haelt daneben nur, was dort fehlt --
+                # offene Rueckfragen, Absender, Persistenz und den
+                # Unterschied zwischen `declined` und `cancelled`.
+                self.consent = Consent.laden(
+                    Path(self.cfg.state_dir) / "consent",
+                    buch=self.freigaben)
+            if self._aktion is None:
+                from daimon.hub.action_queue import Aktionsschlange
+                from daimon.hub.coordinator import Koordinator
+                from daimon.hub.order import Auftragsbuch
+                from daimon.hub.policy import Policy
 
-            hub = self
+                hub = self
 
-            class HubKoordinator(Koordinator):
-                def consent_abwarten(self, rueckfrage):
-                    # Der Weg zum Menschen: die Rueckfrage steht offen, der
-                    # Auth-Agent zeigt sie und meldet die Antwort ueber
-                    # seinen `freigabe`-Produzentenpfad zurueck. Hier wird
-                    # gewartet -- in DIESEM Thread, nicht in der
-                    # Hauptschleife; `aktion.sock` bedient je Verbindung.
-                    #
-                    # Keine Antwort ist `cancelled` und kein `declined`. Ein
-                    # Zeitablauf ist kein Nein.
-                    hub.log.info("Rueckfrage offen",
-                                 DAIMON_ACTION="aktion_rueckfrage",
-                                 DAIMON_RUECKFRAGE=rueckfrage.id)
-                    return hub.consent.warten(
-                        rueckfrage, timeout_s=RUECKFRAGE_FRIST_S)
+                class HubKoordinator(Koordinator):
+                    def consent_abwarten(self, rueckfrage):
+                        # Der Weg zum Menschen: die Rueckfrage steht offen,
+                        # der Auth-Agent zeigt sie und meldet die Antwort
+                        # ueber seinen `freigabe`-Produzentenpfad zurueck.
+                        # Hier wird gewartet -- in DIESEM Thread, nicht in
+                        # der Hauptschleife; `aktion.sock` bedient je
+                        # Verbindung.
+                        #
+                        # Keine Antwort ist `cancelled` und kein `declined`.
+                        # Ein Zeitablauf ist kein Nein.
+                        hub.log.info("Rueckfrage offen",
+                                     DAIMON_ACTION="aktion_rueckfrage",
+                                     DAIMON_RUECKFRAGE=rueckfrage.id)
+                        return hub.consent.warten(
+                            rueckfrage, timeout_s=RUECKFRAGE_FRIST_S)
 
-            self._aktion = HubKoordinator(
-                policy=Policy.laden(),
-                consent=self.consent,
-                auftragsbuch=Auftragsbuch(),
-                schlange=Aktionsschlange(),
-                # DASSELBE Audit wie das Gate -- eine Kette, ein Objekt.
-                audit=self.audit_buch(),
-                broker=self._auftrag_zustellen,
-                vorschau=self._vorschau_bauen,
-                sprechen=self._sprechen,
-                undo=self._undo_vorbereiten)
-        return self._aktion
+                self._aktion = HubKoordinator(
+                    policy=Policy.laden(),
+                    consent=self.consent,
+                    auftragsbuch=Auftragsbuch(),
+                    schlange=Aktionsschlange(),
+                    # DASSELBE Audit wie das Gate -- eine Kette, ein Objekt.
+                    audit=self.audit_buch(),
+                    broker=self._auftrag_zustellen,
+                    vorschau=self._vorschau_bauen,
+                    sprechen=self._sprechen,
+                    undo=self._undo_vorbereiten)
+            return self._aktion
 
     def _undo_vorbereiten(self, *, action_id: str, params: dict):
         """T-4.8: das Artefakt VOR der Mutation. Faellt es, faellt die Aktion.
@@ -1250,11 +1280,18 @@ class Hub:
         "was hat es wann freigegeben" war unbeantwortbar. Jede Freigabe und
         jede Ablehnung soll protokolliert werden (declassify.py); im Betrieb
         wurde nichts geschrieben, weil `_schreiben` still auf `None` lief.
+
+        Unter `self._aktion_lock` (RLock -- `_aktionsteile()` ruft diese
+        Methode bereits innerhalb desselben Locks): ohne die Sperre bauten
+        zwei gleichzeitige erste Aufrufer je ein eigenes Audit-Objekt auf
+        demselben Verzeichnis -- zwei Ketten, die sich gegenseitig
+        ueberschreiben (Befund T-4.11 K8).
         """
-        if self._audit is None:
-            from daimon.hub.audit import Audit
-            self._audit = Audit.oeffnen(Path(self.cfg.state_dir) / "audit")
-        return self._audit
+        with self._aktion_lock:
+            if self._audit is None:
+                from daimon.hub.audit import Audit
+                self._audit = Audit.oeffnen(Path(self.cfg.state_dir) / "audit")
+            return self._audit
 
     def audit_verankern(self) -> dict:
         """Die Kette pruefen und ihren Kopf ins Journal schreiben.

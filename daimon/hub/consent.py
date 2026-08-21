@@ -95,6 +95,13 @@ class Consent:
     # eingefrorene Zusage aus T-1.7 haengt an diesem hier.
     buch: Any = None
     _wecker: dict = field(default_factory=dict)
+    # `aktion.sock` bedient nebenlaeufig -- ein Thread je Verbindung
+    # (`daemon.py`: "der Broker loest sein Ticket ueber DENSELBEN Socket
+    # ein, waehrend der Hub noch im Auftrag steckt"). Ohne dieses Schloss
+    # zerstoeren zwei gleichzeitige `stellen()` einander ueber `_speichern`
+    # (Befund T-4.11 K8).
+    _lock: Any = field(default_factory=threading.RLock, repr=False,
+                       compare=False)
 
     @classmethod
     def laden(cls, verzeichnis: Path | str, *, buch: Any = None) -> "Consent":
@@ -115,7 +122,17 @@ class Consent:
         return selbst
 
     def _speichern(self) -> None:
-        vorlaeufig = self.pfad.with_suffix(".json.neu")
+        """Aufgerufen unter `self._lock`. Ein je-Schreiber-eigener
+        Zwischenname (statt eines festen `.json.neu`): zwei gleichzeitige
+        Aufrufe schrieben sonst dieselbe Datei, und der zweite `replace`
+        traf ins Leere (Befund T-4.11 K8) -- der Aufrufer war ohnehin schon
+        gesperrt, aber derselbe Prozess kann `_speichern` aus verschiedenen
+        Threads OHNE das Schloss nicht sicher aufrufen, wenn diese Methode
+        je selbststaendig aufgerufen wuerde. Eindeutig macht sie trotzdem
+        PID plus Thread-ID.
+        """
+        vorlaeufig = self.pfad.with_suffix(
+            f".json.{os.getpid()}.{threading.get_ident()}.neu")
         vorlaeufig.write_text(
             json.dumps([asdict(r) for r in self.offen.values()],
                        ensure_ascii=False), encoding="utf-8")
@@ -128,69 +145,75 @@ class Consent:
                 absender: str, jetzt: float, frist_s: float = VORGABE_FRIST_S
                 ) -> Rueckfrage:
         """Eine neue Rueckfrage. Mehrere gleichzeitig sind unterscheidbar."""
-        hash_ = action_hash(action_id, params_hash)
-        # Die Nonce kommt aus dem Freigabebuch, wenn es eines gibt: der
-        # Auth-Agent bestaetigt spaeter GEGEN dieses Buch, und eine hier
-        # erfundene Nonce waere dort unbekannt.
-        nonce = (self.buch.nonce_ausgeben(action_hash=hash_) if self.buch
-                 else secrets.token_urlsafe(32))
-        rueckfrage = Rueckfrage(
-            id=secrets.token_urlsafe(12), nonce=nonce,
-            action_id=action_id, params_hash=params_hash,
-            action_hash=hash_,
-            prompt_shown=prompt_shown, absender=absender,
-            frist=float(jetzt) + float(frist_s))
-        self.offen[rueckfrage.id] = rueckfrage
-        self._wecker[rueckfrage.id] = threading.Event()
-        self._speichern()
-        return rueckfrage
+        with self._lock:
+            hash_ = action_hash(action_id, params_hash)
+            # Die Nonce kommt aus dem Freigabebuch, wenn es eines gibt: der
+            # Auth-Agent bestaetigt spaeter GEGEN dieses Buch, und eine hier
+            # erfundene Nonce waere dort unbekannt.
+            nonce = (self.buch.nonce_ausgeben(action_hash=hash_) if self.buch
+                     else secrets.token_urlsafe(32))
+            rueckfrage = Rueckfrage(
+                id=secrets.token_urlsafe(12), nonce=nonce,
+                action_id=action_id, params_hash=params_hash,
+                action_hash=hash_,
+                prompt_shown=prompt_shown, absender=absender,
+                frist=float(jetzt) + float(frist_s))
+            self.offen[rueckfrage.id] = rueckfrage
+            self._wecker[rueckfrage.id] = threading.Event()
+            self._speichern()
+            return rueckfrage
 
     # -- Beantworten --------------------------------------------------------
 
     def antwort(self, *, rueckfrage_id: str, nonce: str, absender: str,
                 zustand: str, jetzt: float) -> Rueckfrage:
-        if zustand not in (ZUSTIMMUNG, ABLEHNUNG, ABBRUCH):
-            raise ConsentFehler(f"unbekannter Zustand {zustand!r}")
-        rueckfrage = self.offen.get(rueckfrage_id)
-        if rueckfrage is None:
-            raise ConsentFehler("unbekannte oder bereits beantwortete Rueckfrage")
-        # Beide Bedingungen, und beide mit konstanter Laufzeit verglichen:
-        # ein Vergleich, der beim ersten falschen Zeichen abbricht, verraet
-        # die Nonce zeichenweise.
-        if not secrets.compare_digest(rueckfrage.nonce, str(nonce)):
-            raise ConsentFehler("Nonce passt nicht")
-        if not secrets.compare_digest(rueckfrage.absender, str(absender)):
-            raise ConsentFehler(
-                f"Absender {absender!r} ist nicht der, an den gefragt wurde")
-        if float(jetzt) > rueckfrage.frist:
-            # Abgelaufen ist `cancelled`, egal was der Absender behauptet --
-            # auch ein "granted", das nach der Frist eintrifft.
-            zustand = ABBRUCH
+        with self._lock:
+            if zustand not in (ZUSTIMMUNG, ABLEHNUNG, ABBRUCH):
+                raise ConsentFehler(f"unbekannter Zustand {zustand!r}")
+            rueckfrage = self.offen.get(rueckfrage_id)
+            if rueckfrage is None:
+                raise ConsentFehler(
+                    "unbekannte oder bereits beantwortete Rueckfrage")
+            # Beide Bedingungen, und beide mit konstanter Laufzeit
+            # verglichen: ein Vergleich, der beim ersten falschen Zeichen
+            # abbricht, verraet die Nonce zeichenweise.
+            if not secrets.compare_digest(rueckfrage.nonce, str(nonce)):
+                raise ConsentFehler("Nonce passt nicht")
+            if not secrets.compare_digest(rueckfrage.absender, str(absender)):
+                raise ConsentFehler(
+                    f"Absender {absender!r} ist nicht der, an den gefragt "
+                    f"wurde")
+            if float(jetzt) > rueckfrage.frist:
+                # Abgelaufen ist `cancelled`, egal was der Absender
+                # behauptet -- auch ein "granted", das nach der Frist
+                # eintrifft.
+                zustand = ABBRUCH
 
-        rueckfrage.zustand = zustand
-        rueckfrage.beantwortet = float(jetzt)
-        del self.offen[rueckfrage_id]
-        wecker = self._wecker.pop(rueckfrage_id, None)
-        if wecker is not None:
-            wecker.set()
-        if zustand == ZUSTIMMUNG:
-            # EINMALIG und an die Tat gebunden, nicht an die Rueckfrage.
-            self._freigaben[rueckfrage.action_hash] = {
-                "id": rueckfrage.id, "verbraucht": False,
-                "frist": rueckfrage.frist}
-        self._speichern()
-        return rueckfrage
+            rueckfrage.zustand = zustand
+            rueckfrage.beantwortet = float(jetzt)
+            del self.offen[rueckfrage_id]
+            wecker = self._wecker.pop(rueckfrage_id, None)
+            if wecker is not None:
+                wecker.set()
+            if zustand == ZUSTIMMUNG:
+                # EINMALIG und an die Tat gebunden, nicht an die Rueckfrage.
+                self._freigaben[rueckfrage.action_hash] = {
+                    "id": rueckfrage.id, "verbraucht": False,
+                    "frist": rueckfrage.frist}
+            self._speichern()
+            return rueckfrage
 
     def ablaufen_lassen(self, *, jetzt: float) -> list[Rueckfrage]:
         """Was ueber der Frist liegt, wird `cancelled` -- nicht `declined`."""
-        faellig = [r for r in self.offen.values() if jetzt > r.frist]
-        for r in faellig:
-            r.zustand = ABBRUCH
-            r.beantwortet = float(jetzt)
-            del self.offen[r.id]
-        if faellig:
-            self._speichern()
-        return faellig
+        with self._lock:
+            faellig = [r for r in self.offen.values() if jetzt > r.frist]
+            for r in faellig:
+                r.zustand = ABBRUCH
+                r.beantwortet = float(jetzt)
+                del self.offen[r.id]
+            if faellig:
+                self._speichern()
+            return faellig
 
     # -- Einloesen ----------------------------------------------------------
 
@@ -228,9 +251,13 @@ class Consent:
         Nein. Der Aufrufer sitzt in einem eigenen Thread des Hubs; die
         Hauptschleife bleibt frei.
         """
-        wecker = self._wecker.get(rueckfrage.id)
+        with self._lock:
+            wecker = self._wecker.get(rueckfrage.id)
         if wecker is None:
             return rueckfrage.zustand
+        # `wait()` blockiert absichtlich AUSSERHALB des Schlosses -- sonst
+        # haelt dieser Thread es fuer bis zu `timeout_s` und jede
+        # gleichzeitige Rueckfrage muesste darauf warten.
         if not wecker.wait(timeout_s):
             self.ablaufen_lassen(jetzt=rueckfrage.frist + 1.0)
             return ABBRUCH
@@ -238,9 +265,10 @@ class Consent:
 
     def antwort_zu_nonce(self, nonce: str) -> Rueckfrage | None:
         """Die offene Rueckfrage zu einer Nonce -- fuer den Weg vom Auth."""
-        for r in self.offen.values():
-            if secrets.compare_digest(r.nonce, str(nonce)):
-                return r
+        with self._lock:
+            for r in self.offen.values():
+                if secrets.compare_digest(r.nonce, str(nonce)):
+                    return r
         return None
     def hat_freigabe(self, *, action_id: str, params_hash: str) -> bool:
         eintrag = self._freigaben.get(action_hash(action_id, params_hash))

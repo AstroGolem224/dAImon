@@ -567,9 +567,10 @@ def test_egress_hat_netz_und_den_token_ueber_credentials():
                                   "daimon-mind.service"])
 def test_beide_units_sind_gehaertet(unit):
     text = ohne_kommentare((REPO / "config/systemd" / unit).read_text())
+    # ProtectProc=/ProcSubset= wirkungslos in --user Units (T-4.14 K1,
+    # systemd.exec(5): "only available to system services") - entfernt.
     for direktive in ("NoNewPrivileges=yes", "CapabilityBoundingSet=",
                       "ProtectSystem=strict", "ProtectHome=read-only",
-                      "ProtectProc=invisible", "ProcSubset=pid",
                       "PrivateTmp=yes", "LimitCORE=0", "UMask=0077",
                       "MemoryDenyWriteExecute=yes", "PrivateDevices=yes",
                       "RuntimeDirectory=daimon",

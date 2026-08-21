@@ -71,8 +71,6 @@ InaccessiblePaths=-%h/.config/daimon
 
 # Dieser Dienst sieht alles, was angezeigt wird. Fremde Prozesse und die
 # Nicht-PID-Teile von /proc gehen ihn nichts an.
-ProtectProc=invisible
-ProcSubset=pid
 PrivateTmp=yes
 # Keine Core-Dumps: ein Dump enthielte einen 22-MB-Frame des Bildschirms.
 LimitCORE=0
@@ -84,7 +82,7 @@ UMask=0077
 # Kombination, unabhaengig davon, ob er ihn heute nutzt.
 RestrictAddressFamilies=AF_UNIX
 SystemCallFilter=@system-service
-SystemCallFilter=~@privileged @obsolete @mount @swap @reboot @module
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
 # MemoryDenyWriteExecute FEHLT, und das ist ueberlegt, nicht vergessen: der
 # OCR-Arbeitsprozess laedt libtesseract ueber ctypes, und GStreamer laedt
 # seine Plugins zur Laufzeit nach. Dieselbe Lage wie bei den Ohren (cffi) und

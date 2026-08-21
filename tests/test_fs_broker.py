@@ -54,18 +54,22 @@ def test_ein_symlink_als_ziel_wird_abgewiesen(tmp_path):
     wurzel = tmp_path / "arbeit"
     wurzel.mkdir()
     os.symlink(geheim, wurzel / "harmlos.txt")
-    with fs.aufloesen(wurzel, "harmlos.txt") as griff:
-        with pytest.raises(fs.FSFehler):
-            fs.lesen(griff)
+    # `aufloesen` oeffnet den letzten Namensteil selbst (K2) -- die Abweisung
+    # kommt jetzt HIER, nicht erst bei `lesen`.
+    with pytest.raises(fs.FSFehler):
+        fs.aufloesen(wurzel, "harmlos.txt")
 
 
 def test_der_wettlauf_zwischen_genehmigung_und_ausfuehrung(tmp_path):
-    """Der eigentliche Test: der Symlink kommt NACH der Aufloesung.
+    """Der eigentliche Test: der Tausch kommt NACH der Aufloesung.
 
     So sieht der Angriff aus: die Vorschau zeigt `arbeit/notiz.txt`, der
-    Mensch klickt, und in der Zwischenzeit wird die Datei durch einen Symlink
-    auf den Schluessel ersetzt. Wer den Pfad jetzt neu aufloest, schreibt in
-    den Schluessel.
+    Mensch klickt, und in der Zwischenzeit wird der Name durch einen Symlink
+    auf den Schluessel ersetzt. `aufloesen` haelt den Ziel-FD schon offen
+    (K2) -- der Tausch danach aendert an diesem FD nichts mehr: `schreiben`
+    trifft weiter die urspruengliche (jetzt entlinkte) Datei, nicht den
+    Schluessel. Genau das ist die Zusage: kein zweiter Namenslookup zwischen
+    Genehmigung und Mutation, nicht bloss eine Abweisung bei einem Symlink.
     """
     schluessel = tmp_path / "id_ed25519"
     schluessel.write_text("privat", encoding="utf-8")
@@ -74,21 +78,25 @@ def test_der_wettlauf_zwischen_genehmigung_und_ausfuehrung(tmp_path):
     ziel = wurzel / "notiz.txt"
     ziel.write_text("alt", encoding="utf-8")
 
-    with fs.aufloesen(wurzel, "notiz.txt") as griff:
-        # Der Angreifer schlaegt zu, nachdem entschieden wurde.
+    with fs.aufloesen(wurzel, "notiz.txt", schreibend=True) as griff:
+        # Der Angreifer schlaegt zu, NACHDEM aufgeloest wurde.
         ziel.unlink()
         os.symlink(schluessel, ziel)
 
-        with pytest.raises(fs.FSFehler):
-            fs.schreiben(griff, b"neu")
+        # Der FD zeigt weiter auf die urspruengliche Datei -- kein Fehler,
+        # kein zweiter Lookup.
+        fs.schreiben(griff, b"neu")
 
-    # Und der Schluessel ist unberuehrt.
+    # Der Schluessel ist unberuehrt.
     assert schluessel.read_text(encoding="utf-8") == "privat"
+    # Und der Name `notiz.txt` zeigt weiter auf den Symlink des Angreifers --
+    # der Broker hat ihn nicht angefasst.
+    assert ziel.is_symlink()
 
 
 def test_schreiben_trifft_die_datei_am_griff(tmp_path):
     (tmp_path / "a.txt").write_text("alt", encoding="utf-8")
-    with fs.aufloesen(tmp_path, "a.txt") as griff:
+    with fs.aufloesen(tmp_path, "a.txt", schreibend=True) as griff:
         fs.schreiben(griff, b"neu")
     assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "neu"
 
