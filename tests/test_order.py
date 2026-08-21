@@ -17,7 +17,8 @@ from daimon.hub.order import Auftragsbuch
 def auftrag(**felder) -> fmt.Auftrag:
     grund = {"audience": "dbus", "action_id": "media.playpause",
              "params": {}, "ticket": "t1",
-             "deadline_monotonic": 1000.0, "turn_id": "runde-1"}
+             "deadline_monotonic": 1000.0, "turn_id": "runde-1",
+             "tool_use_id": "werkzeug-1"}
     grund.update(felder)
     grund.setdefault("params_hash", fmt.params_hash(grund["params"]))
     return fmt.Auftrag(**grund)
@@ -27,9 +28,11 @@ def auftrag(**felder) -> fmt.Auftrag:
 # Das Format
 # --------------------------------------------------------------------------
 
-def test_der_auftrag_traegt_genau_die_acht_felder():
+def test_der_auftrag_traegt_genau_die_neun_felder():
+    # T-4.16.v K4: tool_use_id kam dazu -- der Auftrag ist der Hop zum
+    # Broker, dort endete sonst die Spur einer Aeusserung.
     assert set(auftrag().als_dict()) == set(fmt.FELDER)
-    assert len(fmt.FELDER) == 8
+    assert len(fmt.FELDER) == 9
 
 
 def test_es_gibt_kein_signaturfeld():

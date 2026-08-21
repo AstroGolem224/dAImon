@@ -43,7 +43,8 @@ class Auftragsbuch:
     _eingeloest: dict = field(default_factory=dict)
 
     def ausstellen(self, *, audience: str, action_id: str, params: dict,
-                   turn_id: str, frist_s: float = VORGABE_FRIST_S,
+                   turn_id: str, tool_use_id: str = "",
+                   frist_s: float = VORGABE_FRIST_S,
                    jetzt: float | None = None) -> Auftrag:
         if audience not in AUDIENCES:
             raise AuftragsFehler(
@@ -56,7 +57,8 @@ class Auftragsbuch:
         auftrag = Auftrag(
             audience=audience, action_id=action_id, params=dict(params or {}),
             params_hash=params_hash(params), ticket=ticket,
-            deadline_monotonic=jetzt + float(frist_s), turn_id=turn_id)
+            deadline_monotonic=jetzt + float(frist_s), turn_id=turn_id,
+            tool_use_id=tool_use_id)
         self._offen[ticket] = auftrag
         return auftrag
 

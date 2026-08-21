@@ -1055,6 +1055,12 @@ class Hub:
             self.log.error("Aktionspfad gescheitert",
                            DAIMON_ACTION="aktion_fehler",
                            DAIMON_GRUND=str(fehler)[:200])
+            # T-4.16.v K6: ein Hop, der wirft, blieb bisher stumm -- fuer den
+            # Menschen am Overlay war eine still gescheiterte Aktion von einer
+            # ausgefuehrten nicht zu unterscheiden. Dieselbe Vorlage wie im
+            # Koordinator (Design 5.2: kuratiert, keine Modellformulierung).
+            from daimon.hub.coordinator import SPRACHE
+            self._sprechen(SPRACHE["broker"])
             return {"v": 1, "ok": False, "grund": "aktionspfad",
                     "meldung": str(fehler)[:200]}
 

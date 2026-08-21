@@ -63,7 +63,7 @@ SCHEMA = "daimon.order.v1"
 AUDIENCES = ("dbus", "fs", "exec", "input")
 
 FELDER = ("audience", "schema", "action_id", "params", "params_hash",
-          "ticket", "deadline_monotonic", "turn_id")
+          "ticket", "deadline_monotonic", "turn_id", "tool_use_id")
 
 
 class AuftragsFehler(ValueError):
@@ -79,6 +79,7 @@ class Auftrag:
     ticket: str
     deadline_monotonic: float
     turn_id: str
+    tool_use_id: str
     schema: str = SCHEMA
 
     def als_dict(self) -> dict:

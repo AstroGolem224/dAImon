@@ -156,6 +156,7 @@ class Koordinator:
         if entscheidung.verdikt == "ask":
             t = self.uhr()
             prompt = self.vorschau(action_id=action_id, params=params)
+            lauf.dauer_ms["vorschau"] = round((self.uhr() - t) * 1000, 3)
             offen = self.schlange.rueckfrage_oeffnen(tool_use_id)
             if not offen["ok"]:
                 self._audit(lauf, prompt=prompt,
@@ -169,9 +170,6 @@ class Koordinator:
                 rueckfrage = self.consent.stellen(
                     action_id=action_id, params_hash=entscheidung.params_hash,
                     prompt_shown=prompt, absender="auth", jetzt=self.uhr())
-                lauf.dauer_ms["vorschau"] = round((self.uhr() - t) * 1000, 3)
-
-                t = self.uhr()
                 antwort = self.consent_abwarten(rueckfrage)
             finally:
                 # Platz muss auch beim Fehler zwischen Oeffnen und Schliessen
@@ -208,7 +206,7 @@ class Koordinator:
         #    noch liest.
         auftrag = self.auftragsbuch.ausstellen(
             audience=audience, action_id=action_id, params=params,
-            turn_id=turn_id, jetzt=self.uhr())
+            turn_id=turn_id, tool_use_id=tool_use_id, jetzt=self.uhr())
         if not self.schlange.einloesen(auftrag.ticket)["ok"]:
             lauf.grund = "ticket_verbraucht"
             return self._melden(lauf, "broker")
