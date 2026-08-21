@@ -64,12 +64,24 @@ def _mutierende() -> list[dict]:
 
 # -- Der Stand, festgehalten ----------------------------------------------
 
-def test_es_gibt_heute_keine_mutierende_aktion():
-    """Die Grundlage für alles Weitere hier. Fällt diese Zeile, ist es kein
-    Fehler, sondern das Signal: ab jetzt gilt der Wächter unten."""
-    assert _mutierende() == [], (
-        "es gibt jetzt mutierende Aktionen: "
-        f"{[a['id'] for a in _mutierende()]} -- siehe den Wächter unten")
+def test_seit_T_4_16_gibt_es_fs_und_exec_aktionen_ohne_mutation():
+    """Die Zeile oben ist genau das eingetreten, wofür der Wächter unten
+    gebaut wurde -- T-4.16.v K2 fügte `fs.file.read` und
+    `exec.launch.kcalc` als Minimal-Set hinzu. Beide sind `destructive:
+    false`: Lesen verändert nichts, ein Taschenrechnerstart hat keinen
+    Rückholpunkt nötig. `_undo_vorbereiten` (daemon.py) liefert für beide
+    `None` -- das ist richtig so, siehe ihr eigener Docstring: "eine
+    Aktion, die nichts zu verlieren hat, braucht kein Artefakt". Die
+    WAECHTER-Tests unten bleiben scharf für den Tag der ersten
+    `destructive: true`-Aktion."""
+    mutierend = {a["id"] for a in _mutierende()}
+    assert mutierend == {"fs.file.read", "exec.launch.kcalc"}, (
+        f"unerwartete mutierende Aktionen: {sorted(mutierend)} -- "
+        "diese Datei kennt nur die beiden von T-4.16.v K2")
+    assert not any(a.get("destructive") for a in _mutierende()), (
+        "eine der beiden T-4.16-Aktionen ist jetzt destructive -- "
+        "dann greift der WAECHTER unten wirklich und braucht eine "
+        "echte Undo-Zuordnung, kein `None`")
 
 
 def test_der_katalog_ist_ueberhaupt_lesbar():

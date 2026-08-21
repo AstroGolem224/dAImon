@@ -380,3 +380,90 @@ actions:
       Wie screenshot.fullscreen, aber der Mensch zieht den Bereich selbst auf --
       der Auslöser bestimmt nicht, was aufgenommen wird. Das ist die
       schwächere und damit bevorzugte Variante.
+
+  # -- Nicht-DBus-Broker (fs, exec, input) -------------------------------------
+  # Minimal-Set, freigegeben am 21.08. von Matthias fuer T-4.16 (K2): je ein
+  # harmloser Eintrag, damit fs/exec/input ueberhaupt einen Auftrag sehen.
+  # Kein Ersatz fuer eine spaetere, breitere Freigabe -- nur genug, um den
+  # Ende-zu-Ende-Weg und den Direktpfad real zu pruefen.
+
+  - id: fs.file.read
+    quelle: "broker:fs"
+    audience: "fs"
+    params:
+      pfad:
+        type: string
+        pattern: "^[^/][^\\x00]{0,255}$"
+        required: true
+    destructive: false
+    reversible_by: null
+    externally_visible: false
+    open_world: false
+    never_cacheable: true
+    direct: false
+    foreground: ask
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: >-
+      Lesend, keine Wirkung auf Zustand -- deshalb `destructive: false`.
+      `reversible_by: null` trotzdem `ask`, weil eine gelesene Datei
+      offenlegt, was sonst niemand sieht (dieselbe Regel wie bei
+      kde.window.raise). `pfad` ohne fuehrenden Slash und ohne NUL: die
+      eigentliche Schranke ist `--wurzel` im Broker (T-4.9, RESOLVE_BENEATH),
+      das Muster hier verhindert nur einen offensichtlich fremden Wert.
+
+  - id: exec.launch.kcalc
+    quelle: "broker:exec"
+    audience: "exec"
+    desktop_id: "org.kde.kcalc.desktop"
+    params:
+      desktop_id:
+        type: string
+        pattern: "^org\\.kde\\.kcalc\\.desktop$"
+        required: true
+    destructive: false
+    reversible_by: null
+    externally_visible: false
+    open_world: false
+    never_cacheable: true
+    direct: false
+    foreground: ask
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: >-
+      Ein Taschenrechner zu starten hat keine Wirkung ausserhalb eines neuen
+      Fensters, das der Mensch selbst wieder schliesst -- `reversible_by:
+      null` trotzdem, weil kein Katalogeintrag das Schliessen fuer ihn tut.
+      `desktop_id` ist im Parameter UND im Katalog fest verdrahtet (der
+      Broker prueft ohnehin nur die eigene Freigabenliste, T-4.10) -- die
+      Musterschranke hier verhindert, dass ein anderer Wert je durchkommt.
+
+  - id: input.type.kcalc
+    quelle: "broker:input"
+    audience: "input"
+    apps: ["org.kde.kcalc"]
+    params:
+      app:
+        type: string
+        pattern: "^org\\.kde\\.kcalc$"
+        required: true
+    destructive: false
+    reversible_by: null
+    externally_visible: false
+    open_world: false
+    never_cacheable: true
+    direct: false
+    foreground: ask
+    background: deny
+    scheduled: deny
+    status: approved
+    rationale: >-
+      Tastenfolgen an genau die eine freigegebene Anwendung, den Rechner aus
+      exec.launch.kcalc -- passwortfeldfaehige Ziele stehen bewusst nicht auf
+      der Liste (T-4.13 Modulkopf). `folge` steht nicht im Parameterschema:
+      die Policy kennt nur Zahl- und Textschranken, die eigentliche Pruefung
+      der Tastenfolge macht `folge_pruefen()` im Broker selbst (T-4.13).
+      `reversible_by: null`, `foreground: ask`: Tasteneingabe ist die
+      riskanteste der drei Faehigkeiten hier, deshalb keine Abkuerzung.

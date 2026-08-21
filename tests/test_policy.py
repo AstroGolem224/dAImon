@@ -499,7 +499,9 @@ def test_der_mitgelieferte_katalog_laedt_und_entscheidet():
     """Gegen die echten Dateien im Repo, nicht gegen ein Muster."""
     p = lade_policy()
     pol = p.Policy.laden()
-    assert len(pol.katalog) == 17
+    # T-4.16.v K2: fs.file.read, exec.launch.kcalc, input.type.kcalc kamen
+    # als Minimal-Set fuer die drei Nicht-DBus-Broker dazu.
+    assert len(pol.katalog) == 20
     vom_parser = pol.entscheide(anfrage("media.playpause", quelle="parser"))
     vom_modell = pol.entscheide(anfrage("media.playpause", quelle="modell"))
     ohne_marke = pol.entscheide(anfrage("media.playpause", marke=None))
