@@ -154,6 +154,13 @@ AKTIONS_BESCHRIFTUNGEN: dict[str, str] = {
     "window.to_previous_desktop": "Fenster auf die vorige Arbeitsflaeche verschieben",
     "screenshot.fullscreen": "Bildschirmfoto des ganzen Schirms erstellen",
     "screenshot.region": "Bildschirmfoto eines Bereichs erstellen",
+    # T-4.18 F-01 (21.08., high): T-4.16 K2 hat diese drei am 21.08. in den
+    # Katalog aufgenommen, die Tabelle hier blieb stehen -- der Dialog fiel
+    # auf "Ember will eine unbekannte Aktion ausfuehren. Bitte ablehnen."
+    # zurueck und nannte damit nie, was er bestaetigen liess.
+    "fs.file.read": "Datei lesen",
+    "exec.launch.kcalc": "Taschenrechner starten",
+    "input.type.kcalc": "Tastenfolge an den Taschenrechner senden",
 }
 
 UMKEHR_BESCHRIFTUNGEN: dict[str, str] = {
