@@ -1,0 +1,1417 @@
+{
+  "schema": "daimon.phase4-findings.v1",
+  "task": "T-4.18",
+  "titel": "Sicherheitsreview der Phase 4 -- ein zweites Paar Augen auf der Vertrauensgrenze",
+  "gemessen_gegen": {
+    "baum": "/mnt/data/AI/repos/dAImon",
+    "commit": "a47b1c8 (Review); 243d9ac (Nachlauf F-01/F-02, nachgemessen)",
+    "datum": "2026-08-21",
+    "maschine": "cachyos, Linux 7.2.0-1-cachyos-bore, KDE/KWin 6, Wayland"
+  },
+  "abschnitte": [
+    "1.3",
+    "2.4",
+    "6.1",
+    "6.2",
+    "6.3",
+    "6.4",
+    "6.5",
+    "6.6",
+    "6.7",
+    "6.8",
+    "6.9",
+    "7.1",
+    "7.2a",
+    "7.2b",
+    "7.2c",
+    "7.2d",
+    "7.3",
+    "7.4",
+    "7.5",
+    "7.6",
+    "7.7",
+    "7.8"
+  ],
+  "pruefliste": [
+    {
+      "id": "B1",
+      "abschnitt": "1.3",
+      "zusage": "Injizierte Anweisungen in beobachtetem Inhalt sind der Hauptangriffsweg",
+      "beleg": "daimon/hub/policy.py:25",
+      "status": "erfuellt",
+      "befunde": [
+        "F-18"
+      ],
+      "notiz": "Modellausgabe hebt jedes `allow` des Katalogs auf `ask` -- gemessen."
+    },
+    {
+      "id": "B2",
+      "abschnitt": "1.3",
+      "zusage": "Gefaelschtes Audio: kein Signalmerkmal trennt Nutzer von Lautsprecher",
+      "beleg": "daimon/ears/daemon.py:90",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": "Sprache autorisiert nicht; die Marke kommt aus PTT, nicht aus dem Ton."
+    },
+    {
+      "id": "B3",
+      "abschnitt": "1.3",
+      "zusage": "Modellfehler: halluzinierte zerstoererische Aktion ohne jeden Angreifer",
+      "beleg": "config/actions/core.yaml:13",
+      "status": "erfuellt",
+      "befunde": [
+        "F-14"
+      ],
+      "notiz": "Kein Katalogeintrag traegt `destructive: true`."
+    },
+    {
+      "id": "B4",
+      "abschnitt": "1.3",
+      "zusage": "Versehentliche Preisgabe passiv Wahrgenommenen",
+      "beleg": "daimon/hub/declassify.py:141",
+      "status": "erfuellt",
+      "befunde": [
+        "F-11"
+      ],
+      "notiz": "Gate gemessen von T-5.9.v; Audit-Luecke offen."
+    },
+    {
+      "id": "B5",
+      "abschnitt": "1.3",
+      "zusage": "Ein Angreifer mit Codeausfuehrung unter dieser uid wird NICHT abgewehrt",
+      "beleg": "daimon/common/ipc.py:15",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": "Peer-Pruefung bleibt Wegweiser; kein Ersatz wird behauptet."
+    },
+    {
+      "id": "B6",
+      "abschnitt": "1.3",
+      "zusage": "Sprachregelung: Absichtsmarke ist kein Beweis, Peer-Pruefung keine Authentifizierung, Ticket kein Herkunftsbeweis",
+      "beleg": "daimon/hub/marks.py:22",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "B7",
+      "abschnitt": "1.3",
+      "zusage": "Signaturen zwischen eigenen Prozessen waeren Zeremonie -- es gibt keine",
+      "beleg": "git:reviewer/p4-T-4.5v:tests/evidence/LEDGER-T-4.5.v.md#K1",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": "T-4.5.v misst zweigleisig, samt umgekehrter Mutante."
+    },
+    {
+      "id": "B8",
+      "abschnitt": "1.3",
+      "zusage": "Auswertung und Policy sind getrennt; der Hub liest nie freien Modelltext",
+      "beleg": "daimon/hub/daemon.py:1040",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": "`aktion.sock` nimmt Aktions-ID und Parameter, keinen Freitext."
+    },
+    {
+      "id": "B9",
+      "abschnitt": "1.3",
+      "zusage": "Jede Nachricht wird gegen ein Schema validiert, bevor ein Feld gelesen wird",
+      "beleg": "daimon/common/protocol.py:182",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "B10",
+      "abschnitt": "1.3",
+      "zusage": "Feldlaengen und Verschachtelungstiefen sind gedeckelt",
+      "beleg": "daimon/hub/daemon.py:213",
+      "status": "abweichung",
+      "befunde": [
+        "F-41"
+      ],
+      "notiz": "Die Zeilenlaenge ist gedeckelt (1 MiB). Eine Verschachtelungstiefe ist es an keiner Stelle."
+    },
+    {
+      "id": "B11",
+      "abschnitt": "1.3",
+      "zusage": "Unbekannte Felder werden verworfen, nicht durchgereicht",
+      "beleg": "daimon/hub/daemon.py:1043",
+      "status": "abweichung",
+      "befunde": [
+        "F-03"
+      ],
+      "notiz": "Gilt fuer die Nachricht, nicht fuer die Schluessel INNERHALB `params`."
+    },
+    {
+      "id": "B12",
+      "abschnitt": "1.3",
+      "zusage": "Ein Fehler in einer Nachricht beendet die Verbindung, nicht den Hub",
+      "beleg": "daimon/hub/daemon.py:600",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "B13",
+      "abschnitt": "1.3",
+      "zusage": "Der Hub ruft nie in Modell-, Netzwerk- oder Renderingcode",
+      "beleg": "config/systemd/daimon-hub.service:57",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": "Kernelgrenze statt Zusage: der Hub hat kein AF_INET."
+    },
+    {
+      "id": "A1",
+      "abschnitt": "6.1",
+      "zusage": "Hub loest die Rundenmarke ein, kanonisiert und rechnet `params_hash` selbst",
+      "beleg": "daimon/hub/daemon.py:1057",
+      "status": "abweichung",
+      "befunde": [
+        "F-06"
+      ],
+      "notiz": "Kanonisierung und Hash halten (T-4.4.v K2); EINGELOEST wird nie."
+    },
+    {
+      "id": "A2",
+      "abschnitt": "6.1",
+      "zusage": "Marke fehlt oder abgelaufen -> denied, initiator = background",
+      "beleg": "daimon/hub/policy.py:138",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "A3",
+      "abschnitt": "6.1",
+      "zusage": "Circuit Breaker / deny-Regel -> blocked",
+      "beleg": "daimon/hub/policy.py:241",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "A4",
+      "abschnitt": "6.1",
+      "zusage": "Direkt nur bei Katalogflag UND Hub-Parser",
+      "beleg": "daimon/hub/policy.py:280",
+      "status": "erfuellt",
+      "befunde": [
+        "F-18",
+        "F-19"
+      ],
+      "notiz": ""
+    },
+    {
+      "id": "A5",
+      "abschnitt": "6.1",
+      "zusage": "Sonst strukturierte Vorschau an den Auth-Agenten: feste Vorlage, escapte Werte",
+      "beleg": "daimon/auth/preview.py:171",
+      "status": "abweichung",
+      "befunde": [
+        "F-01",
+        "F-04"
+      ],
+      "notiz": "Vorlage existiert; drei Katalogaktionen erreichen sie nicht."
+    },
+    {
+      "id": "A6",
+      "abschnitt": "6.1",
+      "zusage": "Freigabe {Nonce, action_hash} | decline | Frist laeuft ab -> cancel",
+      "beleg": "daimon/hub/consent.py:246",
+      "status": "erfuellt",
+      "befunde": [
+        "F-21",
+        "F-15"
+      ],
+      "notiz": ""
+    },
+    {
+      "id": "A7",
+      "abschnitt": "6.1",
+      "zusage": "Zerstoererisch: Undo-Vorbereitung vor der Mutation; failed => Abbruch",
+      "beleg": "daimon/hub/coordinator.py:190",
+      "status": "erfuellt",
+      "befunde": [
+        "F-29"
+      ],
+      "notiz": ""
+    },
+    {
+      "id": "A8",
+      "abschnitt": "6.1",
+      "zusage": "Der Broker loest das Ticket unmittelbar vor der Ausfuehrung ein",
+      "beleg": "daimon/brokers/fs/daemon.py:76",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "A9",
+      "abschnitt": "6.2",
+      "zusage": "Keine Signatur am Ausfuehrungsauftrag",
+      "beleg": "git:reviewer/p4-T-4.5v:tests/evidence/LEDGER-T-4.5.v.md#K1",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "A10",
+      "abschnitt": "6.2",
+      "zusage": "Herkunft ueber den Socket: Broker nehmen nur Verbindungen vom Hub an",
+      "beleg": "daimon/brokers/dienst.py:76",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "A11",
+      "abschnitt": "6.2",
+      "zusage": "`audience` bindet an genau einen Broker",
+      "beleg": "daimon/hub/daemon.py:1064",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": "Die audience kommt aus dem Katalog, nicht aus der Anfrage."
+    },
+    {
+      "id": "A12",
+      "abschnitt": "6.2",
+      "zusage": "`schema` plus festgelegte kanonische Serialisierung",
+      "beleg": "daimon/common/order.py:89",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "A13",
+      "abschnitt": "6.2",
+      "zusage": "`deadline_monotonic` nutzt die monotone Uhr",
+      "beleg": "daimon/common/order.py:43",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "A14",
+      "abschnitt": "6.2",
+      "zusage": "Das Ticketbuch liegt persistent im Hub, nicht im Broker",
+      "beleg": "daimon/hub/daemon.py:998",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "A15",
+      "abschnitt": "6.2",
+      "zusage": "Hoechstens einmal: nie automatisch wiederholen, bei Absturz outcome=unknown",
+      "beleg": "daimon/hub/coordinator.py:222",
+      "status": "erfuellt",
+      "befunde": [
+        "F-28"
+      ],
+      "notiz": ""
+    },
+    {
+      "id": "A16",
+      "abschnitt": "6.3",
+      "zusage": "DBus statt synthetischer Eingabe; die Aktion heisst `raise`, nicht `focus`",
+      "beleg": "config/actions/core.yaml:242",
+      "status": "abweichung",
+      "befunde": [
+        "F-14"
+      ],
+      "notiz": "Benennung stimmt; eine Operation dafuer gibt es im Broker nicht."
+    },
+    {
+      "id": "A17",
+      "abschnitt": "6.4",
+      "zusage": "Der Broker exponiert eine feste Operation je genehmigter Aktion, nicht ein generisches invokeShortcut(name)",
+      "beleg": "daimon/brokers/dbus/broker.py:60",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "A18",
+      "abschnitt": "6.4",
+      "zusage": "Der Proxy sperrt org.kde.kwin.Scripting.loadScript zuverlaessig aus",
+      "beleg": "config/dbus-filter.conf:31",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": "Live gegengeprueft: ServiceUnknown durch den Proxy."
+    },
+    {
+      "id": "A19",
+      "abschnitt": "6.4",
+      "zusage": "Der Katalog wird generiert, das Ergebnis ist ein Kandidatenvorschlag und muss von Hand freigegeben werden",
+      "beleg": "daimon/hub/policy.py:333",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "A20",
+      "abschnitt": "6.5",
+      "zusage": "deny -> ask -> allow, erster Treffer, Spezifitaet irrelevant; deny ist eine Vereinigung ueber alle Ebenen",
+      "beleg": "daimon/hub/policy.py:274",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "A21",
+      "abschnitt": "6.5",
+      "zusage": "initiator-Tabelle: foreground=ask, background=deny, scheduled=deny",
+      "beleg": "daimon/hub/policy.py:260",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "A22",
+      "abschnitt": "6.5",
+      "zusage": "Zustimmung ist dreiwertig, an Nonce und Frist gebunden, mit persistiertem Pending-State; Antwort ohne passende Nonce wird verworfen",
+      "beleg": "daimon/hub/consent.py:124",
+      "status": "erfuellt",
+      "befunde": [
+        "F-24",
+        "F-07"
+      ],
+      "notiz": ""
+    },
+    {
+      "id": "A23",
+      "abschnitt": "6.5",
+      "zusage": "Fuer destructive:true ohne verifiziertes Undo-Artefakt ist der modale Auth-Dialog Pflicht",
+      "beleg": "daimon/auth/modal.py:65",
+      "status": "abweichung",
+      "befunde": [
+        "F-10"
+      ],
+      "notiz": "Die Entscheidung ist gebaut und hat im Betrieb keinen Aufrufer."
+    },
+    {
+      "id": "A24",
+      "abschnitt": "6.6",
+      "zusage": "Umkehrbarkeit konstruktiv: XDG-Trash, cp --reflink, git stash",
+      "beleg": "daimon/brokers/fs/undo.py:184",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "A25",
+      "abschnitt": "6.6",
+      "zusage": "Die Undo-Vorbereitung ist eine Transaktion mit eigenen Zustaenden; kein Neuversuch; verwaiste Artefakte werden aufgeraeumt",
+      "beleg": "git:reviewer/p4-T-4.8v:tests/evidence/LEDGER-T-4.8.v.md#K1",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "A26",
+      "abschnitt": "6.6",
+      "zusage": "Herabgestuft wird erst nach einem dauerhaften, verifizierten Artefakt; schlaegt die Vorbereitung fehl, wird die Mutation abgebrochen",
+      "beleg": "git:reviewer/p4-T-4.8v:tests/evidence/LEDGER-T-4.8.v.md#K4",
+      "status": "erfuellt",
+      "befunde": [
+        "F-29"
+      ],
+      "notiz": ""
+    },
+    {
+      "id": "A27",
+      "abschnitt": "6.6",
+      "zusage": "Zwei Achsen zusaetzlich: `reversible_by` und `externally_visible`",
+      "beleg": "config/actions/core.yaml:15",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "A28",
+      "abschnitt": "6.7",
+      "zusage": "One-shot: begrenzte Ereignisfolge, danach Prozessende samt Portal-Session; RuntimeMaxSec= als Zwangsende",
+      "beleg": "daimon/brokers/input/daemon.py:5",
+      "status": "erfuellt",
+      "befunde": [
+        "F-34"
+      ],
+      "notiz": ""
+    },
+    {
+      "id": "A29",
+      "abschnitt": "6.7",
+      "zusage": "App-Allowlist statt Passwortfeld-Erkennung; Sperrbildschirm bleibt harter Breaker (org.freedesktop.ScreenSaver)",
+      "beleg": "daimon/brokers/input/broker.py:232",
+      "status": "erfuellt",
+      "befunde": [
+        "F-34"
+      ],
+      "notiz": ""
+    },
+    {
+      "id": "A30",
+      "abschnitt": "6.7",
+      "zusage": "Immer `ask`, nie gecacht; libei ueber Portal bevorzugt, ydotool Rueckfall",
+      "beleg": "daimon/brokers/input/daemon.py:71",
+      "status": "abweichung",
+      "befunde": [
+        "F-08"
+      ],
+      "notiz": "`ask` haelt; `never_cacheable` hat in daimon/ keinen Leser."
+    },
+    {
+      "id": "A31",
+      "abschnitt": "6.7",
+      "zusage": "Nur diese Unit hat DeviceAllow=/dev/uinput rw",
+      "beleg": "config/systemd/daimon-input.service:32",
+      "status": "abweichung",
+      "befunde": [
+        "F-13"
+      ],
+      "notiz": "Im Repo einzig; auf dieser Maschine laeuft daneben ein fremder ydotoold."
+    },
+    {
+      "id": "A32",
+      "abschnitt": "6.7",
+      "zusage": "Audit protokolliert nur Laenge und Klassenlabel, nie die Zeichen",
+      "beleg": "daimon/brokers/input/broker.py:212",
+      "status": "erfuellt",
+      "befunde": [
+        "F-34"
+      ],
+      "notiz": ""
+    },
+    {
+      "id": "A33",
+      "abschnitt": "6.8",
+      "zusage": "Keine Shell-Whitelist; wo Shell unvermeidbar ist, execve mit argv-Array und shell=False",
+      "beleg": "daimon/brokers/exec/broker.py:159",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "A34",
+      "abschnitt": "6.9",
+      "zusage": "openat2(RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS)",
+      "beleg": "daimon/brokers/fs/broker.py:72",
+      "status": "erfuellt",
+      "befunde": [
+        "F-20"
+      ],
+      "notiz": ""
+    },
+    {
+      "id": "A35",
+      "abschnitt": "6.9",
+      "zusage": "Vorlauf mit gehaltenem Deskriptor: der FS-Broker oeffnet das Ziel VOR der Rueckfrage und gibt dem Hub eine opake Referenz, die an die Consent-Nonce gebunden wird",
+      "beleg": "daimon/brokers/fs/daemon.py:57",
+      "status": "abweichung",
+      "befunde": [
+        "F-09"
+      ],
+      "notiz": "Aufgeloest wird vor dem Ticket, aber NACH der Freigabe. Keine opake Referenz, keine Bindung an die Nonce."
+    },
+    {
+      "id": "A36",
+      "abschnitt": "6.9",
+      "zusage": "App-Start ist an den Hash der aufgeloesten .desktop-Datei gebunden, unmittelbar vor dem Start erneut geprueft",
+      "beleg": "daimon/brokers/exec/broker.py:127",
+      "status": "erfuellt",
+      "befunde": [
+        "F-35"
+      ],
+      "notiz": ""
+    },
+    {
+      "id": "P1",
+      "abschnitt": "7.1",
+      "zusage": "Datenarten-Tabelle: Rohaudio, Rohframes, Hook-Nutzlasten und Clipboard verlassen den Rechner nie",
+      "beleg": "git:reviewer/p4-T-7.4v:tests/evidence/LEDGER-T-7.4.v.md#K1",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P2",
+      "abschnitt": "7.1",
+      "zusage": "API-Token liegt in `egress`, ueber LoadCredential=, nie in Umgebungsvariablen und nie in Mind",
+      "beleg": "daimon/brokers/egress/broker.py:167",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P3",
+      "abschnitt": "7.1",
+      "zusage": "Audit-Log: lokal, 90 Tage; Ablehnungen unbefristet",
+      "beleg": "daimon/hub/audit.py:211",
+      "status": "abweichung",
+      "befunde": [
+        "F-38"
+      ],
+      "notiz": "Rotation existiert; eine Aufbewahrungsfrist steht nirgends im Code."
+    },
+    {
+      "id": "P4",
+      "abschnitt": "7.2a",
+      "zusage": "Netzsperre: RestrictAddressFamilies=AF_UNIX fuer hub, auth, ears, eyes, mind, face, focus, recorder, die vier Broker und alle GPU-Worker",
+      "beleg": "config/systemd/daimon-mind.service:4",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": "Alle 22 Units einzeln nachgemessen, siehe Reproduktion."
+    },
+    {
+      "id": "P5",
+      "abschnitt": "7.2a",
+      "zusage": "Genau drei Units tragen das Netz -- egress, lokal-broker, cli-broker -- und keine davon wertet Modellinhalt aus",
+      "beleg": "config/systemd/daimon-cli-broker.service:63",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P6",
+      "abschnitt": "7.2a",
+      "zusage": "IPAddressDeny=any ist in --user-Units wirkungslos und wird nicht behauptet",
+      "beleg": "docs/DESIGN.md:959",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": "Keine Unit setzt IPAddressDeny/IPAddressAllow."
+    },
+    {
+      "id": "P7",
+      "abschnitt": "7.2b",
+      "zusage": "Quarantaenierter Kontext wird nur unter einer Rundenmarke aus Push-to-Talk freigegeben, und nur bei erkennbarem Bildschirmbezug",
+      "beleg": "git:reviewer/p4-T-5.9v:tests/evidence/LEDGER-T-5.9.v.md#K1",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P8",
+      "abschnitt": "7.2b",
+      "zusage": "Das API-Kontingent aus dem Wake-Word deklassifiziert nichts",
+      "beleg": "daimon/hub/declassify.py:203",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P9",
+      "abschnitt": "7.2c",
+      "zusage": "`mind` hat weder Token noch AF_INET; `egress` haelt den Token, kennt eine Ziel-Domain, verlangt je Anfrage ein Hub-Kontingent",
+      "beleg": "daimon/brokers/egress/broker.py:76",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P10",
+      "abschnitt": "7.2c",
+      "zusage": "Egress transportiert Inhalte, ohne sie zu interpretieren, zu rendern, zwischenzuspeichern oder zu protokollieren -- nur Strukturmerkmale",
+      "beleg": "daimon/brokers/egress/broker.py:28",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P11",
+      "abschnitt": "7.2d",
+      "zusage": "Vier Aufbewahrungsstufen; `redacted` ist die Vorgabe",
+      "beleg": "daimon/recorder/store.py:52",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P12",
+      "abschnitt": "7.2d",
+      "zusage": "Ist die Bildschirmwahrnehmung abgeschaltet, faellt alles auf `transient`",
+      "beleg": "daimon/recorder/redaktion.py:23",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P13",
+      "abschnitt": "7.3",
+      "zusage": "Ein Socket je Produzent unter $XDG_RUNTIME_DIR/daimon/, Modus 0600",
+      "beleg": "daimon/common/ipc.py:297",
+      "status": "abweichung",
+      "befunde": [
+        "F-39"
+      ],
+      "notiz": "Alle dAImon-Sockets 0600; der fremdgebaute Proxy-Socket ist 0700."
+    },
+    {
+      "id": "P14",
+      "abschnitt": "7.3",
+      "zusage": "SO_PEERPIDFD statt SO_PEERCRED plus PID-Aufloesung",
+      "beleg": "daimon/common/ipc.py:256",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P15",
+      "abschnitt": "7.3",
+      "zusage": "Nachrichtentypen sind produzentenspezifisch",
+      "beleg": "daimon/hub/daemon.py:188",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P16",
+      "abschnitt": "7.3",
+      "zusage": "Sitzungsidentitaet haengt an contextvars, nie an Umgebungsvariablen oder prozess-globalem Zustand",
+      "beleg": "daimon/hub/state.py:72",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": "Sitzung haengt an Lease-Objekten je Session, nicht an os.environ."
+    },
+    {
+      "id": "P17",
+      "abschnitt": "7.3",
+      "zusage": "Umschaltbare Sicherheitsflaggen werden beim Import eingefroren",
+      "beleg": "daimon/common/taint.py:54",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P18",
+      "abschnitt": "7.3",
+      "zusage": "Die Hook-Bridge nutzt ein Shared Secret aus $XDG_RUNTIME_DIR/daimon/hook-token (0600); ohne Token 401 plus Audit-Eintrag",
+      "beleg": "daimon/hookbridge/bridge.py:330",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P19",
+      "abschnitt": "7.3",
+      "zusage": "Die Bridge validiert das Schema, deckelt Content-Length, setzt Lese-Timeouts, nutzt exakte Routen und begrenzt die Nebenlaeufigkeit",
+      "beleg": "daimon/hookbridge/bridge.py:63",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P20",
+      "abschnitt": "7.3",
+      "zusage": "Gueltige Hooks bekommen sofort 200",
+      "beleg": "daimon/hookbridge/bridge.py:310",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P21",
+      "abschnitt": "7.4",
+      "zusage": "Mikrofon: close() -- zerstoert das Source-Output-Objekt, nicht Flag oder corking",
+      "beleg": "git:reviewer/p4-T-7.3v:tests/evidence/LEDGER-T-7.3.v.md#K7",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P22",
+      "abschnitt": "7.4",
+      "zusage": "Bildschirm: Pipeline -> NULL UND Session.Close()",
+      "beleg": "daimon/eyes/killswitch.py:86",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P23",
+      "abschnitt": "7.4",
+      "zusage": "GPU: Prozessende, nicht idle",
+      "beleg": "daimon/gpu/stt.py:24",
+      "status": "abweichung",
+      "befunde": [
+        "F-12"
+      ],
+      "notiz": "Der STT-Arbeitsprozess endet nie; Design 4.1 und der Modulkopf widersprechen sich."
+    },
+    {
+      "id": "P24",
+      "abschnitt": "7.4",
+      "zusage": "Ein globaler Hotkey stoppt beide Wahrnehmungs-Units",
+      "beleg": "daimon/auth/agent.py:89",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P25",
+      "abschnitt": "7.5",
+      "zusage": "Basis fuer alle dAImon-Units ausser egress: NoNewPrivileges, CapabilityBoundingSet=, ProtectSystem=strict, SystemCallFilter, RestrictAddressFamilies=AF_UNIX, InaccessiblePaths",
+      "beleg": "config/systemd/daimon-hub.service:28",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": "22 von 22 Units, einzeln nachgemessen."
+    },
+    {
+      "id": "P26",
+      "abschnitt": "7.5",
+      "zusage": "ProtectProc=invisible und ProcSubset=pid sind entfernt -- in einer --user-Unit wirkungslos",
+      "beleg": "docs/DESIGN.md:1029",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": "Keine Unit setzt eine der beiden Zeilen."
+    },
+    {
+      "id": "P27",
+      "abschnitt": "7.5",
+      "zusage": "Die @resources-Ausnahmen stehen im Massstab: cli-broker, gpu@, stt, tts, recorder",
+      "beleg": "docs/DESIGN.md:1053",
+      "status": "erfuellt",
+      "befunde": [
+        "F-32"
+      ],
+      "notiz": ""
+    },
+    {
+      "id": "P28",
+      "abschnitt": "7.5",
+      "zusage": "Abweichungstabelle Unit fuer Unit: hub, auth, hookbridge, mind, egress, dbus, fs, exec, input, gpu@, recorder, stt, tts, lokal-broker, cli-broker",
+      "beleg": "config/systemd/daimon-fs.service:51",
+      "status": "abweichung",
+      "befunde": [
+        "F-16",
+        "F-30"
+      ],
+      "notiz": "13 von 15 Zeilen stimmen zeichengleich; gpu@ und die zwei ReadWritePaths-Zeilen erfuellen die Zusage anders als beschrieben."
+    },
+    {
+      "id": "P29",
+      "abschnitt": "7.5",
+      "zusage": "Direktiven, die brechen, sind nicht gesetzt: ProtectHome=yes, PrivateUsers=yes, RestrictAddressFamilies ohne AF_UNIX, MemoryDenyWriteExecute in JIT-Diensten, PrivateDevices=yes in input/gpu@",
+      "beleg": "config/systemd/daimon-dbus.service:43",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P30",
+      "abschnitt": "7.6",
+      "zusage": "JSONL unter $XDG_STATE_HOME/daimon/audit/, 0700/0600",
+      "beleg": "daimon/hub/audit.py:114",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P31",
+      "abschnitt": "7.6",
+      "zusage": "Mit `seq` und `prev_hash`",
+      "beleg": "daimon/hub/audit.py:183",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P32",
+      "abschnitt": "7.6",
+      "zusage": "Der Kettenkopf wird periodisch und bei jeder Rotation ins Journal verankert",
+      "beleg": "daimon/hub/audit.py:200",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P33",
+      "abschnitt": "7.6",
+      "zusage": "Journal als Zweitschrift ueber sd_journal_send() mit DAIMON_*-Feldern; systemd-cat reicht nicht [V]",
+      "beleg": "daimon/hub/audit.py:236",
+      "status": "abweichung",
+      "befunde": [
+        "F-05"
+      ],
+      "notiz": "Der Anker geht ueber systemd-cat -- genau ueber den Weg, den das Design als unzureichend gemessen hat."
+    },
+    {
+      "id": "P34",
+      "abschnitt": "7.6",
+      "zusage": "xdg-dbus-proxy --log als dritter Strom",
+      "beleg": "config/dbus-filter.conf:36",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P35",
+      "abschnitt": "7.6",
+      "zusage": "Drei Pruefstellen: Hub beim Start (Blase mit hoher Dringlichkeit), systemd-Timer taeglich, daimon-audit --verify",
+      "beleg": "daimon/hub/daemon.py:1340",
+      "status": "erfuellt",
+      "befunde": [
+        "F-22"
+      ],
+      "notiz": ""
+    },
+    {
+      "id": "P36",
+      "abschnitt": "7.6",
+      "zusage": "Pflichtfelder: prompt_shown, params_hash, mark_id, initiator, turn_id, tool_use_id, outcome",
+      "beleg": "daimon/hub/audit.py:60",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P37",
+      "abschnitt": "7.6",
+      "zusage": "Nie im Klartext: Clipboard, synthetisierte Tastenanschlaege, Dateiinhalte, Tokens sowie jedes tainted-Material -- nur Hash und Laenge",
+      "beleg": "daimon/hub/audit.py:171",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P38",
+      "abschnitt": "7.6",
+      "zusage": "Immer im Audit: Ablehnungen, Cancels, Timeouts, Policy-Aenderungen, Markenausgaben und -einloesungen",
+      "beleg": "daimon/hub/coordinator.py:23",
+      "status": "abweichung",
+      "befunde": [
+        "F-11",
+        "F-40"
+      ],
+      "notiz": "Aktionsausgaenge vollstaendig; Markenausgaben und der Umfang einer Deklassifizierung stehen nicht rekonstruierbar in der Kette."
+    },
+    {
+      "id": "P39",
+      "abschnitt": "7.6",
+      "zusage": "chattr +a ist als Nutzer nicht setzbar und wird nicht behauptet",
+      "beleg": "daimon/hub/audit.py:13",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P40",
+      "abschnitt": "7.7",
+      "zusage": "GET /diag auf dem Hub-Socket: Warteschlangenlaengen, verworfene Ereignisse, Latenz-Histogramme je Hop, Markenzaehler, Kontingentzaehler, GPU-Ladevorgaenge, Unit-Zustaende",
+      "beleg": "daimon/hub/diag.py:134",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P41",
+      "abschnitt": "7.8",
+      "zusage": "Gedeckelte Warteschlange je Produzent: bei Ueberlauf werden die aeltesten verworfen und gezaehlt",
+      "beleg": "daimon/hub/diag.py:107",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P42",
+      "abschnitt": "7.8",
+      "zusage": "Hoechstzahl offener Rueckfragen",
+      "beleg": "daimon/hub/action_queue.py:30",
+      "status": "erfuellt",
+      "befunde": [
+        "F-27"
+      ],
+      "notiz": ""
+    },
+    {
+      "id": "P43",
+      "abschnitt": "7.8",
+      "zusage": "Ratenbegrenzung je Quelle",
+      "beleg": "daimon/hub/action_queue.py:34",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P44",
+      "abschnitt": "7.8",
+      "zusage": "Hoechstens-einmal ueber das Ticketbuch",
+      "beleg": "daimon/hub/action_queue.py:82",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P45",
+      "abschnitt": "7.8",
+      "zusage": "Sprech-Abkuehlung je Anlass: ungefragt 20 s, Reaktion 10 s, Rueckfrage 3 s, persistiert je Schluessel",
+      "beleg": "daimon/hub/abkuehlung.py:1",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    },
+    {
+      "id": "P46",
+      "abschnitt": "7.8",
+      "zusage": "Sitzungs-Leases statt reiner TTL; der Hook meldet seine PID mit, und jede Sitzung traegt eine Nonce gegen PID-Wiederverwendung",
+      "beleg": "daimon/hub/state.py:14",
+      "status": "erfuellt",
+      "befunde": [],
+      "notiz": ""
+    }
+  ],
+  "befunde": [
+    {
+      "id": "F-01",
+      "severity": "high",
+      "status": "closed",
+      "titel": "Drei Katalogaktionen haben keine Vorschau-Beschriftung; der Dialog nennt die Aktion nicht, die er bestaetigen laesst",
+      "abschnitt": "2.4 / 6.1",
+      "beleg": "daimon/auth/preview.py:161",
+      "fix": "243d9ac -- daimon/auth/preview.py:161-163: AKTIONS_BESCHRIFTUNGEN traegt jetzt fs.file.read ('Datei lesen'), exec.launch.kcalc ('Taschenrechner starten') und input.type.kcalc ('Tastenfolge an den Taschenrechner senden'). Nachgemessen am 21.08. gegen den Hauptbaum: alle 20 approved-Aktionen des Katalogs haben eine Beschriftung. Der in der Empfehlung genannte Waechter fehlt weiter -- kein Aufrufer prueft beim Laden, dass jede approved-Aktion eine Beschriftung hat.",
+      "wirkung": "fs.file.read, exec.launch.kcalc und input.type.kcalc stehen seit dem 21.08. im Katalog und nicht in AKTIONS_BESCHRIFTUNGEN. vorschau() wirft VorschauFehler, Hub._vorschau_bauen faellt auf 'Ember will eine unbekannte Aktion ausfuehren. Bitte ablehnen.' zurueck. Der Mensch bestaetigt Dateilesen, Anwendungsstart und Tastensynthese, ohne dass der Dialog eines davon benennt -- und genau dieser Text wird als prompt_shown in die Auditkette geschrieben.",
+      "reproduktion": "vorschau_beschriftung",
+      "quelle": "T-4.18 (eigene Messung), eingeloest 21.08."
+    },
+    {
+      "id": "F-02",
+      "severity": "high",
+      "status": "closed",
+      "titel": "xdg-dbus-proxy gibt invokeShortcut fuer ALLE kglobalaccel-Komponenten frei, der Katalog braucht vier",
+      "abschnitt": "6.4",
+      "beleg": "config/dbus-filter.conf:32",
+      "fix": "243d9ac -- config/dbus-filter.conf:32-35: vier einzelne --call=...Component.invokeShortcut@/component/<name>-Regeln fuer mediacontrol, kmix, kwin und org_kde_spectacle_desktop; der Platzhalter /component/* steht nur noch im erklaerenden Kommentar (Z. 20). Nachgemessen am 21.08. gegen den Hauptbaum: die vier Regeln decken genau die vier kglobalaccel-Komponenten, die der Katalog nennt (mediacontrol, kmix, kwin, org.kde.spectacle.desktop -- Punkt zu Unterstrich, wie _kglobalaccel_operation den Objektpfad bildet).",
+      "wirkung": "Die Regel lautet --call=...invokeShortcut@/component/*. Auf dieser Maschine kennt kglobalaccel 26 Komponenten; der Katalog nennt vier (mediacontrol, kmix, kwin, org.kde.spectacle.desktop). Freigegeben sind damit auch ksmserver ('Halt Without Confirmation', 'Reboot Without Confirmation'), org_kde_powerdevil ('PowerOff', 'Hibernate') und daimon-ears ('ohren_aus', der Mikrofon-Kill-Switch) -- also genau die Gruppen, die core.yaml ausdruecklich als `candidate` zurueckhaelt. Live gemessen mit zwei Positivkontrollen: org.kde.KWin wird vom Proxy abgewiesen (ServiceUnknown), shortcutNames wird abgewiesen (AccessDenied) -- invokeShortcut auf ksmserver kommt durch (rc=0).",
+      "reproduktion": "proxy_komponenten",
+      "quelle": "T-4.18 (eigene Messung), eingeloest 21.08."
+    },
+    {
+      "id": "F-03",
+      "severity": "medium",
+      "status": "open",
+      "titel": "Unbekannte Schluessel in `params` werden nicht verworfen",
+      "abschnitt": "1.3",
+      "beleg": "daimon/hub/daemon.py:1043",
+      "wirkung": "Design 1.3 sagt fuer den Hub: 'Unbekannte Felder werden verworfen, nicht durchgereicht.' Das gilt fuer die Nachricht, nicht fuer die Schluessel innerhalb von params. _params_pruefen laeuft ueber das Katalogschema und ignoriert alles, was dort nicht steht. Eine Modellausgabe kann input.type.kcalc ein `folge`-Feld anhaengen -- es kommt ungeprueft bis in den Broker.",
+      "reproduktion": "unbekannte_params",
+      "quelle": "T-4.18 (eigene Messung)"
+    },
+    {
+      "id": "F-04",
+      "severity": "medium",
+      "status": "open",
+      "titel": "Die Vorschau zeigt genau EINEN Parameterwert, und die Reihenfolge kommt aus der Modellausgabe",
+      "abschnitt": "2.4",
+      "beleg": "daimon/hub/daemon.py:924",
+      "wirkung": "next(iter(params.values())) nimmt den ersten Wert der Abbildung. Bei einer Aktion mit mehreren Parametern entscheidet die Schluesselreihenfolge des tool_use-Blocks, welcher davon dem Menschen gezeigt wird. Zusammen mit F-03 heisst das: das Feld, das die Wirkung traegt, muss nicht das Feld sein, das im Dialog steht.",
+      "reproduktion": "vorschau_ein_parameter",
+      "quelle": "T-4.18 (eigene Messung)"
+    },
+    {
+      "id": "F-05",
+      "severity": "medium",
+      "status": "open",
+      "titel": "Der Auditanker geht ueber systemd-cat -- den Weg, den Design 7.6 als unzureichend gemessen hat",
+      "abschnitt": "7.6",
+      "beleg": "daimon/hub/audit.py:236",
+      "wirkung": "Design 7.6: 'Journal als Zweitschrift ueber sd_journal_send() mit DAIMON_*-Feldern; die _-praefigierten Felder setzt das Journal selbst. systemd-cat reicht nicht [V].' Der Anker traegt deshalb keine strukturierten Felder und keine vom Journal gesetzte Herkunft. Der Apparat dafuer liegt im selben Repo: daimon/common/logging.py spricht das native Journal-Protokoll und prueft die Feldnamen.",
+      "reproduktion": "anker_systemd_cat",
+      "quelle": "T-4.18 (eigene Messung)"
+    },
+    {
+      "id": "F-06",
+      "severity": "medium",
+      "status": "open",
+      "titel": "Die Rundenmarke wird auf dem Aktionspfad nie eingeloest",
+      "abschnitt": "6.1",
+      "beleg": "daimon/hub/daemon.py:1054",
+      "wirkung": "Design 6.1 zeichnet 'Rundenmarke einloesen' als ersten Schritt des Hubs. Der Code schlaegt sie absichtlich nur nach (Begruendung im Kommentar: 'sonst waere eine Runde mit zwei Aktionen nach der ersten tot'). Folge: ein Tastendruck traegt 120 s lang beliebig viele Modellaktionen als `foreground`. Das ist eine Produktentscheidung, aber sie steht im Code und nicht im Design -- zwei Fassungen einer Regel.",
+      "reproduktion": "marke_nicht_eingeloest",
+      "quelle": "T-4.18 (eigene Messung)"
+    },
+    {
+      "id": "F-07",
+      "severity": "medium",
+      "status": "open",
+      "titel": "Der Zustimmungs-Cache hat im Betrieb keinen Schreiber",
+      "abschnitt": "6.5",
+      "beleg": "daimon/hub/policy.py:211",
+      "wirkung": "Policy.zustimmung_merken() wird in daimon/ von niemandem gerufen. Die vier Gueltigkeiten once/session/ttl/persistent (T-4.4 K6) sind gebaut, geprueft und im Betrieb unerreichbar. Die Richtung ist harmlos -- jedes `ask` fragt wirklich --, die Bauform ist die aus CLAUDE.md: eine Zusage ohne Zulauf.",
+      "reproduktion": "zustimmung_ohne_schreiber",
+      "quelle": "T-4.18 (eigene Messung)"
+    },
+    {
+      "id": "F-08",
+      "severity": "medium",
+      "status": "open",
+      "titel": "`never_cacheable` hat in daimon/ keinen Leser",
+      "abschnitt": "6.7",
+      "beleg": "config/actions/core.yaml:23",
+      "wirkung": "Jeder der 20 Katalogeintraege traegt never_cacheable: true. Kein Modul unter daimon/ liest das Feld. Solange F-07 gilt, faellt das nicht auf; wer den Cache verdrahtet, hebelt damit still Design 6.7 ('Immer ask, nie gecacht') aus. Hier fehlt der Waechter, nicht der Code.",
+      "reproduktion": "never_cacheable_ohne_leser",
+      "quelle": "T-4.18 (eigene Messung)"
+    },
+    {
+      "id": "F-09",
+      "severity": "medium",
+      "status": "open",
+      "titel": "Es gibt keinen Vorlauf mit gehaltenem Deskriptor und keine an die Consent-Nonce gebundene Referenz",
+      "abschnitt": "6.9",
+      "beleg": "daimon/brokers/fs/daemon.py:63",
+      "wirkung": "Design 6.9 verlangt: Ziel VOR der Rueckfrage oeffnen, FD halten, opake Referenz an die Nonce binden, nach der Freigabe durch DENSELBEN FD mutieren. Gebaut ist die halbe Zusage: der Broker loest vor der Ticket-Einloesung auf (das schliesst den Riss aus T-4.9.v K2). Die Aufloesung liegt aber nach der Freigabe -- zwischen dem Pfad, den der Mensch gelesen hat, und dem Pfad, der geoeffnet wird, liegt weiterhin ein Fenster.",
+      "reproduktion": "kein_vorlauf_fd",
+      "quelle": "T-4.18 (eigene Messung)"
+    },
+    {
+      "id": "F-10",
+      "severity": "medium",
+      "status": "open",
+      "titel": "braucht_modal() hat keinen Aufrufer",
+      "abschnitt": "6.5",
+      "beleg": "daimon/auth/modal.py:65",
+      "wirkung": "Design 6.5: 'Fuer destructive: true ohne verifiziertes Undo-Artefakt ist der modale Auth-Dialog Pflicht.' Die Entscheidung steht in modal.braucht_modal und wird in daimon/ nirgends gerufen. Der Hub reicht `destructive` zwar an `art: offene` heraus, der Auth-Agent liest das Feld nicht. Heute folgenlos, weil kein Katalogeintrag destructive: true traegt -- der Waechter dafuer fehlt aber auch.",
+      "reproduktion": "braucht_modal_ohne_aufrufer",
+      "quelle": "T-4.18 (eigene Messung)"
+    },
+    {
+      "id": "F-11",
+      "severity": "medium",
+      "status": "open",
+      "titel": "Der Umfang einer Deklassifizierung steht nur in einem Feld, das das Audit immer redigiert",
+      "abschnitt": "7.6",
+      "beleg": "daimon/hub/declassify.py:195",
+      "wirkung": "Audit.schreiben() redigiert prompt_shown bedingungslos. Der Umfang einer Freigabe ist damit im Nachhinein nicht rekonstruierbar -- die eine Frage, fuer die man das Deklassifizierungs-Audit aufschlaegt. Unveraendert seit T-5.9.v vom 18.08.",
+      "reproduktion": "umfang_redigiert",
+      "quelle": "LEDGER-T-5.9.v.md K4, hier gegen den Hauptbaum nachgemessen"
+    },
+    {
+      "id": "F-12",
+      "severity": "medium",
+      "status": "open",
+      "titel": "Der STT-Arbeitsprozess endet bei Stille nicht",
+      "abschnitt": "7.4",
+      "beleg": "daimon/gpu/stt.py:24",
+      "wirkung": "Design 7.4 fuehrt fuer GPU 'Prozessende' als das einzig von aussen pruefbare Kriterium; Design 4.1 sagt fuer den STT-Arbeitsprozess woertlich 'bei Stille beendet er sich wie gehabt'. Der Modulkopf von daimon/gpu/stt.py traegt die Ueberschrift 'Kein Leerlauf-Exit' und begruendet das Gegenteil. Zwei Fassungen einer Regel; welche gilt, entscheidet, wer zuerst nachschlaegt.",
+      "reproduktion": "stt_ohne_leerlauf",
+      "quelle": "LEDGER-T-7.4.v.md K3, hier gegen den Hauptbaum nachgemessen"
+    },
+    {
+      "id": "F-13",
+      "severity": "medium",
+      "status": "open",
+      "titel": "Auf dieser Maschine laeuft ein systemweiter ydotoold neben der Input-Unit",
+      "abschnitt": "6.7",
+      "beleg": "config/systemd/daimon-input.service:1",
+      "wirkung": "Design 6.7: 'Nur diese Unit hat DeviceAllow=/dev/uinput rw.' Im Repo stimmt das. Auf dieser Maschine ist ydotool.service `enabled` und /usr/bin/ydotoold laeuft dauerhaft -- ein privilegierter Eingabedienst ausserhalb jeder dAImon-Unit. Der Input-Broker erkennt ihn und lehnt ab (Kollisionspruefung, T-4.13 K5); die Zusage bleibt trotzdem eine ueber dAImon und keine ueber den Rechner.",
+      "reproduktion": "fremder_ydotoold",
+      "quelle": "LEDGER-T-4.13.v.md Nebenbefund, hier live nachgemessen"
+    },
+    {
+      "id": "F-14",
+      "severity": "low",
+      "status": "open",
+      "titel": "Zwei approved-Aktionen werden dem Modell als Werkzeug angeboten und haben im Broker keine Operation",
+      "abschnitt": "6.3",
+      "beleg": "config/actions/core.yaml:215",
+      "wirkung": "audio.volume.set und kde.window.raise tragen kein kglobalaccel-Paar; _kglobalaccel_operation liefert None, der DBus-Broker antwortet 'keine_operation'. Beide stehen trotzdem in werkzeuge_aus_katalog und damit im Werkzeugangebot an die API. Der Weg kostet eine Rueckfrage, eine Freigabe und ein Ticket, bevor er scheitert.",
+      "reproduktion": "aktion_ohne_operation",
+      "quelle": "T-4.18 (eigene Messung)"
+    },
+    {
+      "id": "F-15",
+      "severity": "low",
+      "status": "open",
+      "titel": "Der Nein-Knopf heisst 'Abbrechen' und meldet `declined`",
+      "abschnitt": "6.5",
+      "beleg": "daimon/auth/modal.py:140",
+      "wirkung": "Design 6.5 trennt `decline` (Ablehnung) und `cancel` (Ablauf oder Wegwischen) ausdruecklich und begruendet die Trennung. Der Dialog beschriftet den decline-Knopf mit dem Wort fuer den anderen Zustand. Der zweite Dialog desselben Agenten (agent.py:251) nennt denselben Knopf 'Ablehnen'.",
+      "reproduktion": "knopf_beschriftung",
+      "quelle": "T-4.18 (eigene Messung)"
+    },
+    {
+      "id": "F-16",
+      "severity": "low",
+      "status": "open",
+      "titel": "Drei Zeilen der Tabelle in Design 7.5 beschreiben den Baum nicht zeichengleich",
+      "abschnitt": "7.5",
+      "beleg": "config/systemd/daimon-gpu@.service:52",
+      "wirkung": "gpu@ fuehrt in der Tabelle PrivateDevices=no; die Unit hat die Zeile nicht (Vorgabe ist no, die Wirkung stimmt). fs und recorder erfuellen 'enge ReadWritePaths= fuer Arbeits-, Trash- und Undo-Pfade' bzw. 'ReadWritePaths= nur fuers Archivverzeichnis' ueber BindPaths= unter ProtectHome=tmpfs. Die Wirkung stimmt in allen drei Faellen, der Massstab benennt sie falsch.",
+      "reproduktion": "tabelle_gegen_baum",
+      "quelle": "T-4.18 (eigene Messung)"
+    },
+    {
+      "id": "F-17",
+      "severity": "low",
+      "status": "open",
+      "titel": "18 von 22 Units haben keine dokumentierte systemd-analyze-Note",
+      "abschnitt": "7.5",
+      "beleg": "docs/broker-sandboxes.md:1",
+      "wirkung": "docs/broker-sandboxes.md fuehrt vier Units mit Note. T-4.14.v hat denselben Befund am 20.08. als `bekannt-offen` gebucht (dort 14 von 22, gegen eine andere Quelle gezaehlt). Dokuluecke, kein Sandkastenfehler -- steht hier, weil `bekannt-offen` sonst zu `erledigt` verrutscht.",
+      "reproduktion": "noten_luecke",
+      "quelle": "LEDGER-T-4.14.v.md K4, hier gegen den Hauptbaum nachgezaehlt"
+    },
+    {
+      "id": "F-38",
+      "severity": "low",
+      "status": "open",
+      "titel": "Die 90-Tage-Frist des Audits steht nirgends im Code",
+      "abschnitt": "7.1",
+      "beleg": "daimon/hub/audit.py:211",
+      "wirkung": "Design 7.1: 'Audit-Log: 90 Tage; Ablehnungen unbefristet.' Es gibt Rotation, aber keinen Ort, an dem eine Frist steht oder eine alte Datei verfaellt. Die Zusage ist heute konservativ verletzt (es wird nichts geloescht), aber sie gilt in keine Richtung.",
+      "reproduktion": "audit_frist",
+      "quelle": "T-4.18 (eigene Messung)"
+    },
+    {
+      "id": "F-39",
+      "severity": "low",
+      "status": "open",
+      "titel": "Zwei Sockets im Laufzeitverzeichnis sind 0700 statt 0600",
+      "abschnitt": "7.3",
+      "beleg": "daimon/common/ipc.py:297",
+      "wirkung": "Alle von daimon/common/ipc.py angelegten Sockets sind 0600 -- gemessen. dbus-proxy.sock legt xdg-dbus-proxy selbst an (0700), echo.sock stammt aus einem Handlauf. Das Ausfuehrungsbit an einem Unix-Socket hat keine Wirkung; ipc.modus_ok() verlangt aber exakt 0600 und wuerde beide melden.",
+      "reproduktion": "socket_modus",
+      "quelle": "T-4.18 (eigene Messung)"
+    },
+    {
+      "id": "F-40",
+      "severity": "low",
+      "status": "open",
+      "titel": "Markenausgaben und -einloesungen stehen im Journal, nicht in der Auditkette",
+      "abschnitt": "7.6",
+      "beleg": "daimon/hub/marks.py:147",
+      "wirkung": "Design 7.6 zaehlt 'Markenausgaben und -einloesungen' unter 'Immer' auf -- in dem Absatz, der die JSONL-Kette beschreibt. MarkenBuch schreibt sie ueber den injizierten Logger ins Journal. Damit sind sie nicht Teil der verketteten, gegen das Journal verankerten Spur, sondern nur der Spur, gegen die verankert wird.",
+      "reproduktion": "marken_nicht_in_kette",
+      "quelle": "T-4.18 (eigene Messung)"
+    },
+    {
+      "id": "F-18",
+      "severity": "high",
+      "status": "closed",
+      "titel": "Die `quelle` gehoert dem Hub: aktion.sock setzt sie als Konstante",
+      "abschnitt": "6.5",
+      "beleg": "daimon/hub/daemon.py:1087",
+      "wirkung": "Wer `quelle: parser` mitschickte, bekam frueher `allow` ohne Vorschau. Der Socketweg kann strukturell nie der Parser sein und setzt `modell` fest.",
+      "reproduktion": "quelle_gehoert_dem_hub",
+      "quelle": "LEDGER-T-4.4.v.md K8 (18.08.), eingeloest"
+    },
+    {
+      "id": "F-19",
+      "severity": "high",
+      "status": "closed",
+      "titel": "Der Hub-Parser prueft, ob wirklich Push-to-Talk gedrueckt war",
+      "abschnitt": "6.1",
+      "beleg": "daimon/hub/daemon.py:1524",
+      "wirkung": "Ohne diese Schranke haette jede mitgehoerte Aeusserung im offenen 120-s-Fenster ohne Vorschau gewirkt -- auf dem maechtigeren der beiden Wege.",
+      "reproduktion": "parser_ptt_schranke",
+      "quelle": "LEDGER-T-4.16.v.md K3 Runde 2, eingeloest mit 87c2281"
+    },
+    {
+      "id": "F-20",
+      "severity": "high",
+      "status": "closed",
+      "titel": "Der FS-Broker loest den Pfad vor der Ticket-Einloesung auf",
+      "abschnitt": "6.9",
+      "beleg": "daimon/brokers/fs/daemon.py:57",
+      "wirkung": "Vorher lag genau zwischen Genehmigung und Mutation eine Aufloesung; ein getauschtes Verzeichnisglied oder ein link(2) genuegte.",
+      "reproduktion": "fs_aufloesung_vor_ticket",
+      "quelle": "LEDGER-T-4.9.v.md K2, eingeloest"
+    },
+    {
+      "id": "F-21",
+      "severity": "high",
+      "status": "closed",
+      "titel": "Der Auth-Agent meldet dem Hub ein Nein",
+      "abschnitt": "6.5",
+      "beleg": "daimon/auth/agent.py:379",
+      "wirkung": "Vorher kehrte der Agent bei jeder Antwort ausser `granted` wortlos zurueck: 'Ablehnen' wirkte wie Nichtstun und lief in die 120-s-Frist.",
+      "reproduktion": "auth_meldet_nein",
+      "quelle": "LEDGER-T-4.11.v.md K5/K9, eingeloest"
+    },
+    {
+      "id": "F-22",
+      "severity": "high",
+      "status": "closed",
+      "titel": "Der Hub meldet die gerissene Auditkette als dringende Blase",
+      "abschnitt": "7.6",
+      "beleg": "daimon/hub/daemon.py:1378",
+      "wirkung": "Vorher stand der Befund nur als Journalzeile. Eine Meldung, die man suchen muss, ist keine.",
+      "reproduktion": "kette_meldet_blase",
+      "quelle": "LEDGER-T-4.6.v.md K5, eingeloest"
+    },
+    {
+      "id": "F-23",
+      "severity": "medium",
+      "status": "closed",
+      "titel": "Der DBus-Proxy hat eine eigene Unit, und der Broker spricht ueber seinen Socket",
+      "abschnitt": "6.4",
+      "beleg": "config/systemd/daimon-dbus-proxy.service:1",
+      "wirkung": "config/dbus-filter.conf war eine Datei ohne Leser; der Broker sprach mit dem echten Sitzungsbus.",
+      "reproduktion": "proxy_hat_zulauf",
+      "quelle": "LEDGER-T-4.7.v.md K3/K4, eingeloest"
+    },
+    {
+      "id": "F-24",
+      "severity": "medium",
+      "status": "closed",
+      "titel": "Consent._speichern nutzt einen je-Schreiber-eigenen Zwischennamen",
+      "abschnitt": "6.5",
+      "beleg": "daimon/hub/consent.py:134",
+      "wirkung": "Zwei gleichzeitige stellen() schrieben dieselbe consent-pending.json.neu; der zweite replace() riss den ganzen Aktionspfad mit -- ohne Audit-Eintrag und mit belegtem Rueckfrageplatz.",
+      "reproduktion": "consent_zwischenname",
+      "quelle": "LEDGER-T-4.11.v.md K8, eingeloest"
+    },
+    {
+      "id": "F-25",
+      "severity": "medium",
+      "status": "closed",
+      "titel": "Die Aktionsteile werden unter einem Schloss gebaut",
+      "abschnitt": "6.1",
+      "beleg": "daimon/hub/daemon.py:841",
+      "wirkung": "Acht gleichzeitige erste Aktionsanfragen lieferten acht Koordinatoren mit je eigenem Consent, eigener Schlange und eigenem Auftragsbuch.",
+      "reproduktion": "aktionsteile_unter_schloss",
+      "quelle": "LEDGER-T-4.11.v.md K8, eingeloest"
+    },
+    {
+      "id": "F-26",
+      "severity": "medium",
+      "status": "closed",
+      "titel": "Hub._vorschau_bauen ruft die feste Vorlage statt eines eigenen Textes",
+      "abschnitt": "2.4",
+      "beleg": "daimon/hub/daemon.py:935",
+      "wirkung": "Der Dialog des Betriebs zeigte einen im Hub zusammengesetzten Text mit dem rohen Aktionsschluessel und ohne Umkehr-Zeile.",
+      "reproduktion": "vorschau_nutzt_vorlage",
+      "quelle": "LEDGER-T-4.12.v.md K6, eingeloest"
+    },
+    {
+      "id": "F-27",
+      "severity": "medium",
+      "status": "closed",
+      "titel": "Der Rueckfrageplatz kommt auch auf dem Fehlerweg zurueck",
+      "abschnitt": "7.8",
+      "beleg": "daimon/hub/coordinator.py:178",
+      "wirkung": "rueckfrage_schliessen lag auf dem Erfolgsweg; nach drei Fehlern lehnte der Hub jede weitere Rueckfrage ab, obwohl keine offen war.",
+      "reproduktion": "platz_im_finally",
+      "quelle": "LEDGER-T-4.15.v.md K4, eingeloest"
+    },
+    {
+      "id": "F-28",
+      "severity": "medium",
+      "status": "closed",
+      "titel": "outcome=unknown ist am Auditzeitpunkt erreichbar",
+      "abschnitt": "6.2",
+      "beleg": "daimon/hub/coordinator.py:218",
+      "wirkung": "Der Koordinator bestaetigte die Schlange bedingungslos; ein Broker, der nach der Wirkung starb, stand als `failed` im Audit.",
+      "reproduktion": "unknown_erreichbar",
+      "quelle": "LEDGER-T-4.15.v.md K2, eingeloest"
+    },
+    {
+      "id": "F-29",
+      "severity": "medium",
+      "status": "closed",
+      "titel": "Der Undo-Hop ist im Betrieb verdrahtet",
+      "abschnitt": "6.6",
+      "beleg": "daimon/hub/daemon.py:886",
+      "wirkung": "HubKoordinator bekam kein undo=; self.undo war None und der ganze Undo-Hop wurde uebersprungen.",
+      "reproduktion": "undo_verdrahtet",
+      "quelle": "LEDGER-T-4.8.v.md Zulauf, eingeloest"
+    },
+    {
+      "id": "F-30",
+      "severity": "medium",
+      "status": "closed",
+      "titel": "daimon-fs.service versteckt $HOME (ProtectHome=tmpfs)",
+      "abschnitt": "7.5",
+      "beleg": "config/systemd/daimon-fs.service:51",
+      "wirkung": "ProtectHome stand auskommentiert; die BindPaths-Liste blendete ein und nichts aus.",
+      "reproduktion": "fs_protecthome",
+      "quelle": "LEDGER-T-4.9.v.md K3, eingeloest"
+    },
+    {
+      "id": "F-31",
+      "severity": "medium",
+      "status": "closed",
+      "titel": "Jede --wurzel-Angabe des FS-Brokers zaehlt",
+      "abschnitt": "6.9",
+      "beleg": "daimon/brokers/fs/daemon.py:65",
+      "wirkung": "Der Dienstmantel nahm next((w for w in wurzeln), None) -- nur die erste; die zweite Unit-Zeile war wirkungslos.",
+      "reproduktion": "alle_wurzeln",
+      "quelle": "LEDGER-T-4.9.v.md K6, eingeloest"
+    },
+    {
+      "id": "F-32",
+      "severity": "medium",
+      "status": "closed",
+      "titel": "Die @resources-Ausnahme des Recorders steht in Design 7.5",
+      "abschnitt": "7.5",
+      "beleg": "docs/DESIGN.md:1053",
+      "wirkung": "Der Builder meldete die Ausnahme als dokumentiert; sie stand nur im Kommentar der Unit, nicht im Massstab.",
+      "reproduktion": "recorder_ausnahme_dokumentiert",
+      "quelle": "LEDGER-T-4.14.v.md K1, eingeloest"
+    },
+    {
+      "id": "F-33",
+      "severity": "medium",
+      "status": "closed",
+      "titel": "Alle 22 installierten Units sind Symlinks ins Repo",
+      "abschnitt": "7.5",
+      "beleg": "config/systemd/daimon-hub.service:1",
+      "wirkung": "13 der 22 installierten Units waren Kopien; eine Aenderung im Repo erreichte den Betrieb nicht.",
+      "reproduktion": "units_sind_symlinks",
+      "quelle": "LEDGER-T-4.14.v.md K6, eingeloest"
+    },
+    {
+      "id": "F-34",
+      "severity": "medium",
+      "status": "closed",
+      "titel": "Der Input-Broker hat Portal-Regelweg, App-Allowlist, harten Sperrbildschirm-Breaker und ein Audit mit Klassenlabel",
+      "abschnitt": "6.7",
+      "beleg": "daimon/brokers/input/broker.py:140",
+      "wirkung": "Vier von elf Kriterien aus T-4.13.v waren rot, weil der Gegenstand fehlte: kein Portal, keine Allowlist, kein Breaker, kein Protokoll.",
+      "reproduktion": "input_broker_vollstaendig",
+      "quelle": "LEDGER-T-4.13.v.md K4/K7/K8/K10, eingeloest"
+    },
+    {
+      "id": "F-35",
+      "severity": "medium",
+      "status": "closed",
+      "titel": "Die gestartete Anwendung ueberlebt das Ende von gio launch",
+      "abschnitt": "6.9",
+      "beleg": "daimon/brokers/exec/broker.py:155",
+      "wirkung": "gio launch gabelte die Anwendung und kehrte zurueck; systemd raeumte die cgroup samt der eben gestarteten Anwendung ab, rc=0.",
+      "reproduktion": "killmode_none",
+      "quelle": "LEDGER-T-4.10.v.md K4, eingeloest"
+    },
+    {
+      "id": "F-36",
+      "severity": "medium",
+      "status": "closed",
+      "titel": "Der Katalog adressiert alle vier Broker",
+      "abschnitt": "6.5",
+      "beleg": "config/actions/core.yaml:392",
+      "wirkung": "Kein Katalogeintrag trug audience fs, exec oder input; drei von vier Brokern bekamen im Betrieb nie einen Auftrag. Damit sind auch die als 'zurueckgestellt' gebuchten Punkte T-4.13 K1/K4/K6/K11 gegenstaendlich geworden und einzeln gemessen.",
+      "reproduktion": "katalog_adressiert_broker",
+      "quelle": "LEDGER-T-4.9/4.10/4.13 K6/K11, eingeloest mit a8e63e9"
+    },
+    {
+      "id": "F-37",
+      "severity": "medium",
+      "status": "closed",
+      "titel": "daimon-fs.service erreicht das Archivverzeichnis nicht mehr",
+      "abschnitt": "7.1",
+      "beleg": "config/systemd/daimon-fs.service:71",
+      "wirkung": "Akzeptanzpunkt 1 von T-7.1 nennt daimon-recorder als einzigen Schreiber; gemessen waren es zwei.",
+      "reproduktion": "archiv_nur_recorder",
+      "quelle": "LEDGER-T-7.1.v.md K1, eingeloest"
+    },
+    {
+      "id": "F-41",
+      "severity": "low",
+      "status": "open",
+      "titel": "Verschachtelungstiefen sind an keiner Stelle gedeckelt",
+      "abschnitt": "1.3",
+      "beleg": "daimon/hub/daemon.py:213",
+      "wirkung": "Design 1.3 nennt beides: 'Feldlaengen und Verschachtelungstiefen sind gedeckelt.' Gedeckelt ist die Zeilenlaenge (1 MiB). Ein `params` mit 400 Ebenen laeuft ohne Widerspruch durch Policy.entscheide und wird kanonisiert und gehasht -- gemessen. Die Grenze liegt heute bei der Rekursionstiefe von CPython, nicht bei einer Zusage dieses Projekts.",
+      "reproduktion": "keine_tiefendeckelung",
+      "quelle": "T-4.18 (eigene Messung)"
+    }
+  ]
+}
