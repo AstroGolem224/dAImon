@@ -64,6 +64,11 @@ EVENTS_SOCKET = "events.sock"
 STT_SOCKET = "stt.sock"
 MIND_SOCKET = "mind.sock"
 SAY_SOCKET = "tts-say.sock"
+# T-4.16 K3: der deterministische Hub-Parser. Request-Response, NICHT der
+# `utterance`-Bus-Event -- der setzt nur `voice_denkt_an()` und bekommt nie
+# eine Antwort, dieser Ruf muss synchron sein, sonst laeuft dieselbe
+# Aeusserung doppelt (hier direkt UND ueber Mind/Durchgang 1).
+PARSER_SOCKET = "parser.sock"
 # Echo-Referenz vom TTS (Vertrag: Echo-Referenz-Plan.md). SOCK_DGRAM: der
 # Sender ist der Sprech-Thread des TTS und darf an nichts haengen bleiben.
 ECHO_SOCKET = "echo.sock"
@@ -322,6 +327,28 @@ class Ohren:
 
         marke = marke_fuer(listening_bei_beginn=listening_bei_beginn)
         self._archivieren(text, marke)
+
+        # T-4.16 K3: der Hub-Parser bekommt den ersten Blick. Erkennt er
+        # eine exakte Phrase, ist die Aktion schon gewirkt -- Mind wird dann
+        # NICHT gerufen, sonst liefe dieselbe Aeusserung zweimal (hier
+        # direkt, dort ueber Durchgang 1). Jeder Fehlschlag (kein Hub, kein
+        # Treffer, Timeout) faellt still auf den bisherigen Weg zurueck --
+        # dieser Pfad ist eine Abkuerzung, keine neue Huerde.
+        parser = self._ruf(str(self.runtime_dir / PARSER_SOCKET),
+                           {"v": 1, "art": "erkennen", "text": text})
+        if parser.get("ok") and parser.get("erkannt"):
+            self.log.info("Hub-Parser hat gewirkt", DAIMON_ACTION="ears_parser",
+                          DAIMON_AKTION_ID=str(parser.get("action_id"))[:60])
+            t2 = self._uhr()
+            satz = str(parser.get("gesprochen") or "").strip()
+            if satz:
+                self._ruf(str(self.runtime_dir / SAY_SOCKET),
+                         {"v": 1, "art": "sprich", "kanal": "reaktion",
+                          "text": satz})
+            t3 = self._uhr()
+            self.runden += 1
+            self._latenz_schreiben(t_segment, t0, t1, t2, t3, None)
+            return
 
         antwort = self._ruf(str(self.runtime_dir / MIND_SOCKET),
                             {"v": 1, "art": "frage", "text": text,

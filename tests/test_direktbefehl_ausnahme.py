@@ -91,39 +91,51 @@ def test_der_socketweg_setzt_die_quelle_selbst():
     einen laufenden Hub samt Broker braucht -- der Verifizierer T-4.4 misst
     ihn ueber den echten Socket, und genau das ist seine Aufgabe.
 
-    Hier steht die Zusage als Struktur: in `aktion_anfrage` darf `quelle`
-    nicht aus der Nachricht kommen.
+    Hier steht die Zusage als Struktur: in `aktion_anfrage` (Socketweg) darf
+    `quelle` nicht aus der Nachricht kommen. Seit T-4.16 K3 gibt es einen
+    ZWEITEN Aufrufer, `parser_anfrage` -- er ruft den Koordinator DIREKT,
+    nicht ueber `aktion.sock`, und setzt `quelle="parser"` (siehe den
+    WAECHTER unten). Beide sind Konstanten, keiner liest die Nachricht.
     """
     quelle = (REPO / "daimon" / "hub" / "daemon.py").read_text(encoding="utf-8")
     baum = ast.parse(quelle)
-    fund = None
-    for k in ast.walk(baum):
-        if not (isinstance(k, ast.Call)
-                and isinstance(k.func, ast.Attribute)
-                and k.func.attr == "ausfuehren"):
+    gefunden: dict[str, ast.expr] = {}
+    for funktion in ast.walk(baum):
+        if not isinstance(funktion, ast.FunctionDef):
             continue
-        for kw in k.keywords:
-            if kw.arg == "quelle":
-                fund = kw.value
-    assert fund is not None, "kein Aufruf von `ausfuehren(quelle=...)` gefunden"
-    assert isinstance(fund, ast.Constant), (
-        "die `quelle` kommt nicht als Konstante -- wer sie aus der Nachricht "
-        "nimmt, gibt dem Absender die Direktbefehl-Ausnahme (T-4.4 K8)")
-    assert fund.value == "modell", fund.value
+        for k in ast.walk(funktion):
+            if not (isinstance(k, ast.Call)
+                    and isinstance(k.func, ast.Attribute)
+                    and k.func.attr == "ausfuehren"):
+                continue
+            for kw in k.keywords:
+                if kw.arg == "quelle":
+                    gefunden[funktion.name] = kw.value
+    assert gefunden, "kein Aufruf von `ausfuehren(quelle=...)` gefunden"
+    for name, fund in gefunden.items():
+        assert isinstance(fund, ast.Constant), (
+            f"{name}: die `quelle` kommt nicht als Konstante -- wer sie aus "
+            "der Nachricht nimmt, gibt dem Absender die Direktbefehl-"
+            "Ausnahme (T-4.4 K8)")
+    assert gefunden.get("aktion_anfrage") is not None, (
+        "aktion_anfrage (Socketweg) ruft `ausfuehren` nicht mehr mit "
+        "`quelle=...`")
+    assert gefunden["aktion_anfrage"].value == "modell"
+    assert gefunden.get("parser_anfrage") is not None, (
+        "parser_anfrage (Hub-Parser) ruft `ausfuehren` nicht mehr mit "
+        "`quelle=...`")
+    assert gefunden["parser_anfrage"].value == "parser"
 
 
 # -- Der Waechter fuer den Tag, an dem es einen Parser gibt ---------------
 
-def test_WAECHTER_es_gibt_keinen_produktiven_parser():
-    """Der Verifizierer hat dafuer einen Waechter gebaut, und er meldet eine
-    leere Liste: es gibt heute KEINEN legitimen Erzeuger von
-    `quelle="parser"`. Die Ausnahme existierte damit ausschliesslich als
-    Umgehungsweg.
-
-    Wer einen Parser baut, ruft den Koordinator DIREKT -- nicht ueber
-    `aktion.sock`. Dieser Test faellt auf, sobald jemand es anders macht,
-    und verweist auf die Stelle.
-    """
+def test_der_produktive_parser_ruft_den_koordinator_direkt():
+    """T-4.16 K3: der Tag ist da. `daimon/hub/daemon.py: parser_anfrage`
+    erzeugt jetzt `quelle="parser"` -- legitim, weil er den Koordinator
+    DIREKT ruft (`teile.ausfuehren(...)`) und nicht ueber `aktion.sock`
+    (dessen `aktion_anfrage` bleibt bei `quelle="modell"`, siehe der Test
+    oben). Dieser Test ersetzt den vorigen WAECHTER, der eine leere Liste
+    erwartete -- und verlangt jetzt GENAU eine Fundstelle, keine zweite."""
     treffer = []
     for datei in sorted((REPO / "daimon").rglob("*.py")):
         if "__pycache__" in str(datei):
@@ -136,7 +148,8 @@ def test_WAECHTER_es_gibt_keinen_produktiven_parser():
                     continue          # der Vergleich in der Policy selbst
                 if "quelle" in nackt:
                     treffer.append(f"{datei.relative_to(REPO)}:{nr}")
-    assert not treffer, (
-        "jemand erzeugt jetzt `quelle=parser`: " + ", ".join(treffer)
-        + " -- er muss den Koordinator DIREKT rufen, und die Direktausnahme "
-          "gehoert dann samt Zulauf geprueft (T-4.4 Akzeptanzpunkt 8)")
+    assert len(treffer) == 1 and treffer[0].startswith("daimon/hub/daemon.py:"), (
+        "genau eine Fundstelle wird erwartet (parser_anfrage) -- "
+        f"gefunden: {treffer}. Ein zweiter Erzeuger von `quelle=parser` "
+        "braucht seine eigene Pruefung, kein stillschweigendes Mitlaufen "
+        "(T-4.4 Akzeptanzpunkt 8)")

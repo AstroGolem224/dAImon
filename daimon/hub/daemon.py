@@ -71,6 +71,45 @@ AKTION_SOCKET = "aktion.sock"
 # Dienste kennen, und damit die schwaechste Tuer im Haus.
 KONTEXT_SOCKET = "kontext.sock"
 KONTEXT_UNITS = ("daimon-mind.service",)
+# T-4.16 K3: der deterministische Hub-Parser. EIGENER Socket, dieselbe
+# Bauart wie `kontext.sock` -- nicht auf `aktion.sock`, denn `quelle` dort
+# ist per Definition IMMER "modell" (Kommentar bei `aktion_anfrage`); ein
+# Parser-Ergebnis mit `quelle="parser"` kann von dort aus strukturell nicht
+# kommen. `utterance` (der Bus-Event, `ipc.PRODUZENTEN["ears"]`) bleibt
+# unberuehrt -- der setzt nur `voice_denkt_an()`, hier steht die Erkennung.
+PARSER_SOCKET = "parser.sock"
+PARSER_UNITS = ("daimon-ears.service",)
+# Exakte Phrasen, kein NLU. Nur `direct: true`-Aktionen OHNE Pflichtparameter
+# -- `audio.volume.set` braucht einen Wert, den eine feste Phrase nicht
+# liefern kann, und steht deshalb bewusst nicht hier (Design §263: die
+# Abkuerzung gilt nur "eindeutigen Kommandos"). Jede Phrase ist normalisiert
+# (klein, ohne Satzzeichen) und zeigt auf GENAU eine `action_id` -- die
+# Policy prueft trotzdem erneut, ob der Katalog `direct: true` fuer sie
+# fuehrt (`policy.py`, Schritt 5); diese Tabelle ist die Erkennung, nicht
+# die Erlaubnis.
+DIREKT_PHRASEN: dict[str, str] = {
+    "pause": "media.playpause",
+    "musik pause": "media.playpause",
+    "weiter": "media.playpause",
+    "nächster titel": "media.next",
+    "naechster titel": "media.next",
+    "nächstes lied": "media.next",
+    "vorheriger titel": "media.previous",
+    "voriges lied": "media.previous",
+    "stopp": "media.stop",
+    "stop": "media.stop",
+    "musik stopp": "media.stop",
+    "vorspulen": "media.seek.forward",
+    "zurückspulen": "media.seek.backward",
+    "zurueckspulen": "media.seek.backward",
+    "lauter": "audio.volume.up",
+    "leiser": "audio.volume.down",
+    "stumm": "audio.mute.toggle",
+    "stumm schalten": "audio.mute.toggle",
+    "nächster schreibtisch": "desktop.next",
+    "naechster schreibtisch": "desktop.next",
+    "vorheriger schreibtisch": "desktop.previous",
+}
 
 # Wer an den uebrigen Endpunkten sprechen darf. Bis zum 19.08. hatte NUR der
 # Kontextsocket eine Liste; die Reviewer-Sitzung hat es gemessen (T-4.5,
@@ -1457,6 +1496,61 @@ class Hub:
                 "archiv": [str(getattr(e, "value", e))
                            for e in freigabe.archiv]}
 
+    def parser_anfrage(self, anfrage: object) -> dict:
+        """T-4.16 K3: der deterministische Hub-Parser.
+
+        `erkannt=False` ist der Normalfall -- die meisten Aeusserungen sind
+        keine der wenigen exakten Phrasen. Der Aufrufer (Ohren-Dienst) faehrt
+        dann unveraendert mit Mind fort; er wartet auf DIESE Antwort, bevor
+        er das tut, sonst koennte dieselbe Aeusserung zweimal wirken --
+        einmal hier, direkt, und einmal ueber Durchgang 1 (T-4.16 K1).
+        """
+        if not isinstance(anfrage, dict):
+            return {"v": 1, "ok": False, "grund": "unlesbar"}
+        if anfrage.get("art") != "erkennen":
+            return {"v": 1, "ok": False, "grund": "unbekannte_art"}
+        text = anfrage.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return {"v": 1, "ok": False, "grund": "kein_text"}
+
+        normalisiert = " ".join(text.strip().lower().split())
+        action_id = DIREKT_PHRASEN.get(normalisiert)
+        if action_id is None:
+            return {"v": 1, "ok": True, "erkannt": False}
+
+        turn_id = self.marken.aktuelle() or ""
+        gueltig = bool(turn_id) and self.marken.initiator(turn_id) == "user"
+        marke = {"id": turn_id, "gueltig_bis": float("inf")} if gueltig else None
+        teile = self._aktionsteile()
+        audience = str(teile.policy.katalog.get(action_id, {})
+                       .get("audience") or "dbus")
+        try:
+            lauf = teile.ausfuehren(
+                action_id=action_id, params={},
+                # DER EINZIGE ORT, an dem "parser" je steht -- dieser Socket
+                # traegt sonst nichts, und `aktion.sock` kann es strukturell
+                # nicht (Kommentar bei `aktion_anfrage`).
+                quelle="parser", marke=marke, session_id="",
+                turn_id=turn_id, tool_use_id=secrets.token_hex(8),
+                audience=audience)
+        except Exception as fehler:
+            self.log.error("Hub-Parser gescheitert",
+                           DAIMON_ACTION="parser_fehler",
+                           DAIMON_GRUND=str(fehler)[:200])
+            from daimon.hub.coordinator import SPRACHE
+            self._sprechen(SPRACHE["broker"])
+            return {"v": 1, "ok": True, "erkannt": True,
+                    "action_id": action_id, "ausgefuehrt": False,
+                    "grund": "aktionspfad"}
+
+        self.log.info("Hub-Parser erkannt", DAIMON_ACTION="parser",
+                      DAIMON_AKTION_ID=action_id[:60],
+                      DAIMON_VERDIKT=lauf.verdikt,
+                      DAIMON_AUSGEFUEHRT=str(lauf.ausgefuehrt))
+        return {"v": 1, "ok": True, "erkannt": True, "action_id": action_id,
+                "verdikt": lauf.verdikt, "ausgefuehrt": lauf.ausgefuehrt,
+                "grund": lauf.grund, "gesprochen": lauf.gesprochen}
+
     def _horche_einfach(self, dateiname: str, liefere, *,
                         liest: bool = False, nebenlaeufig: bool = False,
                         erlaubte_units: tuple[str, ...] | None = None) -> None:
@@ -1639,6 +1733,13 @@ class Hub:
                              args=(KONTEXT_SOCKET, self.kontext_anfrage),
                              kwargs={"liest": True,
                                      "erlaubte_units": KONTEXT_UNITS},
+                             daemon=True)
+        t.start()
+        self._threads.append(t)
+        t = threading.Thread(target=self._horche_einfach,
+                             args=(PARSER_SOCKET, self.parser_anfrage),
+                             kwargs={"liest": True,
+                                     "erlaubte_units": PARSER_UNITS},
                              daemon=True)
         t.start()
         self._threads.append(t)
