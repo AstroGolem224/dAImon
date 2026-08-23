@@ -56,7 +56,15 @@ UMask=0077
 # davon, ob er ihn heute nutzt.
 RestrictAddressFamilies=AF_UNIX
 SystemCallFilter=@system-service
-SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+# `@resources` fehlt hier ABSICHTLICH in der Sperrliste, dieselbe Ausnahme
+# wie bei `daimon-eyes`/`daimon-recorder`/`daimon-stt`/`daimon-tts`: der
+# PipeWire-Aufnahmestrom holt sich beim Oeffnen einen Echtzeit-Thread
+# (`sched_setscheduler`, `@resources`). Live gemessen (T-5.10.v, 23.08.):
+# 120 ms nach dem Einschalten von PTT stirbt der Dienst mit `status=31/SYS`,
+# danach Dauerschleife -- der einzige Weg, mit dAImon zu sprechen, war damit
+# bei gedruecktem PTT grundsaetzlich taub. Design 7.5 fehlte dieser Dienst
+# bislang in der Ausnahmetabelle -- nachgetragen.
+SystemCallFilter=~@privileged @obsolete @mount @swap @reboot @module
 # MemoryDenyWriteExecute FEHLT hier, und das ist gemessen, nicht vergessen.
 # Mit der Direktive stirbt der erste Aufnahmeversuch:
 #
