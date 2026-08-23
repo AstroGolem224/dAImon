@@ -82,7 +82,14 @@ UMask=0077
 # Kombination, unabhaengig davon, ob er ihn heute nutzt.
 RestrictAddressFamilies=AF_UNIX
 SystemCallFilter=@system-service
-SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+# `@resources` fehlt hier ABSICHTLICH in der Sperrliste, dieselbe Ausnahme
+# wie bei `daimon-recorder`/`daimon-stt`/`daimon-tts`: der Kill-Switch
+# (killswitch.py) und der Frame-Zulauf (daemon.py) rufen `pw-dump`, und ein
+# PipeWire-Klient setzt seine Scheduling-Prioritaet. Mit gesperrtem
+# `@resources` stirbt `pw-dump` an SIGSYS -- live gemessen am 23.08.:
+# Restart-Zaehler > 500, `status=31/SYS` in jedem Journal-Eintrag. Design 7.5
+# fehlte dieser Dienst bislang in der Ausnahmetabelle -- nachgetragen.
+SystemCallFilter=~@privileged @obsolete @mount @swap @reboot @module
 # MemoryDenyWriteExecute FEHLT, und das ist ueberlegt, nicht vergessen: der
 # OCR-Arbeitsprozess laedt libtesseract ueber ctypes, und GStreamer laedt
 # seine Plugins zur Laufzeit nach. Dieselbe Lage wie bei den Ohren (cffi) und

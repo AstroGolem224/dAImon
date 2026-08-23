@@ -1050,6 +1050,7 @@ InaccessiblePaths=%h/.ssh %h/.gnupg %h/.local/share/keyrings %h/.pki
 | `exec` | `ProtectHome=read-only`; gestartete Apps landen über `systemd-run --user` **außerhalb** dieser Sandbox |
 | `input` | `PrivateDevices=no`, `DeviceAllow=/dev/uinput rw`, `RuntimeMaxSec=` |
 | `gpu@` | `PrivateDevices=no` (braucht `/dev/nvidia*`), kein `MemoryDenyWriteExecute` (CUDA-JIT braucht W+X), `SystemCallFilter` ohne `@resources` (ein CUDA-Prozess setzt Speicherlimits und Affinitäten; der Hub filtert stattdessen) |
+| `eyes` | `SystemCallFilter` ohne `@resources` — der Kill-Switch und der Frame-Zulauf rufen `pw-dump`, ein PipeWire-Client setzt Echtzeitpriorität und `mlock`, beides liegt in `@resources`; gesperrt stirbt der Dienst mit `status=31/SYS` (gemessen, Restart-Zähler > 500) |
 | `recorder` | `ProtectHome=tmpfs` + `ReadWritePaths=` nur fürs Archivverzeichnis; kein Netz; kein Modelltext; `SystemCallFilter` ohne `@resources` — `pw-dump` für die automatische Pause (T-7.3) ruft einen PipeWire-Client, der Echtzeitpriorität setzt und `mlock` ruft, beides liegt in `@resources` |
 | `stt` | `SystemCallFilter` ohne `@resources` — ein PipeWire-Client setzt Echtzeitpriorität und ruft `mlock`, beides liegt in `@resources`; gesperrt stirbt der Dienst mit `status=31/SYS` (gemessen) |
 | `tts` | dieselbe `@resources`-Ausnahme wie `stt`, aus demselben Grund (PipeWire-Client, gemessen mit `coredumpctl`) |
