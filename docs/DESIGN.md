@@ -1041,7 +1041,7 @@ InaccessiblePaths=%h/.ssh %h/.gnupg %h/.local/share/keyrings %h/.pki
 | Unit | Abweichung |
 |---|---|
 | `hub` | `ReadWritePaths=` für Audit und Ticketbuch; `PR_SET_DUMPABLE=0` als Härtungsgeste (kein Schutz gegen §1.2) |
-| `auth` | `ProtectHome=read-only`, kein Netz, kein Modellkanal |
+| `auth` | `ProtectHome=read-only`, kein Netz, kein Modellkanal; `SystemCallFilter` ohne `@resources` — der Ohren-Kill-Switch (`daimon.ears.killswitch.stoppe`) ruft `pw-dump` als Kindprozess, der den Seccomp-Filter dieser Unit erbt; gesperrt liefert `pw-dump` `None` statt einer Strom-Zahl und der Beleg selbst wird unmessbar (gemessen, T-5.10.v) |
 | `hookbridge` | `RestrictAddressFamilies=AF_UNIX AF_INET`, nur Loopback-Listen, kein ausgehender Verbindungsaufbau |
 | `mind` | `ProtectHome=read-only`, **kein** `AF_INET`, **kein** Token |
 | `egress` | `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`, `LoadCredential=`; **leitet Inhalte opak weiter — interpretiert, speichert und protokolliert sie nicht** |

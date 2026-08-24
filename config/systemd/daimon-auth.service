@@ -76,7 +76,15 @@ PrivateTmp=yes
 RestrictAddressFamilies=AF_UNIX
 # Üblicher Dienst-Umfang, ohne privilegierte und veraltete Aufrufe.
 SystemCallFilter=@system-service
-SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+# `@resources` fehlt hier ABSICHTLICH in der Sperrliste, dieselbe Ausnahme
+# wie bei `daimon-eyes`/`daimon-ears`/`daimon-recorder`/`daimon-stt`/
+# `daimon-tts`: `_ohren_abschalten` ruft `daimon.ears.killswitch.stoppe`,
+# das `pw-dump` als Kindprozess startet und dabei den Seccomp-Filter dieser
+# Unit erbt. Live gemessen (T-5.10.v Lauf 3, 24.08.): `pw-dump` stirbt an
+# SIGSYS, `aufnahmestroeme()` liefert `None` statt einer Zahl -- der
+# Kill-Switch-Beleg selbst wird unmessbar. Design 7.5 fehlte dieser Dienst
+# bislang in der Ausnahmetabelle -- nachgetragen.
+SystemCallFilter=~@privileged @obsolete @mount @swap @reboot @module
 
 [Install]
 WantedBy=graphical-session.target

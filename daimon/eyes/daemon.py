@@ -49,6 +49,12 @@ SERVICE = "de.daimon.Eyes"
 PATH = "/Eyes"
 IFACE = "de.daimon.Eyes"
 
+# Wie viele Ketten-Fehlschlaege in Folge, bevor die Portal-Sitzung neu
+# aufgebaut wird (Befund B5, T-5.10.v Lauf 3). Ein einzelner Fehlschlag ist
+# noch kein Grund -- erst eine Folge sagt, dass der Deskriptor tot ist und
+# nicht bloss eine Runde Pech hatte.
+AUFNAHME_FEHLER_SCHWELLE = 3
+
 # Was der Augendienst nie ansieht. Bewusst hier und nicht nur in der
 # Konfiguration: eine Vorgabe, die man einschalten muss, schuetzt niemanden.
 # OCR bekommt eine EIGENE Abkuehlung, getrennt vom Ausloeser. Gemessen am
@@ -164,6 +170,8 @@ class Augen:
         self._sitzung: PortalSitzung | None = None
         self._portal: Any = None
         self._aufnahme: capture.Aufnahme | None = None
+        self._aufnahme_fehler_folge = 0
+        self._aufnahme_lock = threading.Lock()
         self._pool: Any = None
         self._ordner_gen = 0
 
@@ -374,6 +382,43 @@ class Augen:
         except OSError:
             pass
 
+    def _nach_fehler(self, exc: Exception) -> None:
+        """Zaehlt Ketten-Fehlschlaege in Folge, baut die Portal-Sitzung neu.
+
+        Ohne das haengt der Dienst blind, sobald `pipewiresrc` seinen
+        Deskriptor verliert: `set_state(PLAYING)` schlaegt dann JEDE Runde
+        fehl, `lauf()` faengt das ab und macht weiter -- ohne je neu zu
+        verhandeln. Gemessen (T-5.10.v Lauf 3, Befund B5): 2,4 Stunden ohne
+        ein einziges Bild, Dienst durchgehend `active/running`, kein Signal
+        nach aussen. Ein Neustart der Unit behob es ohne Dialog -- derselbe
+        Weg, den `oeffnen()` hier automatisch geht.
+        """
+        if not isinstance(exc, capture.AufnahmeFehler):
+            self._aufnahme_fehler_folge = 0
+            return
+        self._aufnahme_fehler_folge += 1
+        if self._aufnahme_fehler_folge < AUFNAHME_FEHLER_SCHWELLE:
+            return
+        self._aufnahme_fehler_folge = 0
+        with self._aufnahme_lock:
+            if self._portal is not None:
+                try:
+                    self._portal.schliessen()
+                except Exception:  # noqa: BLE001 -- die alte Sitzung ist
+                    # ohnehin tot, ein Fehler beim Aufraeumen darf den
+                    # Neuaufbau nicht verhindern.
+                    pass
+            try:
+                self.oeffnen()
+                print("Portal-Sitzung neu aufgebaut nach "
+                      f"{AUFNAHME_FEHLER_SCHWELLE} Ketten-Fehlschlaegen in "
+                      "Folge", file=sys.stderr, flush=True)
+            except Exception as neu_exc:  # noqa: BLE001 -- ein Neuaufbau,
+                # der scheitert, ist kein Grund, den Dienst zu beenden; die
+                # naechste Fehlerfolge versucht es erneut.
+                print(f"Neuaufbau der Portal-Sitzung fehlgeschlagen: "
+                      f"{neu_exc}", file=sys.stderr, flush=True)
+
     def _widerruf_pruefen(self) -> bool:
         """Hat das Face einen Widerruf vermerkt? Dann ist hier Schluss."""
         if self._sitzung is None:
@@ -408,6 +453,7 @@ class Augen:
                     # Hinsehen fuer den Rest des Tages einzustellen.
                     print(f"Runde gescheitert: {exc}", file=sys.stderr,
                           flush=True)
+                    self._nach_fehler(exc)
             self._halt.wait(takt_s)
         self._laeuft.clear()
         return self.runden
@@ -423,6 +469,7 @@ class Augen:
             except Exception as exc:
                 print(f"Fokusrunde gescheitert: {exc}", file=sys.stderr,
                       flush=True)
+                self._nach_fehler(exc)
 
     # -- Abbau -------------------------------------------------------------
 

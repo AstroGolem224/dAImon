@@ -534,11 +534,12 @@ class AuthAgent:
             ergebnis = stoppe()
         except Exception as exc:  # noqa: BLE001 -- ein Kill-Switch stirbt nicht
             print(f"Ohren-Kill-Switch fehlgeschlagen ({exc})", file=sys.stderr)
-            return
+            return False
         self.ohren_abschaltungen += 1
         self.log.info("Ohren abgeschaltet", DAIMON_ACTION="ohren_aus",
                       DAIMON_OK=ergebnis["ok"], DAIMON_RC=ergebnis["rc"],
                       DAIMON_STROEME=str(ergebnis["aufnahmestroeme_nachher"]))
+        return ergebnis["ok"]
 
     def _mitschnitt_umschalten(self) -> None:
         """T-7.3: Mitschnitt anhalten oder fortsetzen -- der Umschalter.
@@ -731,8 +732,13 @@ class AuthAgent:
             # zweiter Pfad zum Abschalten waere ein zweiter Pfad, der
             # anders kaputtgehen kann -- und der Pruefstand soll den
             # ECHTEN messen, nicht einen Zwilling fuer Tests.
-            self._ohren_abschalten()
-            return True
+            #
+            # Rueckgabewert des Kill-Switch WEITERREICHEN (T-5.10.v Lauf 3,
+            # Befund B7): vorher stand hier ein hartes `True`, egal ob
+            # `pw-dump` den Beleg liefern konnte. Ein Aufrufer, der "ok"
+            # bekommt, obwohl `aufnahmestroeme()` `None` war, haelt die
+            # Ohren fuer aus, ohne dass das je gemessen wurde.
+            return self._ohren_abschalten()
         if teile == ["schliessen"]:
             self._verbergen()
             return True

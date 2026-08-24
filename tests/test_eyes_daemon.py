@@ -145,6 +145,27 @@ def test_eine_gescheiterte_runde_beendet_den_dienst_nicht(tmp_path, capsys):
     assert "gescheitert" in capsys.readouterr().err
 
 
+def test_wiederholter_ketten_fehlschlag_baut_die_sitzung_neu_auf(tmp_path):
+    """Befund B5 (T-5.10.v Lauf 3): stirbt der PipeWire-Deskriptor, schlaegt
+    JEDE Runde fehl -- ohne Neuaufbau haengt der Dienst blind, aktiv, ohne
+    Signal nach aussen."""
+    a = augen(tmp_path)
+
+    class KaputteAufnahme:
+        def frame(self, **_kw):
+            raise dm.capture.AufnahmeFehler(
+                "Kette liess sich nicht nach PLAYING bringen")
+
+    a._aufnahme = KaputteAufnahme()
+    a._ausloeser = type("A", (), {"tick": lambda self: "timer"})()
+    neuaufbauten = []
+    a.oeffnen = lambda: neuaufbauten.append(1)
+
+    threading.Timer(0.25, a._halt.set).start()
+    a.lauf(takt_s=0.01)
+    assert neuaufbauten
+
+
 # -- Das Lebenszeichen der Wahrnehmung -------------------------------------
 
 def test_die_schleife_schreibt_das_lebenszeichen(tmp_path, monkeypatch):
