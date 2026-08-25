@@ -1567,6 +1567,36 @@ Größe der **schlechtere** Wert aus beiden Bändern — Dauerlastdeckel ~60 % �
 den 1,25 % aus A, Spitzendeckel ~33 % über den 6,0 % aus A, RSS-Deckel ~25 %
 über den 334,7 MB aus B.
 
+> **⚠ Die drei Deckel oben stehen auf einer defekten Eichung (25.08.).**
+> Beide Bänder wurden mit einem Sampler erhoben, der je Unit nur die
+> **MainPID** las und damit jeden Kindprozess übersah — T-6.8.v, Befund B3.
+> Die Augen starten je Blick einen eigenen OCR-Prozess, und genau der trägt
+> die Last. Am selben Tag auf derselben Maschine gegengemessen: über die
+> cgroup 15,9 % im Mittel, über die MainPID 2,2 %.
+>
+> Damit sind **1,25 %, 6,0 % und 334,7 MB Untererfassungen**, und die daraus
+> abgeleiteten Deckel messen nicht, was sie zu messen vorgeben. Der Prüfstand
+> misst seit dem 25.08. über `cpu.stat` und die volle cgroup und meldet
+> 502,1 MB — das ist **kein** Wachstum des Systems gegenüber 340,4 MB,
+> sondern ein anderes Messverfahren. Die beiden Zahlen sind nicht
+> vergleichbar.
+>
+> Einschränkung (d) unten stützt das zusätzlich: sie nennt als Grund für das
+> Fehlen von `daimon-exec` einen Katalogzustand, der am 25.08. durch einen
+> echten Startversuch als überholt nachgemessen wurde (Befund B9) — die Unit
+> läuft heute sauber und gehört ins Band.
+>
+> **Offen:** die Deckel müssen mit dem korrigierten Sampler neu abgeleitet
+> werden, nach derselben Methode (gemessen plus Marge) und über ein Band mit
+> allen dreizehn Units. Bis dahin ist `test_ressourcen_im_budget_design_13`
+> rot, und das ist der ehrliche Zustand: gemessen wird richtig, verglichen
+> wird gegen eine Zahl, die es nicht mehr trägt. Zwischenbefund für die
+> Neueichung — zwölf Units liegen bei 7–24 MB und summieren sich auf ~209 MB
+> (im Wesentlichen der Grundverbrauch je Python-Prozess, rund die Hälfte des
+> alten Deckels, bevor Fachlogik läuft); allein `daimon-eyes` trägt 292,9 MB
+> gegen die 108–145 MB, die §13 für sie vorsieht. Ob das Verschwendung ist
+> oder der Deckel zu eng, ist damit noch nicht entschieden.
+
 > **Vier Einschränkungen, die zur Zahl gehören.** (a) Die Messauflösung ist
 > **1 % je 1-s-Fenster** — ein Jiffy sind 10 ms bei `HZ=100`. Alle Proben sind
 > ganzzahlig; ein p95-Deckel unter ~2 % wäre gar nicht auflösbar, ein
