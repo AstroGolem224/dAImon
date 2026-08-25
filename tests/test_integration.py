@@ -70,19 +70,27 @@ DAUERLAST_UNITS = (
 ABRUF_UNITS = ("daimon-stt.service", "daimon-tts.service",
                "daimon-egress.service")
 
-# Zwei Units können auf dieser Maschine nicht laufen, und Szenario 1 weist
+# Units, die auf dieser Maschine nicht laufen können, und Szenario 1 weist
 # den Grund jeweils SELBST nach statt die Unit einfach auszulassen:
-#   * daimon-exec: der Broker verweigert den Dienst, solange der Katalog
-#     keine freigegebene Anwendung enthält (gemessen am 13.08.: „Keine
-#     freigegebene Anwendung im Katalog", exit 1).
 #   * daimon-egress: LoadCredential zeigt auf eine Token-Datei, die nicht
 #     existiert (243/CREDENTIALS) — eine Frage der Bereitstellung, nicht
-#     des Codes.
+#     des Codes. Am 25.08. nachgemessen: unverändert 243.
 #   * daimon-input: ProtectHome=tmpfs verdeckt den venv-Interpreter, der
 #     in $HOME liegt — die Unit kann so nicht starten (203/EXEC). Ein
-#     Befund, den dieser Test belegt, aber nicht repariert.
-SONDERFALL_UNITS = ("daimon-exec.service", "daimon-egress.service",
-                    "daimon-input.service")
+#     Befund, den dieser Test belegt, aber nicht repariert. Am 25.08.
+#     nachgemessen: unverändert 203.
+#
+# T-6.8.v, Befund B9 — und der Befund stimmte nur zur Hälfte. Er nannte
+# `exec` UND `input` als grundlos ausgelassen; nachgemessen am 25.08. durch
+# einen echten Startversuch beider Units gilt das nur für `exec`:
+#   * daimon-exec startet heute sauber (active/running, Status 0). Der
+#     Grund von damals — „Keine freigegebene Anwendung im Katalog", exit 1,
+#     gemessen am 13.08. — ist überholt, seit der Katalog gefüllt ist. Die
+#     Unit gehört damit ins Messband und steht hier nicht mehr.
+#   * daimon-input scheitert weiterhin an 203/EXEC. Der Eintrag bleibt.
+# Ein Ausschluss, dessen Grund niemand nachprüft, wird mit der Zeit zur
+# stillen Lücke im Messband — genau das war hier passiert.
+SONDERFALL_UNITS = ("daimon-egress.service", "daimon-input.service")
 
 # Design §13.1, „Zwei Größen, nicht eine": OCR ist stoßweise, und ein
 # einziger Deckel wäre entweder für die Dauerlast zu lasch oder für die
@@ -693,8 +701,8 @@ def test_sprachanfrage_mit_bildschirmbezug(sitzung, frisch, evidenz):
     den alten Code fuhr.
 
     Was an ihre Stelle tritt, steht in
-    `test_der_aktionsweg_hat_heute_keinen_erzeuger` -- ein Wächter statt
-    einer Nachstellung. Die Wirkungsmessung über `wpctl` fällt damit weg: der
+    `test_jeder_erzeuger_von_aktionsbitten_steht_auf_der_allowlist` -- ein
+    Wächter statt einer Nachstellung. Die Wirkungsmessung über `wpctl` fällt damit weg: der
     Weg braucht jetzt eine bestätigte Vorschau, und die gibt ein Mensch.
     """
     frisch("daimon-hub.service", "daimon-mind.service")
@@ -881,24 +889,40 @@ def test_ressourcen_im_budget_design_13(sitzung, evidenz):
 
 
 
-def test_der_aktionsweg_hat_heute_keinen_erzeuger(sitzung, frisch, evidenz):
-    """Der Ersatz für die ausgebaute Folgeaktion -- und ein Wächter, kein
-    Vorratscode.
+def test_jeder_erzeuger_von_aktionsbitten_steht_auf_der_allowlist(
+        sitzung, frisch, evidenz):
+    """Die Sperre am Aktionsweg -- und die Naht zwischen Absender und Liste.
 
-    Zwei Dinge sind heute wahr, und beide gehören gemessen:
+    **T-6.8.v, Befund B4, und er wog schwerer als gemeldet.** Bis zum 25.08.
+    hiess dieser Test `test_der_aktionsweg_hat_heute_keinen_erzeuger` und
+    behauptete zweierlei: es stelle niemand eine Aktionsbitte, und deshalb
+    stehe `daimon-mind.service` nicht auf der Allowlist. Beides war falsch:
+    `Mind.frage_werkzeug` schickt seit T-4.16 `art: "ausfuehren"` an
+    `aktion.sock` (daimon/mind/daemon.py), der Modulkopf des Hubs sagt das
+    sogar ausdruecklich, und die Unit steht laengst auf `AKTION_UNITS`.
+
+    Gemerkt hat es der Waechter nicht, weil er am falschen Ort suchte: er
+    verlangte `aktion.sock` UND `connect`/`sendall` in DERSELBEN Zeile. Das
+    Repo haelt Socketnamen aber in Konstanten (`HUB_SOCKET = "aktion.sock"`
+    in daimon/brokers/dienst.py), der Aufruf steht Zeilen spaeter. Ein
+    Waechter, dessen Fund von der Zeilenformatierung abhaengt, meldet Ruhe,
+    sobald jemand eine Variable einfuehrt -- und meldete sie hier
+    monatelang. Sein eigener Docstring versprach, an dem Tag aufzufallen,
+    an dem der Zulauf entsteht; der Tag kam und ging.
+
+    Gesucht wird deshalb jetzt nach der SACHE -- einer Nachricht mit
+    `art: "ausfuehren"` --, nicht nach einer Schreibweise. Gemessen werden
+    zwei Zusagen:
 
       1. `aktion.sock` nimmt nur von Units auf seiner Liste an (T-4.5). Ein
          beliebiger Prozess -- dieser hier -- kommt nicht durch.
-      2. Es gibt im Betrieb NIEMANDEN, der eine Aktionsbitte stellt. Der
-         Modulkopf des Hubs sagt "der Mind schickt eine Zeile"; im Quelltext
-         tut das kein Modul. Deshalb steht `daimon-mind.service` auch nicht
-         auf der Allowlist -- eine Liste, die einen Absender führt, den es
-         nicht gibt, behauptet etwas.
+      2. Jeder Erzeuger im Quelltext hat seine Unit auf `AKTION_UNITS`. Ein
+         Absender ohne Eintrag koennte nichts ausrichten; ein Eintrag ohne
+         Absender behauptet etwas. Beide Richtungen sind Befunde.
 
-    Der Tag, an dem jemand den Zulauf baut, ist der Tag, an dem dieser Test
-    auffällt: dann gibt es einen Erzeuger, die zweite Prüfung wird rot, und
-    wer sie liest, findet hier, was zu tun ist -- die Unit auf die Allowlist,
-    und die Folgeaktion wieder als Szenario, diesmal MIT Vorschau.
+    Die Positivkontrolle steht im Test selbst: findet die Suche GAR keinen
+    Erzeuger, ist Zusage 2 leer erfuellt -- und genau daran ist die alte
+    Fassung gescheitert.
     """
     with protokoll(evidenz, szenario="aktionsweg_ohne_erzeuger",
                    gestartet=["aktion.sock (abgewiesen, erwartet)"],
@@ -919,25 +943,43 @@ def test_der_aktionsweg_hat_heute_keinen_erzeuger(sitzung, frisch, evidenz):
             "aktion.sock hat von einem beliebigen Prozess angenommen -- die "
             "Unit-Allowlist aus T-4.5 greift nicht")
 
-        # 2. Der Zulauf, am Quelltext. Dieselbe Suche wie der Wächter in
-        #    tests/test_direktbefehl_ausnahme.py, nur auf die Nachrichtenart.
-        erzeuger = []
+        # 2. Der Zulauf, am Quelltext -- gesucht wird die NACHRICHTENART,
+        #    nicht der Socketname. Ein Erzeuger baut ein dict mit
+        #    `"art": "ausfuehren"`; ob er den Socket dabei als Literal oder
+        #    als Konstante nennt, ist Formatierung und keine Eigenschaft.
+        from daimon.hub.daemon import AKTION_UNITS
+
+        erzeuger: dict[str, str] = {}
         for datei in sorted((REPO / "daimon").rglob("*.py")):
             if "__pycache__" in str(datei):
                 continue
             for nr, zeile in enumerate(
                     datei.read_text(encoding="utf-8").splitlines(), 1):
                 nackt = zeile.strip()
-                if nackt.startswith("#") or "aktion.sock" not in nackt:
+                if nackt.startswith("#"):
                     continue
-                if "connect" in nackt or "sendall" in nackt:
-                    erzeuger.append(f"{datei.relative_to(REPO)}:{nr}")
-        satz["gemessen"]["erzeuger_im_quelltext"] = erzeuger
-        assert not erzeuger, (
-            "es gibt jetzt einen Erzeuger von Aktionsbitten: "
-            + ", ".join(erzeuger)
-            + " -- seine Unit gehört auf AKTION_UNITS, und die Folgeaktion "
-              "gehört wieder als Szenario hierher, diesmal MIT Vorschau")
+                if '"art": "ausfuehren"' not in nackt.replace("'", '"'):
+                    continue
+                erzeuger[f"{datei.relative_to(REPO)}:{nr}"] = datei.parts[
+                    datei.parts.index("daimon") + 1]
+        satz["gemessen"]["erzeuger_im_quelltext"] = sorted(erzeuger)
+
+        # Positivkontrolle: ohne einen einzigen Fund waere die Prüfung
+        # darunter leer erfüllt. Genau so hat die alte Fassung monatelang
+        # Ruhe gemeldet, während der Erzeuger längst da war.
+        assert erzeuger, (
+            "kein einziger Erzeuger von Aktionsbitten gefunden — dabei "
+            "schickt Mind.frage_werkzeug seit T-4.16 `art: \"ausfuehren\"`. "
+            "Die Suche misst nichts, und alles Folgende wäre leer erfüllt")
+
+        ohne_eintrag = {ort: f"daimon-{bereich}.service"
+                        for ort, bereich in erzeuger.items()
+                        if f"daimon-{bereich}.service" not in AKTION_UNITS}
+        satz["gemessen"]["erzeuger_ohne_allowlist"] = ohne_eintrag
+        assert not ohne_eintrag, (
+            "Erzeuger von Aktionsbitten, deren Unit NICHT auf AKTION_UNITS "
+            f"steht: {ohne_eintrag} — der Absender käme am Socket nicht "
+            "durch, und die Bitte verschwände still")
 
 
 # ---------------------------------------------------------------------------

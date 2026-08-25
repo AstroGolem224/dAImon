@@ -1,7 +1,7 @@
 {
   "v": 1,
   "task": "T-6.8",
-  "erzeugt": "2026-08-25T21:26:09+0200",
+  "erzeugt": "2026-08-25T21:36:21+0200",
   "rolle": "builder",
   "szenarien": [
     {
@@ -16,28 +16,28 @@
         "daimon-eyes.service",
         "daimon-mind.service",
         "daimon-dbus.service",
+        "daimon-exec.service",
         "daimon-fs.service",
         "daimon-cli-broker.service",
         "daimon-lokal-broker.service",
         "daimon-stt.service",
         "daimon-tts.service",
-        "Sonderfälle mit Grundnachweis: daimon-exec.service, daimon-egress.service, daimon-input.service",
+        "Sonderfälle mit Grundnachweis: daimon-egress.service, daimon-input.service",
         "daimon-phase1.timer (nur Zustand)"
       ],
       "budget": {},
       "gemessen": {
         "inaktiv_nach_start": [],
         "nicht_startbar": {
-          "daimon-exec.service": "active/success — unerwartet: :42 ClayMachine systemd[1200]: Started dAImon Exec-Broker (Anwendungsstart über desktop_id).\nAug 25 21:25:42 ClayMachine daimon-exec[429754]: Exec-Broker bereit",
           "daimon-egress.service": "activating/exit-code — LoadCredential-Token fehlt (~/.config/daimon/anthropic-token)",
           "daimon-input.service": "failed/exit-code — 203/EXEC: ProtectHome=tmpfs verdeckt den Interpreter (.venv liegt in $HOME)"
         },
         "phase1_timer": "active",
-        "diag_laufzeit_s": 11543.6
+        "diag_laufzeit_s": 12155.5
       },
       "ergebnis": "gemessen",
       "grund": "",
-      "dauer_s": 3.72
+      "dauer_s": 2.54
     },
     {
       "szenario": "sprachanfrage_mit_bildschirmbezug",
@@ -47,12 +47,12 @@
       ],
       "budget": {},
       "gemessen": {
-        "fenster_eigen": 18,
-        "fenster_genannt": 18
+        "fenster_eigen": 16,
+        "fenster_genannt": 16
       },
       "ergebnis": "gemessen",
       "grund": "",
-      "dauer_s": 0.02
+      "dauer_s": 0.03
     },
     {
       "szenario": "ressourcen_design_13",
@@ -67,12 +67,13 @@
         "quelle": "docs/DESIGN.md §13.1, zwei Größen"
       },
       "gemessen": {
-        "sampler_kanarie_prozent": 98.9,
+        "sampler_kanarie_prozent": 97.9,
         "einbezogen": [
           "daimon-auth.service",
           "daimon-cli-broker.service",
           "daimon-dbus.service",
           "daimon-ears.service",
+          "daimon-exec.service",
           "daimon-eyes.service",
           "daimon-face.service",
           "daimon-focus.service",
@@ -82,9 +83,7 @@
           "daimon-lokal-broker.service",
           "daimon-mind.service"
         ],
-        "fehlend": [
-          "daimon-exec.service"
-        ],
+        "fehlend": [],
         "prozesse_je_unit": {
           "daimon-hub.service": 1,
           "daimon-hookbridge.service": 1,
@@ -95,73 +94,76 @@
           "daimon-eyes.service": 3,
           "daimon-mind.service": 1,
           "daimon-dbus.service": 1,
+          "daimon-exec.service": 1,
           "daimon-fs.service": 1,
           "daimon-cli-broker.service": 1,
           "daimon-lokal-broker.service": 1
         },
-        "idle_cpu_mittel": 1.332,
-        "idle_cpu_p95": 3.45,
-        "idle_rss_mb": 445.7,
+        "idle_cpu_mittel": 1.441,
+        "idle_cpu_p95": 4.571,
+        "idle_rss_mb": 502.1,
         "proben_cpu_prozent": [
-          3.85,
-          0.73,
-          0.62,
-          0.52,
-          0.59,
-          3.16,
-          0.61,
-          0.58,
-          0.64,
-          0.56,
-          3.45,
-          0.65,
-          0.7,
+          1.1,
+          4.57,
+          0.53,
           0.67,
-          3.38,
+          0.55,
+          0.51,
+          4.64,
+          0.7,
+          0.68,
           0.69,
-          0.61,
+          0.7,
+          4.53,
+          0.7,
           0.69,
           0.63,
-          3.31
+          4.44,
+          0.62,
+          0.57,
+          0.57,
+          0.74
         ],
         "je_unit_cpu_max": {
-          "daimon-hub.service": 0.63,
+          "daimon-hub.service": 1.01,
           "daimon-hookbridge.service": 0.0,
           "daimon-focus.service": 0.02,
           "daimon-face.service": 0.0,
           "daimon-auth.service": 0.06,
           "daimon-ears.service": 0.0,
-          "daimon-eyes.service": 3.27,
+          "daimon-eyes.service": 4.08,
           "daimon-mind.service": 0.0,
           "daimon-dbus.service": 0.0,
+          "daimon-exec.service": 0.0,
           "daimon-fs.service": 0.0,
           "daimon-cli-broker.service": 0.0,
           "daimon-lokal-broker.service": 0.0
         },
         "je_unit_rss_mb": {
-          "daimon-hub.service": 10.7,
+          "daimon-hub.service": 11.6,
           "daimon-hookbridge.service": 9.7,
           "daimon-focus.service": 10.3,
-          "daimon-face.service": 6.4,
+          "daimon-face.service": 6.9,
           "daimon-auth.service": 16.7,
-          "daimon-ears.service": 24.4,
-          "daimon-eyes.service": 259.1,
-          "daimon-mind.service": 23.3,
+          "daimon-ears.service": 24.3,
+          "daimon-eyes.service": 292.9,
+          "daimon-mind.service": 23.1,
           "daimon-dbus.service": 21.3,
+          "daimon-exec.service": 21.6,
           "daimon-fs.service": 20.7,
-          "daimon-cli-broker.service": 21.4,
+          "daimon-cli-broker.service": 21.3,
           "daimon-lokal-broker.service": 21.6
         },
         "auf_abruf_rss_mb": {
-          "daimon-stt.service": 1086.2,
-          "daimon-tts.service": 186.4,
+          "daimon-stt.service": 1061.2,
+          "daimon-tts.service": 186.1,
           "daimon-egress.service": null
         },
-        "cgroups_lesbar": "12/12"
+        "cgroups_lesbar": "13/13"
       },
       "ergebnis": "fehlgeschlagen",
-      "grund": "idle_rss_mb 445.7 MB > 420.0 MB (Design §13)\nassert 445.7 <= 420.0",
-      "dauer_s": 22.68
+      "grund": "idle_rss_mb 502.1 MB > 420.0 MB (Design §13)\nassert 502.1 <= 420.0",
+      "dauer_s": 22.87
     },
     {
       "szenario": "aktionsweg_ohne_erzeuger",
@@ -171,7 +173,10 @@
       "budget": {},
       "gemessen": {
         "abweisung": "[Errno 104] Connection reset by peer",
-        "erzeuger_im_quelltext": []
+        "erzeuger_im_quelltext": [
+          "daimon/mind/daemon.py:382"
+        ],
+        "erzeuger_ohne_allowlist": {}
       },
       "ergebnis": "gemessen",
       "grund": "",
@@ -187,7 +192,7 @@
       "gemessen": {},
       "ergebnis": "uebersprungen",
       "grund": "Gate nicht frei prüfbar: vram",
-      "dauer_s": 0.12
+      "dauer_s": 0.1
     },
     {
       "szenario": "killswitch_ohren",
@@ -210,14 +215,14 @@
       "gemessen": {
         "kanarie_seh_zaehler": {
           "v": 1,
-          "runden": 6,
-          "erfasst": 6,
+          "runden": 5,
+          "erfasst": 5,
           "gelesen": 1,
-          "ocr_verschoben": 1,
+          "ocr_verschoben": 4,
           "ocr_abkuehlung_s": 30.0,
           "ausloeser": {
             "fokus": 0,
-            "timer": 6,
+            "timer": 5,
             "tor_zu": 0,
             "zu_dicht": 0
           },
@@ -232,7 +237,7 @@
         },
         "schalter_bericht": {
           "beleg": "strom_gemessen",
-          "dauer_ms": 50.477,
+          "dauer_ms": 54.084,
           "geleert": 1,
           "kontextdateien": 0,
           "lampe": "aus",
@@ -254,7 +259,7 @@
       },
       "ergebnis": "gemessen",
       "grund": "",
-      "dauer_s": 0.42
+      "dauer_s": 0.45
     },
     {
       "szenario": "killswitch_gedaechtnis",
@@ -273,7 +278,7 @@
       },
       "ergebnis": "gemessen",
       "grund": "",
-      "dauer_s": 0.05
+      "dauer_s": 0.08
     }
   ]
 }
