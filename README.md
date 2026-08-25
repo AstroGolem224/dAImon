@@ -135,7 +135,8 @@ Konfigurationsflagge — ein zweiter Weg wäre eine zweite Angriffsfläche.
 
 | Was | Befehl | Was er belegt |
 |---|---|---|
-| Ohren aus | `Meta+Shift+M` oder `python -m daimon.ears.killswitch` | Unit inaktiv **und** null Aufnahmeströme |
+| **Wahrnehmung aus (Ohren *und* Augen)** | `Meta+Shift+M` | beides zusammen — das Kürzel aus Design §7.4 |
+| Ohren aus | `python -m daimon.ears.killswitch` | Unit inaktiv **und** null Aufnahmeströme |
 | Augen aus | `python -m daimon.eyes.killswitch` | Unit inaktiv, null eigene Videoströme, Kontextverzeichnis leer |
 | Mitschnitt anhalten | `Meta+Shift+P` (Umschalter) | Units gestoppt, keine Bildschirmströme mehr — mit Positivkontrolle `beleg` |
 | Alles aus | `systemctl --user stop 'daimon-*'` | — |
@@ -157,7 +158,7 @@ greift, wäre schlimmer als keines.
 | Kürzel | Wirkung |
 |---|---|
 | `Meta+Space` | Push-to-Talk (Umschalter, mit Zeitlimit) |
-| `Meta+Shift+M` | Ohren aus |
+| `Meta+Shift+M` | Wahrnehmung aus — Ohren **und** Augen |
 | `Meta+Shift+P` | Mitschnitt anhalten / fortsetzen |
 
 **Fortsetzen ist ein Tastendruck, nie automatisch.** Eine Pause, die sich

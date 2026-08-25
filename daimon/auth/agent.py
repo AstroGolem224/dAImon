@@ -86,8 +86,18 @@ KG_AKTION = ["daimon-auth", "dAImon Auth", "ptt", "dAImon Push-to-Talk"]
 # Die Registrierung ist damit KEIN Erfolgsnachweis: sie hat zurueckgemeldet,
 # dass die Taste gesetzt sei, und die Aktion war trotzdem weg. Wer hier etwas
 # aendert, liest danach `allShortcutInfos` und glaubt nicht dem Rueckgabewert.
-KG_AKTION_OHREN_AUS = ["daimon-ears", "dAImon Ohren", "ohren_aus",
-                       "dAImon Ohren abschalten"]
+#
+# Die beiden EINDEUTIGEN Felder (0 und 2) heissen weiter nach den Ohren,
+# obwohl der Griff seit dem 25.08. beide Wahrnehmungs-Units stoppt: an
+# Feld 0 haengt die Verteilung in `_kuerzel_verteilen`, und der eingefrorene
+# Pruefstand von T-7.3 greift die Konstante beim Namen. Ein Umbenennen waere
+# ein reiner Anzeigegewinn gegen eine echte Regression. Die ANZEIGENAMEN
+# (Felder 1 und 3) sagen dagegen, was die Taste wirklich tut -- ein Kuerzel,
+# das in den KDE-Einstellungen "Ohren abschalten" heisst und die Augen
+# gleich mitnimmt, waere eine Luege an der einzigen Stelle, an der ein
+# Mensch nachsieht.
+KG_AKTION_OHREN_AUS = ["daimon-ears", "dAImon Wahrnehmung", "ohren_aus",
+                       "dAImon Ohren und Augen abschalten"]
 # T-7.3: der Pausenschalter des Mitschnitts -- und wieder eine EIGENE
 # Komponente, aus demselben gemessenen Grund wie oben. Der dritte Eintrag in
 # einer gemeinsamen Komponente haette die beiden anderen verdraengt.
@@ -183,6 +193,7 @@ class AuthAgent:
         self.freigaben_gesendet = 0
         self.marken_gesendet = 0
         self.ohren_abschaltungen = 0
+        self.augen_abschaltungen = 0
         self.mitschnitt_umschaltungen = 0
         # T-4.12 im Betrieb: welche Rueckfragen dieser Agent schon gezeigt
         # hat. Ohne diese Menge zeigte jede Abfrage denselben Dialog erneut --
@@ -549,6 +560,48 @@ class AuthAgent:
         # Frist -- derselbe Weg, den ein regulaeres PTT-Ende nimmt.
         self.automat.aus()
         self._ptt_melden()
+        # T-6.8.v, Befund B6: Design 7.4 verlangt "ein globaler Hotkey, der
+        # BEIDE Wahrnehmungs-Units stoppt". Bis zum 25.08. hatten die Augen
+        # ueberhaupt keinen Ausloeser ausser der Kommandozeile -- ein
+        # Kill-Switch, den man in der Eile nicht erreicht, ist keiner.
+        #
+        # Das steht hier und nicht in `_kuerzel_verteilen`, weil der
+        # Steuer-Socket denselben Griff nimmt (siehe `ohren_aus` weiter
+        # unten). Zwei Wege zum Abschalten waeren zwei Wege, die
+        # verschieden kaputtgehen -- und der Pruefstand maesse dann den
+        # falschen.
+        self._augen_abschalten()
+        # Zurueck kommt der OHREN-Befund, nicht die Und-Verknuepfung beider.
+        # Der Socket-Befehl heisst `ohren_aus` und seine Frage lautet "ist das
+        # Mikrofon zu?" -- ein False, weil die Augen klemmen, waere darauf
+        # eine falsche Antwort. Der Fehlschlag der Augen verschwindet
+        # trotzdem nicht: `_augen_abschalten` schreibt ihn ins Journal UND
+        # nach stderr (Befund B7 -- ein Kill-Switch, der seinen eigenen
+        # Fehlschlag verschweigt, ist schlimmer als keiner).
+        return ergebnis["ok"]
+
+    def _augen_abschalten(self) -> bool:
+        """Die Augen-Unit stoppen; Teil des Hotkeys aus Design 7.4.
+
+        Wie beim Ohren-Kill-Switch lokal importiert: der Auth-Agent laeuft
+        unter System-Python ohne das venv, und `killswitch` ist reines stdlib.
+        """
+        try:
+            from daimon.eyes.killswitch import stoppe
+            ergebnis = stoppe()
+        except Exception as exc:  # noqa: BLE001 -- ein Kill-Switch stirbt nicht
+            print(f"Augen-Kill-Switch fehlgeschlagen ({exc})", file=sys.stderr)
+            self.log.warn("Augen NICHT abgeschaltet",
+                          DAIMON_ACTION="augen_aus", DAIMON_FEHLER=str(exc)[:120])
+            return False
+        self.augen_abschaltungen += 1
+        self.log.info("Augen abgeschaltet", DAIMON_ACTION="augen_aus",
+                      DAIMON_OK=ergebnis["ok"], DAIMON_RC=ergebnis["rc"],
+                      DAIMON_STROEME=str(ergebnis["videostroeme_nachher"]),
+                      DAIMON_BELEG=ergebnis["beleg"])
+        if not ergebnis["ok"]:
+            print(f"Augen-Kill-Switch ohne Beleg: {ergebnis['meldung']}",
+                  file=sys.stderr)
         return ergebnis["ok"]
 
     def _mitschnitt_umschalten(self) -> None:
@@ -673,6 +726,7 @@ class AuthAgent:
                 "freigaben_gesendet": self.freigaben_gesendet,
                 "marken_gesendet": self.marken_gesendet,
                 "ohren_abschaltungen": self.ohren_abschaltungen,
+                "augen_abschaltungen": self.augen_abschaltungen,
                 "mitschnitt_umschaltungen": self.mitschnitt_umschaltungen,
                 "letzte_entscheidung": self.letzte_entscheidung}
 
