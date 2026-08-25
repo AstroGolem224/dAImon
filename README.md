@@ -2,8 +2,8 @@
 
 Ein Desktop-Familiar für Linux/Wayland. Eine kleine Figur am Bildschirmrand, die zeigt, was die laufenden Claude-Code-Sessions tun, auf Ansprache antwortet, den Bildschirm mitliest und auf ausdrückliche Bestätigung den PC steuert.
 
-**Status: Phasen −1 bis 6 gebaut.** 1285 Tests, 37 eingefrorene Verifizierer,
-19 systemd-Units. Was fehlt, steht unten unter *Bekannte Einschränkungen* --
+**Status: Phasen −1 bis 6 gebaut.** 1850 Tests, 32 eingefrorene Verifizierer,
+23 systemd-Units. Was fehlt, steht unten unter *Bekannte Einschränkungen* --
 und in [HANDOVER.md](HANDOVER.md) mit Datum.
 
 Zielsystem: CachyOS (Arch), KDE Plasma 6.7 auf Wayland, KWin 6.7, RTX 5090, PipeWire. Kein Anspruch auf Portabilität.
@@ -23,6 +23,7 @@ Der Kern ist banal und trägt sich täglich: Am Rand des Blickfelds zu sehen, da
 | **Sicht** | Screencast über das Portal, Änderungserkennung, OCR, optional ein lokales VLM |
 | **Hände** | Whitelist typisierter DBus-Aktionen mit Bestätigungsdialog und Audit-Log |
 | **Gedächtnis** | Bildschirm und Ton durchgehend mitgeschnitten, auf Nachfrage durchsuchbar |
+| **Zeitplanung** | Termine und Fokusblöcke („erinnere mich in 20 Minuten an Tee") — Blase und Spruch, keine Aktionen |
 | **Charakter** | eine TOML-Datei |
 
 ## Was es nicht ist
@@ -199,7 +200,7 @@ Beenden seinen Strom nicht schließt, hätte sonst ein grünes `rc=0`.
 ```bash
 tests/verify/verify-frozen.sh   # kein Verifizierer wurde nach dem Einfrieren geändert
 tests/verify/T-0.0.sh           # die Rollentrennung greift wirklich (19 Assertions)
-python -m pytest                # 1285 Tests
+python -m pytest                # 1850 Tests
 python -m daimon.hub.diag       # Live-Zustand aller Dienste
 ```
 

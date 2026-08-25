@@ -79,6 +79,19 @@ allerersten Start ohne Token wartet das Portal auf einen Klick. Die Unit gibt
 dafür `TimeoutStartSec=180` — wer den Dialog wegklickt, bekommt einen
 Startfehler.
 
+**Dauerhafte Neustartschleife, `PortalFehler: Start: keine Antwort binnen
+120 s`.** Anderer Fall als oben: ein vorhandener `restore_token` zeigt auf ein
+verschwundenes Ziel (Monitor ab-/angesteckt, Auflösung geändert). Das Journal
+zeigt kurz vorher `Stream error: target not found` / `PipeWire remote error:
+-2` — das Portal fällt auf den interaktiven Dialog zurück, niemand klickt,
+120 s Zeitüberschreitung, `Restart=on-failure` fängt das nicht ab (gemessen
+24.08.: 192 Neustarts über 6,5 Stunden). Token löschen und neu bestätigen:
+
+```bash
+rm ~/.local/state/daimon/screencast-token
+systemctl --user restart daimon-eyes.service
+```
+
 **Es kommen schwarze Bilder.** Das ist der DmaBuf-Fall, und dAImon lehnt ihn
 ab, statt ihn zu umgehen. Wenn trotzdem schwarz: `MAP_BUFFERS` steht
 irgendwo eingeschaltet.
