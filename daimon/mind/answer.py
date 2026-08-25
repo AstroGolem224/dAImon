@@ -92,9 +92,12 @@ class Durchgang2:
 
     # Der Router ruft `frage_api`; der Name bleibt, damit T-3.12 unveraendert
     # bleibt und sein eingefrorener Pruefstand weiter misst, was er gemessen
-    # hat.
-    def frage_api(self, frage: str, kontext: dict | None = None) -> dict:
-        return self.beantworte(frage, marke="user_ptt", kontext=kontext)
+    # hat. `marke` ist NEU (T-6.2, Zulauf nachgetragen) und optional mit der
+    # alten Vorgabe `user_ptt` -- ein Aufrufer, der sie nicht kennt, bekommt
+    # dasselbe Verhalten wie vorher.
+    def frage_api(self, frage: str, kontext: dict | None = None, *,
+                  marke: str = "user_ptt") -> dict:
+        return self.beantworte(frage, marke=marke, kontext=kontext)
 
     def beantworte(self, frage: str, *, marke: str = "user_ptt",
                    kontext: dict | None = None) -> dict:
@@ -108,7 +111,11 @@ class Durchgang2:
             # `quellen` -- ohne Titel, ohne Inhalt.
             mit = {"quellen": [], "deklassifiziert": [], **kontext}
 
-        antwort = self._mind.frage_api(frage, {"kontext": mit})
+        # T-6.2, Zulauf nachgetragen: die Marke geht an den echten Mind mit --
+        # sonst speichert er jede Runde unter der Vorgabe `tainted`, und die
+        # naechste Runde findet ihre eigene Vorrunde im Kurzzeitgedaechtnis
+        # nicht wieder (die Senke schliesst `tainted` aus).
+        antwort = self._mind.frage_api(frage, {"kontext": mit}, marke=marke)
         if not antwort.get("ok"):
             grund = str(antwort.get("grund", ""))
             if grund in ("kein_kontingent", "kontingent_fenster"):

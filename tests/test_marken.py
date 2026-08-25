@@ -280,7 +280,7 @@ class MindAttrappe:
     def __init__(self):
         self.koerper = []
 
-    def frage_api(self, text, kontext=None):
+    def frage_api(self, text, kontext=None, *, marke: str = "tainted"):
         self.koerper.append(text)
         return {"v": 1, "ok": True, "status": 200, "antwort": "gut",
                 "durchgang": 2, "marke": "tainted"}

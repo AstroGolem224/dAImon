@@ -45,7 +45,10 @@ from typing import Any
 
 from daimon.common.config import Config, load as load_config
 from daimon.common.logging import Logger, get_logger
+from daimon.common.protocol import Mark, Marked
 from daimon.hub import sprechtext
+from daimon.mind.memory import Kurzzeit, Langzeit, anweisung_erkannt
+from daimon.mind.store import Store
 from daimon.mind.persona import Persona, PersonaFehler, lade as persona_laden
 from daimon.mind.answer import Durchgang2
 from daimon.mind.router import Router, quellen_aus_umgebung
@@ -58,6 +61,10 @@ STATE_SOCKET = "state.sock"
 # diesem Zulauf in AKTION_UNITS (daimon/hub/daemon.py) -- vorher zu Recht
 # nicht, siehe der Kommentar dort ("wer den Zulauf baut, traegt ihn ein").
 AKTION_SOCKET = "aktion.sock"
+# T-8.5: der Anfrage-Socket des Zeitplaners. NICHT `plan.sock` -- der gehoert
+# dem Hub (Produzenten-Ereignisse). Fehlt der Dienst, antwortet der Router
+# ehrlich ("es fehlt der Zeitplaner"), statt zu haengen.
+PLAN_SOCKET = "plan-anfrage.sock"
 LISTEN_FDS_START = 3
 MAX_ZEILE = 1 << 20
 
@@ -66,6 +73,32 @@ MAX_ZEILE = 1 << 20
 # dagegen steht im Egress und im Code, damit sie nicht einstellbar ist.
 MODELL = "claude-sonnet-4-5"
 MAX_TOKENS = 1024
+
+# T-6.2, Zulauf nachgetragen (T-6.1-3.v, Befund "Gedaechtnis ohne Zulauf"):
+# die eine Senke, die `daimon/common/taint.py` fuer das Kurzzeitgedaechtnis
+# vorsieht. `user_audio` und `tainted` bleiben aussen vor -- fuer BEIDE
+# Durchgaenge, weil es nur diese eine geteilte Senke gibt.
+MEM_SENKE = "kurzzeitgedaechtnis"
+
+
+def _mark_von_str(marke: str) -> Mark:
+    """Wandelt eine Marken-Zeichenkette in den Typ. Unbekannt heisst `tainted`
+    -- dieselbe Vorgabe wie bei `Marked.from_wire`."""
+    try:
+        return Mark(str(marke))
+    except ValueError:
+        return Mark.TAINTED
+
+
+def _text_aus_antwort(antwort_feld: object) -> str:
+    """Die reinen Textbloecke einer API-Antwort, wie `frage_werkzeug` sie
+    auch fuer die Ausfuehrung liest -- eine Stelle, ein Muster."""
+    bloecke = (antwort_feld or {}).get("content") if isinstance(
+        antwort_feld, dict) else None
+    if not isinstance(bloecke, list):
+        return ""
+    return "\n".join(str(b.get("text", "")) for b in bloecke
+                     if isinstance(b, dict) and b.get("type") == "text").strip()
 
 
 def hub_anfrage(sock: str, anfrage: dict, *, timeout_s: float = 180.0) -> dict:
@@ -187,6 +220,8 @@ class Mind:
                  aktion_socket: str | None = None,
                  werkzeuge: list[dict] | None = None,
                  werkzeug_namen: dict[str, str] | None = None,
+                 kurzzeit: Kurzzeit | None = None,
+                 langzeit: Langzeit | None = None,
                  log: Logger | None = None) -> None:
         self.hub_socket = hub_socket
         self.egress_socket = egress_socket
@@ -201,9 +236,28 @@ class Mind:
         self.aktion_socket = aktion_socket
         self._werkzeuge = werkzeuge or []
         self._werkzeug_namen = werkzeug_namen or {}
+        # T-6.2, Zulauf nachgetragen: EIN geteiltes Kurzzeitgedaechtnis fuer
+        # beide Durchgaenge -- injizierbar, damit ein Pruefstand sein eigenes
+        # Fenster/Frist vorgeben kann, ohne die echte Uhr zu brauchen.
+        self._kurzzeit = kurzzeit if kurzzeit is not None else Kurzzeit()
+        # T-6.3, Zulauf nachgetragen: dasselbe Prinzip fuer das
+        # Langzeitgedaechtnis -- `Store` wird nur gebaut, wenn kein
+        # Pruefstand seinen eigenen einspeist. `migrieren()` MUSS hier
+        # laufen: `Store.oeffnen()` legt die Verbindung an, aber nicht das
+        # Schema -- ohne diesen Aufruf scheitert der erste Schreibversuch mit
+        # `no such table: eintraege`, und `Langzeit.merken` faengt das als
+        # stille Ablehnung ab (dieselbe Falle, die K10 hier gemessen haette,
+        # waere sie nicht selbst injizierbar).
+        if langzeit is not None:
+            self._langzeit = langzeit
+        else:
+            neuer_store = Store()
+            neuer_store.migrieren()
+            self._langzeit = Langzeit(store=neuer_store)
 
     def koerper(self, frage: str, kontext: dict | None = None,
-                werkzeuge: list[dict] | None = None) -> dict:
+                werkzeuge: list[dict] | None = None,
+                verlauf: list | None = None) -> dict:
         """Der API-Koerper. Der Systemprompt kommt WOERTLICH aus der Persona.
 
         `kontext` traegt in T-3.12 ausschliesslich **opake Referenzen**
@@ -217,6 +271,11 @@ class Mind:
         Durchgang 2 (kontextfaehig) hat kein Schema fuer ein Werkzeug. Diese
         Methode erzwingt das nicht -- der Aufrufer traegt die Zusage, wie
         `daimon/mind/answer.py`'s Modulkopf es beschreibt.
+
+        `verlauf` (T-6.2, Zulauf nachgetragen) sind vorangehende `Runde`n aus
+        dem Kurzzeitgedaechtnis, bereits durch die Senke `kurzzeitgedaechtnis`
+        gefiltert -- diese Methode vertraut dem Aufrufer die Filterung an und
+        haengt nur an.
         """
         inhalt = frage
         if kontext:
@@ -226,21 +285,33 @@ class Mind:
         # darueber. Der Systemprompt bleibt unberuehrt: T-3.10 gibt die Persona
         # WOERTLICH weiter, und eine Ausgabeform ist keine Persona.
         inhalt = f"{inhalt}\n\n{SPRECHFORM}"
+        nachrichten: list[dict] = []
+        for runde in (verlauf or []):
+            rolle = "assistant" if runde.rolle == "assistant" else "user"
+            nachrichten.append({"role": rolle, "content": str(runde.wert.value)})
+        nachrichten.append({"role": "user", "content": inhalt})
         koerper: dict = {
             "model": self.modell,
             "max_tokens": self.max_tokens,
             "system": self.persona.prompt(),
-            "messages": [{"role": "user", "content": inhalt}],
+            "messages": nachrichten,
         }
         if werkzeuge:
             koerper["tools"] = werkzeuge
         return koerper
 
-    def frage_api(self, frage: str, kontext: dict | None = None) -> dict:
-        """Der Weg nach draussen, wie ihn der Router benutzt."""
-        return self.frage(frage, kontext)
+    def frage_api(self, frage: str, kontext: dict | None = None, *,
+                  marke: str = "tainted", turn_id: str = "") -> dict:
+        """Der Weg nach draussen, wie ihn der Router benutzt.
 
-    def frage_werkzeug(self, frage: str) -> dict:
+        `marke` ist die Herkunft DIESER Aeusserung fuer das Kurzzeitgedaechtnis
+        -- Vorgabe `tainted`, aus demselben Grund wie bei `Marked.from_wire`:
+        ein Aufrufer, der es vergisst, bekommt Misstrauen und keine
+        Umgehung.
+        """
+        return self.frage(frage, kontext, marke=marke, turn_id=turn_id)
+
+    def frage_werkzeug(self, frage: str, *, turn_id: str = "") -> dict:
         """T-4.16 K1, Durchgang 1: werkzeugfaehig, KEIN Kontext.
 
         Erkennt der Antwortblock `tool_use`, wird die Aktion ueber
@@ -248,6 +319,10 @@ class Mind:
         der Hub selbst (daemon.py:1049), diese Methode kann sie nicht
         beeinflussen. Ein erfundener oder unbekannter Werkzeugname fuehrt zu
         `tool_erkannt=False`, nicht zu einem Rateversuch.
+
+        `frage` ist an dieser Stelle immer `user_ptt` (Router-Zusage, siehe
+        `router.py`) -- deshalb hier fest verdrahtet und nicht als Parameter
+        erwartet.
         """
         if not isinstance(frage, str) or not frage.strip():
             return {"v": 1, "ok": False, "grund": "keine_frage",
@@ -256,7 +331,8 @@ class Mind:
             return {"v": 1, "ok": False, "grund": "kein_werkzeug",
                     "meldung": "kein Katalog geladen oder kein aktion.sock"}
 
-        koerper = self.koerper(frage, werkzeuge=self._werkzeuge)
+        verlauf = self._kurzzeit.fuer_prompt(MEM_SENKE)
+        koerper = self.koerper(frage, werkzeuge=self._werkzeuge, verlauf=verlauf)
         ticket = hub_anfrage(self.hub_socket, {
             "v": 1, "art": "ausgeben", "zweck": "api",
             "auftrag_hash": koerper_hash(koerper)})
@@ -281,6 +357,14 @@ class Mind:
         bloecke = inhalt if isinstance(inhalt, list) else []
         text = "\n".join(str(b.get("text", "")) for b in bloecke
                          if isinstance(b, dict) and b.get("type") == "text").strip()
+        # T-6.2, Zulauf nachgetragen: die Runde ins Kurzzeitgedaechtnis, ERST
+        # nachdem die Antwort wirklich kam -- eine abgelehnte Anfrage ist kein
+        # Gespraechsbeitrag.
+        self._kurzzeit.merken("user", Marked(frage, Mark.USER_PTT),
+                              turn_id=turn_id, quelle="durchgang1")
+        if text:
+            self._kurzzeit.merken("assistant", Marked(text, Mark.TRUSTED),
+                                  turn_id=turn_id, quelle="durchgang1")
         werkzeug = next((b for b in bloecke if isinstance(b, dict)
                          and b.get("type") == "tool_use"), None)
         if werkzeug is None:
@@ -307,12 +391,34 @@ class Mind:
                 "verdikt": lauf.get("verdikt"), "grund": lauf.get("grund"),
                 "gesprochen": lauf.get("gesprochen"), "antwort": text}
 
-    def frage(self, frage: object, kontext: dict | None = None) -> dict:
+    def frage(self, frage: object, kontext: dict | None = None, *,
+              marke: str = "tainted", turn_id: str = "") -> dict:
         if not isinstance(frage, str) or not frage.strip():
             return {"v": 1, "ok": False, "grund": "keine_frage",
                     "meldung": "Feld `text` fehlt oder ist leer"}
 
-        koerper = self.koerper(frage, kontext)
+        # T-6.3, Zulauf nachgetragen: der Merkbefehl kommt als ganz normale
+        # Aeusserung durch Durchgang 2 (die Absichtserkennung des Routers
+        # kennt keine eigene "merken"-Absicht) -- deshalb hier geprueft, VOR
+        # dem API-Aufruf, und unabhaengig von dessen Ausgang: eine Anweisung,
+        # die der Nutzer wirklich gesprochen hat, soll nicht an einem
+        # abgelehnten Kontingent scheitern. `Langzeit.merken` prueft Herkunft,
+        # Anweisung und Woertlichkeit selbst und lehnt still ab, wenn eines
+        # fehlt -- diese Stelle muss nichts davon wiederholen.
+        if anweisung_erkannt(frage):
+            try:
+                self._langzeit.merken(
+                    frage, aeusserung=Marked(frage, _mark_von_str(marke)),
+                    turn_id=turn_id)
+            except Exception:  # noqa: BLE001 -- Ablehnung ist der Normalfall
+                pass
+
+        # Durchgang 2 ist selbst eine Senke, die `tainted`/`user_audio`
+        # erlaubt (Design 5.2) -- die geteilte `kurzzeitgedaechtnis`-Senke
+        # waere hier zu eng und wuerde Bildschirmbezug aus dem eigenen
+        # Rueckbezug ausschliessen, den Durchgang 2 sehen darf.
+        verlauf = self._kurzzeit.fuer_prompt("durchgang2")
+        koerper = self.koerper(frage, kontext, verlauf=verlauf)
         # Erst das Kontingent, dann der Egress. Umgekehrt waere der Aufruf
         # bezahlt, bevor er autorisiert ist.
         ticket = hub_anfrage(self.hub_socket, {
@@ -340,6 +446,20 @@ class Mind:
         self.log.info("Antwort erhalten", DAIMON_ACTION="mind_antwort",
                       DAIMON_STATUS=antwort.get("status"),
                       DAIMON_BYTES=antwort.get("bytes"))
+        # T-6.2, Zulauf nachgetragen: die Nutzerfrage traegt ihre EIGENE
+        # Marke (keine `quelle` -- "durchgang2" ist der Weg, den sie nahm,
+        # nicht ihre Herkunft; QUELLEN_IMMER_TAINTED wuerde sonst auch eine
+        # user_ptt-Frage ungewollt auf tainted zwingen). Nur die ANTWORT von
+        # Durchgang 2 traegt `quelle="durchgang2"` und wird darueber
+        # erzwungen-`tainted` -- damit erreicht sie nach derselben
+        # Senkentabelle den werkzeugfaehigen Durchgang nie, auch nicht ueber
+        # das Gedaechtnis (die Luecke aus v2.0).
+        self._kurzzeit.merken("user", Marked(frage, _mark_von_str(marke)),
+                              turn_id=turn_id)
+        _text = _text_aus_antwort(antwort.get("antwort"))
+        if _text:
+            self._kurzzeit.merken("assistant", Marked(_text, Mark.TRUSTED),
+                                  turn_id=turn_id, quelle="durchgang2")
         return {"v": 1, "ok": True, "status": antwort.get("status"),
                 "antwort": antwort.get("antwort"),
                 "dauer_ms": antwort.get("dauer_ms")}
@@ -476,7 +596,12 @@ def main(argv: list[str] | None = None) -> int:
     # den Kontext, den Durchgang 2 bekommt.
     router = Router(quellen=quellen_aus_umgebung(
         hub_socket=str(cfg.runtime_dir / STATE_SOCKET)),
-        mind=Durchgang2(mind=mind), executor=mind)
+        mind=Durchgang2(mind=mind), executor=mind,
+        # T-8.5: Erinnerungen und Fokusbloecke gehen an den Zeitplaner.
+        # `hub_anfrage` liefert bei einer toten Gegenstelle `ok: False` --
+        # der Router antwortet dann ehrlich, statt zu haengen.
+        plan=lambda n: hub_anfrage(str(cfg.runtime_dir / PLAN_SOCKET), n,
+                                   timeout_s=10.0))
 
     if args.frage is not None:
         antwort = router.frage({"v": 1, "art": "frage", "text": args.frage,

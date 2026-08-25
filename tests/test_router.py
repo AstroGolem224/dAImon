@@ -109,8 +109,9 @@ class MindAttrappe:
                                     "antwort": {"text": "gut"}}
         self._fehler = fehler
 
-    def frage_api(self, text, kontext):
-        self.koerper.append({"text": text, "kontext": kontext})
+    def frage_api(self, text, kontext, *, marke: str = "tainted"):
+        self.koerper.append({"text": text, "kontext": kontext,
+                             "marke": marke})
         if self._fehler:
             return self._fehler
         return self._antwort
@@ -571,3 +572,169 @@ def test_eine_referenz_im_text_ist_ein_fensterbezug():
     r, _ = router(mind=m)
     frage(r, "was laeuft in w_1")
     assert "w_1" in json.dumps(m.koerper, ensure_ascii=False)
+
+
+# --------------------------------------------------------------------------
+# T-8.5: Erinnerungen und Fokusbloecke gehen an den Zeitplaner
+# --------------------------------------------------------------------------
+
+class PlanAttrappe:
+    """Der Weg zum Zeitplaner als Funktion. Zaehlt mit, was angekommen ist."""
+
+    def __init__(self, antwort=None):
+        self.anfragen = []
+        self._antwort = antwort if antwort is not None else {
+            "v": 1, "ok": True, "id": 1, "ts_faellig": 0.0,
+            "beschreibung": "heute um 18:30 Uhr"}
+
+    def __call__(self, nutzlast):
+        self.anfragen.append(nutzlast)
+        return self._antwort
+
+
+def router_mit_plan(plan):
+    return R.Router(quellen=Attrappen(), mind=MindAttrappe(), plan=plan)
+
+
+@pytest.mark.parametrize("text,erwartet", [
+    ("erinnere mich in 20 minuten an tee", "erinnerung"),
+    ("erinnere mich um 18:30 an den anruf", "erinnerung"),
+    ("weck mich morgen um 7", "erinnerung"),
+    ("fokus 45", "fokus"),
+    ("fokus stopp", "fokus"),
+    ("ich will mich fokussieren", "fokus"),
+])
+def test_die_neuen_absichten_werden_erkannt(text, erwartet):
+    assert R.absicht(text) == erwartet
+
+
+def test_aktion_gewinnt_gegen_die_erinnerung():
+    # "erinnere mich und schliess das fenster" enthaelt ein Aktionsverb --
+    # das ist ein Stellbefehl und kein Termin. (Die Aktionsliste kennt den
+    # Imperativ, nicht den Infinitiv -- diese Luecke ist aelter als T-8.5.)
+    assert R.absicht("erinnere mich und schliess das fenster") == "aktion"
+
+
+def test_eine_erinnerung_legt_einen_termin_an():
+    plan = PlanAttrappe()
+    r = router_mit_plan(plan)
+    a = frage(r, "erinnere mich in 20 minuten an tee")
+    assert a["ok"] is True and a["weg"] == "lokal"
+    assert a["absicht"] == "erinnerung"
+    nutzlast = plan.anfragen[0]
+    assert nutzlast["art"] == "neu"
+    assert nutzlast["titel"] == "tee"
+    assert nutzlast["wann"] == "in 20 minuten"
+    assert nutzlast["marke"] == "user_ptt"
+    # Positivkontrolle: die Bestaetigung nennt Titel und Zeitpunkt.
+    assert "tee" in a["antwort"] and "18:30" in a["antwort"]
+    # Der Titel stammt vom Nutzer per PTT -- die Antwort darf trusted sein.
+    assert a["marke"] == "trusted"
+
+
+def test_die_zeit_kann_auch_am_ende_stehen():
+    plan = PlanAttrappe()
+    r = router_mit_plan(plan)
+    a = frage(r, "erinnere mich an den zahnarzt um 18:30")
+    assert a["ok"] is True, a
+    assert plan.anfragen[0]["titel"] == "den zahnarzt"
+    assert plan.anfragen[0]["wann"] == "um 18:30"
+
+
+def test_eine_erinnerung_ohne_zeitpunkt_fragt_nach():
+    plan = PlanAttrappe()
+    r = router_mit_plan(plan)
+    a = frage(r, "erinnere mich an tee")
+    assert a["weg"] == "rueckfrage" and "Wann" in a["antwort"]
+    assert plan.anfragen == [], "ohne Zeitpunkt wird nichts angelegt"
+
+
+def test_eine_erinnerung_ohne_titel_fragt_nach():
+    plan = PlanAttrappe()
+    r = router_mit_plan(plan)
+    a = frage(r, "weck mich morgen um 7")
+    assert a["weg"] == "rueckfrage" and "Woran" in a["antwort"]
+    assert plan.anfragen == []
+
+
+def test_eine_unverstaendliche_zeit_wird_ehrlich_abgelehnt():
+    plan = PlanAttrappe(antwort={"v": 1, "ok": False, "grund": "unbrauchbar",
+                                 "meldung": "Zeitpunkt unlesbar: tee"})
+    r = router_mit_plan(plan)
+    a = frage(r, "erinnere mich in 20 minuten an tee")
+    assert a["weg"] == "abgelehnt"
+    # Die Meldung des Plan-Dienstes kann Wortlaut enthalten -- die feste
+    # Form wird gesprochen, nicht sie. ("tee" steht im Titel, nicht in der
+    # Fehlermeldung; geprueft wird, dass die Meldung nicht durchgereicht wird.)
+    assert "unlesbar" not in a["antwort"]
+
+
+def test_ohne_plan_sagt_der_router_es_statt_es_vorzutaeuschen():
+    r, _ = router()
+    a = frage(r, "erinnere mich in 20 minuten an tee")
+    assert a["ok"] is True and a["weg"] == "abgelehnt"
+    assert "Zeitplaner" in a["antwort"]
+    a = frage(r, "fokus 45")
+    assert a["weg"] == "abgelehnt" and "Zeitplaner" in a["antwort"]
+
+
+def test_ein_toter_plan_dienst_ist_quelle_weg():
+    def tot(_nutzlast):
+        raise OSError("verbindung verweigert")
+    r = router_mit_plan(tot)
+    a = frage(r, "erinnere mich in 20 minuten an tee")
+    assert a["ok"] is False and a["grund"] == "quelle_weg"
+    # Positivkontrolle: die naechste Frage geht trotzdem.
+    assert frage(r, "wie spaet ist es")["ok"] is True
+
+
+def test_fokus_start_und_stopp_gehen_an_den_plan():
+    plan = PlanAttrappe(antwort={"v": 1, "ok": True, "id": 2,
+                                 "ts_faellig": 0.0,
+                                 "beschreibung": "heute um 15:22 Uhr"})
+    r = router_mit_plan(plan)
+    a = frage(r, "fokus 45")
+    assert a["ok"] is True and a["weg"] == "lokal"
+    assert plan.anfragen[0] == {"v": 1, "art": "fokus_start", "minuten": 45}
+    assert "45" in a["antwort"] and a["marke"] == "trusted"
+
+    plan._antwort = {"v": 1, "ok": True, "gestoppt": 1}
+    a = frage(r, "fokus stopp")
+    assert plan.anfragen[1]["art"] == "fokus_stop"
+    assert a["antwort"] == "Fokus gestoppt."
+
+
+def test_fokus_stopp_ohne_laufenden_block_sagt_es():
+    plan = PlanAttrappe(antwort={"v": 1, "ok": True, "gestoppt": 0})
+    r = router_mit_plan(plan)
+    a = frage(r, "fokus ende")
+    assert a["ok"] is True and a["antwort"] == "Es lief kein Fokus."
+
+
+def test_fokus_ohne_dauer_fragt_nach():
+    plan = PlanAttrappe()
+    r = router_mit_plan(plan)
+    a = frage(r, "ich will mich fokussieren")
+    assert a["weg"] == "rueckfrage" and "Minuten" in a["antwort"]
+    assert plan.anfragen == []
+
+
+def test_fokus_ausserhalb_der_schranke_wird_abgelehnt():
+    plan = PlanAttrappe(antwort={"v": 1, "ok": False, "grund": "unbrauchbar",
+                                 "meldung": "Fokus zwischen 1 und 480 Minuten"})
+    r = router_mit_plan(plan)
+    a = frage(r, "fokus 999")
+    assert a["weg"] == "abgelehnt" and "480" in a["antwort"]
+
+
+def test_eine_tainted_erinnerung_erreicht_den_plan_nicht():
+    # Die Senkentabelle (taint.SENKEN) sperrt `tainted` gegen Durchgang 1 --
+    # und die Erinnerung laeuft ueber Durchgang 1. Eine Aeusserung ohne
+    # Herkunftsnachweis legt deshalb NICHTS an: ihr Text kaeme sonst in die
+    # Datenbank und spaeter an die Sprache. Die Absage ist die Tabelle, die
+    # genau das tut, wofuer sie da ist.
+    plan = PlanAttrappe()
+    r = router_mit_plan(plan)
+    a = frage(r, "erinnere mich in 20 minuten an tee", marke="tainted")
+    assert a["ok"] is False and a["grund"] == "marke_verboten"
+    assert plan.anfragen == []

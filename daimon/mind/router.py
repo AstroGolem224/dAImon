@@ -42,10 +42,12 @@ import time
 from daimon.common import taint
 from daimon.common.protocol import Mark
 
-# Die geschlossene Aufzaehlung. Ein sechster Wert ist ein Fehler und keine
+# Die geschlossene Aufzaehlung. Ein weiterer Wert ist ein Fehler und keine
 # Erweiterung: jeder Zweig hier hat eine eigene Zusage im Vertrag.
+# T-8.5: `erinnerung` und `fokus` kamen dazu -- beide lokal, beide gehen an
+# den Zeitplaner (plan-anfrage.sock), keiner an eine Aktion.
 ABSICHTEN = ("uhrzeit", "lautstaerke", "sitzung", "fensterliste", "aktion",
-             "api")
+             "erinnerung", "fokus", "api")
 
 # Aktionswuensche zuerst. Die Liste nennt VERBEN, keine Gegenstaende -- ein
 # Muster auf "fenster" wuerde die Auskunft mitfangen.
@@ -80,7 +82,37 @@ _LOKAL = (
     ("sitzung", re.compile(
         r"\b(sitzung\w*|session\w*)\b",
         re.IGNORECASE)),
+    # T-8.5: "erinnere mich in 20 minuten an tee". Der Befehl geht an den
+    # Zeitplaner -- er IST keine Aktion im Sinne des Katalogs und braucht
+    # deshalb auch keine Absichtsmarke. Ausnahme: enthaelt der Satz ein
+    # Aktionsverb ("erinnere mich daran, das Fenster zu schliessen"), gewinnt
+    # `_AKTION` -- die Reihenfolge oben ist Absicht.
+    ("erinnerung", re.compile(
+        r"\b(erinner\w+|weck(?:e|t|en)?\s+mich)\b",
+        re.IGNORECASE)),
+    ("fokus", re.compile(
+        r"\b(fokus|fokussier\w+|fokusblock\w*)\b",
+        re.IGNORECASE)),
 )
+
+# T-8.5: Titel und Zeitpunkt aus dem Wortlaut. Die Zeit kann in der Mitte
+# stehen ("erinnere mich in 20 minuten an tee") oder am Ende -- gesucht wird
+# deshalb ueberall, der Titel ist das, was nach Ausloeser und Zeit uebrig
+# bleibt. GEPARST wird die Zeichenkette nicht hier, sondern einmal im
+# Zeitplaner (`plan.zeit.parse`): eine zweite Stelle, die Zeit versteht,
+# waere eine zweite Wahrheit.
+_PLAN_ZEIT = re.compile(
+    r"\b(in\s+\d+\s*(?:sekunden?|minuten?|stunden?)"
+    r"|morgen(?:\s+um\s+\d{1,2}(?::\d{2})?(?:\s*uhr)?)?"
+    r"|um\s+\d{1,2}(?::\d{2})?(?:\s*uhr)?"
+    r"|\d{4}-\d{2}-\d{2}[t ]\d{1,2}:\d{2}(?::\d{2})?)\b",
+    re.IGNORECASE)
+_PLAN_AUSLOESER = re.compile(
+    r"\b(?:erinner\w*|weck\w*)\s+(?:mich\s+)?(?:daran\s*,?\s*)?",
+    re.IGNORECASE)
+_PLAN_FUELLER = re.compile(r"^(?:daran|an|am)\s+", re.IGNORECASE)
+_FOKUS_STOPP = re.compile(r"\bfokus\w*\s+(?:stopp?|ende|aus)\b", re.IGNORECASE)
+_FOKUS_DAUER = re.compile(r"\bfokus\w*\s+(\d{1,3})\b", re.IGNORECASE)
 
 
 def absicht(text: str) -> str:
@@ -363,7 +395,7 @@ class Router:
     """
 
     def __init__(self, *, quellen, mind, executor=None, log=None,
-                 testprofil: bool = False):
+                 plan=None, testprofil: bool = False):
         self._quellen = quellen
         self._mind = mind
         # T-4.16 K1: der werkzeugfaehige Weg fuer `was == "aktion"`. Getrennt
@@ -371,6 +403,9 @@ class Router:
         # Schnitt wie in `daimon/mind/answer.py`'s Modulkopf. `None` bleibt
         # gueltig: ein Router ohne Executor sagt es, statt es vorzutaeuschen.
         self._executor = executor
+        # T-8.5: der Weg zum Zeitplaner. Eine Funktion, die ein dict nimmt und
+        # ein dict zurueckgibt -- `None` bleibt gueltig, die Antwort sagt es.
+        self._plan = plan
         self._log = log
         self.testprofil = bool(testprofil) or bool(
             getattr(quellen, "testprofil", False))
@@ -552,10 +587,12 @@ class Router:
                     "antwort": ergebnis.get("gesprochen") or "",
                     "marke": "trusted", "api": True}
         if was != "api":
-            return self._lokal(was)
-        return self._api(text)
+            # `text` und `marke` gehen mit: die beiden Plan-Zweige brauchen
+            # den Wortlaut (Titel, Zeitpunkt) und die Herkunftsmarke.
+            return self._lokal(was, text, marke)
+        return self._api(text, marke)
 
-    def _lokal(self, was: str) -> dict:
+    def _lokal(self, was: str, text: str = "", marke: str = "") -> dict:
         try:
             if was == "uhrzeit":
                 antwort, marke = f"Es ist {self._quellen.uhrzeit()}.", "trusted"
@@ -576,6 +613,10 @@ class Router:
                            f"{s.get('mood', 'unbekannt')}, aktiv "
                            f"{s.get('session_id') or 'keine'}.")
                 marke = "trusted"
+            elif was == "erinnerung":
+                return self._erinnerung(text, marke)
+            elif was == "fokus":
+                return self._fokus(text, marke)
             else:
                 fenster = self._quellen.fenster()
                 # Der Titel geht an den NUTZER und ist deshalb `tainted` --
@@ -593,7 +634,108 @@ class Router:
         return {"v": 1, "ok": True, "weg": "lokal", "absicht": was,
                 "antwort": antwort, "marke": marke, "api": False}
 
-    def _api(self, text: str) -> dict:
+    # -- T-8.5: die beiden Plan-Zweige ---------------------------------------
+    #
+    # Sie sind bewusst KEINE Aktionen: der Zeitplaner loest nichts aus, er
+    # erinnert nur (Blase + Sprache durchs Gatter). Deshalb brauchen sie
+    # keine Absichtsmarke und keinen Executor -- aber sie reichen die
+    # Herkunftsmarke mit, denn der Titel wird spaeter vielleicht gesprochen.
+
+    def _erinnerung(self, text: str, marke: str) -> dict:
+        """"erinnere mich in 20 minuten an tee" -> ein Termin beim Plan."""
+        if self._plan is None:
+            # Wie beim fehlenden Executor: ehrlich sagen statt vortaeuschen.
+            return {"v": 1, "ok": True, "weg": "abgelehnt",
+                    "absicht": "erinnerung",
+                    "antwort": "Das kann ich noch nicht — es fehlt der "
+                               "Zeitplaner.",
+                    "marke": "trusted", "api": False}
+        zeit = _PLAN_ZEIT.search(text)
+        if zeit is None:
+            return {"v": 1, "ok": True, "weg": "rueckfrage",
+                    "absicht": "erinnerung",
+                    "antwort": "Wann soll ich dich erinnern?",
+                    "marke": "trusted", "api": False}
+        rest = _PLAN_ZEIT.sub(" ", text, count=1)
+        rest = _PLAN_AUSLOESER.sub(" ", rest, count=1)
+        titel = _PLAN_FUELLER.sub("", rest.strip()).strip(" ,.")
+        if not titel:
+            return {"v": 1, "ok": True, "weg": "rueckfrage",
+                    "absicht": "erinnerung",
+                    "antwort": "Woran soll ich dich erinnern?",
+                    "marke": "trusted", "api": False}
+        try:
+            antwort = self._plan({"v": 1, "art": "neu", "titel": titel,
+                                  "wann": zeit.group(0),
+                                  "marke": marke if isinstance(marke, str)
+                                           else ""})
+        except (OSError, TypeError, ValueError) as exc:
+            return self._nein("quelle_weg", f"{type(exc).__name__}",
+                              weg="lokal")
+        if not isinstance(antwort, dict) or not antwort.get("ok"):
+            # Die Meldung des Zeitplaners kann Wortlaut enthalten -- gesprochen
+            # wird eine feste Form, nicht sie.
+            return {"v": 1, "ok": True, "weg": "abgelehnt",
+                    "absicht": "erinnerung",
+                    "antwort": "Das habe ich nicht als Erinnerung verstanden.",
+                    "marke": "trusted", "api": False}
+        beschreibung = str(antwort.get("beschreibung") or "").strip()
+        # Die Antwort nennt den Titel -- sie traegt deshalb die Marke der
+        # Aeusserung: PTT/getippt ist nutzereigen, alles andere tainted.
+        echo = "trusted" if marke in ("user_ptt", "trusted") else "tainted"
+        satz = (f"Notiert: {titel}, {beschreibung}." if beschreibung
+                else f"Notiert: {titel}.")
+        return {"v": 1, "ok": True, "weg": "lokal", "absicht": "erinnerung",
+                "antwort": satz, "marke": echo, "api": False}
+
+    def _fokus(self, text: str, marke: str) -> dict:
+        """"fokus 45" startet einen Block, "fokus stopp" beendet ihn.
+
+        Die Antwort enthaelt nur eine ZAHL aus dem Wortlaut und kuratierte
+        Saetze -- keinen freien Nutzertext, deshalb immer `trusted`.
+        """
+        del marke  # ungenutzt: diese Antworten tragen keinen Nutzertext
+        if self._plan is None:
+            return {"v": 1, "ok": True, "weg": "abgelehnt",
+                    "absicht": "fokus",
+                    "antwort": "Das kann ich noch nicht — es fehlt der "
+                               "Zeitplaner.",
+                    "marke": "trusted", "api": False}
+        try:
+            if _FOKUS_STOPP.search(text):
+                antwort = self._plan({"v": 1, "art": "fokus_stop"})
+                if isinstance(antwort, dict) and antwort.get("ok"):
+                    n = int(antwort.get("gestoppt") or 0)
+                    satz = "Fokus gestoppt." if n else "Es lief kein Fokus."
+                    return {"v": 1, "ok": True, "weg": "lokal",
+                            "absicht": "fokus", "antwort": satz,
+                            "marke": "trusted", "api": False}
+                return {"v": 1, "ok": True, "weg": "abgelehnt",
+                        "absicht": "fokus",
+                        "antwort": "Den Fokus konnte ich nicht stoppen.",
+                        "marke": "trusted", "api": False}
+            dauer = _FOKUS_DAUER.search(text)
+            if dauer is None:
+                return {"v": 1, "ok": True, "weg": "rueckfrage",
+                        "absicht": "fokus",
+                        "antwort": "Wie viele Minuten soll der Fokus dauern?",
+                        "marke": "trusted", "api": False}
+            minuten = int(dauer.group(1))
+            antwort = self._plan({"v": 1, "art": "fokus_start",
+                                  "minuten": minuten})
+        except (OSError, TypeError, ValueError) as exc:
+            return self._nein("quelle_weg", f"{type(exc).__name__}",
+                              weg="lokal")
+        if not isinstance(antwort, dict) or not antwort.get("ok"):
+            return {"v": 1, "ok": True, "weg": "abgelehnt",
+                    "absicht": "fokus",
+                    "antwort": "Fokus geht zwischen 1 und 480 Minuten.",
+                    "marke": "trusted", "api": False}
+        return {"v": 1, "ok": True, "weg": "lokal", "absicht": "fokus",
+                "antwort": f"Fokus laeuft, {minuten} Minuten.",
+                "marke": "trusted", "api": False}
+
+    def _api(self, text: str, marke: str = "") -> dict:
         kontext = None
         if _FENSTERBEZUG.search(text):
             try:
@@ -625,7 +767,11 @@ class Router:
                 kontext["archiv"] = list(frei.get("archiv") or [])
                 self.deklassifiziert += 1
 
-        antwort = self._mind.frage_api(text, kontext)
+        # T-6.2, Zulauf nachgetragen: die echte Herkunftsmarke geht mit --
+        # sonst speichert Mind jede Runde als das Vorgabe-`tainted`, und die
+        # naechste Runde findet ihre eigene Vorrunde nicht wieder (die Senke
+        # `kurzzeitgedaechtnis` schliesst `tainted` aus).
+        antwort = self._mind.frage_api(text, kontext, marke=marke or "tainted")
         if not antwort.get("ok"):
             grund = str(antwort.get("grund", ""))
             # Hat der Durchgang schon einen gueltigen Grund gebildet, wird SEINE

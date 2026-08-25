@@ -76,7 +76,7 @@ class EchoMind:
         self.praefix = praefix
         self.gesehener_text = ""
 
-    def frage_api(self, frage, koerper=None):
+    def frage_api(self, frage, koerper=None, *, marke: str = "user_ptt"):
         teile = []
 
         def sammeln(wert):

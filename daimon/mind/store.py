@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -90,6 +91,12 @@ class Store:
         self.pfad = Path(pfad or (state_dir() / DATEI))
         self._uhr = uhr
         self._db: sqlite3.Connection | None = None
+        # T-6.1-3.v, Befund am Echtbaum: der Mind-Dienst bedient jede
+        # Verbindung in einem eigenen Thread (daemon.py) und teilt sich EINEN
+        # Store. Ohne `check_same_thread=False` stirbt der erste Schreibzugriff
+        # aus einem fremden Thread, ohne zu antworten -- die Frage wurde nie
+        # gestellt, weil der Store bis dahin keinen Aufrufer hatte.
+        self._sperre = threading.RLock()
 
     # -- Oeffnen -----------------------------------------------------------
 
@@ -98,7 +105,8 @@ class Store:
             return self._db
         self.pfad.parent.mkdir(parents=True, exist_ok=True)
         neu = not self.pfad.exists()
-        db = sqlite3.connect(self.pfad, isolation_level=None)
+        db = sqlite3.connect(self.pfad, isolation_level=None,
+                             check_same_thread=False)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("PRAGMA foreign_keys=ON")
@@ -129,28 +137,31 @@ class Store:
     # -- Migrationen -------------------------------------------------------
 
     def version(self) -> int:
-        return int(self.oeffnen().execute("PRAGMA user_version").fetchone()[0])
+        with self._sperre:
+            return int(self.oeffnen().execute(
+                "PRAGMA user_version").fetchone()[0])
 
     def migrieren(self, ziel: int | None = None) -> int:
         """Auf `ziel` bringen -- hinauf oder hinunter. Gibt die Version zurueck."""
-        db = self.oeffnen()
-        ziel = SCHEMA_VERSION if ziel is None else int(ziel)
-        if not 0 <= ziel <= SCHEMA_VERSION:
-            raise StoreFehler(
-                f"Zielversion {ziel} liegt ausserhalb von 0..{SCHEMA_VERSION}")
+        with self._sperre:
+            db = self.oeffnen()
+            zielv = SCHEMA_VERSION if ziel is None else int(ziel)
+            if not 0 <= zielv <= SCHEMA_VERSION:
+                raise StoreFehler(
+                    f"Zielversion {zielv} liegt ausserhalb von 0..{SCHEMA_VERSION}")
 
-        while self.version() < ziel:
-            v = self.version() + 1
-            _, hinauf, _ = MIGRATIONEN[v - 1]
-            db.executescript(hinauf)
-            db.execute(f"PRAGMA user_version={v}")
-        while self.version() > ziel:
-            v = self.version()
-            _, _, hinunter = MIGRATIONEN[v - 1]
-            db.executescript(hinunter)
-            db.execute(f"PRAGMA user_version={v - 1}")
-        self._rechte_ziehen()
-        return self.version()
+            while self.version() < zielv:
+                v = self.version() + 1
+                _, hinauf, _ = MIGRATIONEN[v - 1]
+                db.executescript(hinauf)
+                db.execute(f"PRAGMA user_version={v}")
+            while self.version() > zielv:
+                v = self.version()
+                _, _, hinunter = MIGRATIONEN[v - 1]
+                db.executescript(hinunter)
+                db.execute(f"PRAGMA user_version={v - 1}")
+            self._rechte_ziehen()
+            return self.version()
 
     # -- Schreiben und Lesen -----------------------------------------------
 
@@ -170,30 +181,32 @@ class Store:
             raise StoreFehler("Art fehlt")
 
         markiert = wert if isinstance(wert, Marked) else Marked.from_wire(wert)
-        db = self.oeffnen()
-        cur = db.execute(
-            "INSERT INTO eintraege (art, ts, wert, turn_id) VALUES (?,?,?,?)",
-            (art, float(ts if ts is not None else self._uhr()),
-             json.dumps(markiert.to_wire(), ensure_ascii=False), str(turn_id)))
-        return int(cur.lastrowid)
+        with self._sperre:
+            db = self.oeffnen()
+            cur = db.execute(
+                "INSERT INTO eintraege (art, ts, wert, turn_id) VALUES (?,?,?,?)",
+                (art, float(ts if ts is not None else self._uhr()),
+                 json.dumps(markiert.to_wire(), ensure_ascii=False), str(turn_id)))
+            return int(cur.lastrowid)
 
     def lesen(self, art: str | None = None, *, seit: float | None = None,
               hoechstens: int = 100) -> list[dict]:
         """Eintraege, jeweils mit `Marked` im Feld `wert`."""
-        db = self.oeffnen()
-        bedingungen, werte = [], []
-        if art is not None:
-            bedingungen.append("art = ?")
-            werte.append(str(art).strip().lower())
-        if seit is not None:
-            bedingungen.append("ts >= ?")
-            werte.append(float(seit))
-        wo = (" WHERE " + " AND ".join(bedingungen)) if bedingungen else ""
-        zeilen = db.execute(
-            f"SELECT id, art, ts, wert, turn_id FROM eintraege{wo} "
-            "ORDER BY ts DESC, id DESC LIMIT ?", (*werte, int(hoechstens))
-        ).fetchall()
-        return [self._zeile(z) for z in zeilen]
+        with self._sperre:
+            db = self.oeffnen()
+            bedingungen, werte = [], []
+            if art is not None:
+                bedingungen.append("art = ?")
+                werte.append(str(art).strip().lower())
+            if seit is not None:
+                bedingungen.append("ts >= ?")
+                werte.append(float(seit))
+            wo = (" WHERE " + " AND ".join(bedingungen)) if bedingungen else ""
+            zeilen = db.execute(
+                f"SELECT id, art, ts, wert, turn_id FROM eintraege{wo} "
+                "ORDER BY ts DESC, id DESC LIMIT ?", (*werte, int(hoechstens))
+            ).fetchall()
+            return [self._zeile(z) for z in zeilen]
 
     @staticmethod
     def _zeile(z: sqlite3.Row) -> dict:
@@ -215,9 +228,11 @@ class Store:
         laesst, muss es auch wieder loswerden koennen, ohne alles zu
         verlieren.
         """
-        db = self.oeffnen()
-        cur = db.execute("DELETE FROM eintraege WHERE id = ?", (int(eintrag_id),))
-        return cur.rowcount > 0
+        with self._sperre:
+            db = self.oeffnen()
+            cur = db.execute("DELETE FROM eintraege WHERE id = ?",
+                             (int(eintrag_id),))
+            return cur.rowcount > 0
 
     # -- Ein Befehl loescht alles ------------------------------------------
 
@@ -228,16 +243,18 @@ class Store:
         und wer die Datenbank danach mit einem Hex-Editor oeffnet, findet
         seine Erinnerungen wieder.
         """
-        db = self.oeffnen()
-        anzahl = int(db.execute("SELECT COUNT(*) FROM eintraege").fetchone()[0])
-        db.execute("DELETE FROM eintraege")
-        self.schliessen()
-        for endung in ("", "-wal", "-shm"):
-            try:
-                Path(str(self.pfad) + endung).unlink()
-            except OSError:
-                pass
-        return anzahl
+        with self._sperre:
+            db = self.oeffnen()
+            anzahl = int(db.execute(
+                "SELECT COUNT(*) FROM eintraege").fetchone()[0])
+            db.execute("DELETE FROM eintraege")
+            self.schliessen()
+            for endung in ("", "-wal", "-shm"):
+                try:
+                    Path(str(self.pfad) + endung).unlink()
+                except OSError:
+                    pass
+            return anzahl
 
 
 def main(argv: list[str] | None = None) -> int:

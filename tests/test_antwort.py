@@ -23,7 +23,7 @@ class EgressAttrappe:
         self.antwort_text = antwort_text
         self.fehler = fehler
 
-    def frage_api(self, frage, kontext=None):
+    def frage_api(self, frage, kontext=None, *, marke: str = "user_ptt"):
         koerper = {"model": "m", "max_tokens": 8, "system": "Du bist Ember.",
                    "messages": [{"role": "user", "content": frage}]}
         if kontext:
