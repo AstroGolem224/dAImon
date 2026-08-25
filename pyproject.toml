@@ -51,6 +51,14 @@ audio = [
     # kann. (webrtcvad war hier kurz drin, weil ich es installiert habe, bevor
     # ich in den Plan gesehen habe. Wieder raus, ungenutzt.)
     "pysilero-vad>=3.4.0",
+    # STT/TTS-Engine. Apache-2.0 statt Piper (GPL-3.0) -- siehe
+    # docs/PRIOR-ART.md. Stand vor dem 25.08. nur manuell installiert, nie
+    # hier deklariert; ein `uv sync` warf es darum aus dem venv.
+    # `sherpa-onnx-core` traegt die kompilierte Erweiterung und muss separat
+    # stehen -- pip fuehrt es nicht als Abhaengigkeit von `sherpa-onnx`,
+    # ein `uv sync` ohne diese Zeile entfernt es wieder (gemessen 25.08.).
+    "sherpa-onnx==1.13.4",
+    "sherpa-onnx-core==1.13.4",
 ]
 
 dev = [

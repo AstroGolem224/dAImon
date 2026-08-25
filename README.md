@@ -118,7 +118,7 @@ Details, inklusive der Lizenzfallen: [docs/PRIOR-ART.md](docs/PRIOR-ART.md).
 
 ```bash
 git config core.hooksPath .githooks
-uv sync
+uv sync --all-extras
 sudo pacman -S tesseract-data-deu tesseract-data-eng
 for u in config/systemd/*.service; do systemctl --user link "$PWD/$u"; done
 systemctl --user daemon-reload

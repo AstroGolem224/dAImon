@@ -48,7 +48,7 @@ Der Befund steht ausführlich im Kopf von `daimon-recorder.service`.
 21 Units, drei Sorten. Nur die erste braucht `enable`.
 
 ```bash
-# 1. Dauerhaft laufende Dienste (15 Stück, alle mit [Install])
+# 1. Dauerhaft laufende Dienste (9 Stück, alle mit [Install])
 systemctl --user enable --now \
   daimon-hub.service daimon-auth.service daimon-hookbridge.service \
   daimon-focus.service daimon-face.service \
@@ -212,7 +212,7 @@ Vom Billigsten zum Aussagekräftigsten. Die ersten drei kosten Sekunden.
 ```bash
 systemctl --user list-units 'daimon-*' --all   # laeuft ueberhaupt etwas
 python -m daimon.hub.diag                      # Zaehler, Warteschlangen, Latenz
-python -m pytest -q                            # 1530 passed, 8 xfailed (17.08.)
+python -m pytest -q                            # 1850 Tests (24.08.)
 ```
 
 **Die eingefrorenen Zusagen** — erste Zeile jedes Phasen-Gates. Bricht ab,

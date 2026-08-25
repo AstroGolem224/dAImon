@@ -70,7 +70,7 @@ Nachschreiben, und dafür ist der `grep` oben da.
 
 ## `daimon/hub/sprechtext.py`
 
-- **Zeile 150** — eine Heuristik, keine Grammatik. Obergrenze: sie laesst
+- **Zeile 156** — eine Heuristik, keine Grammatik. Obergrenze: sie laesst
 
 ## `daimon/hub/abkuehlung.py`
 
@@ -78,7 +78,7 @@ Nachschreiben, und dafür ist der `grep` oben da.
 
 ## `daimon/hub/daemon.py`
 
-- **Zeile 1063** — der Ersatzsatz hat KEINE eigene Frist. Obergrenze: er ist
+- **Zeile 1196** — der Ersatzsatz hat KEINE eigene Frist. Obergrenze: er ist
 
 ## `daimon/hub/state.py`
 
@@ -86,11 +86,11 @@ Nachschreiben, und dafür ist der `grep` oben da.
 
 ## `daimon/mind/daemon.py`
 
-- **Zeile 111** — 20 Zeichen Rand, geraten und einmal nachgemessen. Obergrenze: wer
+- **Zeile 200** — 20 Zeichen Rand, geraten und einmal nachgemessen. Obergrenze: wer
 
 ## `daimon/mind/router.py`
 
-- **Zeile 227** — sauberer waere ein KWin-Script, das `resourceClass` meldet; das
+- **Zeile 259** — sauberer waere ein KWin-Script, das `resourceClass` meldet; das
 
 ## `face/src/main.rs`
 
