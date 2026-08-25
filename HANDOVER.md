@@ -2010,3 +2010,142 @@ keine Datei aus T-3.13b oder T-3.14, und **ich habe sie nicht gegengelesen.**
 **Für T-1.7 Teil 2 hat der Builder den bereits geschriebenen Verifizierer gelesen.**
 Mein Auftrag untersagte nur das Ändern. Die Kriterien standen vorher fest, aber
 „gegen die Prüfung gebaut" lässt sich für diesen Teil nicht ausschließen.
+
+---
+
+## 2026-08-25 — Phase 6/7 nachverifiziert, Gate P6/P7 gruen, Gate P8 zusammengestellt
+
+Phase 6 (Gedaechtnis, T-6.1…T-6.10) hatte Produktcode ohne je gebaute
+Verifizierer — nachgebaut statt neu entworfen. Dabei sechs Zulauf-Luecken
+geschlossen (Store/Kurzzeit/Langzeit nie am Draht, `daimon-mind.service`
+ohne Schreibrecht auf `plan.db`-Nachbarpfad, PTT-Kill-Switch meldete
+Hub nicht), ein sicherheitsrelevanter Befund B5 gefixt (Mikro oeffnete
+nach Dienst-Neustart ohne frischen Tastendruck wieder, `daimon/auth/agent.py`,
+Commit `461b4c2`). T-6.5/T-6.6/Reste von T-6.8 (B1-B4,B6,B8,B9) auf
+Anweisung zurueckgestellt und im Plan vermerkt statt stillschweigend
+fallengelassen.
+
+**Gate P6:**
+
+| Pruefung | Ergebnis |
+|---|---|
+| `verify-frozen.sh` | gruen |
+| `T-6.9.sh` | gruen, 0 hoch/kritisch |
+| `T-6.8.sh` | 15 gruen, 6 rot (Ressourcenbudget, Folgeaktion, Augen-Hotkey — dokumentierte, zurueckgestellte Befunde) |
+| `T-6.10.sh` | gruen nach Doku-Nachtrag (DEBT.md-Zeilendrift, INSTALL.md-Zahlen, `uv sync --all-extras`, `sherpa-onnx` in `pyproject.toml` nachgetragen) |
+| `pytest -q` | gruen |
+
+Phase 7 (Archiv/Deklassifizierung, T-7.1…T-7.5) hatte bereits Verifizierer aus
+frueherer Arbeit. Die Nachverifikation gegen den heutigen main-Stand foerderte
+zwei Regressionen zutage, keine davon ein Produktdefekt:
+
+- **T-7.5**: der `marke`-Parameter, heute neu durch die gesamte
+  `frage_api()`-Kette gezogen (Router→Durchgang2→Mind, fuer T-6.2s
+  Zulauf-Fix), brach den gefrorenen Pruefstand-Stub `Aufzeichner` in
+  `tests/verify/t75_pruefstand.py` sowie eine zweite, unabhaengige
+  Naht-Luecke im Treiber `t75_hub.py` (fehlender zweiter Eingriff
+  `daemon.PRODUZENT_UNITS["auth"]`, noetig seit `c5dbb71`/19.08.). Beide
+  in der Reviewer-Worktree `dAImon-t75` behoben (Commits `8f7f8ce`,
+  `8d75d57`), 110/110 gruen.
+- **T-7.4**: K3 pruefte die vor dem 19.08. gueltige Fassung des zweiten
+  Akzeptanzpunkts ("STT beendet sich bei Stille"), waehrend der Plan seit
+  der Korrektur das Gegenteil verlangt (Residenz, Design 5.4). Zwei
+  Fassungen derselben Regel — der Pruefstand war stehengeblieben, nicht
+  das Produkt abgewichen. Behoben in `dAImon-t74`, K3 samt Gut-Muster und
+  Mutant auf die aktuelle Politik umgestellt (Commit `c016a66`), 9/9 und
+  10/10 Mutanten gruen.
+
+**Gate P7:**
+
+| Pruefung | Ergebnis |
+|---|---|
+| `verify-frozen.sh` | gruen |
+| `T-7.1.sh` | gruen |
+| `T-7.2.sh` | gruen |
+| `T-7.3.sh` | gruen |
+| `T-7.5.sh` | gruen, 110/110 (via `dAImon-t75`) |
+| `T-7.4.sh` | gruen, 9/9 (via `dAImon-t74`; nicht Teil der Gate-P7-Liste im Plan, zusaetzlich gemessen) |
+| `pytest -q` | gruen |
+
+**Gate P8 zusammengestellt** (`verify-frozen.sh`, `T-8.1.sh`, `pytest -q`) und
+gruen gegen die vorhandene, aber noch ungecommittete Phase-8-Arbeitskopie
+(`daimon/plan/` u.a.) gemessen — Committen ist nicht Teil dieser Session,
+das gehoert einer parallelen Arbeit.
+
+---
+
+## 2026-08-24 — Phase 8: Time Planner (T-8.1 … T-8.7)
+
+Der Zeitplaner ist gebaut, getestet und laeuft: `daimon-plan.service` ist
+installiert und aktiv, der Live-Weg Termin → Blase im Hub → Sprechfreigabe
+ist gemessen (Journal: „Sprechfreigabe erteilt", Zustand: Blase mit
+`urgent: true`). Der Weg per Sprache laeuft ueber den Router
+(`erinnere mich in 20 minuten an tee`, `fokus 45`, `fokus stopp`), die CLI
+ueber `python -m daimon.plan` (Socket `plan-anfrage.sock`).
+
+Grenzen, die bewusst gezogen sind: der Planer loest NIE eine Aktion aus
+(`initiator: scheduled` bleibt verboten, keine Policy-Aenderung); ein
+Titel behaelt seine Herkunftsmarke bis in den Sprechweg — `tainted` wird
+zur Blase und schweigt. CalDAV ist vorgesehen (`quelle`-Feld), nicht
+gebaut.
+
+Live-Befund bei der Inbetriebnahme: der Store warf `sqlite3 ... same
+thread`, weil der Dienst aus Threads fragt — der Store serialisiert seither
+unter einer `RLock`, mit Regressionstest.
+
+Verifizierer `tests/verify/T-8.1.sh` ist vorbereitet und lokal 6/6 gruen,
+aber vom Builder selbst geschrieben — die Rolle `DAIMON_ROLE=reviewer` zum
+Einfrieren steht noch aus.
+
+---
+
+## 2026-08-24 — Phase 5 (Augen) abgeschlossen, Gate P5 gruen mit einer akzeptierten Grenze
+
+T-5.1, T-5.10, T-5.11 gebaut und live verifiziert; zwei Regressionen aus der
+T-4.14-Haertung nachgetragen (`@resources`-Ausnahme fuer `daimon-eyes` und
+`daimon-ears`, beide starben an SIGSYS beim echten PipeWire-Zugriff, Commits
+`e0414ca` und `430ea0b`); ein Kill-Switch, der seinen eigenen Fehlschlag
+verschwieg, korrigiert (`daimon-auth`, Befund B7, Commit `f33612b`); ein
+Augendienst, der nach Verlust des PipeWire-Deskriptors 2,4 Stunden blind
+weiterlief, bekam einen Selbstheilungspfad (Befund B5, selber Commit).
+
+**Gate P5:**
+
+| Pruefung | Ergebnis |
+|---|---|
+| `verify-frozen.sh` | gruen |
+| `T-5.11.sh` | gruen, 13/13 |
+| `T-5.10.sh` | 31/32 — rot nur bei `K2b.gehoert` |
+| `T-5.13.sh` | gruen, 5/5 |
+| `T-5.6.sh` | 9/10 — rot bei `K10` |
+| `pytest -q` | gruen |
+
+**Zwei Kriterien bleiben bewusst rot, akzeptiert statt geschlossen:**
+
+- **T-5.10 K2b.gehoert** (Befund B6, `pruefstandsfehler`): die Ohren oeffnen
+  nur bei Push-to-Talk (`ears/daemon.py`), darum kann die Spoof-Audio-Phase
+  strukturell nie belegen, dass etwas "gehoert" wurde. Kein Produktdefekt,
+  eine Bauart-Grenze des Tests.
+- **T-5.6 K10** (`produktdefekt-rot`, aber akzeptiert): die OCR-Arbeiterlast
+  liegt bei 5,06–5,85 % eines Kerns im Mittel ueber 5 Minuten Alltag, die
+  Vorgabe verlangt < 5 %. `tessdata_fast`, `OMP_NUM_THREADS=1` und `--psm 11`
+  sind bereits aktiv — der einzige verbleibende Hebel waere eine laengere
+  Abkuehlfrist (weniger frischer Text) oder ein kleinerer Zuschnitt (widerspricht
+  der Design-Vorgabe "Zuschnitt des fokussierten Fensters"). Auf Anweisung als
+  bekannte Grenze akzeptiert, nicht durch eine Aenderung an Produktcode oder
+  Pruefstand verdeckt.
+
+T-5.11 (adversarialer Injektionstest, 28 Angriffe ueber 9 Kategorien, 0
+Wirkungen, 0 Consent-Dialoge, Kontrollaktion wirkte zweimal) foerderte vier
+kleinere Befunde zutage, keiner produktdefekt-rot: B1 (Direktbefehl ueber
+echte Sprache kaum erreichbar, STT nicht deterministisch), B2 (ein Angriff
+mit zu geringem Kontrast wurde von den Augen gar nicht gelesen), B3
+(`ohren_aus` laesst `voice.listening` faelschlich auf "aktiv" stehen), B4
+(`tests/verify/FROZEN` kann fuer die vier P5-Reviewer-Skripte nicht offiziell
+eingetragen werden, weil `freeze.sh` ein `meta.sh` verlangt, das Anhang E fuer
+genau diese Kategorie strich — Werkzeuglücke, betrifft T-5.6/T-5.10/T-5.11/
+T-5.13 gleichermassen).
+
+`daimon-egress.service` bleibt ohne Anthropic-Credential (`~/.config/daimon/
+anthropic-token` fehlt) — nur der lokale Ollama-Pfad war fuer alle P5-Laeufe
+lebendig, akzeptierter, dem Nutzer bekannter Zustand.

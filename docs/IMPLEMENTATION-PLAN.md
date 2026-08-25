@@ -1956,9 +1956,9 @@ in §6 (`daimon-recorder`).
 - **Dateien:** `daimon/recorder/audio.py` [neu]
 - **Abhängigkeiten:** T-7.3, T-3.8, T-7.4.v
 - **Akzeptanz:**
-  - [ ] **Nur erkannte Sprachabschnitte** werden transkribiert, nicht die
+  - [x] **Nur erkannte Sprachabschnitte** werden transkribiert, nicht die
         Stille dazwischen — sonst liefe das Rechenwerk durchgehend
-  - [ ] Der STT-Dienst **residiert**: er beendet sich bei Stille nicht.
+  - [x] Der STT-Dienst **residiert**: er beendet sich bei Stille nicht.
         Korrigiert am 19.08. (Befund T-7.4 K3) — hier stand „bei Stille
         beendet er sich wie gehabt", während `daimon/gpu/stt.py:24` seit
         jeher „Kein Leerlauf-Exit" sagt. Es gilt die Residenz: das Modell
@@ -1967,11 +1967,11 @@ in §6 (`daimon-recorder`).
         könnte. Ein Neustart kostet 843 ms Ladezeit; das Modell im Speicher
         **ist** die Latenzzusage. Socket-aktiviert bleibt der Dienst
         trotzdem — gestartet beim ersten Wort, nicht beim Anmelden
-  - [ ] **Rohaudio wird nie geschrieben.** Nur das Transkript überlebt den
+  - [x] **Rohaudio wird nie geschrieben.** Nur das Transkript überlebt den
         Abschnitt
-  - [ ] Der Archivpfad hängt am **selben** Stream wie die Live-Wahrnehmung und
+  - [x] Der Archivpfad hängt am **selben** Stream wie die Live-Wahrnehmung und
         wird vom Pausenschalter gemeinsam mit ihr geschlossen
-  - [ ] Das Transkript ist `tainted` wie alles andere im Archiv
+  - [x] Das Transkript ist `tainted` wie alles andere im Archiv
 - **Verifikation:** `tests/verify/T-7.4.sh` — spielt eine Referenzaufnahme
   ein und belegt: das Transkript steht in der Datenbank, **und im gesamten
   Archivverzeichnis existiert keine Audiodatei** (Suche nach Inhalt, nicht
@@ -1979,15 +1979,14 @@ in §6 (`daimon-recorder`).
   (gemessen am Prozess, nicht an einem Zähler des Prüflings); nach dem
   Pausenschalter erzeugt dieselbe Einspielung nichts
 - **Agent:** builder · **Umfang:** M
-- **Bekannte Lücke (25.08., Phase-7-Nachverifikation):** `K3` in
-  `tests/verify/t74_pruefstand.py` prüft weiterhin die VOR dem 19.08.
-  gültige Fassung des zweiten Akzeptanzpunkts („STT beendet sich bei
-  Stille"), nicht die seither korrigierte Residenzpolitik oben. Zwei
-  Fassungen derselben Regel — der Prüfstand ist stehengeblieben, nicht das
-  Produkt abgewichen. `daimon/gpu/stt.py` verhält sich nach aktuellem
-  Akzeptanzpunkt richtig (residiert). Der Prüfstand liegt unter
-  `tests/verify/**` und ist damit nur über eine Reviewer-Worktree
-  korrigierbar; zurückgestellt auf Matthias' Entscheidung.
+- **Geschlossen (25.08.):** `K3` in `tests/verify/t74_pruefstand.py` prüfte
+  bis dahin die VOR dem 19.08. gültige Fassung des zweiten
+  Akzeptanzpunkts („STT beendet sich bei Stille"), nicht die seither
+  korrigierte Residenzpolitik oben — zwei Fassungen derselben Regel, der
+  Prüfstand war stehengeblieben, nicht das Produkt abgewichen. Über eine
+  Reviewer-Worktree (`dAImon-t74`, Commit `c016a66`) auf die aktuelle
+  Politik umgestellt, samt Gut-Muster und Mutant. `T-7.4.sh`: 9/9 Kriterien
+  grün, `meta.sh`: 10/10 Mutanten erkannt.
 
 ### T-7.5 — Suche mit Deklassifizierung
 - **Ziel:** Fragen an die eigene Vergangenheit, ohne die Vergangenheit zur
