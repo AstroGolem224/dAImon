@@ -539,6 +539,16 @@ class AuthAgent:
         self.log.info("Ohren abgeschaltet", DAIMON_ACTION="ohren_aus",
                       DAIMON_OK=ergebnis["ok"], DAIMON_RC=ergebnis["rc"],
                       DAIMON_STROEME=str(ergebnis["aufnahmestroeme_nachher"]))
+        # T-6.8.v, Befund B5: der Kill-Switch stoppte bisher nur die Unit --
+        # der Hub kannte `voice.listening` weiterhin als `True`, bis
+        # PTT_FRIST_S von selbst ablief (bis zu 150 s). In diesem Fenster
+        # oeffnete ein blosser `systemctl start daimon-ears` das Mikrofon
+        # OHNE neuen Tastendruck, weil der Dienst beim Verbinden den
+        # (veralteten) Hub-Schnappschuss uebernimmt. `automat.aus()` +
+        # `_ptt_melden()` erzwingen die Meldung sofort, unabhaengig von der
+        # Frist -- derselbe Weg, den ein regulaeres PTT-Ende nimmt.
+        self.automat.aus()
+        self._ptt_melden()
         return ergebnis["ok"]
 
     def _mitschnitt_umschalten(self) -> None:
