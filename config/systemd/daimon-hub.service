@@ -8,7 +8,19 @@
 
 [Unit]
 Description=dAImon Hub (Unix-Socket-Bus und Sitzungszustand)
-After=graphical-session.target
+# KEIN After=graphical-session.target -- die Zeile stand hier bis zum 25.08.
+# und hat in jedem Boot sechs Startauftraege gekostet (gemessen: dbus, plan,
+# ears, eyes, mind, fs). Der Grund ist eine Regel aus systemd.target(5):
+# ein Target ergaenzt seine Wants= selbsttaetig um After=, ABER nur bei
+# Units, die sich nicht schon selbst dazu geordnet haben. Der Hub tat genau
+# das -- also blieb er aus der After=-Liste des Targets heraus, waehrend die
+# sechs anderen hineinkamen. Damit lief die Ordnung im Kreis:
+#   daimon-dbus -> daimon-hub -> graphical-session.target -> daimon-dbus
+# und systemd loeste ihn, indem es die abhaengige Unit fallen liess.
+# Der Hub braucht die grafische Sitzung nicht: er vermittelt einen
+# Unix-Socket und haelt Zustand, er fasst kein Wayland an. Ohne die Zeile
+# zieht ihn das Target wie die uebrigen Units -- vor sich selbst, nicht
+# dahinter.
 PartOf=graphical-session.target
 
 [Service]

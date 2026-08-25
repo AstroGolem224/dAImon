@@ -2072,6 +2072,37 @@ gruen gegen die vorhandene, aber noch ungecommittete Phase-8-Arbeitskopie
 (`daimon/plan/` u.a.) gemessen — Committen ist nicht Teil dieser Session,
 das gehoert einer parallelen Arbeit.
 
+### Ordnungszyklus: sechs verworfene Startauftraege je Boot
+
+Von T-6.10.v gemeldet, jetzt geschlossen. `daimon-hub.service` trug
+`After=graphical-session.target`. Nach `systemd.target(5)` ergaenzt ein
+Target seine `Wants=` selbsttaetig um `After=` — **aber nur bei Units, die
+sich nicht schon selbst dazu geordnet haben**. Der Hub tat genau das und
+blieb darum aus der `After=`-Liste des Targets heraus, waehrend die sechs
+Units, die auf ihn warten, hineinkamen. Ergebnis war ein Kreis:
+
+```
+daimon-dbus -> daimon-hub -> graphical-session.target -> daimon-dbus
+```
+
+systemd loeste ihn, indem es die abhaengige Unit fallen liess — im Journal
+sechsmal `Job ... deleted to break ordering cycle` (dbus, plan, ears, eyes,
+mind, fs). Die Dienste starteten dann gar nicht, was als „Unit inaktiv"
+erschien und wiederholt fuer einen Dienstfehler gehalten wurde.
+
+Behoben durch Streichen der einen Zeile; `PartOf=` und `WantedBy=` bleiben.
+Der Hub braucht die grafische Sitzung nicht — er vermittelt einen
+Unix-Socket und fasst kein Wayland an.
+
+**Gemessen, nicht geschlossen:** ein nachgebauter Zyklensucher ueber den von
+systemd BERECHNETEN Graphen (`systemctl show -p After`, nicht die
+Unit-Dateien — die impliziten Kanten stehen nur dort) fand vorher genau den
+Kreis aus dem Journal und nachher keinen, bei unveraendert 38 gelesenen
+Kanten. Die Positivkontrolle ist damit der Vorher-Lauf selbst; ein leeres
+Messband haette den Lauf abgebrochen. Endgueltig belegt ist die Zusage aber
+erst nach einer frischen Sitzung ohne `deleted to break ordering cycle` im
+Journal — das steht noch aus.
+
 ---
 
 ## 2026-08-24 — Phase 8: Time Planner (T-8.1 … T-8.7)
