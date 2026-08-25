@@ -1979,6 +1979,15 @@ in §6 (`daimon-recorder`).
   (gemessen am Prozess, nicht an einem Zähler des Prüflings); nach dem
   Pausenschalter erzeugt dieselbe Einspielung nichts
 - **Agent:** builder · **Umfang:** M
+- **Bekannte Lücke (25.08., Phase-7-Nachverifikation):** `K3` in
+  `tests/verify/t74_pruefstand.py` prüft weiterhin die VOR dem 19.08.
+  gültige Fassung des zweiten Akzeptanzpunkts („STT beendet sich bei
+  Stille"), nicht die seither korrigierte Residenzpolitik oben. Zwei
+  Fassungen derselben Regel — der Prüfstand ist stehengeblieben, nicht das
+  Produkt abgewichen. `daimon/gpu/stt.py` verhält sich nach aktuellem
+  Akzeptanzpunkt richtig (residiert). Der Prüfstand liegt unter
+  `tests/verify/**` und ist damit nur über eine Reviewer-Worktree
+  korrigierbar; zurückgestellt auf Matthias' Entscheidung.
 
 ### T-7.5 — Suche mit Deklassifizierung
 - **Ziel:** Fragen an die eigene Vergangenheit, ohne die Vergangenheit zur
