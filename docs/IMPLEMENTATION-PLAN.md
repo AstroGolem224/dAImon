@@ -1775,6 +1775,12 @@ pytest -q
   - [ ] Alle Kill-Switches wirken
 - **Verifikation:** `tests/verify/T-6.8.sh` — **startet jedes Szenario selbst** und erzeugt die Messwerte selbst (`pidstat`, `nvidia-smi`, Audit-Auswertung); vorgefundene `pass`-Labels werden ignoriert. Exit 0 nur, wenn jedes selbst gefahrene Szenario seine Nachbedingung erfüllt und `idle_cpu_mittel`, `idle_cpu_p95` sowie `idle_rss_mb` im Budget aus Design §13.1 liegen.
 - **Agent:** reviewer · **Umfang:** L
+- **Bekannte Lücken (24.08., T-6.8.v):** B5 (Ohren-Kill-Switch löscht den Hub-Automaten nicht) ist behoben (Commit `461b4c2`). Auf Anweisung zurückgestellt, nicht behoben:
+  - **B1** RSS 533 MB > 420-MB-Budget — `daimon-eyes` allein 292 MB gegen 108–145 MB im Design.
+  - **B2** Dauerlast-Mittel 10,8 % > 2 %-Budget — Vollbild-OCR-Stöße von 258–303 % über 1–2 s treiben den Mittelwert.
+  - **B6** Kein Hotkey für die Augen — nur Ohren/Auth/Recorder haben einen kglobalaccel-Eintrag, der Augen-Kill-Switch ist nur per Kommandozeile auslösbar.
+  - **B3, B4, B9 (pruefstandsfehler):** `test_ressourcen_im_budget_design_13` summiert nur die MainPID und übersieht die OCR-Kindprozesse; der Zulauf-Wächter für den Aktionsweg sucht am falschen Ort; `SONDERFALL_UNITS` im Test ist veraltet (exec/input fehlen grundlos im Messband).
+  - **B8** akzeptiert: ohne `anthropic-token` kein Egress, zwei Akzeptanzkriterien dadurch heute nicht prüfbar.
 
 ### T-6.9 — Abschluss-Sicherheitsreview
 - **Ziel:** Die Gesamtsicht, nachdem alle Teile stehen.
