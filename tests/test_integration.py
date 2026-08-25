@@ -246,6 +246,61 @@ def _rss_kb(pid: int) -> int | None:
     return None
 
 
+def _unit_pids(unit: str) -> list[int]:
+    """ALLE Prozesse einer Unit, nicht nur ihre MainPID.
+
+    T-6.8.v, Befund B3: bis zum 25.08. stand hier `systemctl show -p MainPID`,
+    und die Messung uebersah damit jeden Kindprozess. Das ist kein Randfall --
+    die Augen starten je Blick einen eigenen OCR-Prozess, und genau der traegt
+    die Last. Am 24.08. auf derselben Maschine am selben Tag gegengemessen:
+    ueber die cgroup 15,9 % im Mittel, ueber die MainPID allein 2,2 %. Der
+    Test meldete also jahrelang Ruhe, wo Last war.
+
+    Die cgroup ist die richtige Grenze, weil systemd genau sie um eine Unit
+    zieht: was darin laeuft, gehoert der Unit, auch wenn es sich nach dem
+    Start noch geforkt hat.
+    """
+    e = _systemctl("show", unit, "-p", "ControlGroup", "--value", timeout=10.0)
+    cg = (e.stdout or "").strip()
+    if not cg or cg == "/":
+        return []
+    procs = Path("/sys/fs/cgroup") / cg.lstrip("/") / "cgroup.procs"
+    try:
+        return [int(z) for z in procs.read_text().split() if z]
+    except (OSError, ValueError):
+        return []
+
+
+def _cgroup_cpu_usec(unit: str) -> int | None:
+    """Verbrauchte CPU-Zeit der ganzen Unit aus `cpu.stat`, in Mikrosekunden.
+
+    NICHT die Summe ueber /proc/<pid>/stat, und das ist der Punkt: die
+    OCR-Kinder entstehen und enden zwischen zwei Proben. Eine Summe ueber
+    lebende Prozesse faellt dann, sobald eines endet -- der Zaehler liefe
+    rueckwaerts, und ein neu hinzugekommenes Kind brachte umgekehrt seine
+    ganze bisherige Zeit auf einen Schlag ein. `usage_usec` der cgroup zaehlt
+    dagegen monoton weiter, auch ueber Prozessenden hinweg. Genau dafuer
+    fuehrt der Kernel den Wert.
+    """
+    e = _systemctl("show", unit, "-p", "ControlGroup", "--value", timeout=10.0)
+    cg = (e.stdout or "").strip()
+    if not cg or cg == "/":
+        return None
+    datei = Path("/sys/fs/cgroup") / cg.lstrip("/") / "cpu.stat"
+    try:
+        for zeile in datei.read_text().splitlines():
+            if zeile.startswith("usage_usec "):
+                return int(zeile.split()[1])
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+def _rss_summe(pids: list[int]) -> int | None:
+    werte = [w for w in (_rss_kb(p) for p in pids) if w is not None]
+    return sum(werte) if werte else None
+
+
 def _p95(werte: list[float]) -> float:
     """Das 95-Perzentil, naechstliegender Rang. Keine Interpolation: ein
     interpolierter Wert zwischen zwei Messungen ist eine dritte Zahl, die
@@ -734,17 +789,20 @@ def test_ressourcen_im_budget_design_13(sitzung, evidenz):
             f"Sampler sieht Vollast nur mit {kanarie_prozent:.0f} % — "
             "die Messung selbst ist kaputt")
 
-        pids: dict[str, int] = {}
+        # T-6.8.v, Befund B3: gemessen wird die ganze cgroup je Unit, nicht
+        # mehr die MainPID allein. Die OCR-Kinder der Augen tragen die Last,
+        # und die MainPID sieht sie nicht.
+        pids: dict[str, list[int]] = {}
         for unit in DAUERLAST_UNITS:
-            e = _systemctl("show", unit, "-p", "MainPID", "--value",
-                           timeout=10.0)
-            pid = int(e.stdout.strip() or "0")
-            if pid > 0:
-                pids[unit] = pid
+            gefunden = _unit_pids(unit)
+            if gefunden:
+                pids[unit] = gefunden
         if not pids:
             pytest.skip("keine Dauerlast-Unit aktiv (Szenario 1)")
         satz["gemessen"]["einbezogen"] = sorted(pids)
         satz["gemessen"]["fehlend"] = sorted(set(DAUERLAST_UNITS) - set(pids))
+        satz["gemessen"]["prozesse_je_unit"] = {u: len(p)
+                                                for u, p in pids.items()}
 
         # Sekundenfenster, keine halben: ein Jiffy sind 10 ms, und ein
         # einziger Tick in einem 0,5-s-Fenster las sich als 2 % — gemessen
@@ -754,18 +812,24 @@ def test_ressourcen_im_budget_design_13(sitzung, evidenz):
         proben_cpu: list[float] = []
         proben_rss_kb: list[float] = []
         je_unit: dict[str, list[float]] = {u: [] for u in pids}
-        alt = {u: _stat_felder(p) for u, p in pids.items()}
+        alt = {u: _cgroup_cpu_usec(u) for u in pids}
         for _ in range(20):
             time.sleep(fenster_s)
-            neu = {u: _stat_felder(p) for u, p in pids.items()}
+            neu = {u: _cgroup_cpu_usec(u) for u in pids}
             summe = 0.0
             for u in pids:
                 if alt.get(u) is not None and neu.get(u) is not None:
-                    prozent = (neu[u] - alt[u]) / HZ / fenster_s * 100.0
+                    # usage_usec ist Mikrosekunden CPU-Zeit; bezogen auf das
+                    # Fenster ergibt das den Anteil EINES Kerns in Prozent.
+                    prozent = (neu[u] - alt[u]) / 1e6 / fenster_s * 100.0
                     je_unit[u].append(prozent)
                     summe += prozent
             proben_cpu.append(summe)
-            rss = [_rss_kb(p) for p in pids.values()]
+            # Der Prozesssatz wird je Probe neu gelesen: ein OCR-Kind, das
+            # erst nach dem Start der Messung entsteht, gehoert sonst nie
+            # zum Messband -- und genau das war Befund B3.
+            aktuell = {u: _unit_pids(u) for u in pids}
+            rss = [_rss_summe(p) for p in aktuell.values()]
             proben_rss_kb.append(float(sum(r for r in rss if r is not None)))
             alt = neu
 
@@ -780,17 +844,31 @@ def test_ressourcen_im_budget_design_13(sitzung, evidenz):
         satz["gemessen"]["je_unit_cpu_max"] = {
             u: round(max(w), 2) for u, w in je_unit.items() if w}
         satz["gemessen"]["je_unit_rss_mb"] = {
-            u: round((_rss_kb(p) or 0) / 1024.0, 1) for u, p in pids.items()}
+            u: round((_rss_summe(_unit_pids(u)) or 0) / 1024.0, 1)
+            for u in pids}
 
         # Auf-Abruf-Dienste (§13): belegt, aber nicht im Dauerlast-Budget.
         abruf = {}
         for unit in ABRUF_UNITS:
-            e = _systemctl("show", unit, "-p", "MainPID", "--value",
-                           timeout=10.0)
-            pid = int(e.stdout.strip() or "0")
-            rss = _rss_kb(pid) if pid > 0 else None
+            rss = _rss_summe(_unit_pids(unit))
             abruf[unit] = None if rss is None else round(rss / 1024.0, 1)
         satz["gemessen"]["auf_abruf_rss_mb"] = abruf
+
+        # Positivkontrolle DES cgroup-Messbands. Der Brenner oben belegt nur
+        # noch, dass /proc lesbar ist -- gemessen wird seit dem 25.08. ueber
+        # `cpu.stat`, und ein kaputter cgroup-Pfad saehe ueberall None. Das
+        # Band meldete dann 0,0 %, jedes Budget ginge durch, und der Test
+        # waere gruen, GERADE WEIL er nichts mehr misst. Dieselbe Falle, die
+        # Befund B3 ueberhaupt erst so lange verdeckt hat.
+        lesbar = sum(1 for u in pids if _cgroup_cpu_usec(u) is not None)
+        satz["gemessen"]["cgroups_lesbar"] = f"{lesbar}/{len(pids)}"
+        assert lesbar == len(pids), (
+            f"cpu.stat nur fuer {lesbar} von {len(pids)} Units lesbar — "
+            "das Messband hat Loecher")
+        assert sum(proben_cpu) > 0.0, (
+            f"{len(pids)} laufende Dienste, und das Messband sah ueber "
+            f"{len(proben_cpu)} Sekunden keine einzige CPU-Mikrosekunde — "
+            "kaputt ist die Messung, nicht das System ruhig")
 
         assert idle_cpu_mittel <= BUDGET_CPU_MITTEL_PROZENT, (
             f"idle_cpu_mittel {idle_cpu_mittel} % > "

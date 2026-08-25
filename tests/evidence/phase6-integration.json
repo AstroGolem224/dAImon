@@ -1,7 +1,7 @@
 {
   "v": 1,
   "task": "T-6.8",
-  "erzeugt": "2026-08-19T12:15:57+0200",
+  "erzeugt": "2026-08-25T21:26:09+0200",
   "rolle": "builder",
   "szenarien": [
     {
@@ -28,16 +28,16 @@
       "gemessen": {
         "inaktiv_nach_start": [],
         "nicht_startbar": {
-          "daimon-exec.service": "activating/exit-code — verweigert ohne freigegebene Anwendung im Katalog",
+          "daimon-exec.service": "active/success — unerwartet: :42 ClayMachine systemd[1200]: Started dAImon Exec-Broker (Anwendungsstart über desktop_id).\nAug 25 21:25:42 ClayMachine daimon-exec[429754]: Exec-Broker bereit",
           "daimon-egress.service": "activating/exit-code — LoadCredential-Token fehlt (~/.config/daimon/anthropic-token)",
           "daimon-input.service": "failed/exit-code — 203/EXEC: ProtectHome=tmpfs verdeckt den Interpreter (.venv liegt in $HOME)"
         },
         "phase1_timer": "active",
-        "diag_laufzeit_s": 776.5
+        "diag_laufzeit_s": 11543.6
       },
       "ergebnis": "gemessen",
       "grund": "",
-      "dauer_s": 3.17
+      "dauer_s": 3.72
     },
     {
       "szenario": "sprachanfrage_mit_bildschirmbezug",
@@ -47,8 +47,8 @@
       ],
       "budget": {},
       "gemessen": {
-        "fenster_eigen": 10,
-        "fenster_genannt": 10
+        "fenster_eigen": 18,
+        "fenster_genannt": 18
       },
       "ergebnis": "gemessen",
       "grund": "",
@@ -85,39 +85,53 @@
         "fehlend": [
           "daimon-exec.service"
         ],
-        "idle_cpu_mittel": 1.3,
-        "idle_cpu_p95": 4.0,
-        "idle_rss_mb": 347.8,
+        "prozesse_je_unit": {
+          "daimon-hub.service": 1,
+          "daimon-hookbridge.service": 1,
+          "daimon-focus.service": 1,
+          "daimon-face.service": 1,
+          "daimon-auth.service": 1,
+          "daimon-ears.service": 1,
+          "daimon-eyes.service": 3,
+          "daimon-mind.service": 1,
+          "daimon-dbus.service": 1,
+          "daimon-fs.service": 1,
+          "daimon-cli-broker.service": 1,
+          "daimon-lokal-broker.service": 1
+        },
+        "idle_cpu_mittel": 1.332,
+        "idle_cpu_p95": 3.45,
+        "idle_rss_mb": 445.7,
         "proben_cpu_prozent": [
-          1.0,
-          1.0,
-          0.0,
-          8.0,
-          1.0,
-          0.0,
-          0.0,
-          1.0,
-          3.0,
-          0.0,
-          0.0,
-          2.0,
-          1.0,
-          3.0,
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          4.0,
-          0.0
+          3.85,
+          0.73,
+          0.62,
+          0.52,
+          0.59,
+          3.16,
+          0.61,
+          0.58,
+          0.64,
+          0.56,
+          3.45,
+          0.65,
+          0.7,
+          0.67,
+          3.38,
+          0.69,
+          0.61,
+          0.69,
+          0.63,
+          3.31
         ],
         "je_unit_cpu_max": {
-          "daimon-hub.service": 1.0,
+          "daimon-hub.service": 0.63,
           "daimon-hookbridge.service": 0.0,
-          "daimon-focus.service": 0.0,
+          "daimon-focus.service": 0.02,
           "daimon-face.service": 0.0,
-          "daimon-auth.service": 1.0,
+          "daimon-auth.service": 0.06,
           "daimon-ears.service": 0.0,
-          "daimon-eyes.service": 8.0,
+          "daimon-eyes.service": 3.27,
           "daimon-mind.service": 0.0,
           "daimon-dbus.service": 0.0,
           "daimon-fs.service": 0.0,
@@ -125,28 +139,29 @@
           "daimon-lokal-broker.service": 0.0
         },
         "je_unit_rss_mb": {
-          "daimon-hub.service": 24.9,
-          "daimon-hookbridge.service": 10.1,
-          "daimon-focus.service": 10.7,
-          "daimon-face.service": 28.1,
-          "daimon-auth.service": 16.4,
-          "daimon-ears.service": 24.2,
-          "daimon-eyes.service": 129.3,
-          "daimon-mind.service": 20.7,
-          "daimon-dbus.service": 21.0,
-          "daimon-fs.service": 19.2,
+          "daimon-hub.service": 10.7,
+          "daimon-hookbridge.service": 9.7,
+          "daimon-focus.service": 10.3,
+          "daimon-face.service": 6.4,
+          "daimon-auth.service": 16.7,
+          "daimon-ears.service": 24.4,
+          "daimon-eyes.service": 259.1,
+          "daimon-mind.service": 23.3,
+          "daimon-dbus.service": 21.3,
+          "daimon-fs.service": 20.7,
           "daimon-cli-broker.service": 21.4,
-          "daimon-lokal-broker.service": 21.7
+          "daimon-lokal-broker.service": 21.6
         },
         "auf_abruf_rss_mb": {
-          "daimon-stt.service": 1041.0,
-          "daimon-tts.service": 184.6,
+          "daimon-stt.service": 1086.2,
+          "daimon-tts.service": 186.4,
           "daimon-egress.service": null
-        }
+        },
+        "cgroups_lesbar": "12/12"
       },
-      "ergebnis": "gemessen",
-      "grund": "",
-      "dauer_s": 21.05
+      "ergebnis": "fehlgeschlagen",
+      "grund": "idle_rss_mb 445.7 MB > 420.0 MB (Design §13)\nassert 445.7 <= 420.0",
+      "dauer_s": 22.68
     },
     {
       "szenario": "aktionsweg_ohne_erzeuger",
@@ -160,7 +175,7 @@
       },
       "ergebnis": "gemessen",
       "grund": "",
-      "dauer_s": 0.0
+      "dauer_s": 0.01
     },
     {
       "szenario": "vollbild_gate",
@@ -169,26 +184,10 @@
         "gpu.sock Ladesonde (1 MiB)"
       ],
       "budget": {},
-      "gemessen": {
-        "gate_ohne_vollbild": "offen",
-        "gate_bei_vollbild": {
-          "v": 1,
-          "ok": false,
-          "grund": "fullscreen",
-          "modell": "sonde",
-          "geladen": false,
-          "kaltstart_ms": 50.0
-        },
-        "diag_gpu_fullscreen_vorher": 4,
-        "diag_gpu_fullscreen_nachher": 5,
-        "gate_nach_vollbild": "offen",
-        "vram_vorher_mib": 2877,
-        "vram_nachher_mib": 2849,
-        "vram_delta_mib": -28
-      },
-      "ergebnis": "gemessen",
-      "grund": "",
-      "dauer_s": 1.39
+      "gemessen": {},
+      "ergebnis": "uebersprungen",
+      "grund": "Gate nicht frei prüfbar: vram",
+      "dauer_s": 0.12
     },
     {
       "szenario": "killswitch_ohren",
@@ -197,24 +196,10 @@
         "daimon.ears.killswitch.stoppe()"
       ],
       "budget": {},
-      "gemessen": {
-        "kanarie_stroeme_bei_ptt": 1,
-        "schalter_bericht": {
-          "v": 1,
-          "ok": true,
-          "unit": "daimon-ears.service",
-          "rc": 0,
-          "war_aktiv": true,
-          "aufnahmestroeme_vorher": 1,
-          "aufnahmestroeme_nachher": 0,
-          "dauer_ms": 21.4,
-          "meldung": ""
-        },
-        "stroeme_nachher": 0
-      },
-      "ergebnis": "gemessen",
-      "grund": "",
-      "dauer_s": 0.36
+      "gemessen": {},
+      "ergebnis": "uebersprungen",
+      "grund": "auth.sock: der Hub hat die Zeile nicht angenommen ([Errno 104] Connection reset by peer). Der Prüfstand steht auf keiner Unit-Allowlist — das ist kein Befund über das Produkt.",
+      "dauer_s": 0.01
     },
     {
       "szenario": "killswitch_augen",
@@ -225,30 +210,30 @@
       "gemessen": {
         "kanarie_seh_zaehler": {
           "v": 1,
-          "runden": 24,
-          "erfasst": 24,
-          "gelesen": 4,
-          "ocr_verschoben": 20,
+          "runden": 6,
+          "erfasst": 6,
+          "gelesen": 1,
+          "ocr_verschoben": 1,
           "ocr_abkuehlung_s": 30.0,
           "ausloeser": {
             "fokus": 0,
-            "timer": 24,
+            "timer": 6,
             "tor_zu": 0,
             "zu_dicht": 0
           },
           "archiviert": 0,
-          "nicht_archiviert": 4,
+          "nicht_archiviert": 1,
           "kontext": {
             "titel": 0,
-            "ocr": 4,
+            "ocr": 1,
             "vlm": 0,
             "ausgelassen": 0
           }
         },
         "schalter_bericht": {
           "beleg": "strom_gemessen",
-          "dauer_ms": 56.948,
-          "geleert": 4,
+          "dauer_ms": 50.477,
+          "geleert": 1,
           "kontextdateien": 0,
           "lampe": "aus",
           "meldung": "",
@@ -269,7 +254,7 @@
       },
       "ergebnis": "gemessen",
       "grund": "",
-      "dauer_s": 0.54
+      "dauer_s": 0.42
     },
     {
       "szenario": "killswitch_gedaechtnis",
@@ -288,7 +273,7 @@
       },
       "ergebnis": "gemessen",
       "grund": "",
-      "dauer_s": 0.15
+      "dauer_s": 0.05
     }
   ]
 }
