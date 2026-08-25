@@ -2891,3 +2891,21 @@ hat weder Netz noch Weg zu `aktion.sock`.
 `mind.sock` vom Router an den Plan gereicht. Live-Befund dabei: `sqlite3
 ... same thread` — der Store serialisiert seither unter einer `RLock`
 (Regressionstest `test_der_store_uebersteht_threads`).
+
+### Gate P8
+```bash
+tests/verify/verify-frozen.sh
+tests/verify/T-8.1.sh     # Termin faellig, Herkunftsmarke, Fokus
+pytest -q
+```
+
+**Stand 25.08.:** `daimon/plan/`, `config/systemd/daimon-plan.service`,
+`tests/test_plan_store.py`, `tests/test_plan_zeit.py`,
+`tests/test_plan_daemon.py`, `tests/test_hub_plan.py`,
+`tests/verify/T-8.1.sh` sind samt Prüfstand vorhanden und laufen grün
+(6/6 K-Kriterien, alle Unit-Tests grün) — **aber bislang ungecommittet**.
+Ein frischer Klon bekäme Phase 8 nicht mit, obwohl README sie als Feature
+nennt (dieselbe Lücke, die T-6.10.v für die vorige Phase 8-Arbeitskopie
+bereits gemeldet hat). Committen und ins Gate aufnehmen ist eine
+Entscheidung außerhalb dieser Session — die Dateien gehören zu einer
+parallelen, nicht von mir begonnenen Arbeit.
