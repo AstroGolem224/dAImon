@@ -1722,6 +1722,7 @@ pytest -q
   - [ ] Ein Test je Stufe
 - **Verifikation:** `tests/verify/T-6.5.sh` — spielt je Stufe dieselbe Ereignisfolge ab und prüft die Zahl der Äußerungen gegen eine erwartete Matrix
 - **Agent:** builder · **Umfang:** M
+- **Bekannte Lücke (24.08., T-6.5.v):** `Schwelle.setzen()` hat im Betrieb keinen Aufrufer — die Stufe wird nur einmal beim Start aus der Persona gelesen, nie zur Laufzeit umgeschaltet. Zurückgestellt: ein Steuerkanal dafür (Auth-Control-Socket? Hub-Config-Anfrage?) ist neue Oberfläche, keine bloße Verdrahtung, und braucht eine eigene Entscheidung.
 
 ### T-6.6 — Proaktives Verhalten
 - **Ziel:** Meldet sich, wenn Schweigen teurer wäre.
@@ -1735,6 +1736,7 @@ pytest -q
   - [ ] **Löst keine Deklassifizierung aus**, erzeugt keinen Egress-Aufruf und öffnet keinen Auth-Dialog
 - **Verifikation:** `tests/verify/T-6.6.sh` — `pytest`; ein Test belegt, dass derselbe Anlass nicht zweimal spricht; ein zweiter zählt die API-Aufrufe während einer proaktiven Phase und verlangt null
 - **Agent:** builder · **Umfang:** L
+- **Bekannte Lücke (24.08., T-6.6.v):** 3 von 5 Auslösern (`agent_wartet`, `build_kaputt`, `fehlerbild`) haben im Betrieb keinen Produzenten — nur `termin_faellig`/`fokus_ende` (aus T-8.3) sind verdrahtet. Zurückgestellt: es gibt in diesem Repo keine Build- oder Agenten-Beobachtung, an die sich das anschließen ließe; welche Quelle das liefern soll, ist eine eigene Entscheidung. Egress-Null-Zusage und Wiederholungssperre sind unabhängig davon geprüft und halten.
 
 ### T-6.7 — Eigene Piper-Stimme *(optional)* ∥
 - **Ziel:** Charakter **und** null Latenz im schnellen Pfad.
@@ -2850,3 +2852,27 @@ Zusätzlich als Abhängigkeiten aufgenommen: `layershellev` (MIT) für die Ereig
 | Untersuchungs-Tasks | Dokument-Grep | `results.json`, Gate rechnet nach |
 | Gegendruck | fehlte | T-0.10, T-4.15 |
 | Diagnose | als Telemetrie abgetan | T-0.13 |
+
+## Phase 8 — Time Planner (T-8.1 … T-8.7, 24.08.)
+
+Ein Zeitplaner fuer Termine und Fokusbloecke. Er **erinnert nur** — eine Blase
+ueber den Hub, ein Satz durchs Sprechgatter. Er loest keine Aktion aus;
+`initiator: scheduled` bleibt in der Policy flaechend verboten, und die Unit
+hat weder Netz noch Weg zu `aktion.sock`.
+
+| Task | Inhalt | Verifikation |
+|---|---|---|
+| T-8.1 | `plan/store.py`: eigene `plan.db` (WAL, 0600), Migrationen hoch/runter, Titel/Meta als `Marked` | `tests/test_plan_store.py` |
+| T-8.2 | `plan/zeit.py`: „in X minuten", „um 18:30", „morgen um 8", ISO; Uhr injizierbar | `tests/test_plan_zeit.py` |
+| T-8.3 | `plan/daemon.py` + CLI: Abtastschleife statt Wecker (Suspend-sicher), Anfrage-Socket `plan-anfrage.sock` (neu/liste/loeschen/fokus_start/fokus_stop/status) | `tests/test_plan_daemon.py` |
+| T-8.4 | Hub: Produzent `plan` (`ipc.PRODUZENTEN`), `termin_faellig`/`fokus_ende` → `state.warnblase` | `tests/test_hub_plan.py` |
+| T-8.5 | Router: Absichten `erinnerung`/`fokus` (lokal, ohne Modell); `tainted` erreicht den Plan nicht (Senkentabelle) | `tests/test_router.py` |
+| T-8.6 | `daimon-plan.service`: AF_UNIX-only, tokenlos, `ProtectHome=read-only` + `ReadWritePaths` fuer `plan.db` | `tests/test_units_werden_gezogen.py`, `systemd-analyze verify` |
+| T-8.7 | End-to-End-Verifizierer | `tests/verify/T-8.1.sh` (6 Kriterien) |
+
+**Live-Belege (24.08., ClayMachine):** Termin „in 1 minuten" → Blase
+`{"title": "Erinnerung", …, "urgent": true}` im Hub-Zustand und
+`Sprechfreigabe erteilt` im Journal. `fokus 1` / `fokus stopp` ueber
+`mind.sock` vom Router an den Plan gereicht. Live-Befund dabei: `sqlite3
+... same thread` — der Store serialisiert seither unter einer `RLock`
+(Regressionstest `test_der_store_uebersteht_threads`).
