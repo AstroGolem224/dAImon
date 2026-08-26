@@ -1,0 +1,1 @@
+Die Senke tts_ungefragt erlaubt wieder user_ptt (K3) — genau der am 26.08. behobene Fehler. Was das Mikrofon am gehaltenen Taster aufnimmt (auch Video und Lautsprecher), wird ungefragt vorgelesen; die Tabelle widerspricht wieder hub/sprechtext.aus_vorlage, das seit T-3.9 nur trusted nimmt (Design 8.3).

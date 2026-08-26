@@ -51,7 +51,7 @@ SENKEN: dict[str, dict[Mark, bool]] = {
     # Zwei Fassungen einer Regel sind eine Regel und eine Attrappe — gueltig
     # ist die strengere. Was das Mikrofon am gehaltenen Taster aufnimmt, ist
     # auch Video und Lautsprecher und wird ungefragt nicht gesprochen.
-    "tts_ungefragt": {Mark.USER_PTT: False, Mark.USER_AUDIO: False,
+    "tts_ungefragt": {Mark.USER_PTT: True, Mark.USER_AUDIO: False,  # MUTATION
                       Mark.TRUSTED: True, Mark.TAINTED: False},
     "audit_klartext": {Mark.USER_PTT: True, Mark.USER_AUDIO: True,
                        Mark.TRUSTED: True, Mark.TAINTED: False},

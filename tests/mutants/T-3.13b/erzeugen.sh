@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Erzeugt die sieben T-3.13b-Mutanten frisch aus dem Gut-Muster.
+# Erzeugt die acht T-3.13b-Mutanten frisch aus dem Gut-Muster.
 # Fünf sind im Vertrag benannt; `aktionsergebnis-als-trusted` und
 # `verkettung-nimmt-schwaechste` decken die beiden uebrigen Grenzen aus
-# Kriterium 12 ab (Aktionsergebnis, Verkettung).
+# Kriterium 12 ab (Aktionsergebnis, Verkettung). `ptt-wird-ungefragt-
+# gesprochen` (26.08.) deckt den Befund ab, der die Senkentabelle
+# verschaerft hat -- ohne ihn misst der Mutationstest die neue Zusage nicht.
 set -euo pipefail
 
 HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,6 +21,7 @@ mutanten=(
   auth-vorschau-nimmt-rohe-zeichenkette
   aktionsergebnis-als-trusted
   verkettung-nimmt-schwaechste
+  ptt-wird-ungefragt-gesprochen
 )
 for name in "${mutanten[@]}"; do
   mkdir -p "$TMP/$name"
@@ -104,6 +107,16 @@ ersetze(
     "verketten nimmt die schwaechste statt der strengsten Marke (K5) — "
     "Ansteckung laeuft ins Leere: verketten(trusted, tainted) wird "
     "trusted.")
+
+ersetze(
+    "ptt-wird-ungefragt-gesprochen", TAINT,
+    '    "tts_ungefragt": {Mark.USER_PTT: False, Mark.USER_AUDIO: False,',
+    '    "tts_ungefragt": {Mark.USER_PTT: True, Mark.USER_AUDIO: False,  # MUTATION',
+    "Die Senke tts_ungefragt erlaubt wieder user_ptt (K3) — genau der am "
+    "26.08. behobene Fehler. Was das Mikrofon am gehaltenen Taster "
+    "aufnimmt (auch Video und Lautsprecher), wird ungefragt vorgelesen; "
+    "die Tabelle widerspricht wieder hub/sprechtext.aus_vorlage, das seit "
+    "T-3.9 nur trusted nimmt (Design 8.3).")
 PY
 
 for name in "${mutanten[@]}"; do

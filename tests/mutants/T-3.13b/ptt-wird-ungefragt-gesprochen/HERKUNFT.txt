@@ -1,0 +1,45 @@
+GUT-MUSTER fuer tests/verify/T-3.13b.sh — Referenz AUSSCHLIESSLICH aus dem
+Vertrag (/home/itiger013/Dokumente/UMBRA-Notes/DDs/dAImon/T-3.13b-Markierung-Plan.md,
+Stand 05.08.), gebaut bevor es die Implementierung gibt. Der Reviewer hat
+`daimon/common/taint.py`, `daimon/common/protocol.py`, `daimon/hookbridge/`,
+`daimon/mind/`, `daimon/auth/preview.py` und `tests/test_marken.py` des
+Arbeitsbaums nie geoeffnet.
+
+Herkunft der Teile:
+
+* `daimon/common/protocol.py`, `ipc.py`, `logging.py`:
+  UNVERAENDERTE Kopien aus `tests/fixtures/known-good/T-3.9/` — das ist der
+  eingefrorene, abgenommene Stand dieser Module VOR T-3.13b (git-archive-
+  Vollkopie des T-3.9-Stands). Sie pinnen die Schnittstellen, die der
+  Vertrag als „existiert seit T-0.x" voraussetzt (`Mark`, `Marked`,
+  `to_wire`/`from_wire`, `dumps`/`loads`; nackter Wert → `tainted`).
+* `daimon/mind/answer.py`: unveraendert aus `tests/fixtures/known-good/
+  T-3.13/` (Reviewer-Referenz Durchgang 2 — die Antwort ist dort schon
+  immer `tainted`).
+* `daimon/mind/daemon.py`, `router.py`: T-3.13-Referenz, um die drei
+  Vertragspunkte erweitert (rohe Anfrage → tainted + `marke_fehlt`,
+  `tainted` erreicht Durchgang 1 nicht, Handlungs-Anapher → Rückfrage).
+* `daimon/common/taint.py`: NEU, nur aus dem Vertrag — Senkentabelle als
+  Code, `SenkenFehler`, `markiere`, `verketten` (strengste Marke),
+  `pruefe_senke`, `audit_redigiert`. Signaturen nach Vertrag §6 (gepinnt
+  am 05.08.): `SENKEN: dict[str, dict[Mark, bool]]`,
+  `pruefe_senke(wert, *, senke, log=None) -> Marked`,
+  `verketten(*teile) -> Marked`.
+* `daimon/auth/preview.py`: eingefrorener T-1.7-Stand (Kopie aus dem
+  T-3.9-Gut-Muster) plus Markenpruefung am Eingang von `vorschau()`.
+* `daimon/hookbridge/`: Reviewer-Referenz aus `tests/fixtures/
+  T-3.4-referenz-des-reviewers/` plus Markentransport nach Vertrag §7
+  (gepinnt am 05.08.): die Nutzlast bleibt roh (T-0.11 ist eingefroren),
+  die Marken wandern als Begleitfeld `__marken__` mit —
+  `markiere_nutzlast()` (Freitext `tainted`, `hook_event_name` `trusted`
+  nur innerhalb der geschlossenen Aufzählung).
+
+Was der Vertrag weiterhin NICHT pinnt und dieses Muster deshalb selbst
+festlegt (Vertragslücken, siehe tests/evidence/T-3.13b-bericht.md):
+
+* die Drahtform eines SenkenFehler am Mind-Socket (hier: ok:false,
+  grund `marke_verboten`, Daemon bleibt lebendig).
+
+Nachzug 05.08.: §6 (Python-API) und §7 (Drahtform am Hook-Bus) sind inzwischen
+gepinnt; dieses Muster und der Prüfstand sind darauf gehoben. Die früheren
+Lücken L2 (API) und L5 (Drahtgestalt) sind damit geschlossen.

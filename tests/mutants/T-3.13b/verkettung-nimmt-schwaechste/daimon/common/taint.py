@@ -45,7 +45,13 @@ SENKEN: dict[str, dict[Mark, bool]] = {
                       Mark.TRUSTED: True, Mark.TAINTED: True},
     "tts_auf_anfrage": {Mark.USER_PTT: True, Mark.USER_AUDIO: True,
                         Mark.TRUSTED: True, Mark.TAINTED: True},
-    "tts_ungefragt": {Mark.USER_PTT: True, Mark.USER_AUDIO: False,
+    # Nachzug 26.08.: `user_ptt` stand hier auf `True` und widersprach damit
+    # `hub/sprechtext.aus_vorlage`, das seit T-3.9 ausschliesslich `trusted`
+    # nimmt (Design §8.3: variable Anteile sind ausschliesslich trusted).
+    # Zwei Fassungen einer Regel sind eine Regel und eine Attrappe — gueltig
+    # ist die strengere. Was das Mikrofon am gehaltenen Taster aufnimmt, ist
+    # auch Video und Lautsprecher und wird ungefragt nicht gesprochen.
+    "tts_ungefragt": {Mark.USER_PTT: False, Mark.USER_AUDIO: False,
                       Mark.TRUSTED: True, Mark.TAINTED: False},
     "audit_klartext": {Mark.USER_PTT: True, Mark.USER_AUDIO: True,
                        Mark.TRUSTED: True, Mark.TAINTED: False},

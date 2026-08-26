@@ -31,17 +31,38 @@ f7a119a161356d49b04b64f6e5809fd6952784fd96bbd144b231956a22d09abb tests/verify/t3
 # Anteile sind ausschliesslich trusted-Werte"; die Tabellenzeile war bis zum
 # 26.08. die Attrappe neben `hub/sprechtext.aus_vorlage` und hatte keinen
 # Aufrufer. Der Pruefstand folgt damit der Fassung, die jetzt gilt.
-# OFFEN nach Plan-Regel 2 (docs/IMPLEMENTATION-PLAN.md:66) -- ein neuer Hash
-# ist NICHT genug:
-#   1. neuer .v-Task fuer T-3.13b mit erneutem Mutationstest
-#   2. tests/fixtures/known-good/T-3.13b/daimon/common/taint.py traegt noch
-#      Mark.USER_PTT: True fuer `tts_ungefragt` (Zeile 48) -- gegen dieses
-#      Gut-Muster ist der geaenderte Pruefstand ROT, meta.sh Stufe 1 faellt
-#   3. tests/mutants/T-3.13b/erzeugen.sh danach neu fahren
-#   4. freeze.sh verweigert das erneute Einfrieren; die drei Zeilen
-#      (t313b_pruefstand.py, T-3.13b.sh und die mit ihnen gezogenen) muessen
-#      vor `freeze.sh T-3.13b` von Hand aus FROZEN entfernt werden, damit
-#      freeze.sh Mutationstest UND Laufzeitspur selbst schreibt
+# Stand 26.08. abends (Rolle reviewer), Punkte 2 und 3 ERLEDIGT:
+#   2. ERLEDIGT -- das Gut-Muster fuehrt `tts_ungefragt` jetzt mit
+#      Mark.USER_PTT: False; nur diese eine Regelzeile wurde nachgezogen,
+#      nicht die Umgestaltung von e83c961.
+#   3. ERLEDIGT -- tests/mutants/T-3.13b/erzeugen.sh hat einen achten
+#      Mutanten `ptt-wird-ungefragt-gesprochen`, der genau den behobenen
+#      Fehler wieder einbaut. `bash tests/verify/meta.sh T-3.13b` ist gruen:
+#      Gut-Muster besteht, alle acht Mutanten werden erkannt. Jeder der
+#      sieben alten Mutanten scheitert weiterhin an seiner EIGENEN Mutation
+#      (je Mutant nachgemessen) -- keiner ist durch die Regel wirkungslos.
+# OFFEN bleibt der Hash selbst -- er ist weiterhin VORLAEUFIG, weil
+# `freeze.sh T-3.13b` NICHT durchlaeuft. Gemessen am 26.08. mit von Hand
+# entfernten T-3.13b-Zeilen; freeze.sh brach nach gruenem Mutationstest und
+# gruener Spur 'gut' an der Spur 'echt' ab:
+#
+#   freeze-deps: ABGELEHNT -- Laufzeitspur: nicht deklarierte repo-lokale
+#   Datei geoeffnet: tests/verify/T-metaprobe.sh, tests/verify/meta.sh
+#
+# Ursache: K13 faehrt im Arbeitsbaumlauf die ganze pytest-Suite
+# (t313b_pruefstand.py:1373). Seit 5a78c51 (17.08., NACH dem Einfrieren von
+# T-3.13b) enthaelt sie tests/test_meta_erzeugung.py, das
+# tests/verify/T-metaprobe.sh anlegt und tests/verify/meta.sh ruft. Beide
+# sind repo-lokal und in FROZEN.deps nicht deklariert.
+# Die Zeile nachzutragen ist KEINE Reviewer-Entscheidung: freeze.sh friert
+# jede deklarierte und vorhandene Abhaengigkeit mit ein -- tests/verify/
+# meta.sh laege danach selbst hinter einem .v-Task.
+# Zweiter, unabhaengiger Halt: freeze.sh verlangt die Spur 'echt' gruen.
+# `bash tests/verify/T-3.13b.sh` im Arbeitsbaum ist am 26.08. 24 rot
+# (K13: T-3.12 und T-3.13 einzeln rot, pytest rot an
+# test_egress.py::test_mind_traegt_keinen_fremden_schluessel_in_der_umgebung).
+# Beide Halte sind aelter als dieser Nachzug und von ihm unabhaengig.
+#   1. offen: neuer .v-Task fuer T-3.13b, der beide Halte aufloest
 fe9060d34c7aea1a52926e06766df9a8c53543e627c067572886250dda4e69c4 tests/verify/t313b_pruefstand.py
 1a064e995e340c84323a7686f73c75665feafefae28c97cc161b86a16a65751c tests/verify/T-3.13b.sh
 842fa97ee1ea220e4839ca8ff4aaf22b9c40fc3170b0424d3029266244357b78 tests/verify/t313_pruefstand.py
