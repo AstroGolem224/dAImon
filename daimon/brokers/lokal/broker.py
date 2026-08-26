@@ -48,6 +48,11 @@ from daimon.brokers.egress.broker import (MAX_ZEILE, antwortzeile,
                                           hub_anfrage, koerper_hash)
 from daimon.common.config import Config, load as load_config
 from daimon.common.logging import Logger, get_logger
+# Die Rumpfumsetzung liegt beim MIND, nicht hier. Der Broker haelt den Draht
+# und wendet sie an; die Zusage "ich frage lokal" macht der Mind, und mit ihr
+# gehoert ihm die Form. Zwei Fassungen waeren eine Regel und eine Attrappe
+# (CLAUDE.md Regel 4) -- und geprueft waere erfahrungsgemaess die andere.
+from daimon.mind.lokal import anfrage_rumpf, antwort_bloecke
 
 LOKAL_SOCKET = "lokal.sock"
 TICKET_SOCKET = "ticket.sock"
@@ -153,34 +158,19 @@ def modelle_lesen(roh: str) -> list[str]:
 
 def nutzlast(koerper: dict, *, modell: str,
              num_predict: int = NUM_PREDICT) -> dict:
-    """Der Ollama-Chat-Koerper. Rein, damit der Pruefstand ihn pruefen kann,
-    ohne ein Modell zu laden."""
-    nachrichten: list[dict] = []
-    system = koerper.get("system")
-    if isinstance(system, str) and system.strip():
-        # Woertlich. T-3.10 gibt die Persona unveraendert weiter, und ein
-        # lokales Modell ist kein Grund, davon abzuweichen.
-        nachrichten.append({"role": "system", "content": system})
-    for nachricht in koerper.get("messages") or []:
-        if not isinstance(nachricht, dict):
-            continue
-        inhalt = nachricht.get("content")
-        if isinstance(inhalt, list):
-            inhalt = "".join(t.get("text", "") for t in inhalt
-                             if isinstance(t, dict))
-        if isinstance(inhalt, str) and inhalt.strip():
-            nachrichten.append({"role": str(nachricht.get("role", "user")),
-                                "content": inhalt})
-    return {"model": modell, "messages": nachrichten, "stream": False,
-            # `think: false` ist keine Feinjustierung, sondern der Unterschied
-            # zwischen einer Antwort und keiner. Am 09.08. an gemma4:26b
-            # gemessen: mit Denkspur lief `num_predict` im `thinking`-Feld
-            # leer, `content` kam LEER zurueck (`done_reason: length`), und
-            # das Ganze dauerte 10,7 s. Ohne: dieselbe Frage, eine Antwort,
-            # 0,78 s. Fuer ein Pet, das hoechstens 140 Zeichen spricht, ist
-            # eine Denkspur reiner Verlust -- niemand hoert dem Nachdenken zu.
-            "think": False,
-            "options": {"num_predict": int(num_predict)}}
+    """Der Ollama-Chat-Koerper -- die Fassung aus `daimon/mind/lokal.py`.
+
+    Bis zum 26.08. stand die Umsetzung HIER, und sie liess `tools` fallen.
+    Das war die Luecke, an der der lokale Weg fuer Durchgang 1 endete: der
+    Mind schickte seine Werkzeugliste, der Broker warf sie weg, und das
+    Modell konnte gar kein Werkzeug rufen. Kein Fehler war sichtbar -- es kam
+    nur nie ein `tool_use`.
+
+    Der Deckel fuer die Antwortlaenge bleibt beim BROKER: er kostet GPU-Zeit
+    auf dieser Maschine, und `max_tokens` aus dem Koerper ist die Angabe des
+    Mind fuer ein fremdes Modell.
+    """
+    return anfrage_rumpf(koerper, modell=modell, num_predict=int(num_predict))
 
 
 class LokalBroker:
@@ -342,22 +332,28 @@ class LokalBroker:
         except (json.JSONDecodeError, ValueError):
             return self._nein("modell_fehler", "Antwort ist kein JSON")
         nachricht = (daten.get("message") or {}) if isinstance(daten, dict) else {}
-        text = nachricht.get("content")
-        if (not isinstance(text, str) or not text.strip()) and \
-                (nachricht.get("thinking") or "").strip():
-            # Eigener Grund, kein `modell_fehler`: das Modell hat gedacht
-            # statt geantwortet, obwohl `think: false` mitging. Das ist ein
-            # Befund ueber das MODELL (eine Reasoning-Variante) und kein
-            # Transportfehler -- wer beides gleich nennt, sucht an der
-            # falschen Stelle. Die Denkspur selbst geht NICHT in die Absage.
-            return self._nein("modell_denkt",
-                              f"{self.modell!r} liefert eine Denkspur statt "
-                              "einer Antwort -- Instruct-Variante nehmen")
-        if not isinstance(text, str) or not text.strip():
+        # Die Blockliste kommt aus derselben Fassung, die der Mind liest.
+        # Sie kann `text`, `tool_use` oder beides tragen.
+        bloecke = antwort_bloecke(nachricht)
+        # LEER heisst hier "nichts Verwertbares", nicht mehr "kein Text": ein
+        # Modell, das ein Werkzeug ruft, sagt oft NICHTS dazu -- `content` ist
+        # dann leer, und die alte Pruefung auf `content` allein wies genau die
+        # Antwort ab, wegen der Durchgang 1 den lokalen Weg ueberhaupt nimmt.
+        # Sichtbar war das nirgends: die Absage hiess "modell_fehler".
+        if not bloecke:
+            if (nachricht.get("thinking") or "").strip():
+                # Eigener Grund, kein `modell_fehler`: das Modell hat gedacht
+                # statt geantwortet, obwohl `think: false` mitging. Das ist ein
+                # Befund ueber das MODELL (eine Reasoning-Variante) und kein
+                # Transportfehler -- wer beides gleich nennt, sucht an der
+                # falschen Stelle. Die Denkspur selbst geht NICHT in die Absage.
+                return self._nein("modell_denkt",
+                                  f"{self.modell!r} liefert eine Denkspur statt "
+                                  "einer Antwort -- Instruct-Variante nehmen")
             return self._nein("modell_fehler", "keine Antwort im Feld `message`")
 
         self.anfragen += 1
-        antwort = {"content": [{"type": "text", "text": text.strip()}]}
+        antwort = {"content": bloecke}
         bytes_ = len(json.dumps(antwort, ensure_ascii=False).encode("utf-8"))
         self.log.info("lokal", DAIMON_ACTION="lokal_anfrage",
                       DAIMON_TICKET=ticket[:12], DAIMON_BYTES=bytes_,

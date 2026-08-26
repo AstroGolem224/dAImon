@@ -189,12 +189,62 @@ verdrängt hätte.
 
 ---
 
+## Angeschlossen am 26.08. — Weg A, drei Stellen
+
+Der Broker wurde **nicht umgangen**: der Betrieb geht über `lokal.sock`, wo
+die Loopback-Grenze (`ZIEL` fest verdrahtet) und die Kontingente über
+`ticket.sock` sitzen. Die Messung oben ging direkt an Ollama, weil sie das
+MODELL messen sollte; das ist der Unterschied.
+
+**Das Protokoll, wie es vorgefunden wurde.** Anfrage
+`{"v":1,"art":"anfrage","ticket":…,"koerper":…}` mit einem Koerper in
+Anthropic-Messages-Gestalt; Antwort `{"v":1,"ok":true,"status":200,"bytes":…,
+"dauer_ms":…,"antwort":{"content":[…]}}`. Es hat getragen — bis auf **zwei
+Lücken, beide auf der Werkzeugseite**:
+
+1. `nutzlast()` ließ `tools` fallen. Der Mind schickte seine Werkzeugliste,
+   der Broker warf sie weg, das Modell konnte gar kein Werkzeug rufen. Kein
+   Fehler war sichtbar; es kam nur nie ein `tool_use`.
+2. Die Antwortprüfung verlangte nichtleeres `content`. Ein Modell, das ein
+   Werkzeug ruft, sagt oft nichts dazu — genau diese Antwort wies der Broker
+   als `modell_fehler` ab.
+
+Beides ist im Broker behoben. Die **Umsetzung selbst** steht in
+`daimon/mind/lokal.py` und existiert genau einmal; der Broker wendet sie an,
+er hat keine eigene Fassung.
+
+| Stelle | Was dort steht |
+|---|---|
+| `daimon/mind/lokal.py` | `anfrage_rumpf`, `werkzeuge_umsetzen`, `antwort_bloecke` — die eine Fassung |
+| `daimon/brokers/lokal/broker.py` | wendet sie an; `tools` und `tool_calls` gehen nicht mehr verloren |
+| `daimon/mind/daemon.py: main` | die Weiche: Modellweg = `lokal.sock`, sofern nicht ausdrücklich anders |
+
+`Mind.frage_werkzeug` ist **unverändert** — inklusive `_werkzeug_namen`,
+Kurzzeitgedächtnis und `aktion.sock`. Belegt in `tests/test_lokal_zulauf.py`,
+das die Naht über echte Sockets fährt und den Zulauf bewacht.
+
+---
+
 ## Was zuerst zu klären ist
 
 1. ~~Liefert `qwen3` über Ollama Werkzeugaufrufe, die der Katalog annimmt?~~
    **Beantwortet am 26.08., siehe oben: ja, mit der Schranken-Auflage.**
-2. Wo sitzt die Weiche zwischen lokal und Egress — je Runde, je Absicht, oder
-   als Rückfall, wenn der Egress nicht antwortet?
-3. Welche Senke bekommt der lokale Weg in der Markentabelle?
+2. ~~Wo sitzt die Weiche zwischen lokal und Egress?~~ **Entschieden am
+   26.08.:** in `daimon/mind/daemon.py: main`, nicht je Runde und nicht als
+   Rückfall. **Ein Weg je Anfrage**, und zwar der lokale; der Egress ist der
+   Ausbau und über `--egress-socket` erreichbar. Vorher stand die Weiche
+   ausschließlich in der Unit — eine Datei, die kein Prüfstand liest.
+3. ~~Welche Senke bekommt der lokale Weg in der Markentabelle?~~ **Keine
+   neue.** Die Modellantwort ist die Antwort des Assistenten, unabhängig vom
+   Modell: `trusted` in Durchgang 1, `tainted` in Durchgang 2 — dieselben
+   zwei Marken wie beim Egress. Ein dritter Eintrag wäre eine zweite Regel
+   für dieselbe Sache.
 4. Gilt die Residenzpolitik aus §5.4 auch für ein dauerhaft geladenes
-   Textmodell?
+   Textmodell? **Offen.**
+5. **Neu und offen: Wiederholung bei Zeitüberschreitung.** Am 26.08. live
+   gemessen: bei einem zweiten Ollama-Client auf demselben Modell lief der
+   Broker in seine 120 s und meldete `modell_weg`; ein direkter `curl` an
+   Ollama brauchte über 200 s für acht Token. Der Weg ist damit korrekt
+   verdrahtet und unter Fremdlast trotzdem unbrauchbar. Eine
+   Wiederholungslogik ist ein eigener Task (der Betriebsbefund oben nennt
+   56 Neustarts von `ollama.service` an einem Tag).

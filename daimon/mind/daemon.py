@@ -51,6 +51,7 @@ from daimon.mind.memory import Kurzzeit, Langzeit, anweisung_erkannt
 from daimon.mind.store import Store
 from daimon.mind.persona import Persona, PersonaFehler, lade as persona_laden
 from daimon.mind.answer import Durchgang2
+from daimon.mind.lokal import LOKAL_SOCKET
 from daimon.mind.router import Router, quellen_aus_umgebung
 
 MIND_SOCKET = "mind.sock"
@@ -597,7 +598,10 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="dAImon Mind (T-3.11, Teilstueck)")
     ap.add_argument("--socket", default=None)
     ap.add_argument("--hub-socket", default=None)
-    ap.add_argument("--egress-socket", default=None)
+    ap.add_argument("--egress-socket", default=None,
+                    help=f"Modellweg. Ohne Angabe: der LOKALE Broker "
+                         f"({LOKAL_SOCKET}). Fuer den Weg nach draussen "
+                         f"ausdruecklich {EGRESS_SOCKET} nennen.")
     ap.add_argument("--frage", default=None,
                     help="einmal fragen und beenden (Handlauf)")
     args = ap.parse_args(argv)
@@ -624,9 +628,23 @@ def main(argv: list[str] | None = None) -> int:
             "Katalog fuer Werkzeuge nicht ladbar", DAIMON_ACTION="mind_start",
             DAIMON_GRUND=f"{type(exc).__name__}: {str(exc)[:160]}")
 
+    # --- DIE WEICHE: lokal zuerst -----------------------------------------
+    # Bis zum 26.08. stand sie ausschliesslich in der Unit
+    # (`--egress-socket %t/daimon/lokal.sock`). Damit hing die Zusage "ich
+    # frage lokal" an einer Datei, die nicht mitgeprueft wird -- eine Kopie
+    # der Unit ohne diese Zeile, ein `systemd-run` von Hand, ein Handlauf mit
+    # `--frage`, und der Mind sprach wieder den Egress an, der ohne Token
+    # nicht laeuft (Befund B8 aus T-6.8.v).
+    #
+    # Jetzt steht sie hier, und der Egress ist der AUSBAU: sein Code bleibt
+    # vollstaendig, er ist ueber `--egress-socket` erreichbar, und er wird
+    # nie als stiller Rueckfall gerufen. EIN Weg je Anfrage -- ein zweiter
+    # Versuch am anderen Modell waere eine zweite Antwort, und welche der
+    # Nutzer hoerte, entschiede der Zufall der Zeitueberschreitung.
+    modellweg = args.egress_socket or str(cfg.runtime_dir / LOKAL_SOCKET)
     mind = Mind(
         hub_socket=args.hub_socket or str(cfg.runtime_dir / TICKET_SOCKET),
-        egress_socket=args.egress_socket or str(cfg.runtime_dir / EGRESS_SOCKET),
+        egress_socket=modellweg,
         aktion_socket=str(cfg.runtime_dir / AKTION_SOCKET),
         werkzeuge=werkzeuge, werkzeug_namen=werkzeug_namen,
         persona=persona,

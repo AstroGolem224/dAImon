@@ -86,7 +86,7 @@ Nachschreiben, und dafür ist der `grep` oben da.
 
 ## `daimon/mind/daemon.py`
 
-- **Zeile 247** — 20 Zeichen Rand, geraten und einmal nachgemessen. Obergrenze: wer
+- **Zeile 248** — 20 Zeichen Rand, geraten und einmal nachgemessen. Obergrenze: wer
 
 ## `daimon/mind/router.py`
 
