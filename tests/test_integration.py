@@ -244,14 +244,10 @@ def _stat_felder(pid: int) -> tuple[int, int] | None:
         return None
 
 
-def _rss_kb(pid: int) -> int | None:
-    try:
-        for zeile in Path(f"/proc/{pid}/status").read_text().splitlines():
-            if zeile.startswith("VmRSS:"):
-                return int(zeile.split()[1])
-    except (OSError, ValueError, IndexError):
-        pass
-    return None
+# `_rss_kb` und `_rss_summe` standen bis zum 26.08. hier: VmRSS je Prozess
+# und ihre Summe. Beide sind mit der Umstellung auf `anon` weggefallen --
+# eine Summe ueber VmRSS zaehlt geteilte Bibliotheksseiten mehrfach, und die
+# Begruendung dazu steht bei `_cgroup_anon_kb`.
 
 
 def _unit_pids(unit: str) -> list[int]:
@@ -304,9 +300,35 @@ def _cgroup_cpu_usec(unit: str) -> int | None:
     return None
 
 
-def _rss_summe(pids: list[int]) -> int | None:
-    werte = [w for w in (_rss_kb(p) for p in pids) if w is not None]
-    return sum(werte) if werte else None
+def _cgroup_anon_kb(unit: str) -> int | None:
+    """Anonymer Speicher der Unit aus `memory.stat`, in KB.
+
+    DIE massgebliche Groesse fuer das Budget, seit dem 26.08. Zwei andere
+    Zahlen standen zur Wahl und taugen beide nicht:
+
+      * **Summe der VmRSS** ueber die Prozesse zaehlt jede dateigestuetzte
+        Seite so oft, wie Prozesse sie teilen. Daemon und OCR-Arbeiter der
+        Augen sind derselbe `python3` mit denselben Bibliotheken -- deren
+        Sockel erschien damit doppelt. Gemessen am 26.08.: VmRSS-Summe
+        149,6 MB gegen 92,0 MB anon fuer denselben Dienst zur selben Zeit.
+      * **`memory.current`** zaehlt den rueckgewinnbaren Seiten-Cache mit.
+        Am 26.08. lagen darin 391 von 502 MB. Diese Zahl faellt unter
+        Speicherdruck von selbst und misst deshalb keinen Bedarf.
+
+    `anon` ist, was der Dienst wirklich belegt und nicht hergeben kann.
+    """
+    e = _systemctl("show", unit, "-p", "ControlGroup", "--value", timeout=10.0)
+    cg = (e.stdout or "").strip()
+    if not cg or cg == "/":
+        return None
+    datei = Path("/sys/fs/cgroup") / cg.lstrip("/") / "memory.stat"
+    try:
+        for zeile in datei.read_text().splitlines():
+            if zeile.startswith("anon "):
+                return int(zeile.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
 
 
 def _p95(werte: list[float]) -> float:
@@ -833,12 +855,13 @@ def test_ressourcen_im_budget_design_13(sitzung, evidenz):
                     je_unit[u].append(prozent)
                     summe += prozent
             proben_cpu.append(summe)
-            # Der Prozesssatz wird je Probe neu gelesen: ein OCR-Kind, das
-            # erst nach dem Start der Messung entsteht, gehoert sonst nie
-            # zum Messband -- und genau das war Befund B3.
-            aktuell = {u: _unit_pids(u) for u in pids}
-            rss = [_rss_summe(p) for p in aktuell.values()]
-            proben_rss_kb.append(float(sum(r for r in rss if r is not None)))
+            # Anon je cgroup, nicht Summe der VmRSS: geteilte
+            # Bibliotheksseiten zaehlten sonst je Prozess mit (siehe
+            # `_cgroup_anon_kb`). Der Prozesssatz muss dafuer nicht mehr je
+            # Probe neu gelesen werden -- die cgroup umfasst ohnehin jedes
+            # Kind, auch eines, das erst spaeter entsteht.
+            anon = [_cgroup_anon_kb(u) for u in pids]
+            proben_rss_kb.append(float(sum(a for a in anon if a is not None)))
             alt = neu
 
         idle_cpu_p95 = round(_p95(proben_cpu), 3)
@@ -852,14 +875,13 @@ def test_ressourcen_im_budget_design_13(sitzung, evidenz):
         satz["gemessen"]["je_unit_cpu_max"] = {
             u: round(max(w), 2) for u, w in je_unit.items() if w}
         satz["gemessen"]["je_unit_rss_mb"] = {
-            u: round((_rss_summe(_unit_pids(u)) or 0) / 1024.0, 1)
-            for u in pids}
+            u: round((_cgroup_anon_kb(u) or 0) / 1024.0, 1) for u in pids}
 
         # Auf-Abruf-Dienste (§13): belegt, aber nicht im Dauerlast-Budget.
         abruf = {}
         for unit in ABRUF_UNITS:
-            rss = _rss_summe(_unit_pids(unit))
-            abruf[unit] = None if rss is None else round(rss / 1024.0, 1)
+            anon = _cgroup_anon_kb(unit)
+            abruf[unit] = None if anon is None else round(anon / 1024.0, 1)
         satz["gemessen"]["auf_abruf_rss_mb"] = abruf
 
         # Positivkontrolle DES cgroup-Messbands. Der Brenner oben belegt nur
@@ -869,10 +891,18 @@ def test_ressourcen_im_budget_design_13(sitzung, evidenz):
         # waere gruen, GERADE WEIL er nichts mehr misst. Dieselbe Falle, die
         # Befund B3 ueberhaupt erst so lange verdeckt hat.
         lesbar = sum(1 for u in pids if _cgroup_cpu_usec(u) is not None)
+        anon_lesbar = sum(1 for u in pids if _cgroup_anon_kb(u) is not None)
         satz["gemessen"]["cgroups_lesbar"] = f"{lesbar}/{len(pids)}"
+        satz["gemessen"]["anon_lesbar"] = f"{anon_lesbar}/{len(pids)}"
         assert lesbar == len(pids), (
             f"cpu.stat nur fuer {lesbar} von {len(pids)} Units lesbar — "
             "das Messband hat Loecher")
+        assert anon_lesbar == len(pids), (
+            f"memory.stat nur fuer {anon_lesbar} von {len(pids)} Units "
+            "lesbar — das Speicherband hat Loecher")
+        assert max(proben_rss_kb) > 0.0, (
+            f"{len(pids)} laufende Dienste, und das Speicherband sah null "
+            "anonymen Speicher — kaputt ist die Messung, nicht der Bedarf")
         assert sum(proben_cpu) > 0.0, (
             f"{len(pids)} laufende Dienste, und das Messband sah ueber "
             f"{len(proben_cpu)} Sekunden keine einzige CPU-Mikrosekunde — "

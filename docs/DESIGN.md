@@ -1586,6 +1586,27 @@ den 1,25 % aus A, Spitzendeckel ~33 % über den 6,0 % aus A, RSS-Deckel ~25 %
 > echten Startversuch als überholt nachgemessen wurde (Befund B9) — die Unit
 > läuft heute sauber und gehört ins Band.
 >
+> **Messgröße festgelegt (26.08.): `anon` je cgroup, aus `memory.stat`.**
+> Drei Zahlen standen zur Wahl, und nur eine misst den Bedarf:
+>
+> * **Summe der `VmRSS`** über die Prozesse — zählt jede dateigestützte
+>   Seite so oft, wie Prozesse sie teilen. Daemon und OCR-Arbeiter der Augen
+>   sind derselbe `python3` mit denselben Bibliotheken; deren Sockel erschien
+>   doppelt. Am 26.08. am selben Dienst zur selben Zeit gemessen: **149,6 MB
+>   als VmRSS-Summe gegen 92,0 MB als anon.** Diese Größe hat die alten
+>   Bänder erhoben.
+> * **`memory.current`** — zählt den rückgewinnbaren Seiten-Cache mit; am
+>   26.08. lagen darin 391 von 502 MB. Die Zahl fällt unter Speicherdruck von
+>   selbst und misst deshalb keinen Bedarf, sondern eine Momentaufnahme des
+>   Caches.
+> * **`anon`** — was der Dienst wirklich belegt und nicht hergeben kann.
+>   **Maßgeblich.**
+>
+> `tests/test_integration.py` misst seit dem 26.08. so, mit eigener
+> Positivkontrolle: ist `memory.stat` für eine Unit unlesbar oder meldet das
+> Band null anonymen Speicher, fällt der Test auf, statt ein leeres Budget
+> zu bestätigen.
+>
 > **Offen:** die Deckel müssen mit dem korrigierten Sampler neu abgeleitet
 > werden, nach derselben Methode (gemessen plus Marge) und über ein Band mit
 > allen dreizehn Units. Bis dahin ist `test_ressourcen_im_budget_design_13`
