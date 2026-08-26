@@ -164,6 +164,43 @@ def _tool_schema(eintrag: dict) -> dict:
     return schema
 
 
+def _schranken_text(eintrag: dict) -> str:
+    """Die Schranken aus `params` als SATZ, nicht nur als Schema.
+
+    Gemessen am 26.08. gegen ein lokales Modell (qwen3, 27b) mit der echten
+    Werkzeugliste: die Schranken standen bis dahin ausschliesslich im
+    JSON-Schema, und das Modell hat sie zwoelf von zwoelf Malen uebergangen --
+    `value: 30` statt `0.3`, `desktop_id: "1"` statt `org.kde.kcalc.desktop`.
+    `Policy._params_pruefen` faengt das ab, die Aktion scheitert also nur,
+    statt Schaden zu stiften; brauchbar ist sie damit trotzdem nicht.
+
+    Dieselbe Liste mit den Schranken ZUSAETZLICH im Beschreibungstext: zwoelf
+    von zwoelf schema-konform. Der Text ist also keine Verzierung des Schemas,
+    sondern die Stelle, an der die Schranke beim Modell ankommt.
+
+    Das steht hier und nicht im lokalen Weg, weil die Werkzeugliste EINE
+    Funktion hat. Zwei Fassungen waeren eine Regel und eine Attrappe, und
+    welche gilt, entschiede der Zufall des Aufrufs.
+    """
+    saetze: list[str] = []
+    for name, regel in (eintrag.get("params") or {}).items():
+        art = regel.get("type")
+        schranke = regel.get("value_between")
+        if art in ("float", "int") and schranke:
+            von, bis = schranke
+            hinweis = ""
+            # Der Prozent-Hinweis nur, wo er zutrifft: ein Bereich bis 1.0
+            # ist genau der Fall, in dem "dreissig Prozent" als 30 ankam.
+            if art == "float" and float(bis) <= 1.0:
+                hinweis = " (kein Prozentwert)"
+            saetze.append(f"`{name}` MUSS zwischen {von} und {bis} liegen"
+                          f"{hinweis}.")
+        elif art == "string" and regel.get("pattern"):
+            saetze.append(f"`{name}` MUSS exakt dem Muster "
+                          f"{regel['pattern']} entsprechen.")
+    return " ".join(saetze)
+
+
 def werkzeuge_aus_katalog(katalog: dict) -> tuple[list[dict], dict[str, str]]:
     """Der freigegebene Katalog als Anthropic-Tool-Liste.
 
@@ -176,9 +213,19 @@ def werkzeuge_aus_katalog(katalog: dict) -> tuple[list[dict], dict[str, str]]:
     for action_id, eintrag in sorted(katalog.items()):
         name = action_id.replace(".", "_")
         namen[name] = action_id
+        # Die Schranken zuerst, der Beschreibungstext bekommt den Rest der
+        # 1024 Zeichen. Andersherum schnitte eine lange `rationale` genau die
+        # Saetze ab, wegen derer sie hier stehen -- und der Verlust waere
+        # stumm (Befund vom 26.08., siehe `_schranken_text`).
+        schranken = _schranken_text(eintrag)
+        grund = (eintrag.get("rationale") or action_id).strip()
+        rest = 1024 - len(schranken) - (1 if schranken else 0)
+        beschreibung = grund[:max(rest, 0)]
+        if schranken:
+            beschreibung = f"{beschreibung} {schranken}".strip()
         werkzeuge.append({
             "name": name,
-            "description": (eintrag.get("rationale") or action_id).strip()[:1024],
+            "description": beschreibung,
             "input_schema": _tool_schema(eintrag),
         })
     return werkzeuge, namen
