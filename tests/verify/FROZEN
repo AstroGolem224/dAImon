@@ -23,11 +23,39 @@ f7a119a161356d49b04b64f6e5809fd6952784fd96bbd144b231956a22d09abb tests/verify/t3
 48a2dd0d2dd5a412a636dc07aac78c4928ccafaf88e238b9dec5efa93ce2dd64 tests/verify/T-3.11.sh
 454708eb6800bc473b5aa68d33dee1258da19764f28447c8d366532356da177f tests/verify/t312_pruefstand.py
 151a378ae0cc2e116ea11e4c5a37d4b4495d6e140a6a6ea070a1d5fd28d691a9 tests/verify/T-3.12.sh
-4922461f5e9e7b86a2603664adf8e43f3e50c6fe5fd25bf1d6d47f65e23f23fe tests/verify/t313b_pruefstand.py
+# NACHGEZOGEN am 26.08. (Rolle reviewer), VORLAEUFIG -- der Mutationstest steht
+# noch aus. Vorher: 4922461f5e9e7b86a2603664adf8e43f3e50c6fe5fd25bf1d6d47f65e23f23fe
+# Grund: Zeile 1037-1044 erwartet fuer die Senke `tts_ungefragt` jetzt
+# [trusted] statt [trusted, user_ptt]. Stuetzt sich auf daimon/common/taint.py
+# (SENKEN["tts_ungefragt"][Mark.USER_PTT] ist False) und Design 8.3 "Variable
+# Anteile sind ausschliesslich trusted-Werte"; die Tabellenzeile war bis zum
+# 26.08. die Attrappe neben `hub/sprechtext.aus_vorlage` und hatte keinen
+# Aufrufer. Der Pruefstand folgt damit der Fassung, die jetzt gilt.
+# OFFEN nach Plan-Regel 2 (docs/IMPLEMENTATION-PLAN.md:66) -- ein neuer Hash
+# ist NICHT genug:
+#   1. neuer .v-Task fuer T-3.13b mit erneutem Mutationstest
+#   2. tests/fixtures/known-good/T-3.13b/daimon/common/taint.py traegt noch
+#      Mark.USER_PTT: True fuer `tts_ungefragt` (Zeile 48) -- gegen dieses
+#      Gut-Muster ist der geaenderte Pruefstand ROT, meta.sh Stufe 1 faellt
+#   3. tests/mutants/T-3.13b/erzeugen.sh danach neu fahren
+#   4. freeze.sh verweigert das erneute Einfrieren; die drei Zeilen
+#      (t313b_pruefstand.py, T-3.13b.sh und die mit ihnen gezogenen) muessen
+#      vor `freeze.sh T-3.13b` von Hand aus FROZEN entfernt werden, damit
+#      freeze.sh Mutationstest UND Laufzeitspur selbst schreibt
+fe9060d34c7aea1a52926e06766df9a8c53543e627c067572886250dda4e69c4 tests/verify/t313b_pruefstand.py
 1a064e995e340c84323a7686f73c75665feafefae28c97cc161b86a16a65751c tests/verify/T-3.13b.sh
 842fa97ee1ea220e4839ca8ff4aaf22b9c40fc3170b0424d3029266244357b78 tests/verify/t313_pruefstand.py
 81f2206e7372bd62cb791e32044e45da54ce7bdb7abce8606ab8b7624e38f273 tests/verify/T-3.13.sh
-c544d7e2f48fb63f2c52bea84e01b80e08e57386c56b5b685d6db10425380d4d tests/verify/t314_pruefstand.py
+# NACHGEZOGEN am 26.08. (Rolle reviewer), VORLAEUFIG -- Mutationstest steht aus.
+# Vorher: c544d7e2f48fb63f2c52bea84e01b80e08e57386c56b5b685d6db10425380d4d
+# Grund: `tts_beginnt` setzt fuer den Kanal `ungefragt` jetzt ausdruecklich
+# markierung=trusted (Zeile 522ff). Vorgabe bei fehlender Marke ist seit dem
+# 26.08. `tainted` (hub/daemon.py:1178, face/tts.py:519 und :993) -- ohne das
+# Feld liefe der Pruefstand an seiner eigenen Freigabe auf. Das Gut-Muster
+# T-3.14 vertraegt den Zusatz (sein daemon.py:801 liest `markierung`).
+# OFFEN: derselbe Weg wie bei T-3.13b -- neuer .v-Task, meta.sh T-3.14,
+# Zeilen aus FROZEN entfernen, dann freeze.sh T-3.14.
+bcff10c4f5f275b805a1cdd35e5ff5ce481a89a9f504c7be8ff6da3e35295438 tests/verify/t314_pruefstand.py
 8e69272633e634670b8d0b1799f1efd1d291a510b0c2609e9b0c665003616f92 tests/verify/T-3.14.sh
 056150b22d477ad276ffdc24e106a288fe8c5049618f17e599c452615e795c78 tests/verify/T-3.1.sh
 13530b22990e0ff1a34d27480da17977cd11b8bfaedd328b35061168c575d451 tests/verify/T-3.2.sh

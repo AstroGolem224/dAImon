@@ -519,7 +519,16 @@ class LiveSystem:
                 raise ValueError("ungefragt akzeptiert keinen freien Text")
             if anlass not in erlaubte_anlaesse:
                 raise ValueError(f"ungepinnter ungefragt-Anlass: {anlass!r}")
-            freigabe_felder = {"art": "freigabe", "kanal": kanal, "anlass": anlass}
+            # Die Marke gehoert zu den WERTEN, nicht zur Vorlage -- und sie
+            # muss ausdruecklich dastehen. Seit dem Befund vom 26.08. gilt bei
+            # fehlendem Feld `tainted` (hub/daemon.py, face/tts.py), und
+            # `tts_ungefragt` nimmt ausser `trusted` nichts (common/taint.py).
+            # Ein echter Produzent dieser Anlaesse -- der Hub selbst -- meldet
+            # einen SELBST festgestellten Sachverhalt aus kuratierter Vorlage;
+            # `tests_gruen` hat nicht einmal eine Einsetzstelle. Das ist
+            # `trusted`, und nur deshalb darf es ungefragt gesprochen werden.
+            freigabe_felder = {"art": "freigabe", "kanal": kanal,
+                               "anlass": anlass, "markierung": "trusted"}
         else:
             if text is None or anlass is not None:
                 raise ValueError(f"{kanal} verlangt freien Text und keinen Anlass")

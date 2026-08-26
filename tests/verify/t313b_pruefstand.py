@@ -1034,8 +1034,14 @@ P.check("3", "Messsonde: die Tabelle kennt neun Senken",
         len(senken_tab), 9)
 P.check("3", "Tabelle tts_auf_anfrage: alle vier Marken erlaubt",
         senken_tab.get("tts_auf_anfrage"), VIER_MARKEN)
-P.check("3", "Tabelle tts_ungefragt: nur user_ptt und trusted",
-        senken_tab.get("tts_ungefragt"), ["trusted", "user_ptt"])
+# `user_ptt` stand hier bis zum 26.08. mit drin und fror damit die unsichere
+# Fassung ein. Design §8.3: ungefragt wird ausschliesslich `trusted`
+# gesprochen. `user_ptt` ist, was das Mikrofon am gehaltenen Taster aufnimmt
+# -- auch Video und Lautsprecher --, und das wird ungefragt nicht vorgelesen.
+# Die Zeile hat seit T-3.9 ihren Aufrufer: `hub/sprechtext.aus_vorlage`
+# entscheidet ueber `taint.pruefe_senke` statt ueber ein eigenes `if`.
+P.check("3", "Tabelle tts_ungefragt: nur trusted",
+        senken_tab.get("tts_ungefragt"), ["trusted"])
 P.check("3", "Tabelle audit_klartext: tainted ist verboten",
         senken_tab.get("audit_klartext"),
         ["trusted", "user_audio", "user_ptt"])
