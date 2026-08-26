@@ -211,10 +211,13 @@ def phase_nach() -> int:
     hub = hub_starten(rt, conf)
     sock = rt / "daimon" / "tts.sock"
     try:
+        # `markierung` ausdruecklich: die fehlende Marke ist seit dem 26.08.
+        # `tainted`, und die Messung braucht `abkuehlung` als Grund und nicht
+        # `nicht_trusted`.
         lang = frage(sock, {"v": 1, "art": "freigabe", "kanal": "ungefragt",
-                            "anlass": "leerlauf"})
+                            "anlass": "leerlauf", "markierung": "trusted"})
         kurz = frage(sock, {"v": 1, "art": "freigabe", "kanal": "rueckfrage",
-                            "anlass": "tests_gruen"})
+                            "anlass": "tests_gruen", "markierung": "trusted"})
     finally:
         hub.terminate()
         hub.wait(timeout=10)

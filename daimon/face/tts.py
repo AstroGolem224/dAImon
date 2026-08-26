@@ -516,7 +516,7 @@ class Sprecher:
     # -- Sprechen ----------------------------------------------------------
 
     def sprich(self, *, kanal: str, text: object = None, anlass: object = None,
-               werte: object = None, markierung: str = "trusted",
+               werte: object = None, markierung: str = "tainted",
                nur_melden: bool = False) -> dict:
         """Freigabe holen, segmentweise synthetisieren, ausgeben.
 
@@ -563,8 +563,13 @@ class Sprecher:
             # dann stumm, bis jemand entscheidet, und nicht versehentlich
             # gesprochen.
             if not nur_melden and grund in _ERSATZ_GRUENDE:
+                # `trusted` ausdruecklich: der Ersatzsatz ist die eigene,
+                # kuratierte Zeile dieses Dienstes. Seit die Vorgabe
+                # `tainted` heisst, muss der einzige legitime Aufrufer ohne
+                # Fremdwerte seine Marke selbst setzen statt sie geschenkt
+                # zu bekommen.
                 ersatz = self.sprich(kanal=kanal, anlass=ERSATZ_ANLASS,
-                                     nur_melden=True)
+                                     markierung="trusted", nur_melden=True)
                 antwort["ersatz_gesprochen"] = bool(ersatz.get("ok"))
                 antwort["ersatz_ttfa_ms"] = ersatz.get("ttfa_ms")
             return antwort
@@ -982,7 +987,10 @@ def bediene(sprecher: Sprecher, conn: socket.socket) -> None:
             kanal=str(anfrage.get("kanal", "reaktion")),
             text=anfrage.get("text"), anlass=anfrage.get("anlass"),
             werte=anfrage.get("werte"),
-            markierung=str(anfrage.get("markierung", "trusted"))))
+            # Ohne Marke = `tainted`. Der Socket steht unter %t/daimon und ist
+            # von jedem Prozess desselben Nutzers erreichbar; eine Vorgabe
+            # `trusted` machte das Weglassen zum Freibrief (Befund 26.08.).
+            markierung=str(anfrage.get("markierung", "tainted"))))
 
 
 # -- Zwei Wege, an denen dieser Dienst zu Ende geht ------------------------

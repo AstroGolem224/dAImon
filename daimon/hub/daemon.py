@@ -1170,9 +1170,12 @@ class Hub:
 
         kanal = str(anfrage.get("kanal", ""))
         if "anlass" in anfrage:
+            # Fehlt `markierung`, gilt `tainted` -- nie `trusted`. Eine
+            # Vorgabe, die die staerkste Marke verschenkt, macht die Regel
+            # fuer `tts_ungefragt` durch WEGLASSEN umgehbar (Befund 26.08.).
             urteil = sprechtext.aus_vorlage(
                 anfrage.get("anlass"), anfrage.get("werte"),
-                markierung=str(anfrage.get("markierung", "trusted")))
+                markierung=str(anfrage.get("markierung", "tainted")))
         else:
             urteil = sprechtext.pruefe(anfrage.get("text"), kanal=kanal)
         if not urteil.ok:

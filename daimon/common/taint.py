@@ -67,7 +67,16 @@ SENKEN: dict[str, dict[Mark, bool]] = {
                         Mark.TRUSTED: True, Mark.TAINTED: True},
     # Ungefragt: nur kuratierte Vorlagen. Die Luecke, die v3.3 hatte -- ein per
     # OCR erfasstes Passwort waere sonst vorgelesen worden.
-    "tts_ungefragt": {Mark.USER_PTT: True, Mark.USER_AUDIO: False,
+    #
+    # `user_ptt` stand hier bis zum 26.08. auf `True` und widersprach damit
+    # `hub/sprechtext.aus_vorlage`, das seit T-3.9 ausschliesslich `trusted`
+    # nimmt (Design §8.3: "Variable Anteile sind ausschliesslich
+    # trusted-Werte"). Zwei Fassungen einer Regel sind eine Regel und eine
+    # Attrappe: diese Zeile hatte keinen Aufrufer, der Zeitplaner schrieb
+    # `user_ptt` in `trusted` um und liess damit vorlesen, was das Mikrofon
+    # am gehaltenen Taster aufnahm. Gueltig ist die strengere Fassung, und
+    # `aus_vorlage` ruft jetzt genau diese Zeile.
+    "tts_ungefragt": {Mark.USER_PTT: False, Mark.USER_AUDIO: False,
                       Mark.TRUSTED: True, Mark.TAINTED: False},
     # Audit im Klartext: `tainted` nur als Hash und Laenge.
     "audit_klartext": {Mark.USER_PTT: True, Mark.USER_AUDIO: True,

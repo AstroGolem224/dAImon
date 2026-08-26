@@ -193,12 +193,20 @@ def test_ungefragt_lehnt_freien_text_ab_auch_wenn_er_harmlos_ist():
 
 
 def test_vorlage_mit_trusted_werten_geht():
-    u = S.aus_vorlage("build_fertig", {"warnungen": "2"})
+    u = S.aus_vorlage("build_fertig", {"warnungen": "2"},
+                      markierung="trusted")
     assert u.ok and u.text == "Build durch, 2 Warnungen."
 
 
 def test_vorlage_mit_taintedem_wert_wird_abgelehnt():
     u = S.aus_vorlage("build_fertig", {"warnungen": "2"}, markierung="tainted")
+    assert not u.ok and u.grund == S.GRUND_NICHT_TRUSTED
+
+
+def test_eine_fehlende_markierung_ist_tainted_und_nicht_trusted():
+    """Der Befund vom 26.08.: die Vorgabe war `trusted`, damit war die Regel
+    fuer `tts_ungefragt` durch WEGLASSEN umgehbar."""
+    u = S.aus_vorlage("build_fertig", {"warnungen": "2"})
     assert not u.ok and u.grund == S.GRUND_NICHT_TRUSTED
 
 
@@ -209,7 +217,8 @@ def test_unbekannte_vorlage_wird_abgelehnt():
 def test_ein_trusted_wert_darf_trotzdem_kein_pfad_sein():
     # `cwd` ist trusted und kann "/home/x/api_key=1" heissen. Die Vorlage waere
     # sonst der Traeger, durch den ein Pfad doch vorgelesen wird.
-    u = S.aus_vorlage("begruessung", {"projekt": "/home/x/geheim/secrets.env"})
+    u = S.aus_vorlage("begruessung", {"projekt": "/home/x/geheim/secrets.env"},
+                      markierung="trusted")
     assert not u.ok and u.grund == S.GRUND_PFAD
 
 
@@ -295,6 +304,25 @@ def test_hub_lehnt_ab_und_nennt_die_regel(hub):
                                 "text": "api_key = 1"})
     assert not a["ok"] and a["grund"] == "geheimnis" and a["ersatz"]
     assert "marke" not in a, "eine abgelehnte Aeusserung darf keine Marke haben"
+
+
+def test_hub_spricht_nicht_ungefragt_wenn_die_markierung_FEHLT(hub):
+    """SICHERHEIT, Befund 26.08.: `markierung` weglassen war der Umweg um die
+    verschaerfte Regel -- die Vorgabe `trusted` schenkte die staerkste Marke.
+    Die Naht: die Zeile geht durch den ECHTEN Socket, nicht in den Validator
+    hinein."""
+    a = frage(hub.runtime_dir, {"v": 1, "art": "freigabe", "kanal": "ungefragt",
+                                "anlass": "termin_faellig",
+                                "werte": {"titel": "Zahnarzt"}})
+    assert not a["ok"] and a["grund"] == "nicht_trusted"
+
+    # Positivkontrolle: mit ausdruecklicher Marke geht dieselbe Zeile durch --
+    # sonst pruefte der Test nur, dass ungefragt nie spricht.
+    b = frage(hub.runtime_dir, {"v": 1, "art": "freigabe", "kanal": "ungefragt",
+                                "anlass": "termin_faellig",
+                                "werte": {"titel": "Zahnarzt"},
+                                "markierung": "trusted"})
+    assert b["ok"] and "Zahnarzt" in b["text"]
 
 
 def test_hub_prueft_vor_der_abkuehlung(hub):
@@ -534,8 +562,11 @@ def test_dienst_startet_ueber_den_socket_und_spricht(tmp_path, sprecher_umgebung
         c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         c.settimeout(30)
         c.connect(str(sock))
+        # `markierung` ausdruecklich: seit dem 26.08. ist die fehlende Marke
+        # `tainted`, und ohne sie schweigt der Dienst -- so soll es sein.
         c.sendall(json.dumps({"v": 1, "art": "sprich", "kanal": "ungefragt",
-                              "anlass": "tests_gruen"}).encode() + b"\n")
+                              "anlass": "tests_gruen",
+                              "markierung": "trusted"}).encode() + b"\n")
         antwort = json.loads(c.makefile("rb").readline())
         c.close()
         assert antwort["ok"] and antwort["ttfa_ms"] is not None

@@ -48,6 +48,9 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
+from daimon.common.protocol import Mark, Marked
+from daimon.common.taint import SenkenFehler, pruefe_senke
+
 # Design §8.3: "eine Zeile, hoechstens ~140 Zeichen". Vorgelesen ist Laengeres
 # ohnehin unbrauchbar, und Laenge verschleiert Eingeschmuggeltes.
 MAX_ZEICHEN = 140
@@ -93,6 +96,12 @@ VORLAGEN: dict[str, str] = {
     "tests_gruen": "Tests laufen gruen.",
     "tests_rot": "{anzahl} Tests sind rot.",
     "leerlauf": "Ich bin da, wenn du was brauchst.",
+    # T-8.3: der Zeitplaner. `{titel}` ist der Termin-Text -- er kommt vom
+    # Nutzer selbst (PTT oder CLI) und laeuft trotzdem durch `pruefe`, weil
+    # die Vorlage der Traeger waere, wenn der Titel ein Pfad ist.
+    "termin_faellig": "Erinnerung: {titel}.",
+    "fokus_start": "Fokus laeuft, {dauer} Minuten.",
+    "fokus_ende": "Fokus vorbei. Kurz durchatmen.",
     # Der Ersatz, wenn eine Antwort durch den Validator faellt. Design §8.3:
     # "sagt das Pet, dass die Antwort auf dem Bildschirm steht". Es schweigt
     # nicht -- Schweigen waere von einem toten Dienst nicht zu unterscheiden.
@@ -236,18 +245,34 @@ def pruefe(text: object, *, kanal: str) -> Urteil:
 
 
 def aus_vorlage(anlass: object, werte: object = None, *,
-                markierung: str = "trusted") -> Urteil:
+                markierung: str = "tainted") -> Urteil:
     """Der Kanal `ungefragt`: eine kuratierte Zeile plus `trusted`-Werte.
 
     `markierung` ist die Herkunft der **Werte**, nicht der Vorlage. Alles ausser
-    `trusted` ist eine Absage -- Design §8.3: "Variable Anteile sind
+    `trusted` ist eine Absage -- und die FEHLENDE Marke ist `tainted`, nicht
+    `trusted`. Bis zum 26.08. stand hier `markierung: str = "trusted"`: damit
+    war die verschaerfte Regel durch WEGLASSEN zu umgehen, eine Zeile ohne
+    `markierung` an `tts-say.sock` wurde ungefragt gesprochen. `taint.pruefe_senke`
+    macht es seit jeher umgekehrt, und diese Richtung ist die einzige, die
+    einen Fehler ueberlebt -- Design §8.3: "Variable Anteile sind
     ausschliesslich `trusted`-Werte". Ein Projektname aus dem Basename von `cwd`
     ist trusted, ein Wort aus einem Modellsatz nicht.
+
+    HIER faellt die Entscheidung, und nur hier. Die Regel stand bis zum
+    26.08. zweimal im Baum: als `if markierung != "trusted"` und als Zeile
+    `tts_ungefragt` in `common/taint.SENKEN` -- und die beiden widersprachen
+    sich bei `user_ptt`. Die Tabellenzeile hatte im ganzen Baum keinen
+    Aufrufer; welche der beiden Fassungen galt, entschied der Zufall des
+    Aufrufs. Jetzt ist es eine Fassung: die Tabelle sagt es, dieser Aufruf
+    haelt es ein.
     """
     ersatz = VORLAGEN[ERSATZ_VORLAGE]
     if not isinstance(anlass, str) or anlass not in VORLAGEN:
         return Urteil(False, grund=GRUND_UNBEKANNTE_VORLAGE, ersatz=ersatz)
-    if markierung != "trusted":
+    try:
+        pruefe_senke(Marked("", Mark(str(markierung))), senke="tts_ungefragt")
+    except (ValueError, SenkenFehler):
+        # ValueError: eine Marke, die es nicht gibt. Auch das ist eine Absage.
         return Urteil(False, grund=GRUND_NICHT_TRUSTED, ersatz=ersatz)
 
     werte = werte if isinstance(werte, dict) else {}
