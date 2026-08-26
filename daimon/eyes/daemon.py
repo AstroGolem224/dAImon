@@ -138,7 +138,7 @@ class Augen:
                  denylist=None, kennungen=None,
                  periode_s: float = trigger.PERIODE_S,
                  ocr_abkuehlung_s: float = OCR_ABKUEHLUNG_S,
-                 ocr_arbeiter: int = 2) -> None:
+                 ocr_arbeiter: int = 1) -> None:
         if denylist is None:
             denylist = _denylist_aus_datei()
         # DIE `.desktop`-ZUORDNUNG, seit dem 18.08. auch hier. Ohne sie
@@ -215,6 +215,18 @@ class Augen:
         serial = serial_zu_node(node)
         self._aufnahme = capture.Aufnahme(fd=self._portal.pipewire_fd(),
                                           serial=serial, node_id=node)
+        # EIN Arbeiter, seit dem 25.08. (T-6.8.v, Befund B1). Vorher zwei --
+        # und der zweite wurde nachweislich NIE gezogen: `Pool` vergibt per
+        # LIFO (ocr.py:178/183), und die Nebenlaeufigkeit ist hier baulich 1,
+        # weil `zukunft.result(...)` weiter unten die Runde blockiert und
+        # OCR_ABKUEHLUNG_S hoechstens einen Auftrag je 30 s zulaesst. Ueber
+        # ein Messband von 48 Proben hatte der zweite Arbeiter Varianz NULL
+        # bei 52 MB -- reines Standgeld.
+        #
+        # Kein fauler Pool, der den zweiten bei Bedarf nachbaut: das waere
+        # Vorratscode fuer einen Zulauf, den es nicht gibt (CLAUDE.md Regel 6).
+        # Wer die Runde entkoppelt oder die Abkuehlung senkt, dreht hier
+        # wieder hoch -- und misst dann, ob der zweite Arbeiter etwas tut.
         self._pool = Pool(groesse=self._ocr_arbeiter)
         return {"node": node, "serial": serial,
                 "interaktiver_rueckfall": befund.get("interaktiver_rueckfall")}

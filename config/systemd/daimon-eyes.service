@@ -43,6 +43,24 @@ WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
 ExecStart=/usr/bin/python3 -m daimon.eyes.daemon
 Environment=PYTHONPATH=/home/itiger013/Dokumente/Github/dAImon
 
+# T-6.8.v, Befund B1: der Rahmenspeicher darf nicht in der Arena bleiben.
+#
+# Ein Vollbildrahmen ist hier 5120x1440x3 = 21.600 KiB. glibc 2.44 hebt beim
+# ERSTEN Freigeben eines so grossen Blocks seine dynamische mmap-Schwelle auf
+# dessen Groesse an -- danach kommt jeder weitere Rahmen aus der Arena und
+# geht nie wieder ans System zurueck. Gemessen am 25.08.: drei Arenen mit je
+# einem Rahmen, 79,6 von 99,7 MB anonymem Speicher des Daemons.
+#
+# Die Schwelle fest zu setzen schaltet die Dynamik ab: jeder Rahmen geht per
+# mmap und kommt beim Freigeben zurueck. Isoliert nachgestellt (zwei Faeden,
+# je eine Vollkopie): ohne Schwelle +22.008 KB behalten, mit ihr +408 KB.
+#
+# Kosten: ein mmap statt einer Freiliste je Rahmen. Bei rund 1 Hz ist das
+# nicht messbar -- der Zulauf sind ohnehin drei Vollkopien je Runde
+# (capture.py:89 `always-copy=true` auf zwei Faeden, capture.py:176
+# `bytes(karte.data)`).
+Environment=MALLOC_MMAP_THRESHOLD_=131072
+
 # Restart=on-failure, NICHT always: `systemctl stop` ist der Kill-Switch und
 # muss ein Ende bleiben. `always` hoebe ihn nach RestartSec auf -- der Nutzer
 # haette das Sehen abgeschaltet und der Bildschirm waere von selbst wieder
