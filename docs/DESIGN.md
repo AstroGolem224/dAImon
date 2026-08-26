@@ -1538,10 +1538,17 @@ Der Charakter ist austauschbar; die Persona-Datei ist der einzige Ort, an dem er
 | silero-vad | 0,24 % eines Kerns | geteilt | 0 |
 | PipeWire-Capture | ~0,15 % **[U]** | ~10 MB | 0 |
 | Bildschirm-Diff, 2-s-Takt | ~0,001 % | ~40 MB | 0 |
-| **OCR auf der Änderungsregion, 2-s-Takt** | **0,9 % im Mittel [V]**, stoßweise — siehe unten | 108–145 MB (Eyes gesamt) **[V]** | 0 |
+| **OCR auf der Änderungsregion** | **3,2 % im Mittel [V]**, stoßweise bis ~100 % — siehe §13.1 | 151 MB (Eyes gesamt) **[V]** | 0 |
 | Face (layer-shell, idle) | <1 % **[U]** | ~20 MB | 0 |
 | Hub, Auth, Bridge, Broker (idle) | vernachlässigbar | ~200 MB | 0 |
-| **Summe** | **≈2,0 % eines Kerns** | **≈420 MB** | **0 GB** |
+| **Summe, am System gemessen** | **≈3,7 % eines Kerns [V]** | **≈229 MB [V]** | **0 GB** |
+
+Die Summenzeile steht seit dem 26.08. auf der Neueichung in §13.1 und ist über
+alle dreizehn Units **als Ganzes** gemessen — sie ist deshalb *nicht* die Summe
+der Zeilen darüber, die einzeln in Spikes erhoben wurden und sich überlappen.
+Die früheren ≈2,0 % / ≈420 MB stammten aus einem Sampler, der die
+OCR-Kindprozesse nicht sah, und aus einer VmRSS-Summe, die geteilte
+Bibliotheksseiten doppelt zählte.
 
 ### 13.1 Zwei Größen, nicht eine
 
@@ -1551,40 +1558,102 @@ einem Signal verschiedene Dinge, und eine einzige Zahl für beide ist entweder
 für die Dauerlast zu lasch oder für die Spitze unerfüllbar. Das Budget nennt
 deshalb **zwei** Größen, und der Systemtest T-6.8 prüft **beide**:
 
-| Größe | Deckel | Messband A (6/13 Units) | Messband B (12/13 Units) |
+**Eichung vom 26.08.**, über **alle dreizehn** Dauerlast-Units, gemessen über
+`cpu.stat/usage_usec` und `memory.stat/anon` je cgroup:
+
+| Größe | Deckel | **Band C** — maßgeblich (n=720 × 1 s) | Band B — dasselbe System vor dem Thread-Limit |
 |---|---|---|---|
-| **Dauerlast** — Mittel über das ganze Messband | **≤ 2,0 % eines Kerns** | 1,25 % | **0,9 %** |
-| **Spitze** — p95 einzelner 1-s-Fenster | **≤ 8,0 % eines Kerns** | **6,0 %** (Eyes-OCR) | 3,0 % (Eyes-OCR) |
-| **Arbeitsspeicher** — Maximum über das Messband | **≤ 420 MB** | 275,9 MB | **340,4 MB** |
+| **Dauerlast** — Mittel über das Messband | **≤ 20,0 % eines Kerns** | **12,23 %** (schlechtestes 20-s-Fenster; 3,71 % über das ganze Band) | 50,77 % (Band 9,49 %) |
+| **Spitze** — p95 einzelner 1-s-Fenster | **≤ 110,0 % eines Kerns** | **81,88 %** (schlechtestes 20-s-Fenster; 15,12 % über das ganze Band) | 358,14 % (Band 11,44 %) |
+| **Arbeitsspeicher** — Maximum über das Band | **≤ 300 MB** | 228,7 MB | **235,2 MB** |
 
-Beide Bänder vom 13.08., je n=20 × 1 s. Proben A
-`[1,1,0,0,4,0,0,1,0,6,0,0,0,2,3,0,0,1,0,6]`, Proben B
-`[1,3,0,0,0,1,3,0,1,0,0,3,1,1,0,0,3,1,0,0]`. Band B steht in
-`tests/evidence/phase6-integration.json`.
+Alle Bänder am 26.08. auf derselben Maschine, unter **erzeugter Alltagslast**:
+ein Generator öffnete fortlaufend Textfenster (1200×800, Inhalt alle 2,5 s neu,
+Fenster alle ~6,5 s neu), damit die Augen nicht auf einen stehenden Bildschirm
+eichen. Positivkontrolle Band C: **143 Runden, 24 OCR-Läufe** in zwölf Minuten
+(Band B: 142 / 23 — der OCR-Takt hängt an der Abkühlung von 30 s, nicht an der
+Last, und ist deshalb zwischen den Bändern gleich).
 
-Herkunft der Deckel: gemessen plus Marge, nicht hergeleitet. Maßgeblich ist je
-Größe der **schlechtere** Wert aus beiden Bändern — Dauerlastdeckel ~60 % über
-den 1,25 % aus A, Spitzendeckel ~33 % über den 6,0 % aus A, RSS-Deckel ~25 %
-über den 334,7 MB aus B.
+Band C hat dieselbe regelmäßige Form wie B — Grundlast 0,5–0,7 %, alle fünf
+Sekunden ein Erfassungsblip von 4–6 %, alle dreißig Sekunden ein OCR-Burst.
+Nur die Burst-Höhe ist eine andere. Die 34 Proben über 20 %, in Bandreihenfolge:
+`97.0, 32.3, 36.7, 55.5, 56.8, 22.4, 57.0, 52.5, 100.3, 43.2, 58.7, 36.5,
+23.1, 78.3, 34.6, 28.8, 61.1, 38.9, 23.1, 60.1, 43.2, 60.8, 50.1, 52.5,
+59.9, 49.8, 57.7, 26.5, 33.5, 81.9, 100.3, 40.8, 30.3, 26.6`. Verteilung über
+alle 720 Proben: Median 0,64 %, p90 5,11 %, p95 15,12 %, p99 60,09 %,
+Maximum 100,29 %. Die ersten zwanzig Proben:
+`[0.58, 0.59, 4.58, 0.61, 0.60, 0.55, 0.70, 2.78, 2.02, 0.66, 0.67, 0.61,
+0.64, 96.96, 32.29, 0.50, 0.57, 0.61, 4.49, 0.75]`.
 
-> **⚠ Die drei Deckel oben stehen auf einer defekten Eichung (25.08.).**
-> Beide Bänder wurden mit einem Sampler erhoben, der je Unit nur die
-> **MainPID** las und damit jeden Kindprozess übersah — T-6.8.v, Befund B3.
-> Die Augen starten je Blick einen eigenen OCR-Prozess, und genau der trägt
-> die Last. Am selben Tag auf derselben Maschine gegengemessen: über die
-> cgroup 15,9 % im Mittel, über die MainPID 2,2 %.
+**Das Maximum liegt bei 100,29 % und nicht darüber, und das ist kein Zufall:**
+ein einzelner Thread kann einen Kern nicht überschreiten. Aufgeschlüsselt trägt
+`daimon-eyes` weiterhin fast alles — 3,18 % Mittel und 99,89 % Maximum von
+insgesamt 3,71 % / 100,29 %. Der Hub folgt mit ~0,45 %, alle übrigen elf Units
+bleiben unter 0,04 %. Beim Speicher: 151,2 MB von 228,7 MB.
+
+Herkunft der Deckel: **gemessen plus Marge**, nicht hergeleitet. Maßgeblich ist
+die Statistik so, wie der Prüfstand sie bildet — über ein Fenster von **zwanzig**
+Proben; das Band wird dafür in gleitende 20er-Fenster zerlegt und das
+schlechteste genommen:
+
+* **Dauerlast** ≤ 20,0 % — 12,23 % plus ~64 % Marge.
+* **Spitze** ≤ 110,0 % — 81,88 % plus ~34 % Marge.
+* **Arbeitsspeicher** ≤ 300 MB — 235,2 MB plus ~28 % Marge. Der Speicher hängt
+  nicht am Thread-Limit; maßgeblich bleibt hier der schlechtere Wert aus B.
+
+Die Margen sind die der alten Eichung (~60 % / ~33 % / ~25 %), auf glatte
+Zahlen gerundet.
+
+> **Warum die CPU-Deckel nicht bei 80 % / 480 % stehen.** Genau dort wären sie
+> gelandet — das ist Band B, dieselbe Maschine, dieselbe erzeugte Last, wenige
+> Stunden früher. Die Neueichung hat dabei einen Defekt aufgedeckt, und die
+> Deckel stehen jetzt auf dem reparierten System statt auf dem Defekt:
 >
-> Damit sind **1,25 %, 6,0 % und 334,7 MB Untererfassungen**, und die daraus
-> abgeleiteten Deckel messen nicht, was sie zu messen vorgeben. Der Prüfstand
-> misst seit dem 25.08. über `cpu.stat` und die volle cgroup und meldet
-> 502,1 MB — das ist **kein** Wachstum des Systems gegenüber 340,4 MB,
-> sondern ein anderes Messverfahren. Die beiden Zahlen sind nicht
-> vergleichbar.
+> `daimon/eyes/ocr.py` setzte für den OCR-Arbeiter `OMP_NUM_THREADS=1`, und die
+> Zusage hielt nicht. Je Prozess über die cgroup gemessen zog der Arbeiter
+> **141, 152, 174 und 388 Prozent eines Kerns** in einzelnen 1-s-Fenstern — ein
+> einzelner Thread kann 100 % nicht überschreiten. tesseract hängt an `libgomp`
+> und liest die Obergrenze aus `OMP_THREAD_LIMIT`; `OMP_NUM_THREADS` setzt nur
+> die Vorgabe, die eine parallele Region wieder anheben darf. Seit dem 26.08.
+> setzt `starten()` **beide** Variablen; im `environ` des laufenden Arbeiters
+> nachgeprüft, nicht nur im Quelltext.
 >
-> Einschränkung (d) unten stützt das zusätzlich: sie nennt als Grund für das
-> Fehlen von `daimon-exec` einen Katalogzustand, der am 25.08. durch einen
-> echten Startversuch als überholt nachgemessen wurde (Befund B9) — die Unit
-> läuft heute sauber und gehört ins Band.
+> Der Gewinn ist nicht nur die Spitze. Über zwölf Minuten mit derselben Zahl
+> OCR-Läufe fiel die **Gesamtlast von 9,49 % auf 3,71 %** eines Kerns —
+> **ein Faktor 2,6 an CPU-Zeit für dieselbe Arbeit.** Die vier Threads haben
+> also überwiegend gewartet, nicht gerechnet (libgomp lässt Threads
+> voreingestellt im Leerlauf drehen).
+>
+> **Und es ist auch nicht langsamer geworden.** Der befürchtete Zielkonflikt —
+> ein Kern statt vier heißt vierfache Wanduhrzeit — ist ausgeblieben. Zwanzig
+> OCR-Läufe im 100-ms-Takt einzeln vermessen: Wanduhrzeit **Median 0,50 s,
+> Maximum 1,40 s**, verbrauchte CPU-Zeit je Lauf 0,47–1,45 s (also genau ein
+> Thread), kein Lauf über 3 s. Das Latenzziel „Bildschirmänderung → Kontext
+> aktuell < 3 s" aus §13 ist eingehalten. Zum Vergleich: die Bursts in Band B
+> waren ein bis drei Proben breit, also ~1–3 s Wanduhrzeit bei 2,8 Kern-Sekunden
+> je Lauf gegen jetzt ~0,95.
+
+> **⚠ Warum die Zahlen so viel größer sind als vor dem 26.08. — Historie.**
+> Bis zum 26.08. standen hier **≤ 2,0 %, ≤ 8,0 % und ≤ 420 MB**, abgeleitet aus
+> zwei Bändern vom 13.08. Diese Bänder waren mit einem Sampler erhoben, der je
+> Unit nur die **MainPID** las und damit jeden Kindprozess übersah — T-6.8.v,
+> Befund B3. Die Augen starten für jeden Blick einen eigenen OCR-Prozess, und
+> genau der trägt die Last: am 24.08. gegengemessen ergab dieselbe Unit über
+> die cgroup 15,9 % im Mittel, über die MainPID allein 2,2 %. Die alten Werte
+> 1,25 %, 6,0 % und 334,7 MB waren also **Untererfassungen**, und die daraus
+> abgeleiteten Deckel maßen nicht, was sie zu messen vorgaben.
+>
+> **Der Sprung ist ein Messverfahren, kein Wachstum des Systems.** Die 9,5 %
+> Dauerlast und die 395 % Spitze aus Band B standen vorher genauso an, nur sah
+> sie niemand. Insbesondere ist die Zusage aus §13 — Summe ≈ 2,0 % eines Kerns
+> — für die OCR **nie eingehalten worden**; sie war eine Zahl aus einer
+> kaputten Vorrichtung. Dass die Deckel heute trotzdem bei 20 % und 110 %
+> stehen und nicht bei 80 % und 480 %, liegt an einem Fehler, den erst die
+> korrigierte Messung sichtbar gemacht hat — siehe den Kasten über Band C.
+>
+> Beim Speicher geht der Sprung in die andere Richtung: **300 MB statt
+> 420 MB.** Der alte Deckel stand auf einer Summe über `VmRSS`, die geteilte
+> Bibliotheksseiten doppelt zählte; `anon` je cgroup zählt sie einmal.
 >
 > **Messgröße festgelegt (26.08.): `anon` je cgroup, aus `memory.stat`.**
 > Drei Zahlen standen zur Wahl, und nur eine misst den Bedarf:
@@ -1606,32 +1675,47 @@ den 1,25 % aus A, Spitzendeckel ~33 % über den 6,0 % aus A, RSS-Deckel ~25 %
 > Positivkontrolle: ist `memory.stat` für eine Unit unlesbar oder meldet das
 > Band null anonymen Speicher, fällt der Test auf, statt ein leeres Budget
 > zu bestätigen.
->
-> **Offen:** die Deckel müssen mit dem korrigierten Sampler neu abgeleitet
-> werden, nach derselben Methode (gemessen plus Marge) und über ein Band mit
-> allen dreizehn Units. Bis dahin ist `test_ressourcen_im_budget_design_13`
-> rot, und das ist der ehrliche Zustand: gemessen wird richtig, verglichen
-> wird gegen eine Zahl, die es nicht mehr trägt. Zwischenbefund für die
-> Neueichung — zwölf Units liegen bei 7–24 MB und summieren sich auf ~209 MB
-> (im Wesentlichen der Grundverbrauch je Python-Prozess, rund die Hälfte des
-> alten Deckels, bevor Fachlogik läuft); allein `daimon-eyes` trägt 292,9 MB
-> gegen die 108–145 MB, die §13 für sie vorsieht. Ob das Verschwendung ist
-> oder der Deckel zu eng, ist damit noch nicht entschieden.
 
-> **Vier Einschränkungen, die zur Zahl gehören.** (a) Die Messauflösung ist
-> **1 % je 1-s-Fenster** — ein Jiffy sind 10 ms bei `HZ=100`. Alle Proben sind
-> ganzzahlig; ein p95-Deckel unter ~2 % wäre gar nicht auflösbar, ein
-> Dauerlastdeckel darunter nur über den Mittelwert vieler Fenster.
-> (b) Bei n=20 ist p95 der **zweitgrößte** Wert. Ein einzelner OCR-Auftrag
-> mehr im Messband verschiebt ihn.
-> (c) **Die Spitze hängt am Bildschirm, nicht an der Unitzahl.** Band B hatte
-> sechs Units mehr und trotzdem den halben p95 — weil während A mehr
-> Bildschirmänderung anlag. Ein einzelnes Band belegt deshalb keinen Deckel,
-> es belegt eine Stichprobe. Wer den Deckel härten will, misst über eine
-> definierte Alltagslast statt über den zufälligen Bildschirm.
-> (d) In beiden Bändern fehlt **`daimon-exec`**: der Broker verweigert den
-> Dienst, solange der Aktionskatalog keine freigegebene Anwendung enthält.
-> Band B enthält die übrigen zwölf.
+> **Fünf Einschränkungen, die zu den Zahlen gehören.**
+> (a) Die alte Einschränkung „Messauflösung 1 % je Fenster" ist **überholt**.
+> Sie galt für den Jiffy-Sampler über `/proc` (10 ms bei `HZ=100`, alle Proben
+> ganzzahlig). `cpu.stat/usage_usec` zählt Mikrosekunden; die Proben oben sind
+> gebrochen (0,31 %, 4,64 %). Ein Deckel im Bereich weniger Prozent wäre heute
+> auflösbar — er wäre nur nicht einhaltbar.
+> (b) Bei n=20 ist p95 der **zweitgrößte** Wert, und das ist die schwächste
+> Stelle dieser Eichung. Das Signal ist zweigipflig: liegt kein OCR-Burst im
+> Fenster, ist p95 ≈ 5 %; liegt einer darin und deckt zwei Proben ab, ist p95
+> zweistellig bis knapp dreistellig. Über die 701 gleitenden 20er-Fenster von
+> Band C ist der Median 5,33 %, das Maximum 81,88 %. **Der Deckel muss das
+> Maximum tragen, nicht den Median** — und ist damit für den Normalfall zu
+> lasch. Stabil wird die Statistik erst ab n≈360 (6 min): dort liegt das
+> Fenstermaximum bei 3,75 % Mittel und 15,12 % p95. Wer die Deckel härten
+> will, verlängert das Band des Prüfstands; das ist der offene Punkt dieser
+> Eichung.
+> (c) **Die Spitze hängt am Bildschirm, nicht an der Unitzahl.** Das gilt
+> weiter, und ein kurzes Band zeigt es sofort: ein n=20-Band vom selben Tag
+> über dieselben dreizehn Units und unter derselben erzeugten Last sah
+> 1,30 % Mittel und 4,74 % p95 — weil in seine zwanzig Sekunden zufällig kein
+> OCR-Burst fiel. **Ein einzelnes Band belegt keinen Deckel, es belegt eine
+> Stichprobe.** Diese Eichung steht auf **einem** langen Band; eine zweite
+> Aufnahme an einem anderen Tag steht aus.
+> (d) Die alte Einschränkung „in beiden Bändern fehlt `daimon-exec`" ist
+> **überholt** (Befund B9, nachgemessen am 25.08.): die Unit startet sauber,
+> seit der Aktionskatalog gefüllt ist. Alle Bänder oben enthalten alle
+> dreizehn Dauerlast-Units, `fehlend` ist leer. Nicht im Band sind weiterhin
+> die zwei Sonderfälle `daimon-egress` (243/CREDENTIALS, fehlende Token-Datei)
+> und `daimon-input` (203/EXEC, `ProtectHome=tmpfs` verdeckt den Interpreter).
+> (e) **Geeicht ist auf erzeugte, nicht auf echte Benutzung.** Am Gerät saß
+> niemand; die Last kam aus einem Fenstergenerator. Zwei Dinge folgen daraus.
+> Erstens ist der OCR-*Takt* davon unabhängig — er hängt an der Abkühlung von
+> 30 s, und ein Leerlaufband desselben Tages zeigte mit 24 Läufen in 12 min
+> dieselbe Rate wie die Bänder B und C mit 23 und 24. Was die erzeugte Last
+> ändert, ist die
+> *Größe* der Änderungsregion und damit die Kosten je Lauf. Zweitens sagt der
+> Zähler `ausloeser: {fokus: 0}` hier **nichts** über Leerlauf aus: der
+> Push-Weg auf `de.daimon.Eyes` hat bauartbedingt keinen Absender, die Augen
+> fragen den Fokusdienst ab (siehe `fenster_abfragen`). `fokus: 0` ist die
+> Bauform, nicht die Abwesenheit eines Nutzers.
 
 **Auf Abruf:**
 

@@ -103,7 +103,20 @@ class Arbeiter:
         eltern, kind = socket.socketpair()
         umgebung = dict(os.environ)
         # Vierundzwanzig Threads sind rund 25 % langsamer als einer.
+        #
+        # BEIDE Variablen, seit dem 26.08. `OMP_NUM_THREADS` allein hat die
+        # Zusage NICHT gehalten: gemessen zog der Arbeiter 141, 174, 152 und
+        # 388 Prozent eines Kerns in einzelnen 1-s-Fenstern -- ein einzelner
+        # Thread kann 100 % nicht ueberschreiten. tesseract haengt an
+        # `libgomp` und liest die Obergrenze aus `OMP_THREAD_LIMIT`;
+        # `OMP_NUM_THREADS` setzt nur die VORGABE, die eine parallele Region
+        # anschliessend wieder anheben darf.
+        #
+        # Aufgefallen ist das erst, als der Sampler die Kindprozesse
+        # ueberhaupt sah (Befund B3) -- vorher las er nur die MainPID des
+        # Daemons, und die OCR lief ausserhalb des Messbands.
         umgebung["OMP_NUM_THREADS"] = "1"
+        umgebung["OMP_THREAD_LIMIT"] = "1"
         umgebung["TESSDATA_PREFIX"] = self._tessdata
         umgebung["WORKER_FD"] = str(kind.fileno())
         self._prozess = subprocess.Popen(

@@ -95,9 +95,27 @@ SONDERFALL_UNITS = ("daimon-egress.service", "daimon-input.service")
 # Design §13.1, „Zwei Größen, nicht eine": OCR ist stoßweise, und ein
 # einziger Deckel wäre entweder für die Dauerlast zu lasch oder für die
 # Spitze unerfüllbar. Beide werden geprüft.
-BUDGET_CPU_MITTEL_PROZENT = 2.0  # eines Kerns, Mittel über das Messband
-BUDGET_CPU_P95_PROZENT = 8.0     # eines Kerns, p95 einzelner 1-s-Fenster
-BUDGET_RSS_MB = 420.0
+#
+# Neu geeicht am 26.08. ueber ein Band von n=720 x 1 s ueber alle dreizehn
+# Units, gemessen ueber die volle cgroup, unter erzeugter Alltagslast
+# (143 Runden, 24 OCR-Laeufe). Massgeblich ist die Statistik in der
+# Fensterlaenge, die DIESER Test bildet -- zwanzig Proben. Das Band dafuer in
+# gleitende 20er-Fenster zerlegt: schlechtestes Fenster 12,23 % Mittel und
+# 81,88 % p95. Dazu die Margen der alten Eichung (~60 / ~33 %), rund gemacht.
+#
+# Der Speicherdeckel steht auf 235,2 MB plus ~28 % -- dem schlechteren Wert
+# aus dem Band VOR dem Thread-Limit, weil der Speicher nicht daran haengt.
+#
+# Warum die CPU-Deckel nicht bei 80 % und 480 % stehen: genau dort waeren sie
+# gelandet. Das Band wenige Stunden vorher mass 50,77 % und 358,14 %, weil der
+# OCR-Arbeiter trotz `OMP_NUM_THREADS=1` vier Kerne zog -- tesseract liest die
+# Obergrenze aus `OMP_THREAD_LIMIT`. Seit dem Fix in `daimon/eyes/ocr.py` kann
+# ein einzelner Thread 100 % nicht ueberschreiten; das Bandmaximum liegt bei
+# 100,29 %. Sichtbar wurde der Fehler erst, als der Sampler die Kindprozesse
+# ueberhaupt sah -- siehe `_unit_pids`, Befund B3.
+BUDGET_CPU_MITTEL_PROZENT = 20.0  # eines Kerns, Mittel über das Messband
+BUDGET_CPU_P95_PROZENT = 110.0    # eines Kerns, p95 einzelner 1-s-Fenster
+BUDGET_RSS_MB = 300.0
 
 
 # ---------------------------------------------------------------------------
