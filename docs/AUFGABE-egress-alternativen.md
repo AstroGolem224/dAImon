@@ -117,10 +117,82 @@ aber als bewusste Erweiterung von §7.2, mit nachgezogenem Prüfstand.
 
 ---
 
+## Gemessen am 26.08.: Werkzeugtreue trägt, mit einer Auflage
+
+Modell `qwen3.8-heretic:27b-96k` (Q6_K, bereits resident), gegen die **echte**
+Werkzeugliste aus `Policy.laden().katalog` — 20 Werkzeuge, echter
+Persona-Prompt, direkt an Ollama statt über `lokal.sock` (der Broker hat eine
+eigene Form und hätte die Messung verfälscht). Je Fall zwölf Läufe in zwei
+unabhängigen Durchgängen.
+
+| Fall | Werkzeug gerufen | Name aus Katalog | Argumente schema-konform |
+|---|---|---|---|
+| „Lautstärke auf dreissig Prozent" | 12/12 | 12/12 | **0/12** |
+| „Mach lauter" | 12/12 | 12/12 | 12/12 |
+| „Öffne den Taschenrechner" | 12/12 | 12/12 | **0/12** |
+| „Wie spät ist es?" (Gegenprobe) | **0/12** | — | — |
+| „Hauptstadt von Norwegen?" (Gegenprobe) | **0/12** | — | — |
+
+**Erfundene Werkzeugnamen: 0 von 36. Falschauslösungen: 0 von 30.** Das Modell
+antwortet bei der Gegenprobe in Sprechform statt zu handeln — genau richtig.
+
+**Der eigentliche Befund, und er betrifft nicht nur den lokalen Weg:** beide
+Fehlschläge sind derselbe Fehler. `value: 30` statt `0.3` (`minimum`/`maximum`
+ignoriert), `desktop_id: "1"` statt `org.kde.kcalc.desktop` (`pattern`
+ignoriert). Die Schranken stehen **nur im JSON-Schema, nicht im
+Beschreibungstext**. `Policy._params_pruefen` fängt beides ab — nicht
+gefährlich also, aber nutzlos: die Aktion scheitert jedes Mal.
+
+Gegenmessung mit denselben Schranken zusätzlich wörtlich in der `description`:
+**12/12 schema-konform**, `{"value": 0.3}` und der richtige `desktop_id`,
+Gegenprobe weiter bei 0 Falschauslösungen. Das ist kein Modellmangel, sondern
+eine Lücke in der Funktion, die die Werkzeugliste baut.
+
+**Latenz:** ungestört Median 0,50 s, Maximum 1,23 s — das Ziel „< 3 s" wird um
+Faktor sechs unterboten. Kaltstart des Modells 12,3–15,4 s. **Unter Fremdlast
+aber Maximum 175,8 s**, weil ein zweiter Ollama-Client trotz
+`OLLAMA_NUM_PARALLEL=2` einzelne Anfragen minutenlang blockierte.
+
+**Betriebsbefund nebenbei:** `ollama.service` zählte an diesem Tag **56
+Neustarts**; fünf Messanfragen starben an `RemoteDisconnected` und mussten
+wiederholt werden. Ein Weg A ohne Wiederholungslogik hätte dort nichts
+geliefert.
+
+### Was daraus folgt
+
+Weg A **trägt Durchgang 1**, sofern die Katalogschranken in den
+Beschreibungstext wandern. Ohne das bleibt er auf die vierzehn parameterlosen
+Werkzeuge beschränkt; die sechs mit Parametern laufen zuverlässig in `deny`.
+
+Die Schrankenänderung gehört in die **eine** Funktion, die die Werkzeugliste
+baut (`_tool_schema()` / `werkzeugliste`), nicht in eine lokale Zweitfassung —
+sie betrifft beide Wege, und zwei Fassungen einer Regel sind eine Regel und
+eine Attrappe (CLAUDE.md Regel 4).
+
+Latenz unter Fremdlast und die Neustartzahl machen Ollama als **einzigen** Weg
+unzuverlässig. Als **zweiter** Weg neben dem Egress ist das eine andere
+Aussage — und der Fall, um den es hier geht.
+
+**Umsetzung, vier Stellen, keine im Broker:** Anfrage-Rumpf (`system` als
+erste Nachricht, `max_tokens` → `options.num_predict`, `think: false`,
+`tools`-Einträge auf `{"type":"function","function":{…}}` umhängen,
+`input_schema` wandert unverändert nach `parameters`); Antwort-Rumpf (Ollamas
+`content`/`tool_calls` in die Blockliste umsetzen, die `frage_werkzeug` ab
+Zeile 355 erwartet — danach läuft der Rest **unverändert** durch, inklusive
+`_werkzeug_namen` und `aktion.sock`); die Schranken in den Text; und die
+Weiche selbst.
+
+**Offen geblieben:** `think: true` ungemessen (ändert Latenz und Antwortform);
+mehrrundiger Werkzeugdialog ungemessen (Durchgang 1 braucht ihn heute nicht);
+andere Modelle nicht geprüft, weil `OLLAMA_MAX_LOADED_MODELS=1` das residente
+verdrängt hätte.
+
+---
+
 ## Was zuerst zu klären ist
 
-1. Liefert `qwen3` über Ollama Werkzeugaufrufe, die der Katalog annimmt?
-   **Messen, nicht annehmen.**
+1. ~~Liefert `qwen3` über Ollama Werkzeugaufrufe, die der Katalog annimmt?~~
+   **Beantwortet am 26.08., siehe oben: ja, mit der Schranken-Auflage.**
 2. Wo sitzt die Weiche zwischen lokal und Egress — je Runde, je Absicht, oder
    als Rückfall, wenn der Egress nicht antwortet?
 3. Welche Senke bekommt der lokale Weg in der Markentabelle?
