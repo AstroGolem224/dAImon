@@ -47,6 +47,12 @@ ANLAESSE: dict[str, str] = {
     "fehlerbild": NUETZLICH,
     # Etwas Auffaelliges ohne Folgen -- nur `chatty` hoert das.
     "beobachtung": BEILAEUFIG,
+    # T-8.3: ein Termin ist faellig. Der Nutzer hat ihn selbst gesetzt --
+    # ihn zu verschlucken ist teurer als ihn zu sagen.
+    "termin_faellig": KRITISCH,
+    # T-8.3: ein Fokusblock ist zu Ende. Nuetzlich, nicht kritisch -- der
+    # Block war freiwillig.
+    "fokus_ende": NUETZLICH,
 }
 
 # 90 s zwischen zwei ungefragten Aeusserungen. Die Sprech-Abkuehlung aus

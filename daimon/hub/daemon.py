@@ -193,6 +193,9 @@ PRODUZENT_UNITS: dict[str, tuple[str, ...]] = {
     "face": ("daimon-face.service",),
     # auth/agent.py ueber `--hub-socket %t/daimon/auth.sock` in der Unit.
     "auth": ("daimon-auth.service",),
+    # T-8.4: der Zeitplaner meldet faellige Termine und das Ende von
+    # Fokusbloecken. Der Hub bildet beides auf `warnblase` ab.
+    "plan": ("daimon-plan.service",),
     # KEIN gemessener Schreiber: `utterance` sendet im Quelltext niemand, der
     # Ohren-Dienst meldet sein Transkript ueber `recorder.sock`. Der Eintrag
     # steht hier trotzdem, und zwar aus einem anderen Grund als bei
@@ -469,6 +472,28 @@ class Hub:
                         self._privatmodus()
                     else:
                         self.state.clear_bubble()
+                    continue
+                if produzent == "plan":
+                    # T-8.4: der Zeitplaner meldet `termin_faellig` oder
+                    # `fokus_ende` (mehr laesst `pruefe_typ` nicht durch).
+                    # Beides wird eine Blase -- Sichtbarmachung, keine
+                    # Handlung. Die Texte kommen aus der Plan-Datenbank und
+                    # laufen durch dieselbe Saeuberung wie Hook-Text.
+                    #
+                    # `erinnerungsblase`, nicht `warnblase`: eine Erinnerung
+                    # darf die Meldung "Audit-Kette gerissen" nicht vom
+                    # Bildschirm schieben (Befund 26.08.).
+                    p_plan = event.payload or {}
+                    if not self.state.erinnerungsblase(
+                            wert_saeubern(str(p_plan.get("titel", ""))),
+                            wert_saeubern(str(p_plan.get("text", "")))):
+                        # Zurueckgestellt, nicht verworfen: `HubState` haelt
+                        # sie und zeigt sie, sobald die dringende Blase weg
+                        # ist. Der Plan-Dienst hat keinen Rueckkanal.
+                        self.log.warn(
+                            "Erinnerung zurueckgestellt, dringende Blase steht",
+                            DAIMON_ACTION="plan_blase_zurueckgestellt",
+                            DAIMON_TYP=event.type)
                     continue
                 if event.type == "utterance":
                     # T-3.14: hier faengt `processing` an. Kein neuer Typ und
@@ -1702,7 +1727,8 @@ class Hub:
         # T-3.15, aber der Socket muss vorher da sein, sonst ist `processing`
         # nirgends messbar -- und ein Zustand, den niemand messen kann, ist
         # eine Behauptung.
-        for p in produzenten or ["hookbridge", "face", "auth", "ears"]:
+        # `plan` seit T-8.4: der Zeitplaner meldet faellige Termine hier.
+        for p in produzenten or ["hookbridge", "face", "auth", "ears", "plan"]:
             t = threading.Thread(target=self._horche_produzent, args=(p,), daemon=True)
             t.start()
             self._threads.append(t)

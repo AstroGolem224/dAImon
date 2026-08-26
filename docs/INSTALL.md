@@ -45,15 +45,16 @@ Der Befund steht ausführlich im Kopf von `daimon-recorder.service`.
 
 ## Was aktiviert werden muss, und was nicht
 
-21 Units, drei Sorten. Nur die erste braucht `enable`.
+29 Unit-Dateien (23 `.service`, 4 `.socket`, 2 `.timer`), drei Sorten. Nur
+die erste braucht `enable`.
 
 ```bash
-# 1. Dauerhaft laufende Dienste (9 Stück, alle mit [Install])
+# 1. Dauerhaft laufende Dienste (10 Stück, alle mit [Install])
 systemctl --user enable --now \
   daimon-hub.service daimon-auth.service daimon-hookbridge.service \
   daimon-focus.service daimon-face.service \
   daimon-ears.service daimon-eyes.service daimon-mind.service \
-  daimon-recorder.service
+  daimon-recorder.service daimon-plan.service
 ```
 
 **Die vier Aktionsbroker bleiben aus, bis eine Aktion sie braucht** — sie

@@ -2916,13 +2916,38 @@ tests/verify/T-8.1.sh     # Termin faellig, Herkunftsmarke, Fokus
 pytest -q
 ```
 
-**Stand 25.08.:** `daimon/plan/`, `config/systemd/daimon-plan.service`,
-`tests/test_plan_store.py`, `tests/test_plan_zeit.py`,
-`tests/test_plan_daemon.py`, `tests/test_hub_plan.py`,
-`tests/verify/T-8.1.sh` sind samt Prüfstand vorhanden und laufen grün
-(6/6 K-Kriterien, alle Unit-Tests grün) — **aber bislang ungecommittet**.
-Ein frischer Klon bekäme Phase 8 nicht mit, obwohl README sie als Feature
-nennt (dieselbe Lücke, die T-6.10.v für die vorige Phase 8-Arbeitskopie
-bereits gemeldet hat). Committen und ins Gate aufnehmen ist eine
-Entscheidung außerhalb dieser Session — die Dateien gehören zu einer
-parallelen, nicht von mir begonnenen Arbeit.
+**Stand 26.08.:** Phase 8 ist durch zwei Review- und zwei Fixrunden
+gegangen (Achsen Korrektheit und Sicherheit), **immer noch ungecommittet**.
+Der Prüfstand hat jetzt **10 Kriterien** statt sechs; `T-8.1.sh` meldet
+10/10, `verify-frozen.sh` exit 0, `systemd-analyze verify` exit 0, und die
+Gesamtsuite hat gegenüber HEAD keinen neuen Fehlschlag (die 23 offenen
+liegen sämtlich in `tests/test_recorder_*` und bestehen auf HEAD ebenso).
+
+Was die Runden geändert haben, über Phase 8 hinaus:
+
+- **Die fehlende Herkunftsmarke war die stärkste.** `get("markierung",
+  "trusted")` an vier Stellen (`hub/daemon.py`, `face/tts.py` zweimal,
+  `hub/sprechtext.py`) machte die Sprechregel durch *Weglassen* umgehbar.
+  Vorgabe ist jetzt `tainted`, wie in `taint.pruefe_senke` seit je.
+- **Eine Fassung statt zwei.** `sprechtext.aus_vorlage` entscheidet über
+  `taint.pruefe_senke` statt über ein eigenes `if`; `tts_ungefragt` lässt
+  nur noch `trusted` zu (Design §8.3). Die Tabellenzeile hat damit ihren
+  Aufrufer.
+- **Der Zeitplaner verdrängt keine Warnung mehr.** `HubState.
+  erinnerungsblase()` ist nicht `urgent` und überschreibt keine urgente
+  Blase; eine dadurch zurückgestellte Erinnerung rückt beim Wegklicken nach.
+- **`plan.db` liegt in `state_dir()/plan/`** mit eigener `StateDirectory`;
+  `ReadWritePaths` deckt nicht mehr Audit und Token. Die Migration kopiert
+  (`shutil.copy2`) statt zu verschieben — `os.replace` braucht Schreibrecht
+  an der alten, nun read-only gestellten Lage und hätte den Dienst in eine
+  Restart-Schleife geschickt.
+- **Schreibende Anfragen brauchen eine Unit** (`daimon-mind.service` oder
+  `daimon-plan-cli.scope`); `liste`/`status` bleiben offen.
+
+**Offene Auflage:** `tests/verify/FROZEN` trägt für `t313b_pruefstand.py`
+und `t314_pruefstand.py` nachgezogene, als `VORLAEUFIG` markierte Hashes.
+Plan-Regel 2 verlangt für die Änderung eines eingefrorenen Verifizierers
+einen neuen `.v`-Task mit erneutem Mutationstest; belegt fehlt dafür die
+Erneuerung des Gut-Musters (`tests/fixtures/known-good/T-3.13b/daimon/
+common/taint.py:48` trägt noch `Mark.USER_PTT: True`). Das Gate ist grün
+auf einem Hash, dessen Mutationstest aussteht.

@@ -33,6 +33,11 @@ VORGABEN: dict[str, Any] = {
             "eyes": "daimon-eyes.service",
         },
     },
+    # T-8.3: der Zeitplaner. `abtast_s` ist der Rhythmus, in dem er die
+    # Faelligkeiten liest -- ein Termin, der waehrend eines Suspend faellig
+    # wurde, ist beim naechsten Lauf einfach faellig. Kein Wecker, kein
+    # In-Memory-Zustand, deshalb reicht eine Schleife.
+    "plan": {"abtast_s": 15.0},
     "ears": {
         # T-3.2: asymmetrisch, und das ist der Punkt. `ende` < `einsatz` plus
         # Nachlauf, sonst werden leise Endsilben abgeschnitten. Begruendung und

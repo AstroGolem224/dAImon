@@ -1,0 +1,123 @@
+# dAImon Zeitplaner (T-8.3/T-8.6): erinnert an Termine und schliesst
+# Fokusbloecke. Er loest nichts aus -- `initiator: scheduled` bleibt in der
+# Policy verboten, und diese Unit hat deshalb auch keinen Weg zu einer
+# Aktion: kein AF_INET (RestrictAddressFamilies unten), kein Token, und
+# `aktion.sock` steht unter InaccessiblePaths. Was er kann, ist sichtbar:
+# eine Blase ueber den Hub (Produzent `plan` auf plan.sock) und eine
+# kuratierte Sprechvorlage ueber tts-say.sock.
+#
+# Persistenz liegt in ~/.local/state/daimon/plan/plan.db (eigenes
+# Verzeichnis, WAL, 0600) -- und NUR dieses Verzeichnis steht in
+# ReadWritePaths. Bis zum 26.08. stand dort das ganze state-Verzeichnis,
+# und damit war `audit/audit.jsonl` fuer einen Terminplaner schreibbar. Ein
+# Termin, der waehrend Suspend oder Stopp faellig wurde, ist beim naechsten
+# Abtastlauf einfach faellig; es gibt keinen In-Memory-Wecker, der verloren
+# gehen koennte.
+#
+# Installation: systemctl --user link <dieser Pfad>
+#               systemctl --user enable --now daimon-plan.service
+
+[Unit]
+Description=dAImon Zeitplaner (erinnert nur, handelt nicht)
+# Keine Socket-Aktivierung, aus demselben gemessenen Grund wie beim Mind
+# (siehe daimon-mind.service): eine Requires=-Zeile auf eine Socket-Unit
+# macht jede Kopie dieser Unit unstartbar, und der Start kostet
+# Millisekunden. Der Dienst bindet plan-anfrage.sock selbst.
+After=daimon-hub.service
+Wants=daimon-hub.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon
+ExecStart=/home/itiger013/Dokumente/Github/dAImon/.venv/bin/python \
+    -m daimon.plan.daemon
+
+Restart=on-failure
+RestartSec=2
+
+# --- Grenzen ---------------------------------------------------------------
+# Nur Unix-Sockets: Hub (plan.sock, Ereignisse), TTS (tts-say.sock) und der
+# eigene Anfrage-Socket. Wer hier AF_INET hinzufuegt, gibt einem Dienst das
+# Netz, der nichts darin verloren hat.
+RestrictAddressFamilies=AF_UNIX
+# Kein Token, keine Schluessel: dieser Dienst braucht weder die API noch
+# irgendein Geheimnis, und was er nicht lesen kann, kann er nicht verlieren.
+# `screencast-token` steht ausdruecklich dabei: er liegt im state-Verzeichnis
+# und waere unter ProtectHome=read-only sonst lesbar -- ein Terminplaner mit
+# dem Schluessel zur Bildschirmaufnahme.
+InaccessiblePaths=-%h/.config/daimon/anthropic-token
+InaccessiblePaths=-%h/.local/state/daimon/screencast-token
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.local/share/keyrings -%h/.pki
+# Der Satz oben deckte bis zum 26.08. nur die zwei Token; in der echten
+# Namespace gemessen blieben `memory.db`, `audit/audit.jsonl` und
+# `tickets.json` lesbar -- das Gedaechtnis, die Audit-Kette und das
+# Ticketbuch, alle drei fuer einen Terminplaner belanglos. `-wal`/`-shm`
+# stehen dabei, weil im WAL-Modus dieselben Zeilen dort liegen: eine
+# gesperrte `memory.db` neben einem lesbaren `memory.db-wal` ist eine
+# lesbare memory.db.
+InaccessiblePaths=-%h/.local/state/daimon/memory.db
+InaccessiblePaths=-%h/.local/state/daimon/memory.db-wal
+InaccessiblePaths=-%h/.local/state/daimon/memory.db-shm
+InaccessiblePaths=-%h/.local/state/daimon/audit
+InaccessiblePaths=-%h/.local/state/daimon/tickets.json
+# Der Weg zu einer Aktion, strukturell zu. Bis zum 26.08. behauptete der
+# Kopf dieser Datei "kein Aktions-Socket", gehalten hat das aber allein die
+# Allowlist `AKTION_UNITS` im Hub -- eine Zusage in der falschen Datei.
+#
+# OHNE `-`, und das ist der Unterschied zwischen Zusage und Dekoration:
+# `-%t/daimon/aktion.sock` UEBERSPRINGT den Pfad, wenn er beim Start fehlt,
+# und danach taucht der Socket im gebundenen `%t/daimon` ganz normal auf --
+# gemessen am 26.08. samt Gegenprobe. `After=daimon-hub.service` hilft nicht:
+# bei `Type=simple` gilt die Reihenfolge ab dem fork, nicht ab dem bind.
+# Deshalb legt ExecStartPre die Datei notfalls selbst an (mit `+`, also
+# AUSSERHALB der Namespace -- innerhalb waere sie schon maskiert). Ein
+# leerer Platzhalter stoert den Hub nicht: er entfernt den Pfad vor dem
+# bind. Existiert der echte Socket bereits, bleibt er unberuehrt.
+ExecStartPre=+/bin/sh -c 'test -e %t/daimon/aktion.sock || : > %t/daimon/aktion.sock'
+InaccessiblePaths=%t/daimon/aktion.sock
+# Fremde Schluessel aus der Umgebung des Benutzermanagers -- die Denylist
+# aus daimon-mind.service (T-6.9, gemessen am 14.08.), hier aus demselben
+# Grund: der strukturelle Weg (Schluessel gar nicht erst exportieren) ist
+# Sitzungskonfiguration und gehoert nicht ins Repo.
+UnsetEnvironment=ANTHROPIC_API_KEY ELEVENLABS_API_KEY MISTRAL_API_KEY
+UnsetEnvironment=OPENAI_API_KEY GEMINI_API_KEY GOOGLE_API_KEY HF_TOKEN
+UnsetEnvironment=GITHUB_TOKEN GH_TOKEN AWS_SECRET_ACCESS_KEY
+
+# --- Haertung nach Design 7.5 ----------------------------------------------
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+# read-only statt tmpfs: plan.db liegt unter %h/.local/state/daimon/plan und
+# muss schreibbar bleiben. ReadWritePaths unter ProtectHome=tmpfs scheitert
+# mit 226/NAMESPACE (in den Recorder-Units gemessen) -- deshalb dieses Paar.
+ProtectHome=read-only
+RuntimeDirectory=daimon
+RuntimeDirectoryPreserve=yes
+# Das Verzeichnis legt systemd an, wenn es fehlt -- ein einzelner Dateipfad
+# genuegt hier nicht, weil SQLite die WAL-Nebendateien zur Laufzeit anlegt
+# und dafuer Schreibrecht am VERZEICHNIS braucht.
+StateDirectory=daimon/plan
+ReadWritePaths=%t/daimon %h/.local/state/daimon/plan
+PrivateTmp=yes
+# Ein Dump enthielte die Terminliste des Nutzers.
+LimitCORE=0
+UMask=0077
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
+MemoryDenyWriteExecute=yes
+PrivateDevices=yes
+TimeoutStopSec=10
+
+# Keine andere Unit zieht diese hier, und `PartOf=` propagiert nur Stopp
+# und Neustart, niemals einen Start -- der Nachtrag aus daimon-mind.service
+# (16.08.) gilt wortgleich: ohne [Install] laeuft der Dienst schlicht nicht.
+[Install]
+WantedBy=graphical-session.target
+
+# --- Was hier ABSICHTLICH FEHLT --------------------------------------------
+# Kein Weg zu aktion.sock: der Zeitplaner erinnert, er handelt nicht. Die
+# Zusage steht oben als `ExecStartPre` plus `InaccessiblePaths` OHNE `-` und
+# damit in DIESER Datei -- der Hub haelt sie zusaetzlich ueber `AKTION_UNITS`. Wer
+# das aendern will, aendert zuerst die Policy (`initiator: scheduled`) --
+# und genau diese Reihenfolge ist der Punkt.

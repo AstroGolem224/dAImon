@@ -135,6 +135,9 @@ class HubState:
         self._lock = threading.RLock()
         self._sessions: dict[str, Session] = {}
         self._bubble: dict[str, Any] | None = None
+        # Eine zurueckgestellte Erinnerung, die auf den Blasenplatz wartet --
+        # siehe `erinnerungsblase`.
+        self._nachrueckend: dict[str, Any] | None = None
         self._rev = 0
         self._ttl = ttl_s
         self._voice = {"listening": False, "tts_active": False, "denkt": False}
@@ -209,8 +212,50 @@ class HubState:
             self._bubble = {"title": titel, "body": text, "urgent": True}
             self._rev += 1
 
+    def erinnerungsblase(self, titel: str, text: str) -> bool:
+        """Eine beilaeufige Blase ohne Sitzung -- T-8.4, der Zeitplaner.
+
+        Zwei Unterschiede zu `warnblase`, und beide sind der Befund vom
+        26.08.: sie ist NICHT `urgent`, und sie ueberschreibt keine
+        dringende. Bis dahin schrieben Termin und "AUDIT-KETTE GERISSEN" in
+        denselben einen Blasenplatz -- ein faelliger Termin loeschte die
+        Auditwarnung binnen einer Abtastrunde (15 s), und die Auditpruefung
+        laeuft erst stuendlich wieder. Eine Warnung, die eine Erinnerung
+        wegwischen kann, ist keine Warnung.
+
+        Gibt zurueck, ob die Blase SOFORT gesetzt wurde. `False` heisst
+        zurueckgestellt, nicht verworfen: die Erinnerung wartet hier, bis der
+        Platz frei wird (`clear_bubble`). Ohne dieses Warteschliessfach war
+        sie danach fuer immer weg -- der Plan-Dienst schickt fire-and-forget
+        und markiert den Eintrag trotzdem `gemeldet`, also verschluckte jede
+        stehende Auditwarnung lautlos JEDEN faelligen Termin, solange sie
+        stand (Befund 26.08.). Der Docstring des Dienstes sagt "Die Blase
+        kommt IMMER"; hier ist die Stelle, die das einhaelt.
+
+        ponytail: EIN Platz, der neuere Termin gewinnt. Decke: mehrere
+        zurueckgestellte Erinnerungen -- dann sieht der Nutzer die letzte.
+        Ausbaupfad, wenn das je stoert: eine kurze Deque statt eines Feldes.
+        """
+        with self._lock:
+            if self._bubble is not None and self._bubble.get("urgent"):
+                self._nachrueckend = {"title": titel, "body": text,
+                                      "urgent": False}
+                return False
+            self._bubble = {"title": titel, "body": text, "urgent": False}
+            self._rev += 1
+            return True
+
     def clear_bubble(self) -> None:
         with self._lock:
+            nach = self._nachrueckend
+            self._nachrueckend = None
+            if nach is not None:
+                # Wegklicken der Warnung holt die zurueckgestellte Erinnerung
+                # nach -- ein Klick, der zwei Blasen loescht, waere genau der
+                # Verlust, den das Schliessfach verhindert.
+                self._bubble = nach
+                self._rev += 1
+                return
             if self._bubble is not None:
                 self._bubble = None
                 self._rev += 1

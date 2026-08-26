@@ -148,6 +148,20 @@ PRODUZENTEN: dict[str, frozenset[str]] = {
     # aufgezeichnete Vergangenheit; das ist T-7.5 und geht durch das
     # Deklassifizierungs-Gate, nicht durch diesen Socket.
     "recorder": frozenset({"archiv"}),
+    # T-8.4: der Zeitplaner. Zwei Typen, und beide koennen nur eines: eine
+    # Blase ausloesen (`warnblase`). Dieselbe Pruefung wie bei T-2.7:
+    #
+    #   1. KEINE FAEHIGKEIT. Kein Ereignis hier startet eine Aktion, erzeugt
+    #      eine Marke oder oeffnet einen Dialog. Der Hub bildet die Typen auf
+    #      `HubState.warnblase` ab -- Sichtbarmachung, sonst nichts.
+    #   2. FAIL-SAFE. Der schlimmste Missbrauch ist eine falsche Erinnerung
+    #      am Bildschirmrand -- sichtbar falsch, folgenlos fuer jede
+    #      Schranke. Die Texte laufen durch `wert_saeubern` wie Hook-Text.
+    #   3. GESCHLOSSEN. Wer hier einen Typ mit Wirkung ergaenzen will (etwa
+    #      "fuehre_aus"), bricht die Policy-Regel `initiator: scheduled`
+    #      (config/policy.yaml) -- zeitgesteuerte Aktionen sind verboten und
+    #      bleiben es.
+    "plan": frozenset({"termin_faellig", "fokus_ende"}),
 }
 
 
