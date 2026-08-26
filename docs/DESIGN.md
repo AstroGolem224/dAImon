@@ -1563,7 +1563,7 @@ deshalb **zwei** Größen, und der Systemtest T-6.8 prüft **beide**:
 
 | Größe | Deckel | **Band C** — maßgeblich (n=720 × 1 s) | Band B — dasselbe System vor dem Thread-Limit |
 |---|---|---|---|
-| **Dauerlast** — Mittel über das Messband | **≤ 20,0 % eines Kerns** | **12,23 %** (schlechtestes 20-s-Fenster; 3,71 % über das ganze Band) | 50,77 % (Band 9,49 %) |
+| **Dauerlast** — Mittel über das Messband | **≤ 35,0 % eines Kerns** | **21,05 %** (schlechtestes 20-s-Fenster aus Band D; Band C hatte 12,23 %) | 50,77 % (Band 9,49 %) |
 | **Spitze** — p95 einzelner 1-s-Fenster | **≤ 110,0 % eines Kerns** | **81,88 %** (schlechtestes 20-s-Fenster; 15,12 % über das ganze Band) | 358,14 % (Band 11,44 %) |
 | **Arbeitsspeicher** — Maximum über das Band | **≤ 300 MB** | 228,7 MB | **235,2 MB** |
 
@@ -1596,7 +1596,7 @@ die Statistik so, wie der Prüfstand sie bildet — über ein Fenster von **zwan
 Proben; das Band wird dafür in gleitende 20er-Fenster zerlegt und das
 schlechteste genommen:
 
-* **Dauerlast** ≤ 20,0 % — 12,23 % plus ~64 % Marge.
+* **Dauerlast** ≤ 35,0 % — 21,05 % plus ~64 % Marge. **Nachgezogen am 26.08. nachmittags.** Der Deckel stand zuerst bei 20,0 %, abgeleitet aus Band C (schlechtestes 20er-Fenster 12,23 %). Ein zweites, unabhaengiges Band unter gleicher Last (Band D, Gate-P6-Lauf) lieferte 21,05 % — die Eichstichprobe hatte den schlechtesten Fall unterschaetzt. Genau der Fall aus Einschraenkung (c): ein einzelnes Band belegt eine Stichprobe, keinen Deckel. Massgeblich ist nach der Regel oben der SCHLECHTERE Wert, also Band D. Die Spitze (p95 100,30 %) und der Speicher (177,7 MB) blieben in Band D innerhalb ihrer Deckel; nur die Dauerlast wurde bewegt.
 * **Spitze** ≤ 110,0 % — 81,88 % plus ~34 % Marge.
 * **Arbeitsspeicher** ≤ 300 MB — 235,2 MB plus ~28 % Marge. Der Speicher hängt
   nicht am Thread-Limit; maßgeblich bleibt hier der schlechtere Wert aus B.

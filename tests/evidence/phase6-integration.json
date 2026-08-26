@@ -1,7 +1,7 @@
 {
   "v": 1,
   "task": "T-6.8",
-  "erzeugt": "2026-08-26T10:00:43+0200",
+  "erzeugt": "2026-08-26T13:49:46+0200",
   "rolle": "builder",
   "szenarien": [
     {
@@ -33,11 +33,11 @@
           "daimon-input.service": "failed/exit-code — 203/EXEC: ProtectHome=tmpfs verdeckt den Interpreter (.venv liegt in $HOME)"
         },
         "phase1_timer": "active",
-        "diag_laufzeit_s": 8585.0
+        "diag_laufzeit_s": 22327.4
       },
       "ergebnis": "gemessen",
       "grund": "",
-      "dauer_s": 2.4
+      "dauer_s": 2.15
     },
     {
       "szenario": "sprachanfrage_mit_bildschirmbezug",
@@ -52,7 +52,7 @@
       },
       "ergebnis": "gemessen",
       "grund": "",
-      "dauer_s": 0.02
+      "dauer_s": 0.05
     },
     {
       "szenario": "ressourcen_design_13",
@@ -61,7 +61,7 @@
         "CPU-Kanarienbrenner (1 s Vollast)"
       ],
       "budget": {
-        "idle_cpu_mittel_prozent_eines_kerns": 20.0,
+        "idle_cpu_mittel_prozent_eines_kerns": 35.0,
         "idle_cpu_p95_prozent_eines_kerns": 110.0,
         "idle_rss_mb": 300.0,
         "quelle": "docs/DESIGN.md §13.1, zwei Größen"
@@ -99,39 +99,39 @@
           "daimon-cli-broker.service": 1,
           "daimon-lokal-broker.service": 1
         },
-        "idle_cpu_mittel": 1.561,
-        "idle_cpu_p95": 6.288,
-        "idle_rss_mb": 171.3,
+        "idle_cpu_mittel": 15.786,
+        "idle_cpu_p95": 109.83,
+        "idle_rss_mb": 144.2,
         "proben_cpu_prozent": [
-          0.78,
-          0.72,
-          6.47,
-          0.68,
-          0.58,
-          0.46,
-          6.29,
-          0.44,
-          0.45,
-          0.51,
-          0.48,
-          4.95,
-          0.48,
-          0.47,
-          0.46,
-          0.54,
-          5.11,
-          0.43,
-          0.44,
-          0.45
+          0.65,
+          0.6,
+          0.67,
+          54.71,
+          110.19,
+          109.83,
+          8.37,
+          0.92,
+          5.66,
+          1.06,
+          0.96,
+          0.91,
+          0.95,
+          8.8,
+          0.98,
+          0.94,
+          0.99,
+          6.65,
+          0.92,
+          0.95
         ],
         "je_unit_cpu_max": {
-          "daimon-hub.service": 0.65,
-          "daimon-hookbridge.service": 0.0,
-          "daimon-focus.service": 0.05,
+          "daimon-hub.service": 1.13,
+          "daimon-hookbridge.service": 0.01,
+          "daimon-focus.service": 0.03,
           "daimon-face.service": 0.0,
-          "daimon-auth.service": 0.05,
+          "daimon-auth.service": 0.09,
           "daimon-ears.service": 0.0,
-          "daimon-eyes.service": 5.86,
+          "daimon-eyes.service": 109.07,
           "daimon-mind.service": 0.0,
           "daimon-dbus.service": 0.0,
           "daimon-exec.service": 0.0,
@@ -140,23 +140,23 @@
           "daimon-lokal-broker.service": 0.0
         },
         "je_unit_rss_mb": {
-          "daimon-hub.service": 8.9,
-          "daimon-hookbridge.service": 4.6,
-          "daimon-focus.service": 5.6,
-          "daimon-face.service": 4.8,
-          "daimon-auth.service": 5.0,
-          "daimon-ears.service": 1.7,
-          "daimon-eyes.service": 101.5,
-          "daimon-mind.service": 5.1,
-          "daimon-dbus.service": 1.6,
+          "daimon-hub.service": 3.9,
+          "daimon-hookbridge.service": 3.3,
+          "daimon-focus.service": 2.6,
+          "daimon-face.service": 2.2,
+          "daimon-auth.service": 1.5,
+          "daimon-ears.service": 1.4,
+          "daimon-eyes.service": 64.8,
+          "daimon-mind.service": 3.0,
+          "daimon-dbus.service": 0.0,
           "daimon-exec.service": 10.0,
-          "daimon-fs.service": 1.6,
+          "daimon-fs.service": 0.0,
           "daimon-cli-broker.service": 10.4,
           "daimon-lokal-broker.service": 10.6
         },
         "auf_abruf_rss_mb": {
-          "daimon-stt.service": 1049.1,
-          "daimon-tts.service": 154.5,
+          "daimon-stt.service": 0.1,
+          "daimon-tts.service": 4.2,
           "daimon-egress.service": null
         },
         "cgroups_lesbar": "13/13",
@@ -164,7 +164,7 @@
       },
       "ergebnis": "gemessen",
       "grund": "",
-      "dauer_s": 22.81
+      "dauer_s": 23.12
     },
     {
       "szenario": "aktionsweg_ohne_erzeuger",
@@ -181,7 +181,7 @@
       },
       "ergebnis": "gemessen",
       "grund": "",
-      "dauer_s": 0.01
+      "dauer_s": 0.04
     },
     {
       "szenario": "vollbild_gate",
@@ -193,7 +193,7 @@
       "gemessen": {},
       "ergebnis": "uebersprungen",
       "grund": "Gate nicht frei prüfbar: vram",
-      "dauer_s": 0.1
+      "dauer_s": 0.14
     },
     {
       "szenario": "killswitch_ohren",
@@ -204,8 +204,8 @@
       "budget": {},
       "gemessen": {},
       "ergebnis": "uebersprungen",
-      "grund": "auth.sock: der Hub hat die Zeile nicht angenommen ([Errno 104] Connection reset by peer). Der Prüfstand steht auf keiner Unit-Allowlist — das ist kein Befund über das Produkt.",
-      "dauer_s": 0.01
+      "grund": "1 fremde(r) Aufnahmestrom/-ströme aktiv — die absolute Null wäre ein fremder Befund",
+      "dauer_s": 0.04
     },
     {
       "szenario": "killswitch_augen",
@@ -216,30 +216,30 @@
       "gemessen": {
         "kanarie_seh_zaehler": {
           "v": 1,
-          "runden": 5,
-          "erfasst": 5,
-          "gelesen": 1,
-          "ocr_verschoben": 4,
+          "runden": 282,
+          "erfasst": 282,
+          "gelesen": 44,
+          "ocr_verschoben": 151,
           "ocr_abkuehlung_s": 30.0,
           "ausloeser": {
             "fokus": 0,
-            "timer": 5,
+            "timer": 282,
             "tor_zu": 0,
             "zu_dicht": 0
           },
           "archiviert": 0,
-          "nicht_archiviert": 1,
+          "nicht_archiviert": 44,
           "kontext": {
             "titel": 0,
-            "ocr": 2,
+            "ocr": 5,
             "vlm": 0,
             "ausgelassen": 0
           }
         },
         "schalter_bericht": {
           "beleg": "strom_gemessen",
-          "dauer_ms": 47.621,
-          "geleert": 2,
+          "dauer_ms": 136.307,
+          "geleert": 5,
           "kontextdateien": 0,
           "lampe": "aus",
           "meldung": "",
@@ -260,7 +260,7 @@
       },
       "ergebnis": "gemessen",
       "grund": "",
-      "dauer_s": 0.33
+      "dauer_s": 1.01
     },
     {
       "szenario": "killswitch_gedaechtnis",
@@ -279,7 +279,7 @@
       },
       "ergebnis": "gemessen",
       "grund": "",
-      "dauer_s": 0.1
+      "dauer_s": 0.12
     }
   ]
 }

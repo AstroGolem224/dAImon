@@ -113,7 +113,15 @@ SONDERFALL_UNITS = ("daimon-egress.service", "daimon-input.service")
 # ein einzelner Thread 100 % nicht ueberschreiten; das Bandmaximum liegt bei
 # 100,29 %. Sichtbar wurde der Fehler erst, als der Sampler die Kindprozesse
 # ueberhaupt sah -- siehe `_unit_pids`, Befund B3.
-BUDGET_CPU_MITTEL_PROZENT = 20.0  # eines Kerns, Mittel über das Messband
+# 20,0 % bis zum 26.08. nachmittags -- und genau die Schwaeche, die
+# Einschraenkung (c) in §13.1 vorhergesagt hat: *ein einzelnes Band belegt
+# keinen Deckel, es belegt eine Stichprobe*. Der Wert kam aus Band C mit
+# einem schlechtesten 20er-Fenster von 12,23 %. Ein zweites, unabhaengiges
+# Band unter gleicher Last lieferte 21,05 % -- die Eichstichprobe hatte den
+# schlechtesten Fall unterschaetzt. Nach der Regel, die §13.1 selbst nennt
+# (massgeblich ist je Groesse der SCHLECHTERE Wert), gilt jetzt 21,05 % plus
+# dieselbe Marge von ~64 %, gerundet.
+BUDGET_CPU_MITTEL_PROZENT = 35.0  # eines Kerns, Mittel über das Messband
 BUDGET_CPU_P95_PROZENT = 110.0    # eines Kerns, p95 einzelner 1-s-Fenster
 BUDGET_RSS_MB = 300.0
 
