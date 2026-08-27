@@ -2944,10 +2944,51 @@ Was die Runden geändert haben, über Phase 8 hinaus:
 - **Schreibende Anfragen brauchen eine Unit** (`daimon-mind.service` oder
   `daimon-plan-cli.scope`); `liste`/`status` bleiben offen.
 
-**Offene Auflage:** `tests/verify/FROZEN` trägt für `t313b_pruefstand.py`
-und `t314_pruefstand.py` nachgezogene, als `VORLAEUFIG` markierte Hashes.
-Plan-Regel 2 verlangt für die Änderung eines eingefrorenen Verifizierers
-einen neuen `.v`-Task mit erneutem Mutationstest; belegt fehlt dafür die
-Erneuerung des Gut-Musters (`tests/fixtures/known-good/T-3.13b/daimon/
-common/taint.py:48` trägt noch `Mark.USER_PTT: True`). Das Gate ist grün
-auf einem Hash, dessen Mutationstest aussteht.
+**Stand der Auflage am 27.08.:** Die Mutationstests sind nachgeholt, das
+Einfrieren nicht.
+
+- `meta.sh T-3.13b` grün, acht Mutanten — neu ist
+  `ptt-wird-ungefragt-gesprochen`, der den behobenen Fehler wieder einbaut
+  (`02055af`). Jeder der sieben alten Mutanten scheitert weiterhin an
+  seiner *eigenen* Mutation, je Mutant nachgemessen.
+- `meta.sh T-3.14` grün, sechs Mutanten (`8dbbbca`). Der frühere Halt lag
+  nicht bei T-3.14, sondern bei `T-0.9.sh` über dessen Kriterium K13.
+- **Beide Hashes bleiben `VORLAEUFIG`**, weil `freeze.sh` an der Spur
+  `echt` abbricht: `freeze-deps: ABGELEHNT — nicht deklarierte repo-lokale
+  Datei geoeffnet: tests/verify/T-metaprobe.sh, tests/verify/meta.sh`. K13
+  fährt im Arbeitsbaumlauf die ganze pytest-Suite, und die enthält seit
+  `5a78c51` `tests/test_meta_erzeugung.py`. Sie in `FROZEN.deps`
+  nachzutragen löst es nicht: `freeze.sh` friert jede deklarierte
+  Abhängigkeit mit ein, `meta.sh` läge danach selbst hinter einem
+  `.v`-Task. Der gemessene Halt steht als Kommentarblock in
+  `tests/verify/FROZEN`.
+
+### Die Unit-Sperre trifft die Prüfstände, nicht nur Angreifer
+
+Seit der Härtung vom 19.08. prüft `_horche_produzent` die Peer-Unit gegen
+`PRODUZENT_UNITS`. Ein Prüfstand, der einen eigenen Hub startet und ihm
+dann über einen Produzenten-Socket etwas schickt, läuft unter der Unit
+seiner Sitzung und wird abgewiesen — gemessen als `fremde_unit` mit
+`app-com.anthropic.Claude-…scope`.
+
+Gelöst für `hookbridge` (`bd0bb8e`, `b10af52`): ein ausdrücklicher Eintrag
+`daimon-verify.scope` neben der Dienst-Unit, **nur** bei diesem einen
+Produzenten, bewacht von `tests/test_hub_pruefscope.py`. Verworfen wurde
+ein Schalter, der `erlaubte_units` abschaltet — er hätte auch `auth`
+geöffnet, die einzige Typenmenge mit Fähigkeit statt Sichtbarkeit.
+`T-0.9.sh` sendet seither aus dieser Scope, hat ein eigenes Gut-Muster und
+acht Mutanten, und ist regulär eingefroren.
+
+**Offen, HYPOTHESE (ungemessen):** dieselbe Klasse eine Ebene weiter. Die
+T-3.9-Positivkontrolle „ein Sprech-Endpunkt ist am Hub auffindbar" ist im
+Arbeitsbaum rot; die Endpunkt-Entdeckung fragt jeden Socket aus der Unit
+ihrer Sitzung an, und der Sprech-Socket startet in `hub/daemon.py:1782` mit
+`erlaubte_units=TTS_UNITS` (`("daimon-tts.service",)`, Zeile 171). Ob das
+die Ursache ist, hat niemand gemessen. `T-3.14.sh` ist deswegen im
+Arbeitsbaum Exit 1 mit 11 roten Prüfungen — der zweite, von der Deps-Sperre
+unabhängige Halt.
+
+**Ebenfalls offen, vorbestehend:** 23 Fehlschläge in `tests/test_recorder_*`
+(`recorder_hilfen.py:48` „Dienst nimmt nach 5.0 s keine Verbindung an").
+Positivkontrolle am 26.08. im Worktree auf `1168d9b`: identisch, also nicht
+von Phase 8 verursacht. Ursache ungemessen.
