@@ -1,0 +1,1 @@
+Die Stimmung wechselt weiter nach `needs_input`, aber es entsteht keine Blase. Der Hub weiss also, dass jemand wartet, und sagt es nicht -- die eine Mutante, die nur ein Kriterium trifft. Erwartet rot an 'Bubble ist gesetzt', gruen bei der Stimmung.

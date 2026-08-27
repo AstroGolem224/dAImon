@@ -53,3 +53,13 @@ tests/verify/t72_pruefstand.py tests/verify/t72_dienst.py
 tests/verify/T-7.3.sh tests/verify/t73_pruefstand.py
 tests/verify/T-7.5.sh tests/verify/t75_pruefstand.py
 tests/verify/t75_pruefstand.py tests/verify/t75_hub.py
+# T-0.9, von Hand am 27.08.: die Socket-Sonde wird nicht aufgerufen, sondern
+# ueber PYTHONPATH als `sitecustomize` in den Hub-Prozess geladen -- ein
+# Verzeichnisname im Skript, kein Dateipfad, und die statische Entdeckung
+# findet sie deshalb nicht. Die Laufzeitspur sieht sie nur bei kaltem
+# __pycache__: mit Cache oeffnet CPython die .pyc, und die filtert
+# freeze-deps.py weg (gemessen am 27.08.). Ohne diese Zeile haengt also der
+# Ausgang von freeze.sh am Zustand eines Cache-Verzeichnisses. Sie ist das
+# Messgeraet fuer die Socket-Eigentumskriterien und gehoert eingefroren, wie
+# moodprobe.py und pixelprobe.py auch.
+tests/verify/T-0.9.sh tests/harness/t09_socket_probe/sitecustomize.py

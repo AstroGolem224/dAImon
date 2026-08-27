@@ -1,0 +1,1 @@
+`ipc.listen` bindet Produzentensockets auf 0666 -- jeder Prozess jedes Nutzers darf Hook-Ereignisse einspeisen, und die Peer-Pruefung ist danach der einzige Wegweiser. Erwartet rot an 'hookbridge.sock hat Modus 0600'.

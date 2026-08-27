@@ -1,0 +1,1 @@
+Der Hub abonniert den Bus nicht mehr. Socket, Protokoll und Bus arbeiten weiter, der State erfaehrt nichts -- die Naht reisst genau zwischen Zulauf und Wirkung. Erwartet rot an 'Ereignis erreicht den State ueber den Socket' und an 'Bubble ist gesetzt'.

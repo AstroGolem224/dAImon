@@ -1,0 +1,1 @@
+`_horche_einfach` laesst seine Sockets auf 0666 stehen -- state.sock, diag.sock, gpu.sock, tts.sock, ticket.sock und aktion.sock. Gemessen wird state.sock. Erwartet rot an 'state.sock hat Modus 0600'.

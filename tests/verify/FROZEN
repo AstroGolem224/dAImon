@@ -1,6 +1,50 @@
+#
+#
+#   1. offen: neuer .v-Task fuer T-3.13b, der beide Halte aufloest
+# 26.08. die Attrappe neben `hub/sprechtext.aus_vorlage` und hatte keinen
+# 26.08. `tainted` (hub/daemon.py:1178, face/tts.py:519 und :993) -- ohne das
+#   2. ERLEDIGT -- das Gut-Muster fuehrt `tts_ungefragt` jetzt mit
+#   3. ERLEDIGT -- tests/mutants/T-3.13b/erzeugen.sh hat einen achten
+# Anteile sind ausschliesslich trusted-Werte"; die Tabellenzeile war bis zum
+# Aufrufer. Der Pruefstand folgt damit der Fassung, die jetzt gilt.
+# `bash tests/verify/T-3.13b.sh` im Arbeitsbaum ist am 26.08. 24 rot
+# Beide Halte sind aelter als dieser Nachzug und von ihm unabhaengig.
+#   Datei geoeffnet: tests/verify/T-metaprobe.sh, tests/verify/meta.sh
+# Die Zeile nachzutragen ist KEINE Reviewer-Entscheidung: freeze.sh friert
+# entfernten T-3.13b-Zeilen; freeze.sh brach nach gruenem Mutationstest und
+#      Fehler wieder einbaut. `bash tests/verify/meta.sh T-3.13b` ist gruen:
+# Feld liefe der Pruefstand an seiner eigenen Freigabe auf. Das Gut-Muster
+#   freeze-deps: ABGELEHNT -- Laufzeitspur: nicht deklarierte repo-lokale
+# `freeze.sh T-3.13b` NICHT durchlaeuft. Gemessen am 26.08. mit von Hand
+# gruener Spur 'gut' an der Spur 'echt' ab:
+# Grund: `tts_beginnt` setzt fuer den Kanal `ungefragt` jetzt ausdruecklich
+# Grund: Zeile 1037-1044 erwartet fuer die Senke `tts_ungefragt` jetzt
+#      Gut-Muster besteht, alle acht Mutanten werden erkannt. Jeder der
+# jede deklarierte und vorhandene Abhaengigkeit mit ein -- tests/verify/
+#      (je Mutant nachgemessen) -- keiner ist durch die Regel wirkungslos.
+# (K13: T-3.12 und T-3.13 einzeln rot, pytest rot an
+# markierung=trusted (Zeile 522ff). Vorgabe bei fehlender Marke ist seit dem
+#      Mark.USER_PTT: False; nur diese eine Regelzeile wurde nachgezogen,
+# meta.sh laege danach selbst hinter einem .v-Task.
+#      Mutanten `ptt-wird-ungefragt-gesprochen`, der genau den behobenen
+# NACHGEZOGEN am 26.08. (Rolle reviewer), VORLAEUFIG -- der Mutationstest steht
+# NACHGEZOGEN am 26.08. (Rolle reviewer), VORLAEUFIG -- Mutationstest steht aus.
+#      nicht die Umgestaltung von e83c961.
+# noch aus. Vorher: 4922461f5e9e7b86a2603664adf8e43f3e50c6fe5fd25bf1d6d47f65e23f23fe
+# OFFEN bleibt der Hash selbst -- er ist weiterhin VORLAEUFIG, weil
+# OFFEN: derselbe Weg wie bei T-3.13b -- neuer .v-Task, meta.sh T-3.14,
+# (SENKEN["tts_ungefragt"][Mark.USER_PTT] ist False) und Design 8.3 "Variable
 # <sha256> <pfad relativ zum Repo> — von tests/verify/freeze.sh gepflegt
+#      sieben alten Mutanten scheitert weiterhin an seiner EIGENEN Mutation
+# sind repo-lokal und in FROZEN.deps nicht deklariert.
+# Stand 26.08. abends (Rolle reviewer), Punkte 2 und 3 ERLEDIGT:
+# T-3.13b) enthaelt sie tests/test_meta_erzeugung.py, das
+# (t313b_pruefstand.py:1373). Seit 5a78c51 (17.08., NACH dem Einfrieren von
+# T-3.14 vertraegt den Zusatz (sein daemon.py:801 liest `markierung`).
+# test_egress.py::test_mind_traegt_keinen_fremden_schluessel_in_der_umgebung).
 d10847e4fd90117b185470b945b5322337c104f027111a93322671657a9964f5 tests/harness/moodprobe.py
 d2b1c4b3789d6aebffe9f46d247c080dd4dfbbb233c539415b0efe5a46989f49 tests/harness/pixelprobe.py
+6ffa077e3a1e0a906e6b8793679700f763f3de50840e1065f8079b9ff0309e83 tests/harness/t09_socket_probe/sitecustomize.py
 5b4c114ca5bd7d8facf4c809ec1c822d1f40cc00ee46200b6a54c58d9ff7fb55 tests/harness/vollbildfenster.py
 a3b7f0ad8cfdaf9853c4d44a6f6141f101779ac9fb78af74a4576b6e5a7abe25 tests/verify/freeze-deps.py
 d06185190cf8667e9ab713a359665d5fad895221bebbfbf7edfd8509f8750e1d tests/verify/T-0.0.sh
@@ -9,7 +53,7 @@ d06185190cf8667e9ab713a359665d5fad895221bebbfbf7edfd8509f8750e1d tests/verify/T-
 058a1e00d0377176983eacd6bff4d09b46e98c850b6bfa945f6078ea7e4d8f77 tests/verify/T-0.14.sh
 7fcb5b76fd5a1f71e123f73dbe869593f824dd3cf37702a610600cb398c436ab tests/verify/T-0.7.sh
 8481ae32ee9e259d6f7164587db66cfb6c8e036d7b8c5dfd2f162b930def458b tests/verify/T-0.8.sh
-90109766807a1bed14cce7d0898029e0b8d95509e917cd1a52025aaacd86ad22 tests/verify/T-0.9.sh
+f7d3141dca3e6817009269bf2f9fd735599d4cddd078e6e0becc2f20e0f043fc tests/verify/T-0.9.sh
 8e56764b36976b7042052fea67d3d00f65842231b3e4412ceea1fd5858eb1781 tests/verify/T-1.1.sh
 102a336782c3f8c180505e78fdb8d09de6968fd35aa855df4786d213aa2d551c tests/verify/T-1.5.sh
 f8f041097703b6ff4379b2aea9d2437f2c9952cf2f27a078b59abf3442f436e3 tests/verify/T-1.7.sh
@@ -23,59 +67,10 @@ f7a119a161356d49b04b64f6e5809fd6952784fd96bbd144b231956a22d09abb tests/verify/t3
 48a2dd0d2dd5a412a636dc07aac78c4928ccafaf88e238b9dec5efa93ce2dd64 tests/verify/T-3.11.sh
 454708eb6800bc473b5aa68d33dee1258da19764f28447c8d366532356da177f tests/verify/t312_pruefstand.py
 151a378ae0cc2e116ea11e4c5a37d4b4495d6e140a6a6ea070a1d5fd28d691a9 tests/verify/T-3.12.sh
-# NACHGEZOGEN am 26.08. (Rolle reviewer), VORLAEUFIG -- der Mutationstest steht
-# noch aus. Vorher: 4922461f5e9e7b86a2603664adf8e43f3e50c6fe5fd25bf1d6d47f65e23f23fe
-# Grund: Zeile 1037-1044 erwartet fuer die Senke `tts_ungefragt` jetzt
-# [trusted] statt [trusted, user_ptt]. Stuetzt sich auf daimon/common/taint.py
-# (SENKEN["tts_ungefragt"][Mark.USER_PTT] ist False) und Design 8.3 "Variable
-# Anteile sind ausschliesslich trusted-Werte"; die Tabellenzeile war bis zum
-# 26.08. die Attrappe neben `hub/sprechtext.aus_vorlage` und hatte keinen
-# Aufrufer. Der Pruefstand folgt damit der Fassung, die jetzt gilt.
-# Stand 26.08. abends (Rolle reviewer), Punkte 2 und 3 ERLEDIGT:
-#   2. ERLEDIGT -- das Gut-Muster fuehrt `tts_ungefragt` jetzt mit
-#      Mark.USER_PTT: False; nur diese eine Regelzeile wurde nachgezogen,
-#      nicht die Umgestaltung von e83c961.
-#   3. ERLEDIGT -- tests/mutants/T-3.13b/erzeugen.sh hat einen achten
-#      Mutanten `ptt-wird-ungefragt-gesprochen`, der genau den behobenen
-#      Fehler wieder einbaut. `bash tests/verify/meta.sh T-3.13b` ist gruen:
-#      Gut-Muster besteht, alle acht Mutanten werden erkannt. Jeder der
-#      sieben alten Mutanten scheitert weiterhin an seiner EIGENEN Mutation
-#      (je Mutant nachgemessen) -- keiner ist durch die Regel wirkungslos.
-# OFFEN bleibt der Hash selbst -- er ist weiterhin VORLAEUFIG, weil
-# `freeze.sh T-3.13b` NICHT durchlaeuft. Gemessen am 26.08. mit von Hand
-# entfernten T-3.13b-Zeilen; freeze.sh brach nach gruenem Mutationstest und
-# gruener Spur 'gut' an der Spur 'echt' ab:
-#
-#   freeze-deps: ABGELEHNT -- Laufzeitspur: nicht deklarierte repo-lokale
-#   Datei geoeffnet: tests/verify/T-metaprobe.sh, tests/verify/meta.sh
-#
-# Ursache: K13 faehrt im Arbeitsbaumlauf die ganze pytest-Suite
-# (t313b_pruefstand.py:1373). Seit 5a78c51 (17.08., NACH dem Einfrieren von
-# T-3.13b) enthaelt sie tests/test_meta_erzeugung.py, das
-# tests/verify/T-metaprobe.sh anlegt und tests/verify/meta.sh ruft. Beide
-# sind repo-lokal und in FROZEN.deps nicht deklariert.
-# Die Zeile nachzutragen ist KEINE Reviewer-Entscheidung: freeze.sh friert
-# jede deklarierte und vorhandene Abhaengigkeit mit ein -- tests/verify/
-# meta.sh laege danach selbst hinter einem .v-Task.
-# Zweiter, unabhaengiger Halt: freeze.sh verlangt die Spur 'echt' gruen.
-# `bash tests/verify/T-3.13b.sh` im Arbeitsbaum ist am 26.08. 24 rot
-# (K13: T-3.12 und T-3.13 einzeln rot, pytest rot an
-# test_egress.py::test_mind_traegt_keinen_fremden_schluessel_in_der_umgebung).
-# Beide Halte sind aelter als dieser Nachzug und von ihm unabhaengig.
-#   1. offen: neuer .v-Task fuer T-3.13b, der beide Halte aufloest
 fe9060d34c7aea1a52926e06766df9a8c53543e627c067572886250dda4e69c4 tests/verify/t313b_pruefstand.py
 1a064e995e340c84323a7686f73c75665feafefae28c97cc161b86a16a65751c tests/verify/T-3.13b.sh
 842fa97ee1ea220e4839ca8ff4aaf22b9c40fc3170b0424d3029266244357b78 tests/verify/t313_pruefstand.py
 81f2206e7372bd62cb791e32044e45da54ce7bdb7abce8606ab8b7624e38f273 tests/verify/T-3.13.sh
-# NACHGEZOGEN am 26.08. (Rolle reviewer), VORLAEUFIG -- Mutationstest steht aus.
-# Vorher: c544d7e2f48fb63f2c52bea84e01b80e08e57386c56b5b685d6db10425380d4d
-# Grund: `tts_beginnt` setzt fuer den Kanal `ungefragt` jetzt ausdruecklich
-# markierung=trusted (Zeile 522ff). Vorgabe bei fehlender Marke ist seit dem
-# 26.08. `tainted` (hub/daemon.py:1178, face/tts.py:519 und :993) -- ohne das
-# Feld liefe der Pruefstand an seiner eigenen Freigabe auf. Das Gut-Muster
-# T-3.14 vertraegt den Zusatz (sein daemon.py:801 liest `markierung`).
-# OFFEN: derselbe Weg wie bei T-3.13b -- neuer .v-Task, meta.sh T-3.14,
-# Zeilen aus FROZEN entfernen, dann freeze.sh T-3.14.
 bcff10c4f5f275b805a1cdd35e5ff5ce481a89a9f504c7be8ff6da3e35295438 tests/verify/t314_pruefstand.py
 8e69272633e634670b8d0b1799f1efd1d291a510b0c2609e9b0c665003616f92 tests/verify/T-3.14.sh
 056150b22d477ad276ffdc24e106a288fe8c5049618f17e599c452615e795c78 tests/verify/T-3.1.sh
@@ -99,4 +94,10 @@ f02b68120d080c3a23fc73be23d0b654afc68addd869a0d8f03e27fc8607c9ec tests/verify/T-
 a338db7876aac6c8382de723369fa5571d00d7e3dea5beb94c5936c140840684 tests/verify/t75_hub.py
 620da65205e4344955f22fd8d3d7328d11163c69c1b0cbeb1a16c3b866d50466 tests/verify/t75_pruefstand.py
 8559244b57969b4d09154e6e4dc7698855e4fb4ed2e06a4f403296e99ca76d10 tests/verify/T-7.5.sh
+# tests/verify/T-metaprobe.sh anlegt und tests/verify/meta.sh ruft. Beide
 dc475cae490a537145cb6a59a7f5b5865ab3420f8dd2aca908f96a0990d21c56 tests/verify/verify-frozen.sh
+# [trusted] statt [trusted, user_ptt]. Stuetzt sich auf daimon/common/taint.py
+# Ursache: K13 faehrt im Arbeitsbaumlauf die ganze pytest-Suite
+# Vorher: c544d7e2f48fb63f2c52bea84e01b80e08e57386c56b5b685d6db10425380d4d
+# Zeilen aus FROZEN entfernen, dann freeze.sh T-3.14.
+# Zweiter, unabhaengiger Halt: freeze.sh verlangt die Spur 'echt' gruen.

@@ -1,0 +1,44 @@
+GUT-MUSTER fuer tests/verify/T-0.9.sh — angelegt am 27.08. (Rolle reviewer),
+NACH der Implementierung. Es ist keine Vertragsreferenz wie bei T-3.13b,
+sondern eine SCHNAPPSCHUSS-Kopie des abgenommenen Standes: der Arbeitsbaum
+bei bd0bb8e ("Ein benannter Scope fuer den Prueflauf"), beschnitten auf die
+Importhuelle von `daimon.hub.daemon`.
+
+Warum es ueberhaupt gebraucht wird: `tests/verify/meta.sh` misst einen
+Verifizierer gegen ein Gut-Muster und gegen Mutanten, beide als
+`DAIMON_FIXTURE`. Fuer T-0.9 gab es bis zum 27.08. keines -- meta.sh brach
+an Zeile 21 ab ("Gut-Muster fehlt"), und der einzige Mutant lag als
+`run.sh`-Skript daneben, das meta.sh nie aufgerufen hat. Ein Mutationstest,
+den niemand fahren kann, ist keiner.
+
+Inhalt: 44 Module -- die transitive Huelle aller `from daimon...`-Importe ab
+`daimon/hub/{daemon,state,bus}.py`, also daimon/{__init__}, auth/,
+brokers/{egress,fs}/, common/, ears/killswitch, eyes/{context,killswitch},
+gpu/worker, hub/ (14 Module) und recorder/{pause,redaktion,store,suche}. Der
+Rest des Pakets fehlt bewusst: was der Hub im Prueflauf nicht braucht,
+gehoert nicht in einen Baum, den acht Mutanten kopieren.
+
+ERST FALSCH GEMESSEN, dann richtig: die erste Fassung hatte 21 Module -- die
+Huelle nach `sys.modules`, also nur was der IMPORT zieht. Der Hub startete
+damit nicht: `Hub.__init__` importiert `daimon.recorder.pause` erst beim
+Aufruf. Import-Zeit und Laufzeit sind zwei verschiedene Huellen, und die
+kleinere zu messen hiess hier: der Verifizierer war am Gut-Muster acht
+Kriterien rot. Aufgefallen ist es sofort, weil meta.sh das Gut-Muster VOR
+den Mutanten faehrt -- waere die Reihenfolge andersherum, haette derselbe
+Fehler acht "erkannte" Mutanten gemeldet, die alle nur am Startfehler
+scheitern.
+
+DER PREIS, ausdruecklich: das ist eine ZWEITE Fassung von Produktivcode. Sie
+altert, sobald sich `daimon/hub/` bewegt. Zwei Fassungen einer Regel sind
+eine Regel und eine Attrappe (CLAUDE.md) -- die Attrappe ist die hier, und
+sie ist als solche zu behandeln: ein Gut-Muster ist eine Momentaufnahme mit
+Datum, kein zweiter Ort, an dem eine Zusage gilt. Bewegt sich der Hub, wird
+dieses Muster in einem neuen .v-Task nachgezogen (derselbe Weg wie bei
+T-3.13b am 26.08.). Der Verzug faellt frueh auf: `meta.sh T-0.9` ruft
+`tests/mutants/T-0.9/erzeugen.sh`, und der bricht laut ab, sobald ein
+Mutationsanker im Gut-Muster nicht mehr genau einmal vorkommt.
+
+Was hier NICHT liegt und auch nicht hingehoert: `tests/test_hub.py`. Der
+Verifizierer faehrt die pytest-Suite nur im Arbeitsbaumlauf und weist sie im
+Fixture-Lauf ausdruecklich als NICHT GEMESSEN aus -- die Suite gehoert dem
+Arbeitsbaum und nicht dem geprueften Baum.

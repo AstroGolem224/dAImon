@@ -1,0 +1,1 @@
+Der Hub startet den Produzenten `hookbridge` nicht mehr -- der Socket wird nie gebunden. Genau der Fehler, den dieses Repo sechsmal hatte: das Stueck ist da, aber niemand ruft es auf. Erwartet rot an 'haelt beide horchenden Unix-Sockets'; die Modus-Pruefung und die Zustellung fallen mit, weil es die Tuer nicht gibt.

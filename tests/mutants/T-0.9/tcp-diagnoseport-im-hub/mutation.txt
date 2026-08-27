@@ -1,0 +1,1 @@
+Der Hub oeffnet einen bequemen Diagnoseport auf 127.0.0.1. Damit ist RestrictAddressFamilies=AF_UNIX in T-0.14 nicht mehr erfuellbar -- eine ganze Schutzschicht faellt weg, weil jemand einen Endpunkt bequem fand. Erwartet rot an 'haelt KEINEN horchenden TCP-Socket'.
