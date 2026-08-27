@@ -2,7 +2,6 @@
 #
 #   1. offen: neuer .v-Task fuer T-3.13b, der beide Halte aufloest
 # 26.08. die Attrappe neben `hub/sprechtext.aus_vorlage` und hatte keinen
-# 26.08. `tainted` (hub/daemon.py:1178, face/tts.py:519 und :993) -- ohne das
 #   2. ERLEDIGT -- das Gut-Muster fuehrt `tts_ungefragt` jetzt mit
 #   3. ERLEDIGT -- tests/mutants/T-3.13b/erzeugen.sh hat einen achten
 # Anteile sind ausschliesslich trusted-Werte"; die Tabellenzeile war bis zum
@@ -13,26 +12,21 @@
 # Die Zeile nachzutragen ist KEINE Reviewer-Entscheidung: freeze.sh friert
 # entfernten T-3.13b-Zeilen; freeze.sh brach nach gruenem Mutationstest und
 #      Fehler wieder einbaut. `bash tests/verify/meta.sh T-3.13b` ist gruen:
-# Feld liefe der Pruefstand an seiner eigenen Freigabe auf. Das Gut-Muster
 #   freeze-deps: ABGELEHNT -- Laufzeitspur: nicht deklarierte repo-lokale
 # `freeze.sh T-3.13b` NICHT durchlaeuft. Gemessen am 26.08. mit von Hand
 # gruener Spur 'gut' an der Spur 'echt' ab:
-# Grund: `tts_beginnt` setzt fuer den Kanal `ungefragt` jetzt ausdruecklich
 # Grund: Zeile 1037-1044 erwartet fuer die Senke `tts_ungefragt` jetzt
 #      Gut-Muster besteht, alle acht Mutanten werden erkannt. Jeder der
 # jede deklarierte und vorhandene Abhaengigkeit mit ein -- tests/verify/
 #      (je Mutant nachgemessen) -- keiner ist durch die Regel wirkungslos.
 # (K13: T-3.12 und T-3.13 einzeln rot, pytest rot an
-# markierung=trusted (Zeile 522ff). Vorgabe bei fehlender Marke ist seit dem
 #      Mark.USER_PTT: False; nur diese eine Regelzeile wurde nachgezogen,
 # meta.sh laege danach selbst hinter einem .v-Task.
 #      Mutanten `ptt-wird-ungefragt-gesprochen`, der genau den behobenen
 # NACHGEZOGEN am 26.08. (Rolle reviewer), VORLAEUFIG -- der Mutationstest steht
-# NACHGEZOGEN am 26.08. (Rolle reviewer), VORLAEUFIG -- Mutationstest steht aus.
 #      nicht die Umgestaltung von e83c961.
 # noch aus. Vorher: 4922461f5e9e7b86a2603664adf8e43f3e50c6fe5fd25bf1d6d47f65e23f23fe
 # OFFEN bleibt der Hash selbst -- er ist weiterhin VORLAEUFIG, weil
-# OFFEN: derselbe Weg wie bei T-3.13b -- neuer .v-Task, meta.sh T-3.14,
 # (SENKEN["tts_ungefragt"][Mark.USER_PTT] ist False) und Design 8.3 "Variable
 # <sha256> <pfad relativ zum Repo> — von tests/verify/freeze.sh gepflegt
 #      sieben alten Mutanten scheitert weiterhin an seiner EIGENEN Mutation
@@ -40,7 +34,6 @@
 # Stand 26.08. abends (Rolle reviewer), Punkte 2 und 3 ERLEDIGT:
 # T-3.13b) enthaelt sie tests/test_meta_erzeugung.py, das
 # (t313b_pruefstand.py:1373). Seit 5a78c51 (17.08., NACH dem Einfrieren von
-# T-3.14 vertraegt den Zusatz (sein daemon.py:801 liest `markierung`).
 # test_egress.py::test_mind_traegt_keinen_fremden_schluessel_in_der_umgebung).
 d10847e4fd90117b185470b945b5322337c104f027111a93322671657a9964f5 tests/harness/moodprobe.py
 d2b1c4b3789d6aebffe9f46d247c080dd4dfbbb233c539415b0efe5a46989f49 tests/harness/pixelprobe.py
@@ -71,6 +64,38 @@ fe9060d34c7aea1a52926e06766df9a8c53543e627c067572886250dda4e69c4 tests/verify/t3
 1a064e995e340c84323a7686f73c75665feafefae28c97cc161b86a16a65751c tests/verify/T-3.13b.sh
 842fa97ee1ea220e4839ca8ff4aaf22b9c40fc3170b0424d3029266244357b78 tests/verify/t313_pruefstand.py
 81f2206e7372bd62cb791e32044e45da54ce7bdb7abce8606ab8b7624e38f273 tests/verify/T-3.13.sh
+# NACHGEZOGEN am 26.08. (Rolle reviewer), weiterhin VORLAEUFIG.
+# Vorher: c544d7e2f48fb63f2c52bea84e01b80e08e57386c56b5b685d6db10425380d4d
+# Grund: `tts_beginnt` setzt fuer den Kanal `ungefragt` jetzt ausdruecklich
+# markierung=trusted (Zeile 522ff). Vorgabe bei fehlender Marke ist seit dem
+# 26.08. `tainted` (hub/daemon.py:1178, face/tts.py:519 und :993) -- ohne das
+# Feld liefe der Pruefstand an seiner eigenen Freigabe auf. Das Gut-Muster
+# T-3.14 vertraegt den Zusatz (sein daemon.py:801 liest `markierung`).
+# Stand 27.08. (Rolle reviewer): der Mutationstest ist ERLEDIGT -- `bash
+# tests/verify/meta.sh T-3.14` ist gruen, Gut-Muster besteht, 6 Mutanten,
+# alle erkannt. OFFEN bleibt der Hash selbst: er ist weiterhin VORLAEUFIG,
+# weil `freeze.sh T-3.14` NICHT durchlaeuft. Gemessen am 27.08. mit von Hand
+# entfernten T-3.14-Zeilen (t314_pruefstand.py und T-3.14.sh); freeze.sh
+# brach nach gruenem Mutationstest und gruener Spur 'gut' an der Spur 'echt'
+# ab:
+#   freeze-deps: ABGELEHNT -- Laufzeitspur: nicht deklarierte repo-lokale
+#   Datei geoeffnet: tests/verify/T-metaprobe.sh, tests/verify/meta.sh
+# Ursache wie bei T-3.13b: K13 faehrt im Arbeitsbaumlauf die ganze
+# pytest-Suite, und die enthaelt seit 5a78c51 tests/test_meta_erzeugung.py,
+# das genau diese beiden Dateien anfasst. Sie in FROZEN.deps nachzutragen ist
+# KEINE Reviewer-Entscheidung: freeze.sh friert jede deklarierte und
+# vorhandene Abhaengigkeit mit ein -- tests/verify/meta.sh laege danach
+# selbst hinter einem .v-Task.
+# Zweiter, unabhaengiger Halt, am 27.08. eigens nachgemessen (die Spur 'echt'
+# bricht schon vorher ab und misst ihn nicht mehr): freeze.sh verlangt sie
+# gruen, `bash tests/verify/T-3.14.sh` ist im Arbeitsbaum aber Exit 1 mit 11
+# roten Pruefungen -- K4 bis K11 laufen in Zeitfenster fuer
+# voice.state=listening, K13 ist zweimal rot. Darunter weiterhin die
+# T-3.9-Positivkontrolle 'ein Sprech-Endpunkt ist am Hub auffindbar'
+# (erwartet ja, war nein), in Erst- UND Nachlauf; ohne sie ist der Rest von
+# T-3.9 ungemessen. K13-pytest: 55 failed, 1844 passed.
+# Beide Halte sind aelter als dieser Nachzug und von ihm unabhaengig.
+#   1. offen: neuer .v-Task fuer T-3.14, der beide Halte aufloest
 bcff10c4f5f275b805a1cdd35e5ff5ce481a89a9f504c7be8ff6da3e35295438 tests/verify/t314_pruefstand.py
 8e69272633e634670b8d0b1799f1efd1d291a510b0c2609e9b0c665003616f92 tests/verify/T-3.14.sh
 056150b22d477ad276ffdc24e106a288fe8c5049618f17e599c452615e795c78 tests/verify/T-3.1.sh
@@ -98,6 +123,4 @@ a338db7876aac6c8382de723369fa5571d00d7e3dea5beb94c5936c140840684 tests/verify/t7
 dc475cae490a537145cb6a59a7f5b5865ab3420f8dd2aca908f96a0990d21c56 tests/verify/verify-frozen.sh
 # [trusted] statt [trusted, user_ptt]. Stuetzt sich auf daimon/common/taint.py
 # Ursache: K13 faehrt im Arbeitsbaumlauf die ganze pytest-Suite
-# Vorher: c544d7e2f48fb63f2c52bea84e01b80e08e57386c56b5b685d6db10425380d4d
-# Zeilen aus FROZEN entfernen, dann freeze.sh T-3.14.
 # Zweiter, unabhaengiger Halt: freeze.sh verlangt die Spur 'echt' gruen.
