@@ -224,6 +224,46 @@ def test_ein_erfundener_name_wird_nicht_geraten(naht):
     assert naht.aktion.gesehen == []
 
 
+def test_ein_belegtes_modell_erreicht_den_mind_unter_seinem_eigenen_namen(
+        tmp_path):
+    """Der neue Grund muss die NAHT ueberleben, nicht nur den Broker.
+
+    `Mind.frage_werkzeug` reicht den Grund des Brokers woertlich durch (es
+    benennt ihn ausdruecklich nicht um, `daemon.py:401`) -- diese Zusage gilt
+    fuer `modell_beschaeftigt` genau so wie fuer `modell_weg`, und geprueft
+    ist sie hier ueber einen echten Socket. Ob eine Zeitueberschreitung im
+    Draht wirklich als `modell_beschaeftigt` entsteht (und ein toter Port
+    weiter als `modell_weg`), misst `tests/test_lokal_fremdlast.py` an einem
+    echten HTTP-Endpunkt; hier geht es um die Strecke danach.
+    """
+    def belegt(url, nutzlast, *, timeout_s=0.0):
+        raise TimeoutError("timed out")
+
+    ticket = Dienst(tmp_path / "ticket.sock", lambda n: (
+        {"v": 1, "ok": True, "ticket": "t-1"} if n.get("art") == "ausgeben"
+        else {"v": 1, "ok": True}))
+    aktion = Dienst(tmp_path / "aktion.sock", lambda n: {"v": 1, "ok": True})
+    b = B.LokalBroker(None, log=get_logger("test-lokal"),
+                      hub_socket=ticket.pfad, modell="qwen3:27b", http=belegt,
+                      http_get=_tags, timeout_s=0.1, gesamt_s=0.3,
+                      rueckstau_s=0.01)
+    lokal = Dienst(tmp_path / "lokal.sock", b.anfrage)
+    werkzeuge, namen = werkzeuge_aus_katalog(KATALOG)
+    mind = Mind(hub_socket=ticket.pfad, egress_socket=lokal.pfad,
+                aktion_socket=aktion.pfad, persona=PERSONA,
+                werkzeuge=werkzeuge, werkzeug_namen=namen,
+                langzeit=OhneLangzeit(), log=get_logger("test-mind"))
+    try:
+        ergebnis = mind.frage_werkzeug("mach lauter")
+    finally:
+        for d in (ticket, aktion, lokal):
+            d.schliessen()
+
+    assert ergebnis["ok"] is False
+    assert ergebnis["grund"] == "modell_beschaeftigt", ergebnis
+    assert aktion.gesehen == [], "eine Absage hat gehandelt"
+
+
 def test_das_ticket_geht_dem_modellaufruf_voraus(naht):
     """Ein Aufruf, der bezahlt ist, bevor er autorisiert wurde, waere die
     Umkehrung der Zusage -- und lokal kostet er GPU statt Geld."""

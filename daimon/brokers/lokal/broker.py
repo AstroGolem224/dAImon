@@ -74,7 +74,30 @@ TAGS = ZIEL.rsplit("/", 1)[0] + "/tags"
 # (`--modell`, `lokal.modell`) schlaegt das weiterhin -- wer eins nennt,
 # meint eins.
 MODELL: str | None = None
+# Frist fuer EINEN Versuch. Der Deckel darueber ist `GESAMT_S` -- die beiden
+# gehoeren zusammen und werden nicht einzeln gesetzt.
 TIMEOUT_S = 120.0
+# Deckel ueber ALLE Versuche samt Rueckstau, gerechnet und nicht geraten:
+# der Mind wartet auf `lokal.sock` 180 s (`mind/daemon.py: hub_anfrage`), und
+# `bediene()` unten gibt derselben Verbindung 180 s. Wer laenger rechnet,
+# antwortet in eine Leitung, die niemand mehr liest. 150 s lassen 30 s Luft
+# fuer Ticket, Rumpfbau und die Antwortzeile.
+GESAMT_S = 150.0
+# Hoechstens so viele Versuche. Am 27.08. gemessen: ein Ollama unter Fremdlast
+# antwortet SPAET (49,7 s bei zwei, 79,7 s bei drei Fremdclients), nicht mit
+# einem eigenen Fehler -- selbst 14 gleichzeitige Anfragen gegen
+# `OLLAMA_MAX_QUEUE=8` kamen alle mit 200 zurueck. Ein zweiter Versuch
+# unmittelbar nach einer Zeitueberschreitung lief erneut in die Frist; erst
+# nach Ende der Fremdlast kam dieselbe Frage in 8,4 s. Wiederholung zahlt sich
+# also NICHT gegen Langsamkeit aus -- sondern gegen den Abriss (56 Neustarts
+# von `ollama.service` an einem Tag, `RemoteDisconnected`), und der faellt
+# SCHNELL. Deshalb bekommt jeder Versuch den Rest der Gesamtfrist: ein
+# schneller Fehlschlag laesst Zeit fuer einen weiteren, eine lange Wartezeit
+# nicht.
+VERSUCHE = 3
+# Rueckstau zwischen zwei Versuchen, verdoppelt sich. Klein, weil die Zeit im
+# Warten fuer den Nutzer dieselbe Wartezeit ist wie die im Rechnen.
+RUECKSTAU_S = 2.0
 FENSTER_S = 60.0
 HOECHSTENS = 30
 # Deckel fuer die Antwortlaenge. Gesprochen werden ohnehin hoechstens 140
@@ -85,7 +108,15 @@ NUM_PREDICT = 160
 GRUENDE = frozenset({
     "unlesbar", "unbekannte_art", "kein_ticket", "kein_koerper",
     "ticket_ungueltig", "kontingent_fenster",
-    "modell_weg", "modell_fehlt", "modell_fehler", "modell_denkt",
+    # `modell_beschaeftigt` ist NICHT dasselbe wie `modell_weg`, auch wenn
+    # beide bis zum 27.08. so hiessen: das eine ist ein Endpunkt, der nicht
+    # antwortet, das andere einer, der GAR NICHT DA ist. Am 27.08. gemessen
+    # sind das zwei verschiedene Ausgaenge desselben Aufrufs -- eine
+    # Zeitueberschreitung (`TimeoutError`, nach der vollen Frist) gegen ein
+    # `URLError [Errno 111] Connection refused` nach 0,0 s. Wer beides gleich
+    # nennt, sucht bei einer belegten GPU nach einem toten Dienst.
+    "modell_weg", "modell_beschaeftigt",
+    "modell_fehlt", "modell_fehler", "modell_denkt",
 })
 
 
@@ -186,9 +217,12 @@ class LokalBroker:
     def __init__(self, cfg: Config | None = None, *,
                  log: Logger | None = None, hub_socket: str = "",
                  ziel: str = ZIEL, modell: str | None = MODELL,
-                 timeout_s: float = TIMEOUT_S, fenster_s: float = FENSTER_S,
+                 timeout_s: float = TIMEOUT_S, gesamt_s: float = GESAMT_S,
+                 versuche: int = VERSUCHE, rueckstau_s: float = RUECKSTAU_S,
+                 fenster_s: float = FENSTER_S,
                  hoechstens: int = HOECHSTENS,
                  num_predict: int = NUM_PREDICT,
+                 schlafen: Callable[[float], None] = time.sleep,
                  http: Callable[..., tuple[int, str]] = http_post,
                  http_get: Callable[..., tuple[int, str]] = http_get,
                  tags: str = TAGS,
@@ -206,6 +240,10 @@ class LokalBroker:
         self._erkannt: str | None = None
         self._http_get = http_get
         self.timeout_s = float(timeout_s)
+        self.gesamt_s = float(gesamt_s)
+        self.versuche = max(1, int(versuche))
+        self.rueckstau_s = float(rueckstau_s)
+        self._schlafen = schlafen
         self.fenster_s = float(fenster_s)
         self.hoechstens = int(hoechstens)
         self.num_predict = int(num_predict)
@@ -257,6 +295,61 @@ class LokalBroker:
         assert grund in GRUENDE, grund
         return {"v": 1, "ok": False, "grund": grund, "meldung": meldung, **extra}
 
+    def _rufen(self, last: dict) -> tuple[int, str] | dict:
+        """Der Aufruf an Ollama, mit Wiederholung. `(status, rumpf)` oder eine
+        fertige Absage.
+
+        Die Wiederholung sitzt HIER und nicht um `anfrage()` herum, und das
+        ist der ganze Punkt: das Ticket ist zu diesem Zeitpunkt bereits
+        eingeloest und das Fenster gezaehlt. Ein zweiter Versuch ist derselbe
+        bezahlte Auftrag, kein neuer -- wer ihn oben ansetzte, zoege je
+        Wiederholung ein weiteres Ticket und verbrauchte das Kontingent
+        dreifach fuer eine Antwort.
+
+        Jeder Versuch bekommt den REST der Gesamtfrist (hoechstens
+        `timeout_s`), nicht eine feste eigene: gegen Langsamkeit hilft
+        Wiederholen nachweislich nicht (27.08. gemessen), gegen einen Abriss
+        schon -- und der faellt schnell und laesst die Frist stehen.
+        """
+        frist = time.monotonic() + self.gesamt_s
+        rueckstau = self.rueckstau_s
+        letzte = ("modell_weg", "kein Versuch unternommen")
+        versuch = 0
+        rest = self.gesamt_s
+        while versuch < self.versuche and rest > 0:
+            versuch += 1
+            try:
+                return self._http(self.ziel, last,
+                                  timeout_s=min(self.timeout_s, rest))
+            except urllib.error.URLError as exc:
+                # Eine Zeitueberschreitung beim VERBINDEN kommt hier verpackt
+                # an, eine beim Lesen als blanker `TimeoutError`. Beide meinen
+                # dasselbe und muessen denselben Grund bekommen.
+                letzte = (("modell_beschaeftigt"
+                           if isinstance(exc.reason, TimeoutError)
+                           else "modell_weg"),
+                          f"{type(exc).__name__} an {self.ziel}")
+            except TimeoutError:
+                letzte = ("modell_beschaeftigt",
+                          f"keine Antwort binnen {min(self.timeout_s, rest):.0f} s "
+                          f"-- Modell belegt")
+            except OSError as exc:
+                # `RemoteDisconnected` faellt hier hinein (Unterklasse von
+                # `ConnectionResetError`) -- der Fall der 56 Neustarts.
+                letzte = ("modell_weg", f"{type(exc).__name__} an {self.ziel}")
+            except Exception as exc:      # noqa: BLE001 -- wie im Egress
+                letzte = ("modell_weg", type(exc).__name__)
+            # Ein weiterer Versuch lohnt nur, wenn nach dem Rueckstau noch Zeit
+            # zum Fragen bleibt. Keine eigene Untergrenze dafuer: die Frist
+            # rechnet sich selbst leer, und eine zweite Zahl waere eine zweite
+            # Fassung derselben Regel.
+            rest = frist - time.monotonic() - rueckstau
+            if versuch >= self.versuche or rest <= 0:
+                break
+            self._schlafen(rueckstau)
+            rueckstau *= 2
+        return self._nein(letzte[0], letzte[1], versuche=versuch)
+
     def anfrage(self, anfrage: object) -> dict:
         if not isinstance(anfrage, dict):
             return self._nein("unlesbar", "kein JSON-Objekt")
@@ -301,16 +394,16 @@ class LokalBroker:
                               "laeuft ollama, und ist eins gezogen?")
 
         t0 = time.monotonic()
-        try:
-            status, roh = self._http(
-                self.ziel, nutzlast(koerper, modell=modell,
-                                    num_predict=self.num_predict),
-                timeout_s=self.timeout_s)
-        except (OSError, urllib.error.URLError) as exc:
-            return self._nein("modell_weg",
-                              f"{type(exc).__name__} an {self.ziel}")
-        except Exception as exc:      # noqa: BLE001 -- wie im Egress
-            return self._nein("modell_weg", type(exc).__name__)
+        ergebnis = self._rufen(nutzlast(koerper, modell=modell,
+                                        num_predict=self.num_predict))
+        if isinstance(ergebnis, dict):
+            self.log.warn("Modell nicht erreicht", DAIMON_ACTION="lokal_absage",
+                          DAIMON_TICKET=ticket[:12],
+                          DAIMON_GRUND=str(ergebnis.get("grund"))[:40],
+                          DAIMON_VERSUCHE=ergebnis.get("versuche"),
+                          DAIMON_DAUER_MS=round((time.monotonic() - t0) * 1000, 2))
+            return ergebnis
+        status, roh = ergebnis
         dauer_ms = round((time.monotonic() - t0) * 1000, 2)
 
         if status == 404:
@@ -369,11 +462,20 @@ class LokalBroker:
         return {"v": 1, "ok": True, "modell": self.modell_jetzt(),
                 "modell_gewaehlt": self.modell, "ziel": self.ziel,
                 "anfragen": self.anfragen, "fenster_s": self.fenster_s,
-                "hoechstens": self.hoechstens}
+                "hoechstens": self.hoechstens,
+                # Damit die Obergrenze von aussen ablesbar ist statt aus drei
+                # Konstanten zusammengesucht: `gesamt_s` ist die Zahl, die
+                # gilt.
+                "gesamt_s": self.gesamt_s, "versuche": self.versuche}
 
 
 def bediene(broker: LokalBroker, conn: socket.socket) -> None:
     with conn:
+        # 180 s ist die Frist, unter der `GESAMT_S` bleiben MUSS -- dieselbe
+        # Zahl wartet auf der anderen Seite der Leitung im Mind
+        # (`mind/daemon.py: hub_anfrage`). Wer eine der beiden anfasst, fasst
+        # beide an, sonst rechnet dieser Broker in eine Leitung hinein, die
+        # niemand mehr liest.
         conn.settimeout(180.0)
         try:
             anfrage = json.loads(conn.makefile("rb").readline(MAX_ZEILE))
@@ -409,6 +511,9 @@ def main(argv: list[str] | None = None) -> int:
         # gemessen, drei Minuten nach der Umstellung.
         modell=modell_waehlen(args.modell, cfg.get("lokal.modell", MODELL)),
         timeout_s=float(cfg.get("lokal.timeout_s", TIMEOUT_S)),
+        gesamt_s=float(cfg.get("lokal.gesamt_s", GESAMT_S)),
+        versuche=int(cfg.get("lokal.versuche", VERSUCHE)),
+        rueckstau_s=float(cfg.get("lokal.rueckstau_s", RUECKSTAU_S)),
         fenster_s=float(cfg.get("lokal.fenster_s", FENSTER_S)),
         hoechstens=int(cfg.get("lokal.hoechstens", HOECHSTENS)),
         num_predict=int(cfg.get("lokal.num_predict", NUM_PREDICT)))

@@ -241,10 +241,85 @@ das die Naht über echte Sockets fährt und den Zulauf bewacht.
    für dieselbe Sache.
 4. Gilt die Residenzpolitik aus §5.4 auch für ein dauerhaft geladenes
    Textmodell? **Offen.**
-5. **Neu und offen: Wiederholung bei Zeitüberschreitung.** Am 26.08. live
-   gemessen: bei einem zweiten Ollama-Client auf demselben Modell lief der
-   Broker in seine 120 s und meldete `modell_weg`; ein direkter `curl` an
-   Ollama brauchte über 200 s für acht Token. Der Weg ist damit korrekt
-   verdrahtet und unter Fremdlast trotzdem unbrauchbar. Eine
-   Wiederholungslogik ist ein eigener Task (der Betriebsbefund oben nennt
-   56 Neustarts von `ollama.service` an einem Tag).
+5. ~~Wiederholung bei Zeitüberschreitung.~~ **Gemessen und gebaut am 27.08.,
+   siehe unten.**
+
+---
+
+## Gemessen am 27.08.: was Fremdlast wirklich tut — und was daraus folgt
+
+Erst gemessen, dann gebaut. Zweiter (und dritter) Ollama-Client auf demselben
+Modell `qwen3.8-heretic:27b-96k`, `OLLAMA_NUM_PARALLEL=2`,
+`OLLAMA_MAX_QUEUE=8`; die Messanfrage ist jedes Mal dieselbe kurze Frage mit
+`num_predict: 8`.
+
+| Lage | Ergebnis |
+|---|---|
+| ohne eigene Fremdlast (die Maschine war nicht leer), 3 Läufe | HTTP 200 nach 24,9 s / 81,8 s / 9,4 s |
+| zwei Fremdclients | HTTP 200 nach **49,7 s** |
+| drei Fremdclients | HTTP 200 nach **79,7 s** |
+| 14 gleichzeitige Anfragen gegen `MAX_QUEUE=8` | **14× HTTP 200** nach ~62 s — **kein 503** |
+| 20-s-Frist unter Last, danach sofort wiederholt | zweimal `TimeoutError` |
+| dieselbe Frage nach Ende der Fremdlast | HTTP 200 nach **8,4 s** |
+| Port ohne Dienst (Gegenprobe) | `URLError [Errno 111] Connection refused` nach **0,0 s** |
+
+**Der Befund:** Ollama liefert unter Fremdlast **keinen eigenen Fehler**. Es
+antwortet spät, und zwar zuverlässig — auch die Warteschlange lief nicht über.
+Der einzige Unterschied, den ein Aufrufer sieht, ist die **Zeit**. Damit war
+die naheliegende Erwartung („ein besetzter Endpunkt meldet sich als besetzt")
+widerlegt, bevor sie Code geworden ist.
+
+**Und die zweite Widerlegung:** eine Wiederholung hilft **nicht** gegen
+Langsamkeit. Der zweite Versuch unmittelbar nach der Zeitüberschreitung lief
+erneut in die Frist; erst das Ende der Fremdlast half. Wiederholung zahlt sich
+gegen den **Abriss** aus (`RemoteDisconnected`, 56 Neustarts an einem Tag) —
+und der fällt schnell und lässt Frist übrig.
+
+Daraus die Bauform: **eine Gesamtfrist, und jeder Versuch bekommt den Rest.**
+Ein schneller Fehlschlag lässt Zeit für einen weiteren; eine lange Wartezeit
+verbraucht die Frist selbst, und dann ist Aufgeben die ehrliche Antwort. Keine
+feste Frist je Versuch, die im Langsamkeitsfall nur früher aufgäbe.
+
+### Der neue Grund
+
+`modell_beschaeftigt` neben `modell_weg` (`brokers/lokal/broker.py`, Liste der
+Gründe). Bis zum 27.08. hießen beide `modell_weg` — eine Zeitüberschreitung
+nach voller Frist und ein `Connection refused` nach 0,0 s. Wer beides gleich
+nennt, sucht bei belegter GPU nach einem toten Dienst. Der Mind reicht den
+Grund wörtlich durch (`mind/daemon.py:401`, ausdrückliche Zusage); Router und
+`answer.py` fassen ihn wie jeden Transportgrund zu `egress_weg` zusammen —
+dasselbe Verhalten wie für `modell_weg`, also **keine** Änderung dort.
+
+Eine zweite Fassung derselben Liste gibt es im Baum **nicht**:
+`tests/fixtures/known-good/T-3.14/daimon/brokers/lokal/broker.py` ist eine
+eingefrorene Momentaufnahme (sie trägt noch den fest verdrahteten Modellnamen
+von vor dem 17.08.) und keine gepflegte Zweitschrift — sie bleibt unberührt.
+
+### Die Obergrenze, zusammengerechnet statt einzeln gesetzt
+
+| Stelle | Frist | Bedeutung |
+|---|---|---|
+| Ohren → `mind.sock` (`ears/daemon.py: ruf_socket`) | **30 s** | die *wirklich* bindende Grenze für eine gesprochene Runde |
+| Mind → `lokal.sock` (`mind/daemon.py: hub_anfrage`) | 180 s | so lange wartet der Mind |
+| `lokal.sock`-Verbindung (`broker.py: bediene`) | 180 s | dieselbe Zahl, andere Seite |
+| **Broker gesamt (`GESAMT_S`)** | **150 s** | alle Versuche samt Rückstau zusammen |
+| je Versuch (`TIMEOUT_S`) | 120 s | gedeckelt auf den Rest der Gesamtfrist |
+| Versuche (`VERSUCHE`) | 3 | Rückstau 2 s, verdoppelt sich |
+
+150 s lassen 30 s Luft unter den 180 s für Ticket, Rumpfbau und Antwortzeile.
+Die Gesamtfrist ist die **eine** Zahl, die gilt; sie steht seit dem 27.08.
+auch in der Auskunft `art: "zustand"`, damit sie im Betrieb ablesbar ist,
+statt aus drei Konstanten zusammengesucht zu werden.
+
+**Offen und ausdrücklich nicht mitgebaut:** die 30 s der Ohren machen jede
+Antwort jenseits einer halben Minute für den Sprechweg wertlos — ein
+Broker-Deckel von 150 s hilft dort niemandem. Das ist eine Entscheidung über
+den *Sprechweg* (abbrechen? zwischendurch etwas sagen?) und gehört nicht in
+den Broker.
+
+**Nebenbefund, ungefixt:** der Broker nimmt bei automatischer Erkennung das
+alphabetisch erste Modell aus `/api/tags`. Auf dieser Maschine ist das
+`L3.1-dark-hermes:latest`, und das quittiert eine Anfrage mit Werkzeugliste
+mit **HTTP 400** (`modell_fehler`) — live gesehen. Der Betrieb setzt
+`lokal.modell` ausdrücklich; für eine Kopie ohne diese Zeile ist der
+Werkzeugweg tot, ohne dass es so aussieht.
