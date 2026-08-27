@@ -185,9 +185,39 @@ TTS_UNITS = ("daimon-tts.service",)
 # ein Absender, der den Socketpfad zusammensetzt statt ihn zu nennen. Den
 # gibt es nicht. Die Luecke war eine ganze Funktion, und meine Suche ging
 # ueber die Aufrufer statt ueber die Annahmestellen.
+
+# Die Scope, in die sich ein PRUEFLAUF haengt, um `hookbridge.sock` zu
+# erreichen. Ohne sie laeuft ein Pruefstand unter der Unit seiner Sitzung
+# (gemessen: `app-com.anthropic.Claude-2954.scope`), und `_horche_produzent`
+# weist ihn ab -- `tests/verify/T-0.9.sh` war darum in zwei Kriterien rot.
+# Vorbild und Vertrag: `daimon/plan/daemon.py:72` fuehrt `daimon-plan-cli.scope`
+# genauso als exakten Eintrag; `ipc.unit_erlaubt` vergleicht exakt, die
+# `.service`-Bedingung sitzt nur im `@`-Template-Zweig.
+#
+# DER HANDEL, ausdruecklich:
+#   WAS ER OEFFNET: `hookbridge.sock` und damit genau `ipc.PRODUZENTEN
+#   ["hookbridge"] == {"hook"}` -- SICHTBARKEIT (Blase, Stimmung), keine
+#   FAEHIGKEIT. Ein `hook` erzeugt keine Rundenmarke, keine Freigabe, keinen
+#   Auftrag an einen Broker.
+#   WER IHN BENUTZEN DARF: wer eine Scope dieses Namens anlegen kann, also
+#   jeder Prozess unter dieser uid. Das ist hinnehmbar, weil die
+#   Peer-Pruefung ein Wegweiser ist und keine Authentifizierung
+#   (DESIGN.md 1.3) -- sie schliesst den BEILAEUFIGEN Weg, nicht den
+#   absichtlichen.
+#   WARUM NUR HIER: `auth` traegt als einzige Typenmenge Faehigkeit
+#   (`intent_mark`, `freigabe`, `ptt`) -- `auth.sock` gibt die Rundenmarke
+#   aus, auf die sich `aktion.sock` verlaesst; heute haelt die Liste
+#   `daimon-cli-broker.service` von dort fern. `plan` schreibt in den
+#   Terminspeicher und auf das Overlay. `face` und `ears` melden Zustand des
+#   Nutzers (Wegklicken, Transkript), den ein Prueflauf nicht faelschen
+#   koennen soll. Keiner der vier bekommt diesen Eintrag; wer ihn braucht,
+#   braucht eine eigene Begruendung an dieser Stelle.
+VERIFY_SCOPE = "daimon-verify.scope"
+
 PRODUZENT_UNITS: dict[str, tuple[str, ...]] = {
-    # hookbridge/bridge.py:249 -- der einzige Schreiber.
-    "hookbridge": ("daimon-hookbridge.service",),
+    # hookbridge/bridge.py:249 -- der einzige Schreiber im Betrieb.
+    # VERIFY_SCOPE ist der zweite, ausdrueckliche Eintrag; Begruendung oben.
+    "hookbridge": ("daimon-hookbridge.service", VERIFY_SCOPE),
     # face/src/hub.rs:139. Das Overlay meldet Blasen, Abschaltungen und seit
     # T-7.4 den Privatmodus.
     "face": ("daimon-face.service",),
