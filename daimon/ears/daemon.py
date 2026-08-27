@@ -46,10 +46,14 @@ import wave
 from pathlib import Path
 from typing import Any, Callable
 
-from daimon.common.config import Config, load as load_config
+from daimon.common.config import VORGABEN, Config, load as load_config
 from daimon.common.logging import Logger, get_logger
 from daimon.ears import vad
 from daimon.ears.interlock import Sperre
+# Nur der SCHLUESSEL, nicht der Satz. Der Satz steht in `VORLAGEN` und
+# nirgends sonst -- ein Stringliteral hier waere eine zweite Fassung
+# derselben kuratierten Zeile.
+from daimon.hub.sprechtext import KEINE_ANTWORT_VORLAGE
 
 RATE = 16000
 CHUNK_MS = 32.0
@@ -113,7 +117,7 @@ class Ohren:
                  runtime_dir: Path | None = None, log: Logger | None = None,
                  aufnahme_fabrik: Callable[..., Any] | None = None,
                  erkenner: Any = None,
-                 ruf: Callable[[str, dict], dict] = ruf_socket,
+                 ruf: Callable[..., dict] = ruf_socket,
                  uhr: Callable[[], float] = time.monotonic,
                  echt: bool = True,
                  verbinde_timeout_s: float = 5.0) -> None:
@@ -147,6 +151,12 @@ class Ohren:
         self.letzte_latenz: dict | None = None
         self._echo_sock: socket.socket | None = None
         self._echo_thread: threading.Thread | None = None
+
+        # Die Frist auf `mind.sock`. Herleitung und Rechnung gegen die Kette
+        # stehen bei der Vorgabe in `common/config.py` -- hier steht keine
+        # zweite Zahl, auch nicht als Rueckfall.
+        self._mind_frist_s = float(
+            self.cfg.get("ears.mind_frist_s", VORGABEN["ears"]["mind_frist_s"]))
 
         self._verbinde_timeout_s = float(verbinde_timeout_s)
         self._stop = threading.Event()
@@ -303,6 +313,24 @@ class Ohren:
             self.log.info("nicht archiviert", DAIMON_ACTION="ears_archiv",
                           DAIMON_GRUND=str(ergebnis.get("grund", ""))[:60])
 
+    def _sagen(self, nutzlast: dict) -> dict:
+        """Zum Sprecher -- und die Antwort ANSEHEN.
+
+        `tts-say.sock` sagt regelmaessig ab: Abkuehlung (10 s auf `reaktion`),
+        ein Validatorbefund, ein toter Dienst. Bis zum 27.08. floss diese
+        Antwort nur als `ttfa_ms` in die Latenzzeile; ein abgelehnter Satz sah
+        im Journal aus wie ein gesprochener, und die Runde meldete Erfolg. Wer
+        einen Fristablauf hoerbar machen will, muss zuerst merken koennen, dass
+        er nicht gehoert wurde.
+        """
+        antwort = self._ruf(str(self.runtime_dir / SAY_SOCKET), nutzlast)
+        if not antwort.get("ok"):
+            self.log.warn("Nicht gesprochen",
+                          DAIMON_ACTION="ears_nicht_gesprochen",
+                          DAIMON_KANAL=str(nutzlast.get("kanal", ""))[:20],
+                          DAIMON_GRUND=str(antwort.get("grund", "unbekannt"))[:60])
+        return antwort
+
     def _runde(self, stuecke: list[Any], *, listening_bei_beginn: bool) -> None:
         t_segment = self._uhr()
         wav = self._wav_schreiben(stuecke)
@@ -343,9 +371,8 @@ class Ohren:
             t2 = self._uhr()
             satz = str(parser.get("gesprochen") or "").strip()
             if satz:
-                self._ruf(str(self.runtime_dir / SAY_SOCKET),
-                         {"v": 1, "art": "sprich", "kanal": "reaktion",
-                          "text": satz})
+                self._sagen({"v": 1, "art": "sprich", "kanal": "reaktion",
+                             "text": satz})
             t3 = self._uhr()
             self.runden += 1
             self._latenz_schreiben(t_segment, t0, t1, t2, t3, None)
@@ -353,7 +380,8 @@ class Ohren:
 
         antwort = self._ruf(str(self.runtime_dir / MIND_SOCKET),
                             {"v": 1, "art": "frage", "text": text,
-                             "marke": marke})
+                             "marke": marke},
+                            timeout_s=self._mind_frist_s)
         t2 = self._uhr()
         # Gesprochen wird, was der Mind als `antwort` mitgibt -- AUCH bei
         # ok=False: eine Absage mit kuratierter Rueckmeldung (T-4.19,
@@ -363,14 +391,31 @@ class Ohren:
         if not satz:
             self.log.info("Keine Antwort", DAIMON_ACTION="ears_stumm",
                           DAIMON_GRUND=str(antwort.get("grund", "leer"))[:60])
+            # Der Nutzer hat gedrueckt, gesprochen und wartet. Bis zum 27.08.
+            # endete die Runde hier mit einer Journalzeile -- zu hoeren war
+            # nichts, und ein abgelaufener Modellruf war von einem toten Pet
+            # nicht zu unterscheiden.
+            #
+            # Kanal `ungefragt` mit Vorlage, nicht `reaktion` mit Text: das
+            # ist keine Antwort auf die Frage, sondern eine Aussage ueber den
+            # eigenen Zustand -- und `ungefragt` ist der Kanal, der
+            # ausschliesslich kuratierte Zeilen kennt. `trusted` ist ehrlich:
+            # die Vorlage hat keine Platzhalter, es geht kein einziges Zeichen
+            # aus Transkript oder Modellantwort mit.
+            #
+            # Ein einziger Satz fuer JEDEN stummen Ausgang, nicht nur fuer den
+            # Fristablauf: von aussen sind sie ununterscheidbar (es kommt
+            # nichts), und der Grund steht ohnehin in der Zeile darueber.
+            self._sagen({"v": 1, "art": "sprich", "kanal": "ungefragt",
+                         "anlass": KEINE_ANTWORT_VORLAGE,
+                         "markierung": "trusted"})
             self._latenz_schreiben(t_segment, t0, t1, t2, None, None)
             return
 
         # Der Ohren-Dienst holt KEINE Sprechfreigabe. Das tut der TTS-Dienst
         # beim Hub -- der Torwaechter bleibt an einer Stelle (Design 8.3).
-        gesprochen = self._ruf(str(self.runtime_dir / SAY_SOCKET),
-                               {"v": 1, "art": "sprich", "kanal": "reaktion",
-                                "text": satz})
+        gesprochen = self._sagen({"v": 1, "art": "sprich", "kanal": "reaktion",
+                                  "text": satz})
         t3 = self._uhr()
         self.runden += 1
         self._latenz_schreiben(t_segment, t0, t1, t2, t3, gesprochen)

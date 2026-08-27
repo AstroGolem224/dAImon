@@ -102,12 +102,24 @@ VORLAGEN: dict[str, str] = {
     "termin_faellig": "Erinnerung: {titel}.",
     "fokus_start": "Fokus laeuft, {dauer} Minuten.",
     "fokus_ende": "Fokus vorbei. Kurz durchatmen.",
+    # T-3.15: die Frist auf `mind.sock` ist abgelaufen (oder der Mind hat
+    # ohne Antworttext abgesagt). Der Ohren-Dienst hat den Satz NICHT als
+    # Stringliteral -- er nennt nur den Schluessel unten. Sonst stuende
+    # derselbe Satz zweimal im Baum, und gepflegt wuerde erfahrungsgemaess
+    # der andere.
+    "keine_antwort": "Ich habe keine Antwort bekommen. Frag mich noch mal.",
     # Der Ersatz, wenn eine Antwort durch den Validator faellt. Design §8.3:
     # "sagt das Pet, dass die Antwort auf dem Bildschirm steht". Es schweigt
     # nicht -- Schweigen waere von einem toten Dienst nicht zu unterscheiden.
     "steht_am_bildschirm": "Die Antwort steht auf dem Bildschirm.",
 }
 ERSATZ_VORLAGE = "steht_am_bildschirm"
+KEINE_ANTWORT_VORLAGE = "keine_antwort"
+
+# Vorlagen, die die Abkuehlung NICHT abwarten. Die Begruendung je Schluessel
+# steht dort, wo die Regel eingehalten wird: `hub/daemon.py: tts_anfrage`.
+# Hier stehen nur die Namen, damit es eine Fassung der Liste gibt.
+OHNE_ABKUEHLUNG = frozenset({ERSATZ_VORLAGE, KEINE_ANTWORT_VORLAGE})
 
 # -- Muster ---------------------------------------------------------------
 

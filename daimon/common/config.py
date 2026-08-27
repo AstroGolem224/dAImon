@@ -47,6 +47,30 @@ VORGABEN: dict[str, Any] = {
         # wird. Plan: 1,0--1,5 s, Vorgabe in der Mitte. Die Ringgroesse
         # selbst (20 s) ist keine Einstellung -- siehe daimon/ears/ring.py.
         "ring": {"vorlauf_s": 1.25},
+        # T-3.15: wie lange der Ohren-Dienst auf `mind.sock` wartet.
+        #
+        # Hergeleitet aus der Messung vom 27.08.: der lokale Modellweg braucht
+        # unter Fremdlast 49,7 s (zwei Fremdclients) bis 79,7 s (drei). 120 s
+        # sind das Anderthalbfache des gemessenen Maximums -- die alten 30 s
+        # lagen UNTER dem guenstigsten gemessenen Lastfall, jede Antwort unter
+        # Fremdlast fiel also aus.
+        #
+        # Gegen die Kette gerechnet, von innen nach aussen:
+        #   Broker  GESAMT_S      150 s  (brokers/lokal/broker.py)
+        #   Mind    hub_anfrage   180 s
+        #   Mind    bediene       200 s
+        # 120 s liegt BEWUSST unter allen dreien: die Ohren sind nicht der
+        # Wachhund der Kette, sondern die Geduld des Nutzers. Wer bis 120 s
+        # keine Antwort hat, braucht ein Wort und keine Antwort mehr -- der
+        # Fristablauf wird deshalb hoerbar (daimon/ears/daemon.py, Vorlage
+        # `keine_antwort`). Eine spaeter doch eintreffende Antwort hat keinen
+        # Empfaenger mehr; das ist Absicht, nicht Versehen.
+        #
+        # ponytail: eine Zahl aus einer Messung, kein adaptives Fenster.
+        # Obergrenze: sobald eine Messung ueber 80 s zeigt, gehoert diese Zahl
+        # nach oben -- bis 150 s ist Luft, darueber steht die Broker-Frist im
+        # Weg und die Antwort kaeme ohnehin nicht mehr.
+        "mind_frist_s": 120.0,
     },
     # T-3.7: das GPU-Gate. `sperrfrist_s` ist die Frist, nach der eine
     # Ladesperre von selbst verfaellt -- sie faengt einen beim Laden

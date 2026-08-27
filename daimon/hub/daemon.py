@@ -1230,6 +1230,20 @@ class Hub:
         # `gesprochen` setzt sie neu. Eine Kette von Unterbrechungen ist damit
         # kein Umweg, sondern ein einziger, immer wieder abgebrochener Satz.
         #
+        # FRISTABLAUF (`keine_antwort`, T-3.15). Der Ohren-Dienst hat bis zum
+        # Ende von `ears.mind_frist_s` auf `mind.sock` gewartet und nichts
+        # bekommen. Diese eine Zeile ERBT die Abkuehlung ausdruecklich NICHT,
+        # und das ist eine Entscheidung, keine Bequemlichkeit: sie ist die
+        # einzige Aeusserung, deren ganzer Zweck es ist, Schweigen von einem
+        # toten Dienst zu unterscheiden. Genau die Lagen, in denen die
+        # Abkuehlung greift -- ein proaktiver Satz kurz davor, ein zweiter
+        # Fristablauf kurz danach --, sind die Lagen, in denen der Nutzer am
+        # laengsten nichts gehoert hat. Eine verschluckte Lebendmeldung waere
+        # von einem abgestuerzten Sprachpfad nicht zu unterscheiden.
+        # Fluten kann sie nicht: vor jeder steht eine volle Frist (120 s), und
+        # sie kostet den Nutzer einen Satz, den er selbst durch PTT ausgeloest
+        # hat.
+        #
         # ERSATZSATZ. Er ist die Antwort auf eine abgelehnte Aeusserung
         # (Design §8.3: "sagt das Pet, dass die Antwort auf dem Bildschirm
         # steht"). Unterliegt er der Abkuehlung, dann sagt das Pet es beim
@@ -1242,7 +1256,11 @@ class Hub:
         # ein echter Produzent (Mind) das tut, gehoert hier eine eigene, kurze
         # Frist hin -- und die haette dann nichts mit `abkuehlung` zu tun.
         spricht_noch = bool(self.state.snapshot()["voice"].get("tts_active"))
-        ist_ersatz = anfrage.get("anlass") == sprechtext.ERSATZ_VORLAGE
+        # Beide Faelle tragen dieselbe Folge: keine Abkuehlung davor, und in
+        # `_tts_beginnt`/`_tts_gesprochen` auch keine danach. Eine kuratierte
+        # Vorlage, die niemand frei fuellen kann, verlaengert das Schweigen
+        # der naechsten echten Aeusserung nicht.
+        ist_ersatz = anfrage.get("anlass") in sprechtext.OHNE_ABKUEHLUNG
         if not darf and not (spricht_noch or ist_ersatz):
             self.diag.verworfen("tts_abkuehlung")
             return {"v": 1, "ok": False, "grund": "abkuehlung",

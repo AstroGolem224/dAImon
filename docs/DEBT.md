@@ -5,7 +5,7 @@ Eintrag ist eine BEWUSSTE Vereinfachung mit benannter Obergrenze -- keine
 Nachlaessigkeit, sondern eine Entscheidung, die jemand zurueckdrehen darf,
 wenn die Obergrenze erreicht ist.
 
-**23 Eintraege in 19 Dateien.**
+**24 Eintraege in 20 Dateien.**
 
 Gesucht wird in `daimon/`, `face/src/`, `tools/` und `config/` -- NICHT in
 `tests/mutants/` und `tests/fixtures/known-good/`. Die enthalten Kopien des
@@ -36,6 +36,10 @@ Nachschreiben, und dafür ist der `grep` oben da.
 ## `daimon/brokers/lokal/broker.py`
 
 - **Zeile 27** — HTTP an Ollama, kein Unterprozess je Frage. Obergrenze: kein
+
+## `daimon/common/config.py`
+
+- **Zeile 69** — eine Zahl aus einer Messung, kein adaptives Fenster.
 
 ## `daimon/ears/capture.py`
 
@@ -70,7 +74,7 @@ Nachschreiben, und dafür ist der `grep` oben da.
 
 ## `daimon/hub/sprechtext.py`
 
-- **Zeile 159** — eine Heuristik, keine Grammatik. Obergrenze: sie laesst
+- **Zeile 171** — eine Heuristik, keine Grammatik. Obergrenze: sie laesst
 
 ## `daimon/hub/abkuehlung.py`
 
@@ -78,7 +82,7 @@ Nachschreiben, und dafür ist der `grep` oben da.
 
 ## `daimon/hub/daemon.py`
 
-- **Zeile 1210** — der Ersatzsatz hat KEINE eigene Frist. Obergrenze: er ist
+- **Zeile 1254** — der Ersatzsatz hat KEINE eigene Frist. Obergrenze: er ist
 
 ## `daimon/hub/state.py`
 

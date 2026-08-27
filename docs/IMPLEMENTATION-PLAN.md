@@ -2979,14 +2979,19 @@ geöffnet, die einzige Typenmenge mit Fähigkeit statt Sichtbarkeit.
 `T-0.9.sh` sendet seither aus dieser Scope, hat ein eigenes Gut-Muster und
 acht Mutanten, und ist regulär eingefroren.
 
-**Offen, HYPOTHESE (ungemessen):** dieselbe Klasse eine Ebene weiter. Die
+**Offen, seit 27.08. GEMESSEN:** dieselbe Klasse eine Ebene weiter. Die
 T-3.9-Positivkontrolle „ein Sprech-Endpunkt ist am Hub auffindbar" ist im
-Arbeitsbaum rot; die Endpunkt-Entdeckung fragt jeden Socket aus der Unit
-ihrer Sitzung an, und der Sprech-Socket startet in `hub/daemon.py:1782` mit
-`erlaubte_units=TTS_UNITS` (`("daimon-tts.service",)`, Zeile 171). Ob das
-die Ursache ist, hat niemand gemessen. `T-3.14.sh` ist deswegen im
-Arbeitsbaum Exit 1 mit 11 roten Prüfungen — der zweite, von der Deps-Sperre
-unabhängige Halt.
+Arbeitsbaum rot, weil `tts.sock` mit `erlaubte_units=TTS_UNITS` startet
+(`hub/daemon.py:1782`, Liste in Zeile 171: `("daimon-tts.service",)`) und
+die Endpunkt-Entdeckung unter keiner Unit läuft. Gemessen wurde es
+beiläufig beim Bau der Sprechfrist: ein Prüflauf mit echtem Sprecher
+meldete `grund=hub_weg` an genau dieser Wand — sichtbar nur, weil die
+Antwort von `tts-say.sock` seither ausgewertet wird. `T-3.14.sh` ist
+deswegen Exit 1 mit 11 roten Prüfungen; das ist der zweite, von der
+Deps-Sperre unabhängige Halt. Die Auflösung ist derselbe Handel wie bei
+`hookbridge` (`daimon-verify.scope`), aber `tts.sock` ist ein Sprech-Weg
+und kein Sichtbarkeits-Weg — das gehört vor `geth`, nicht in einen
+Nebensatz.
 
 **Ebenfalls offen, vorbestehend:** 23 Fehlschläge in `tests/test_recorder_*`
 (`recorder_hilfen.py:48` „Dienst nimmt nach 5.0 s keine Verbindung an").

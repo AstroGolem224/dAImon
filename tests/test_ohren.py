@@ -10,11 +10,14 @@ sonst prueft K8 eine Attrappe.
 
 import json
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
 
+from daimon.common.config import VORGABEN
 from daimon.ears.daemon import Ohren, marke_fuer
+from daimon.hub.sprechtext import KEINE_ANTWORT_VORLAGE, VORLAGEN
 
 
 class AufnahmeAttrappe:
@@ -56,9 +59,14 @@ class Rufe:
 
     def __init__(self) -> None:
         self.anfragen: list[tuple[str, dict]] = []
+        # Die Fristen, mit denen gerufen wurde -- je Art die letzte. Ohne sie
+        # waere "der Mind bekommt die konfigurierte Frist" nicht messbar.
+        self.fristen: dict[str, float | None] = {}
 
-    def __call__(self, pfad: str, anfrage: dict) -> dict:
+    def __call__(self, pfad: str, anfrage: dict, *,
+                 timeout_s: float | None = None) -> dict:
         self.anfragen.append((str(pfad), anfrage))
+        self.fristen[str(anfrage.get("art"))] = timeout_s
         if anfrage.get("art") == "transkribiere":
             return {"v": 1, "ok": True, "text": "wie spaet ist es",
                     "latenz_ms": 118.0}
@@ -141,20 +149,121 @@ def test_eine_aeusserung_laeuft_durch_alle_vier_stufen(tmp_path):
     assert o.runden == 1
 
 
+# -- Die Frist auf mind.sock und ihr Ablauf (27.08.) ----------------------
+
+def test_der_mind_bekommt_die_konfigurierte_frist_nicht_die_dreissig(tmp_path):
+    """Die 30 s der Vorgabe lagen UNTER dem guenstigsten gemessenen Lastfall
+    (49,7 s bei zwei Fremdclients). Gemessen wird hier die Frist, mit der
+    wirklich gerufen wird -- nicht die Zahl in der Konfiguration."""
+    rufe = Rufe()
+    o = ohren(tmp_path, rufe)
+    o.zustand_uebernehmen({"voice": {"listening": True, "tts_active": False}})
+    sprechen(o)
+    assert rufe.fristen["frage"] == VORGABEN["ears"]["mind_frist_s"]
+    assert rufe.fristen["frage"] >= 79.7, "der gemessene Lastfall muss durch"
+    # POSITIVKONTROLLE: STT und Sprecher behalten die kurze Vorgabe -- eine
+    # global angehobene Frist waere ein toter STT, auf den zwei Minuten
+    # gewartet wird.
+    assert rufe.fristen["transkribiere"] is None
+    assert rufe.fristen["sprich"] is None
+
+
+def test_die_frist_kommt_aus_der_konfiguration(tmp_path):
+    from daimon.common.config import Config
+
+    o = Ohren(Config(data={"ears": {"mind_frist_s": 7.5}}),
+              runtime_dir=tmp_path, aufnahme_fabrik=AufnahmeAttrappe,
+              erkenner=ErkennerAttrappe(), ruf=Rufe())
+    assert o._mind_frist_s == 7.5
+
+
+def test_der_fristablauf_wird_hoerbar(tmp_path):
+    """Der Fall aus dem Betrieb: `mind.sock` antwortet nicht, `ruf_socket`
+    gibt `grund: socket` ohne `antwort` zurueck. Bis zum 27.08. war das eine
+    Journalzeile und sonst nichts."""
+    class ZuSpaetRufe(Rufe):
+        def __call__(self, pfad, anfrage, **kw):
+            if anfrage.get("art") == "frage":
+                self.anfragen.append((str(pfad), anfrage))
+                self.fristen["frage"] = kw.get("timeout_s")
+                return {"v": 1, "ok": False, "grund": "socket",
+                        "meldung": "timed out"}
+            return super().__call__(pfad, anfrage, **kw)
+
+    rufe = ZuSpaetRufe()
+    o = ohren(tmp_path, rufe)
+    o.zustand_uebernehmen({"voice": {"listening": True, "tts_active": False}})
+    sprechen(o)
+    sprich = rufe.art("sprich")
+    assert len(sprich) == 1, "der Nutzer darf nicht nichts hoeren"
+    assert sprich[0]["anlass"] == KEINE_ANTWORT_VORLAGE
+    assert sprich[0]["kanal"] == "ungefragt"
+
+
+def test_eine_rechtzeitige_antwort_wird_weiterhin_normal_gesprochen(tmp_path):
+    """POSITIVKONTROLLE zum Fristablauf: der Regelweg bleibt der Regelweg --
+    freier Text auf `reaktion`, keine Vorlage."""
+    rufe = Rufe()
+    o = ohren(tmp_path, rufe)
+    o.zustand_uebernehmen({"voice": {"listening": True, "tts_active": False}})
+    sprechen(o)
+    sprich = rufe.art("sprich")
+    assert len(sprich) == 1
+    assert sprich[0]["kanal"] == "reaktion"
+    assert sprich[0]["text"] == "Es ist kurz nach drei."
+    assert "anlass" not in sprich[0]
+
+
+def test_der_satz_steht_nur_an_einem_ort(tmp_path):
+    """Der Ohren-Dienst kennt den Schluessel, nicht den Satz."""
+    quelle = (Path(__file__).resolve().parents[1]
+              / "daimon" / "ears" / "daemon.py").read_text(encoding="utf-8")
+    assert VORLAGEN[KEINE_ANTWORT_VORLAGE] not in quelle
+
+
+def test_eine_abgelehnte_sprechanfrage_faellt_auf(tmp_path):
+    """Auflage 2: die Antwort von `say.sock` wird ausgewertet. Ohne das
+    meldete die Runde Erfolg, waehrend die Abkuehlung den Satz verschluckt
+    hat -- Teil B waere gebaut und wirkungslos."""
+    import io
+
+    from daimon.common.logging import get_logger
+
+    class AbgekuehltRufe(StummeRufe):
+        def __call__(self, pfad, anfrage, **kw):
+            if anfrage.get("art") == "sprich":
+                self.anfragen.append((str(pfad), anfrage))
+                return {"v": 1, "ok": False, "grund": "abkuehlung",
+                        "rest_s": 7.0}
+            return super().__call__(pfad, anfrage, **kw)
+
+    strom = io.StringIO()
+    rufe = AbgekuehltRufe()
+    o = Ohren(runtime_dir=tmp_path, aufnahme_fabrik=AufnahmeAttrappe,
+              erkenner=ErkennerAttrappe(), ruf=rufe,
+              log=get_logger("test-ohren", socket_path="/nicht/da",
+                             stream=strom))
+    o.zustand_uebernehmen({"voice": {"listening": True, "tts_active": False}})
+    sprechen(o)
+    protokoll = strom.getvalue()
+    assert "ears_nicht_gesprochen" in protokoll
+    assert "abkuehlung" in protokoll
+
+
 def test_eine_absage_mit_rueckmeldung_wird_gesprochen(tmp_path):
     """T-4.19: der Mind lehnt einen Aktionswunsch ohne Marke ab (ok False,
     marke_verboten) und gibt eine kuratierte Rueckmeldung mit -- die wird
     gesprochen. Sonst sieht die Ablehnung aus wie ein Dienst, der nichts
     verstanden hat."""
     class AbsageRufe(Rufe):
-        def __call__(self, pfad, anfrage):
+        def __call__(self, pfad, anfrage, **kw):
             if anfrage.get("art") == "frage":
                 self.anfragen.append((str(pfad), anfrage))
                 return {"v": 1, "ok": False, "grund": "marke_verboten",
                         "antwort": "Fuer eine Aktion brauche ich eine "
                                    "Absichtsmarke — bitte Push-to-Talk "
                                    "druecken.", "marke": "trusted"}
-            return super().__call__(pfad, anfrage)
+            return super().__call__(pfad, anfrage, **kw)
 
     rufe = AbsageRufe()
     o = ohren(tmp_path, rufe)
@@ -164,20 +273,34 @@ def test_eine_absage_mit_rueckmeldung_wird_gesprochen(tmp_path):
     assert "Absichtsmarke" in rufe.art("sprich")[0]["text"]
 
 
-def test_eine_absage_ohne_rueckmeldung_bleibt_stumm(tmp_path):
-    """Eine Absage ohne `antwort`-Feld spricht weiterhin nichts."""
-    class StummeRufe(Rufe):
-        def __call__(self, pfad, anfrage):
-            if anfrage.get("art") == "frage":
-                self.anfragen.append((str(pfad), anfrage))
-                return {"v": 1, "ok": False, "grund": "marke_verboten"}
-            return super().__call__(pfad, anfrage)
+class StummeRufe(Rufe):
+    """Der Mind sagt ab und gibt keinen Antworttext mit."""
 
+    def __call__(self, pfad, anfrage, **kw):
+        if anfrage.get("art") == "frage":
+            self.anfragen.append((str(pfad), anfrage))
+            self.fristen["frage"] = kw.get("timeout_s")
+            return {"v": 1, "ok": False, "grund": "marke_verboten"}
+        return super().__call__(pfad, anfrage, **kw)
+
+
+def test_eine_absage_ohne_rueckmeldung_spricht_die_kuratierte_zeile(tmp_path):
+    """Seit dem 27.08.: eine Absage OHNE `antwort` bleibt nicht stumm.
+
+    Kein freier Text -- die Runde nennt nur den Vorlagenschluessel, und der
+    Kanal ist `ungefragt`. Ein Stringliteral hier waere eine zweite Fassung
+    des kuratierten Satzes.
+    """
     rufe = StummeRufe()
     o = ohren(tmp_path, rufe)
     o.zustand_uebernehmen({"voice": {"listening": True, "tts_active": False}})
     sprechen(o)
-    assert rufe.art("sprich") == []
+    sprich = rufe.art("sprich")
+    assert len(sprich) == 1
+    assert sprich[0]["kanal"] == "ungefragt"
+    assert sprich[0]["anlass"] == KEINE_ANTWORT_VORLAGE
+    assert sprich[0]["markierung"] == "trusted"
+    assert "text" not in sprich[0], "die Ohren tragen den Satz nicht selbst"
 
 
 # -- Echo-Referenz (Vertrag: Echo-Referenz-Plan.md) ------------------------
