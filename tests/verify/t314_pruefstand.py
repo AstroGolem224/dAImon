@@ -42,6 +42,158 @@ REGRESSIONS_VERIFIZIERER = (
 )
 
 
+# =============================================================================
+# DER HUB DIESES LAUFS WIRD AUF DIE GEMESSENE UNIT UMGEHAENGT
+# =============================================================================
+# WARUM: Der Hub laesst an vier Endpunkten nur bestimmte Units zu --
+# `PRODUZENT_UNITS["auth"]`, `["ears"]`, `["hookbridge"]` und `TTS_UNITS`.
+# Der Pruefstand laeuft unter der Unit SEINER Sitzung (gemessen:
+# `app-com.anthropic.Claude-....scope`), also weist `ipc.accept` ihn ab. Ohne
+# das Umhaengen scheitert schon `normalisiere_idle` an `auth.sock`, und K4 bis
+# K11 sind ungemessen -- dieselbe Wand wie bei T-0.9 und T-3.9.
+#
+# JEDE LISTE EINZELN, mit ihrem Grund -- mehr wird nicht angefasst:
+#   PRODUZENT_UNITS["auth"]        `ptt` und die Freigabe-Ereignisse; der
+#                                  Pruefstand schreibt zwoelfmal auf auth.sock.
+#   PRODUZENT_UNITS["ears"]        `utterance`; K6-live und jede volle Runde
+#                                  brauchen `processing`.
+#   PRODUZENT_UNITS["hookbridge"]  `hook`; K8 bewegt darueber die Mood. Der
+#                                  Eintrag `daimon-verify.scope` hilft hier
+#                                  nicht -- dieser Lauf legt keine solche
+#                                  Scope an.
+#   TTS_UNITS                      `tts.sock`; Freigabe, beginnt, gesprochen.
+# NICHT umgehaengt wird `PRODUZENT_UNITS["face"]`: K5 erwartet auf face.sock
+# ohnehin nur die TYP-Abweisung, und die kommt aus `ipc.pruefe_typ`.
+#
+# WAS DAS NICHT TUT: Es schaltet die Unit-Pruefung nicht ab. Jede Liste bleibt
+# einelementig und traegt eine ECHTE, gemessene Unit; jede fremde Unit wird
+# weiterhin abgewiesen. `None` (= keine Pruefung) und `()` (= alles gesperrt)
+# werden ausdruecklich NICHT gesetzt -- `ipc.accept` behandelt beide anders,
+# und "Liste leer" hiesse abgeschaltet statt umgehaengt.
+#
+# WO NICHT: Die Produktionslisten in `daimon/hub/daemon.py` bleiben
+# byte-identisch. Gesetzt wird nur das Modulattribut des GELADENEN Hubs, und
+# zwar VOR `main()` -- `Hub.start` liest die Listen erst beim Aufsetzen der
+# Threads. Fehlt eine Liste im Pruefling (das Gut-Muster vom 11.08. kennt
+# keine), bleibt alles unberuehrt: `None` heisst dort "keine Wand".
+#
+# GEMESSEN, NICHT GERATEN: die Unit kommt aus derselben echten
+# SO_PEERPIDFD-Kette wie im Betrieb (Verfahren aus
+# tests/test_hub_socket_allowlisten.py:176). Eine Attrappe fuer `ipc.peer_of`
+# raeumte genau die Vorrichtung aus dem Weg, um die es geht. Schlaegt die
+# Messung fehl, bricht dieser Prozess laut ab -- still weiterlaufen hiesse,
+# den Live-Teil ungemessen gruen zu melden.
+#
+# DER GEGENVERSUCH: mit DAIMON_T314_UMHAENGEN=0 laeuft derselbe Starter ohne
+# das Umhaengen. `pruefe_wandkontrolle` belegt damit, dass die Wand ohne den
+# Eingriff noch steht -- und zwar gegen die Aussage des GELADENEN Baums, nicht
+# gegen eine pauschale Erwartung.
+HUB_STARTER = '''"""Startet den Hub des Prueflings fuer T-3.14.
+
+Begruendung des Eingriffs: siehe `HUB_STARTER` in t314_pruefstand.py.
+"""
+import json
+import os
+import socket
+import sys
+
+BAUM, RTDIR, MESSUNG = sys.argv[1], sys.argv[2], sys.argv[3]
+UMHAENGEN = os.environ.get("DAIMON_T314_UMHAENGEN", "1") == "1"
+
+sys.path.insert(0, BAUM)
+from daimon.common import ipc  # noqa: E402
+from daimon.hub import daemon as hubmod  # noqa: E402
+
+QUELLE = os.path.abspath(hubmod.__file__)
+if not QUELLE.startswith(os.path.abspath(BAUM) + os.sep):
+    sys.exit("HUB-START: Import entkam dem Pruefling: " + QUELLE)
+
+
+def eigene_unit():
+    """Unter welcher Unit DIESER Prozess laeuft -- an einer echten Verbindung
+    gemessen, ueber genau die Kette, die auch `ipc.accept` geht."""
+    pfad = os.path.join(os.path.dirname(MESSUNG), "unitmessung.sock")
+    if os.path.exists(pfad):
+        os.unlink(pfad)
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(pfad)
+    srv.listen(1)
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as klient:
+            klient.connect(pfad)
+            conn, _ = srv.accept()
+            with conn:
+                return ipc.peer_of(conn, "unitmessung").unit
+    finally:
+        srv.close()
+        try:
+            os.unlink(pfad)
+        except FileNotFoundError:
+            pass
+
+
+try:
+    UNIT = eigene_unit()
+except Exception as exc:  # noqa: BLE001 -- der Grund gehoert ins Protokoll
+    sys.exit("HUB-START: Unit-Messung fehlgeschlagen: %r" % (exc,))
+if not UNIT:
+    sys.exit("HUB-START: Unit-Messung ergab eine leere Unit")
+
+LISTEN = {}
+
+
+def messe(schluessel, vor):
+    """Eine Liste festhalten und sagen, worauf sie umgehaengt wird.
+
+    `sperrt` ist die Aussage des BAUMS ueber diesen Lauf, gerechnet mit seinem
+    eigenen `ipc.unit_erlaubt`. Fuehrt der Baum die Liste gar nicht (`None`),
+    gibt es dort keine Wand -- dann wird auch nichts gesetzt.
+    """
+    sperrt = vor is not None and not ipc.unit_erlaubt(UNIT, vor)
+    nach = (UNIT,) if (UMHAENGEN and vor is not None) else vor
+    LISTEN[schluessel] = {
+        "vor": None if vor is None else list(vor),
+        "nach": None if nach is None else list(nach),
+        "sperrt": sperrt,
+    }
+    return nach
+
+
+PRODUZENTEN = getattr(hubmod, "PRODUZENT_UNITS", None)
+for _name in ("auth", "ears", "hookbridge"):
+    _vor = PRODUZENTEN.get(_name) if isinstance(PRODUZENTEN, dict) else None
+    _nach = messe("produzent:" + _name, _vor)
+    if _nach is not _vor:
+        PRODUZENTEN[_name] = _nach
+
+_vor = getattr(hubmod, "TTS_UNITS", None)
+_nach = messe("tts", _vor)
+if _nach is not _vor:
+    hubmod.TTS_UNITS = _nach
+
+with open(MESSUNG + ".tmp", "w", encoding="utf-8") as _fh:
+    json.dump({"unit": UNIT, "hub_datei": QUELLE, "umgehaengt": UMHAENGEN,
+               "listen": LISTEN}, _fh, ensure_ascii=False, indent=2)
+os.replace(MESSUNG + ".tmp", MESSUNG)
+
+sys.argv = ["daimon.hub.daemon", "--runtime-dir", RTDIR]
+raise SystemExit(hubmod.main())
+'''
+
+# Je umgehaengter Produzentenliste eine Probe mit einem fuer diesen Produzenten
+# ERLAUBTEN Typ. Nur so entscheidet allein die Unit-Pruefung ueber die
+# Verbindung; ein fremder Typ wuerde sie ebenfalls schliessen und waere von der
+# Wand nicht zu unterscheiden.
+WAND_PROBEN = {
+    "produzent:auth": ("auth.sock", ("ptt", {"an": False})),
+    "produzent:ears": ("ears.sock", ("utterance", {"text": "t314 wandkontrolle"})),
+    "produzent:hookbridge": ("hookbridge.sock", ("hook", {
+        "hook_event_name": "Notification", "session_id": "t314-wand",
+        "notification_type": "permission_prompt", "message": "wandkontrolle",
+    })),
+}
+
+
 @dataclass(frozen=True)
 class Ergebnis:
     kriterium: str
@@ -69,8 +221,12 @@ class Bericht:
         gruppen: dict[str, list[Ergebnis]] = defaultdict(list)
         for ergebnis in self.ergebnisse:
             gruppen[ergebnis.kriterium].append(ergebnis)
-        for nummer in range(1, 14):
-            kriterium = f"K{nummer}"
+        kriterien = [f"K{nummer}" for nummer in range(1, 14)]
+        # Die Wandkontrolle (W) ist kein Plankriterium, sondern die Aussage
+        # darueber, ob die Live-Messung ueberhaupt etwas sehen kann. Sie
+        # gehoert deshalb in dieselbe Bilanz und in denselben Exit-Code.
+        kriterien += sorted(set(gruppen) - set(kriterien))
+        for kriterium in kriterien:
             werte = gruppen.get(kriterium, [])
             rot = sum(not wert.ok for wert in werte)
             rot_gesamt += rot
@@ -456,6 +612,12 @@ class LiveSystem:
         self.rt.mkdir(mode=0o700)
         self.env = os.environ.copy()
         self.env["XDG_RUNTIME_DIR"] = str(self.xdg)
+        # Der Starter liegt ausserhalb des Prueflings: er ist Pruefstand, kein
+        # Produktivcode, und darf im gemessenen Baum keine Datei anfassen.
+        self.starter = self.xdg / "hub_starter.py"
+        self.starter.write_text(HUB_STARTER, encoding="utf-8")
+        self.messung_pfad = self.xdg / "hub-messung.json"
+        self.messung: dict | None = None
         self.dienste = Sitzungsdienste()
         self.hub: Prozessgruppe | None = None
         self.face: Prozessgruppe | None = None
@@ -465,6 +627,15 @@ class LiveSystem:
             subprocess.check_output(["bash", "-lc", "command -v python3"], text=True).strip()
         )
         self.python_fallback = self.python != venv_python
+
+    def hub_befehl(self, runtime_dir: Path, messung: Path) -> list[str]:
+        """Der Startweg des Hubs -- ueber den Starter statt ueber `-m`.
+
+        Alles andere bleibt, wie es war: derselbe Interpreter, dasselbe
+        `--runtime-dir`, dasselbe `main()` aus dem Pruefling.
+        """
+        return [str(self.python), str(self.starter), str(self.pruefling),
+                str(runtime_dir), str(messung)]
 
     def state(self) -> dict:
         return json_zeile_lesen(self.rt / "state.sock")
@@ -600,10 +771,10 @@ class LiveSystem:
 
         self.dienste.stoppen()
         self.hub = Prozessgruppe(
-            [str(self.python), "-m", "daimon.hub.daemon", "--runtime-dir", str(self.rt)],
-            self.pruefling, self.env,
+            self.hub_befehl(self.rt, self.messung_pfad), self.pruefling, self.env,
         )
         warten_auf(self.state, lambda _: True, "Hub-Bereitschaft")
+        self.messung = json.loads(self.messung_pfad.read_text(encoding="utf-8"))
 
         # Das Face braucht den echten Sitzungs-Runtime-Pfad fuer wayland-0;
         # seine Daimon-Sockets sind vollstaendig ueber Argumente festgelegt.
@@ -651,7 +822,17 @@ def verbindung_wird_verworfen(pfad: Path, daten: bytes) -> bool:
             raise OSError(verbindungsfehler, os.strerror(verbindungsfehler))
         sock.setblocking(True)
         sock.settimeout(0.1)
-        sock.sendall(daten)
+        try:
+            sock.sendall(daten)
+        except OSError as exc:
+            # Dieselbe Regel wie in der Schleife unten, nur fuer den ersten
+            # Schreibversuch. Die Unit-Abweisung schliesst SOFORT nach dem
+            # accept -- da ist die Gegenstelle schon weg, bevor das erste Byte
+            # ankommt. Ohne diesen Zweig floege die Wandkontrolle mit
+            # ECONNRESET auf, statt "verworfen" zu melden.
+            if exc.errno in (errno.EPIPE, errno.ECONNRESET):
+                return True
+            raise
         ende = time.monotonic() + BEOBACHTUNG_S
         while time.monotonic() < ende:
             lesbar, _, _ = select.select([sock], [], [], 0.05)
@@ -670,6 +851,99 @@ def verbindung_wird_verworfen(pfad: Path, daten: bytes) -> bool:
         return False
     finally:
         sock.close()
+
+
+def tts_antwortet(pfad: Path) -> bool:
+    """Antwortet `tts.sock` ueberhaupt?
+
+    Gesendet wird bewusst KEIN gueltiger Auftrag: die Unit-Pruefung sitzt vor
+    dem Lesen, also entscheidet allein sie, ob eine Zeile zurueckkommt. Eine
+    echte Freigabe wuerde stattdessen eine Abkuehlung verbrauchen, die im
+    Zustandsverzeichnis liegt und dem Hub des Laufs im Weg staende.
+    """
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+        sock.settimeout(BEOBACHTUNG_S)
+        sock.connect(str(pfad))
+        try:
+            sock.sendall(b"kein-json\n")
+            return bool(sock.makefile("rb").readline())
+        except OSError as exc:
+            # Die Unit-Abweisung schliesst sofort nach dem accept. Ob das
+            # beim Schreiben oder beim Lesen auffaellt, haengt am Zeitpunkt --
+            # beides ist dasselbe Schweigen.
+            if exc.errno in (errno.EPIPE, errno.ECONNRESET):
+                return False
+            raise
+
+
+def pruefe_wandkontrolle(system: LiveSystem, bericht: Bericht) -> None:
+    """Steht die Wand ohne das Umhaengen noch -- und hat es ueberhaupt gegriffen?
+
+    Ohne diesen Gegenversuch belegte der Eingriff aus `HUB_STARTER` nur, dass
+    IRGENDETWAS antwortet. Hier laeuft deshalb ein zweiter Hub aus demselben
+    Pruefling OHNE das Umhaengen. Erwartet wird nicht pauschal "abgewiesen",
+    sondern genau das, was der GELADENE Baum ueber seine eigene Liste sagt:
+      * Der Baum sperrt diese Unit  -> die Verbindung muss fallen.
+      * Der Baum fuehrt keine Liste -> sie muss stehen. Das Gut-Muster vom
+        11.08. kennt weder `PRODUZENT_UNITS` noch `TTS_UNITS`; eine pauschale
+        Erwartung waere dort falsch rot und zerstoerte den Mutationstest.
+    Beide Zweige sind eine echte Behauptung; uebersprungen wird nichts.
+    """
+    wand_xdg = system.xdg / "wand"
+    wand_rt = wand_xdg / "daimon"
+    wand_rt.mkdir(mode=0o700, parents=True, exist_ok=True)
+    messung_pfad = wand_xdg / "messung.json"
+    env = dict(system.env)
+    env["DAIMON_T314_UMHAENGEN"] = "0"
+    hub: Prozessgruppe | None = None
+    try:
+        # Zuerst der Hub DIESES Laufs: hat der Eingriff getan, was er ansagt?
+        messung = system.messung
+        if not isinstance(messung, dict):
+            raise RuntimeError("die Messung des laufenden Hubs fehlt")
+        unit = messung.get("unit")
+        bericht.pruefe("W", isinstance(unit, str) and bool(unit),
+                       f"POSITIVKONTROLLE: die Unit dieses Laufs ist gemessen: {unit!r}")
+        bericht.pruefe("W", str(messung.get("hub_datei", "")).startswith(
+            str(system.pruefling.resolve()) + os.sep),
+            f"POSITIVKONTROLLE: der laufende Hub stammt aus dem Pruefling: {messung.get('hub_datei')!r}")
+        print(f"Wandkontrolle: Unit={unit!r} Listen="
+              f"{json.dumps(messung.get('listen'), ensure_ascii=False, sort_keys=True)}")
+        for schluessel, eintrag in sorted(messung.get("listen", {}).items()):
+            erwartet = None if eintrag["vor"] is None else [unit]
+            bericht.pruefe("W", eintrag["nach"] == erwartet,
+                           f"{schluessel}: umgehaengt auf {erwartet!r}, ist {eintrag['nach']!r}")
+
+        hub = Prozessgruppe(system.hub_befehl(wand_rt, messung_pfad), system.pruefling, env)
+        warten_auf(lambda: json_zeile_lesen(wand_rt / "state.sock"), lambda _: True,
+                   "Bereitschaft des Gegenversuchs-Hubs")
+        bericht.pruefe("W", hub.lebt(), "POSITIVKONTROLLE: der Gegenversuchs-Hub laeuft")
+        gegen = json.loads(messung_pfad.read_text(encoding="utf-8"))
+        bericht.pruefe("W", gegen.get("umgehaengt") is False,
+                       "der Gegenversuchs-Hub hat nichts umgehaengt")
+        for schluessel, (dateiname, (typ, payload)) in sorted(WAND_PROBEN.items()):
+            sperrt = gegen["listen"][schluessel]["sperrt"]
+            verworfen = verbindung_wird_verworfen(wand_rt / dateiname, ereignis(typ, payload))
+            bericht.pruefe(
+                "W", verworfen == sperrt,
+                f"ohne Umhaengen faellt {dateiname} genau dann, wenn der Baum sperrt "
+                f"(sperrt={sperrt}, verworfen={verworfen})",
+            )
+        sperrt = gegen["listen"]["tts"]["sperrt"]
+        antwortet = tts_antwortet(wand_rt / "tts.sock")
+        bericht.pruefe(
+            "W", antwortet is not sperrt,
+            f"ohne Umhaengen schweigt tts.sock genau dann, wenn der Baum sperrt "
+            f"(sperrt={sperrt}, antwortet={antwortet})",
+        )
+    except Exception as exc:
+        bericht.fehler("W", f"Wandkontrolle fehlgeschlagen: {exc!r}")
+    finally:
+        if hub is not None:
+            try:
+                hub.stop()
+            except Exception as exc:
+                bericht.fehler("W", f"Gegenversuchs-Hub nicht aufgeraeumt: {exc!r}")
 
 
 def pruefe_k4(system: LiveSystem, bericht: Bericht) -> None:
@@ -917,6 +1191,7 @@ def pruefe_live_kriterien(
         system.starten()
         if system.python_fallback:
             print(f"HINWEIS: .venv/bin/python fehlt; Hub laeuft mit {system.python}")
+        pruefe_wandkontrolle(system, bericht)
         pruefe_k4(system, bericht)
         pruefe_k5(system, bericht)
         pruefe_k6_live(system, bericht)
@@ -927,7 +1202,7 @@ def pruefe_live_kriterien(
         pruefe_k10(system, bericht, evidenz)
         pruefe_k11(system, bericht)
     except Exception as exc:
-        for kriterium in ("K4", "K5", "K6", "K7", "K8", "K9", "K10", "K11"):
+        for kriterium in ("W", "K4", "K5", "K6", "K7", "K8", "K9", "K10", "K11"):
             bericht.fehler(kriterium, f"Live-Pruefstand nicht startbar: {exc!r}")
     finally:
         for fehler in system.schliessen():
