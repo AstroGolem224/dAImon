@@ -303,6 +303,7 @@ beenden. Ohne den Versatz vor dem Import greift er bei
 import copy
 import json
 import os
+import socket
 import sys
 import threading
 import time as _t
@@ -336,8 +337,90 @@ if _overlay:
 
 from daimon.hub.daemon import Hub  # noqa: E402
 
+from daimon.common import ipc  # noqa: E402
+
 print("HUB_DATEI=" + os.path.abspath(sys.modules["daimon.hub.daemon"].__file__),
       flush=True)
+
+# ===========================================================================
+# DER SPRECH-ENDPUNKT WIRD AUF DIE UNIT DIESES LAUFS UMGEHAENGT
+# ===========================================================================
+# WARUM: `daimon.hub.daemon.TTS_UNITS` erlaubt am tts-Socket ausschliesslich
+# `daimon-tts.service`. Der Pruefstand fragt aber aus SEINER eigenen Unit an
+# -- unter einer interaktiven Sitzung z.B. `app-com.anthropic.Claude-...
+# .scope`. `ipc.accept` weist ihn deshalb ab, die Endpunkt-Entdeckung findet
+# gar nichts, und ohne Endpunkt ist der GANZE Hub-Teil von T-3.9 ungemessen.
+#
+# WAS DAS NICHT TUT: Es schaltet die Unit-Pruefung NICHT ab. Die Liste bleibt
+# einelementig und traegt eine ECHTE, gemessene Unit; jede fremde Unit wird
+# weiterhin abgewiesen. `None` (= keine Pruefung) und `()` (= alles gesperrt)
+# werden ausdruecklich NICHT gesetzt -- `ipc.accept` behandelt beide anders,
+# und "Liste leer" hiesse abgeschaltet statt umgehaengt. Die Pruefung wird
+# umgehaengt, nicht entfernt; der Gegenversuch im Pruefstand
+# (DAIMON_PRUEF_TTS_UMHAENGEN=0) belegt, dass die Wand ohne das Umhaengen
+# noch steht.
+#
+# WO NICHT: Die Produktionsliste in `daimon/hub/daemon.py` bleibt
+# byte-identisch. Gesetzt wird nur das Modulattribut des GELADENEN Hubs, und
+# zwar VOR `start()` -- die Methode liest `TTS_UNITS` beim Aufsetzen des
+# tts-Threads aus dem Modulnamensraum.
+#
+# GEMESSEN, NICHT GERATEN: die Unit kommt aus derselben echten
+# SO_PEERPIDFD-Kette wie im Betrieb; Verfahren aus
+# tests/test_hub_socket_allowlisten.py:176 (`_eigene_unit`). Eine Attrappe
+# fuer `ipc.peer_of` raeumte genau die Vorrichtung aus dem Weg, um die es
+# hier geht. Schlaegt die Messung fehl, bricht dieser Prozess laut ab --
+# still weiterlaufen hiesse, den Hub-Teil ungemessen gruen zu melden.
+_hubmod = sys.modules["daimon.hub.daemon"]
+
+
+def _eigene_unit():
+    """Unter welcher Unit DIESER Prozess laeuft -- an einer echten
+    Verbindung gemessen, ueber genau die Kette, die auch `ipc.accept` geht."""
+    pfad = os.path.join(RTDIR, "unitmessung.sock")
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(pfad)
+    srv.listen(1)
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as c:
+            c.connect(pfad)
+            conn, _ = srv.accept()
+            with conn:
+                return ipc.peer_of(conn, "unitmessung").unit
+    finally:
+        srv.close()
+        try:
+            os.unlink(pfad)
+        except FileNotFoundError:
+            pass
+
+
+try:
+    _unit = _eigene_unit()
+except Exception as exc:  # noqa: BLE001 -- der Grund gehoert ins Protokoll
+    print("HUB_UNIT_MESSUNG_FEHLGESCHLAGEN=" + repr(exc), flush=True)
+    sys.exit(3)
+if not _unit:
+    print("HUB_UNIT_MESSUNG_FEHLGESCHLAGEN=leere Unit", flush=True)
+    sys.exit(3)
+print("HUB_UNIT=" + _unit, flush=True)
+
+# Sperrt der GELADENE Baum den tts-Socket ueberhaupt gegen diese Unit? Die
+# Antwort kommt aus der Regel des Baums selbst (`ipc.unit_erlaubt`), nicht
+# aus einer Annahme des Pruefstands. Das Gut-Muster (Stand daffca6) kennt
+# `TTS_UNITS` noch gar nicht -- dort gibt es keine Wand, und der
+# Gegenversuch muss dort folgerichtig einen Endpunkt FINDEN.
+_vor = getattr(_hubmod, "TTS_UNITS", None)
+_sperrt = _vor is not None and not ipc.unit_erlaubt(_unit, _vor)
+print("HUB_TTS_UNITS_VOR=" + repr(_vor), flush=True)
+print("HUB_TTS_SPERRT_MICH=" + ("ja" if _sperrt else "nein"), flush=True)
+
+if os.environ.get("DAIMON_PRUEF_TTS_UMHAENGEN", "1") == "1" and _vor is not None:
+    _hubmod.TTS_UNITS = (_unit,)
+    print("HUB_TTS_UNITS_NACH=" + repr(_hubmod.TTS_UNITS), flush=True)
+else:
+    print("HUB_TTS_UNITS_NACH=(nicht umgehaengt)", flush=True)
+
 cfg = Config(data=daten, config_dir=Path(STATEDIR), state_dir=Path(STATEDIR),
              runtime_dir=Path(RTDIR))
 h = Hub(cfg=cfg, runtime_dir=Path(RTDIR))
@@ -604,13 +687,6 @@ echo
 SEK="K6"
 echo "--- K6/K12 (live): der Hub lehnt die zehn Angriffstexte selbst ab ---"
 HUBSTATE="$RT/state"; mkdir -p "$HUBSTATE"
-hub_start main "$HUBSTATE"
-chk "Hub aus dem geprueften Baum startet" \
-  "$([[ -n "$HUB_PID" ]] && kill -0 "$HUB_PID" 2>/dev/null && echo ja || { tail -5 "$RT/hub-main.log"; echo nein; })" ja
-hub_datei="$(sed -n 's/^HUB_DATEI=//p' "$RT/hub-main.log" | head -1)"
-echo "  laufender Hub: $hub_datei"
-chk "POSITIVKONTROLLE: der LAUFENDE Hub stammt aus dem geprueften Baum" \
-  "$([[ -n "$hub_datei" && "$hub_datei" == "$TARGET"/* ]] && echo ja || echo nein)" ja
 
 # --- Endpunkt-Entdeckung -----------------------------------------------------
 # Der Plan nennt die Form ({art, kanal, text|vorlage}), nicht den Socketnamen
@@ -618,28 +694,84 @@ chk "POSITIVKONTROLLE: der LAUFENDE Hub stammt aus dem geprueften Baum" \
 # auf eine Sprech-Anfrage mit ok:true und einer Marke antwortet. Die
 # Produzenten- und Diagnosesockets werden uebersprungen (sie antworten nie
 # oder mit etwas anderem).
-TTS_SOCK=""; HUB_ART=""; MARKE_FELD=""
-jschreib "$RT/probe.json" v=1 kanal=reaktion text="Der Pruefsockel summt leise."
-for s in "$HUB_RT"/*.sock; do
-  basis="$(basename "$s")"
-  case "$basis" in
-    face.sock|auth.sock|hookbridge.sock|ears.sock|eyes.sock|kwin.sock|\
+#
+# Als Funktion, damit der Gegenversuch weiter unten GENAU dieselbe Suche
+# faehrt. Zwei Fassungen derselben Suche waeren eine Suche und eine Attrappe.
+# Ergebnis in F_SOCK/F_ART/F_FELD.
+F_SOCK=""; F_ART=""; F_FELD=""
+endpunkt_suche() {  # $1 = Laufzeitverzeichnis des Hubs
+  F_SOCK=""; F_ART=""; F_FELD=""
+  local s basis art feld antwort m
+  for s in "$1"/*.sock; do
+    basis="$(basename "$s")"
+    case "$basis" in
+      face.sock|auth.sock|hookbridge.sock|ears.sock|eyes.sock|kwin.sock|\
 events.sock|state.sock|diag.sock|gpu.sock) continue;;
-  esac
-  for art in sprich freigabe sprechfreigabe tts; do
-    jschreib "$RT/probe.json" v=1 art="$art" kanal=reaktion text="Der Pruefsockel summt leise."
-    antwort="$(anfrage "$s" "$RT/probe.json" 3)"
-    [[ "$(jq -r 'if has("ok") then (.ok|tostring) else "FEHLT" end' <<<"$antwort" 2>/dev/null)" == "true" ]] || continue
-    for feld in marke freigabe sperre token; do
-      m="$(jq -r --arg f "$feld" '.[$f] // empty' <<<"$antwort")"
-      if [[ -n "$m" ]]; then
-        TTS_SOCK="$s"; TTS_SOCK_NAME="$(basename "$s")"
-        HUB_ART="$art"; MARKE_FELD="$feld"
-        break 3
-      fi
+    esac
+    for art in sprich freigabe sprechfreigabe tts; do
+      jschreib "$RT/probe.json" v=1 art="$art" kanal=reaktion text="Der Pruefsockel summt leise."
+      antwort="$(anfrage "$s" "$RT/probe.json" 3)"
+      [[ "$(jq -r 'if has("ok") then (.ok|tostring) else "FEHLT" end' <<<"$antwort" 2>/dev/null)" == "true" ]] || continue
+      for feld in marke freigabe sperre token; do
+        m="$(jq -r --arg f "$feld" '.[$f] // empty' <<<"$antwort")"
+        if [[ -n "$m" ]]; then
+          F_SOCK="$s"; F_ART="$art"; F_FELD="$feld"
+          return 0
+        fi
+      done
     done
   done
-done
+  return 1
+}
+
+# --- GEGENVERSUCH ZUERST: sieht die Entdeckung die Wand noch? ----------------
+# Der Hub-Treiber haengt den tts-Socket auf die gemessene Unit dieses Laufs um
+# (Begruendung im Here-Doc `hub_lauf.py`). Ohne einen Gegenversuch wuerde der
+# Umbau nur belegen, dass IRGENDETWAS antwortet.
+#
+# Hier laeuft deshalb ein zweiter Hub OHNE das Umhaengen. Erwartet wird nicht
+# pauschal "kein Endpunkt", sondern genau das, was der GELADENE Baum selbst
+# ueber seine Sperre sagt (`HUB_TTS_SPERRT_MICH`, in `ipc.unit_erlaubt` des
+# Baums ausgerechnet):
+#   * Baum sperrt fremde Units (Arbeitsbaum, TTS_UNITS=daimon-tts.service)
+#     -> ohne Umhaengen darf NICHTS gefunden werden. Das ist die Wand.
+#   * Baum sperrt nicht (Gut-Muster daffca6 kennt TTS_UNITS nicht)
+#     -> ohne Umhaengen MUSS der Endpunkt gefunden werden. Faende er sich
+#        dort nicht, waere die Suche selbst kaputt.
+# Beide Zweige sind eine echte Behauptung; uebersprungen wird nichts.
+# Zuerst, weil TTS_SOCK_NAME danach gesetzt ist und `hub_start` es liest.
+echo "--- Gegenversuch: die Endpunkt-Suche gegen die ungeaenderte Sperre ---"
+GEGENSTATE="$RT/state-ohnehang"; mkdir -p "$GEGENSTATE"
+hub_start ohnehang "$GEGENSTATE" x DAIMON_PRUEF_TTS_UMHAENGEN=0
+chk "POSITIVKONTROLLE: der Gegenversuchs-Hub laeuft ueberhaupt" \
+  "$([[ -n "$HUB_PID" ]] && kill -0 "$HUB_PID" 2>/dev/null && echo ja || { tail -5 "$RT/hub-ohnehang.log"; echo nein; })" ja
+sperrt="$(sed -n 's/^HUB_TTS_SPERRT_MICH=//p' "$RT/hub-ohnehang.log" | head -1)"
+echo "  gemessene Unit dieses Laufs: $(sed -n 's/^HUB_UNIT=//p' "$RT/hub-ohnehang.log" | head -1)"
+echo "  TTS_UNITS des Baums: $(sed -n 's/^HUB_TTS_UNITS_VOR=//p' "$RT/hub-ohnehang.log" | head -1)"
+chk "POSITIVKONTROLLE: die Unit des Laufs ist gemessen (sonst waere die Sperre-Aussage geraten)" \
+  "$([[ "$sperrt" == ja || "$sperrt" == nein ]] && echo ja || echo nein)" ja
+endpunkt_suche "$HUB_RT" || true
+echo "  Gegenversuch-Endpunkt: ${F_SOCK:-(keiner)}  (Baum sperrt diese Unit: ${sperrt:-?})"
+chk "ohne Umhaengen bleibt der Endpunkt genau dann unauffindbar, wenn der Baum sperrt (WANDKONTROLLE)" \
+  "$([[ -z "$F_SOCK" ]] && echo ja || echo nein)" "${sperrt:-?}"
+hub_stop
+
+# --- Der Hub des Laufs, mit umgehaengtem Sprech-Endpunkt ---------------------
+hub_start main "$HUBSTATE"
+chk "Hub aus dem geprueften Baum startet" \
+  "$([[ -n "$HUB_PID" ]] && kill -0 "$HUB_PID" 2>/dev/null && echo ja || { tail -5 "$RT/hub-main.log"; echo nein; })" ja
+hub_datei="$(sed -n 's/^HUB_DATEI=//p' "$RT/hub-main.log" | head -1)"
+echo "  laufender Hub: $hub_datei"
+chk "POSITIVKONTROLLE: der LAUFENDE Hub stammt aus dem geprueften Baum" \
+  "$([[ -n "$hub_datei" && "$hub_datei" == "$TARGET"/* ]] && echo ja || echo nein)" ja
+echo "  tts-Allowlist im Lauf: $(sed -n 's/^HUB_TTS_UNITS_NACH=//p' "$RT/hub-main.log" | head -1)"
+
+TTS_SOCK=""; TTS_SOCK_NAME=""; HUB_ART=""; MARKE_FELD=""
+endpunkt_suche "$HUB_RT" || true
+if [[ -n "$F_SOCK" ]]; then
+  TTS_SOCK="$F_SOCK"; TTS_SOCK_NAME="$(basename "$F_SOCK")"
+  HUB_ART="$F_ART"; MARKE_FELD="$F_FELD"
+fi
 echo "  Endpunkt: ${TTS_SOCK:-(keiner)}  art=${HUB_ART:-?}  marke-feld=${MARKE_FELD:-?}"
 chk "ein Sprech-Endpunkt ist am Hub auffindbar (POSITIVKONTROLLE)" \
   "$([[ -n "$TTS_SOCK" ]] && echo ja || echo nein)" ja
