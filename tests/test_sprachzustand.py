@@ -257,6 +257,52 @@ def test_utterance_setzt_processing(hub, tmp_path):
     assert schnappschuss(rt)["voice"]["state"] == "processing"
 
 
+def test_die_naht_vom_ohren_dienst_bis_in_den_schnappschuss(hub, tmp_path):
+    """T-8.8: der Zulauf, von der echten Runde bis in den Zustand.
+
+    Der Test darueber sendet die Zeile selbst -- er kann darum nie sehen,
+    dass sie im Betrieb niemand sendet. Genau das war der Befund: der Weg
+    war gebaut, eingefroren und gruen, und `voice.denkt` war nie wahr.
+
+    Hier laeuft `Ohren._runde` gegen den ECHTEN Produzentensocket des
+    laufenden Hubs. Ersetzt ist nur, was antwortet (STT, Parser, Mind, TTS);
+    der Denkzustand geht seinen eigenen, nicht wartenden Weg -- und `ipc.peer_of`
+    bleibt unersetzt, gemessen wird der Testprozess selbst.
+    """
+    import numpy as np
+
+    from daimon.ears.daemon import Ohren
+
+    rt = tmp_path / "rt"
+
+    def rufe(pfad, anfrage, *, timeout_s=None):
+        art = anfrage.get("art")
+        if art == "transkribiere":
+            return {"v": 1, "ok": True, "text": "wie spaet ist es"}
+        if art == "frage":
+            # Der Modellruf ist der Grund fuer den Indikator: WAEHREND er
+            # laeuft, muss `denkt` stehen. Also wird hier gemessen, nicht
+            # danach.
+            #
+            # Gewartet wird auf den HUB, nicht auf den Sender: der schickt
+            # und schliesst, das Einlesen passiert im Hub-Thread. Die Frist
+            # ist die Toleranz dieses Uebergangs, nicht der Pruefgegenstand
+            # -- ein nie gesendetes Ereignis laeuft sie voll aus und faellt.
+            frist = time.monotonic() + 2.0
+            while time.monotonic() < frist:
+                voice = schnappschuss(rt)["voice"]
+                if voice["denkt"]:
+                    break
+                time.sleep(0.02)
+            assert voice["denkt"] is True
+            assert voice["state"] == "processing"
+            return {"v": 1, "ok": True, "antwort": "Es ist kurz nach drei."}
+        return {"v": 1, "ok": True, "ttfa_ms": 120.0}
+
+    o = Ohren(runtime_dir=rt, erkenner=None, ruf=rufe, log=stiller_logger())
+    o._runde([np.zeros(512, dtype=np.int16)], listening_bei_beginn=True)
+
+
 # -- Die dritte Frist: ein gestorbener Sprecher darf nicht ewig sprechen --
 
 def test_sprechfrist_laeuft_ab():

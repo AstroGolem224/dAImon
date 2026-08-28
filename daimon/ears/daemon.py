@@ -46,6 +46,7 @@ import wave
 from pathlib import Path
 from typing import Any, Callable
 
+from daimon.common import ipc
 from daimon.common.config import VORGABEN, Config, load as load_config
 from daimon.common.logging import Logger, get_logger
 from daimon.ears import vad
@@ -95,7 +96,7 @@ def marke_fuer(*, listening_bei_beginn: bool) -> str:
 
 
 def ruf_socket(pfad: str, anfrage: dict, *, timeout_s: float = 30.0) -> dict:
-    """Eine Zeile JSON hin, eine zurueck. Der einzige Weg nach draussen."""
+    """Eine Zeile JSON hin, eine zurueck. Der Weg zu allem, was ANTWORTET."""
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as c:
             c.settimeout(timeout_s)
@@ -108,6 +109,38 @@ def ruf_socket(pfad: str, anfrage: dict, *, timeout_s: float = 30.0) -> dict:
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         return {"v": 1, "ok": False, "grund": "socket",
                 "meldung": str(exc)[:200]}
+
+
+def sende_ohne_antwort(pfad: str, nachricht: dict, *,
+                       timeout_s: float = 0.5) -> bool:
+    """Eine Zeile JSON hin -- und KEINE Antwort abwarten.
+
+    Der zweite Sendeweg, und er steht mit Absicht direkt neben dem ersten:
+    zwei Wege an zwei Orten waeren eine Regel und eine Attrappe, und welche
+    von beiden gilt, entschiede der Zufall des Aufrufs.
+
+    Warum es ihn gibt: `ruf_socket` liest nach dem Senden eine Antwortzeile.
+    Auf einem PRODUZENTENSOCKET des Hubs kommt die nie -- `_bediene_produzent`
+    liest nur in einer Schleife und schreibt nichts zurueck. Wer ein
+    Bus-Ereignis mit `ruf_socket` sendet, haengt also je Aeusserung bis zur
+    Frist, und zwar im heissen Pfad zwischen Transkript und Modellruf.
+
+    Was hier NICHT gewartet wird: auf eine Antwort. Was sehr wohl gewartet
+    wird: auf `connect` und `sendall` -- beides gegen einen lokalen
+    Unix-Socket, beides unter `timeout_s` gedeckelt.
+
+    Rueckgabe: True, wenn die Zeile draussen war. Ein Fehlschlag bricht die
+    Runde nicht ab; ein fehlender Anzeigezustand ist kein Grund, die Antwort
+    ausfallen zu lassen.
+    """
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as c:
+            c.settimeout(timeout_s)
+            c.connect(str(pfad))
+            c.sendall(json.dumps(nachricht, ensure_ascii=False).encode() + b"\n")
+        return True
+    except OSError:
+        return False
 
 
 class Ohren:
@@ -378,6 +411,27 @@ class Ohren:
             self._latenz_schreiben(t_segment, t0, t1, t2, t3, None)
             return
 
+        # T-8.8: der Denkzustand bekommt seinen Absender. `voice_denkt_an()`
+        # hat genau einen Ausloeser -- das Bus-Ereignis `utterance` --, und
+        # den sendete bis hier niemand im Betrieb: `processing` war nie wahr,
+        # der Indikator in `face/src/sprite.rs:172` nie zu sehen.
+        #
+        # Genau HIER und nicht frueher: ab dieser Zeile wartet der Nutzer auf
+        # das Modell. Der Hub-Parser darueber kehrt in Millisekunden zurueck,
+        # dort denkt niemand.
+        #
+        # `sende_ohne_antwort`, nicht `self._ruf`: der Hub antwortet auf
+        # `ears.sock` nie, siehe dort. Keine Nutzlast -- der Hub braucht die
+        # Tatsache, nicht den Satz; das Transkript geht seinen eigenen Weg
+        # ins Archiv und hat auf dem Bus nichts verloren.
+        t_utt = self._uhr()
+        gesendet = sende_ohne_antwort(str(ipc.socket_path(self.runtime_dir, "ears")),
+                                      {"v": 1, "type": "utterance"})
+        utterance_ms = round((self._uhr() - t_utt) * 1000.0, 3)
+        if not gesendet:
+            self.log.info("Denkzustand nicht gemeldet",
+                          DAIMON_ACTION="ears_utterance_weg")
+
         antwort = self._ruf(str(self.runtime_dir / MIND_SOCKET),
                             {"v": 1, "art": "frage", "text": text,
                              "marke": marke},
@@ -409,7 +463,8 @@ class Ohren:
             self._sagen({"v": 1, "art": "sprich", "kanal": "ungefragt",
                          "anlass": KEINE_ANTWORT_VORLAGE,
                          "markierung": "trusted"})
-            self._latenz_schreiben(t_segment, t0, t1, t2, None, None)
+            self._latenz_schreiben(t_segment, t0, t1, t2, None, None,
+                                   utterance_ms=utterance_ms)
             return
 
         # Der Ohren-Dienst holt KEINE Sprechfreigabe. Das tut der TTS-Dienst
@@ -418,13 +473,15 @@ class Ohren:
                                   "text": satz})
         t3 = self._uhr()
         self.runden += 1
-        self._latenz_schreiben(t_segment, t0, t1, t2, t3, gesprochen)
+        self._latenz_schreiben(t_segment, t0, t1, t2, t3, gesprochen,
+                               utterance_ms=utterance_ms)
 
     # -- Latenz ------------------------------------------------------------
 
     def _latenz_schreiben(self, t_segment: float, t0: float, t1: float,
                           t2: float, t3: float | None,
-                          gesprochen: dict | None) -> None:
+                          gesprochen: dict | None, *,
+                          utterance_ms: float | None = None) -> None:
         ms = lambda a, b: round((b - a) * 1000.0, 3)  # noqa: E731
         ttfa = None
         if isinstance(gesprochen, dict):
@@ -441,6 +498,13 @@ class Ohren:
             "mind_to_tts_ms": ms(t2, t3) if t3 is not None else None,
             "tts_to_audio_ms": ttfa,
             "gesamt_ms": ms(self._ptt_seit or t_segment, t3 or t2),
+            # T-8.8: was der Denkzustands-Sender kostet. Eine eigene Zahl,
+            # weil die TTFA-Messung in `T-3.9.sh:1661` erst beim `tts-say`-Ruf
+            # anfaengt -- dieser Sender sitzt DAVOR und ist dort blind. Er
+            # steckt in `stt_to_mind_ms` mit drin; getrennt gemeldet, damit ein
+            # Rueckschritt hier nicht in der Modelllaufzeit untergeht.
+            # `None` im Parser-Zweig: dort wird nicht gesendet.
+            "utterance_ms": utterance_ms,
             "echt": self.echt,
         }
         self.letzte_latenz = zeile
