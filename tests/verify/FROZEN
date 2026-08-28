@@ -103,6 +103,31 @@ bcff10c4f5f275b805a1cdd35e5ff5ce481a89a9f504c7be8ff6da3e35295438 tests/verify/t3
 3f5a17fbbaf459100e102e394e8cd24e23d41c12f24650e8929076915834c6dd tests/verify/T-3.3.sh
 31dbc0f4120e7a353cd59e403f827e0026a60e533c1309a207c74e27294bde0e tests/verify/T-3.4.sh
 6f0f7966697fb7c4543c58455131577605de7037ebb5239e866744ff654fef9f tests/verify/T-3.8.sh
+# Stand 28.08. (Rolle reviewer): der Mutationstest ist gruen -- `bash
+# tests/verify/meta.sh T-3.9` besteht das Gut-Muster, 5 Mutanten, alle
+# erkannt. Der Hash unten ist unveraendert, aber weiterhin VORLAEUFIG, weil
+# `freeze.sh T-3.9` NICHT durchlaeuft. Gemessen mit von Hand entfernter
+# T-3.9-Zeile; freeze.sh brach nach gruenem Mutationstest und gruener Spur
+# 'gut' an der Spur 'echt' ab (Exit 1):
+#   freeze: Laufzeitspur 'gut' ohne undeklarierte Helfer.
+#   freeze: Laufzeitspur 'echt' scheiterte am Pruefling (Exit 1)
+# UNTERSCHIED zu T-3.13b und T-3.14: der Helfer-Halt liegt hier NICHT vor.
+# Die freeze-deps-Pruefung der Spur 'echt' lief durch -- sonst haette
+# freeze.sh mit "ABGELEHNT -- Laufzeitspur: nicht deklarierte repo-lokale
+# Datei geoeffnet" abgebrochen, bevor der Pruefling-Exit ueberhaupt bewertet
+# wird. T-3.9.sh faehrt kein pytest und fasst tests/verify/T-metaprobe.sh
+# und tests/verify/meta.sh darum nicht an. Damit ist der Weg fuer T-3.9 an
+# dieser Stelle offen; es bleibt genau ein Halt.
+# Dieser eine Halt ist der Pruefling selbst: freeze.sh verlangt die Spur
+# 'echt' gruen, `bash tests/verify/T-3.9.sh` ist im Arbeitsbaum aber Exit 1
+# mit genau einer roten Pruefung --
+#   FAIL ein Sprech-Endpunkt ist am Hub auffindbar (POSITIVKONTROLLE)
+#        (erwartet ja, war nein)
+#   Endpunkt: (keiner)  art=?  marke-feld=?
+# Der Hub startet, stammt aus dem geprueften Baum und legt tts.sock im
+# Laufzeitverzeichnis an, aber kein Sprech-Endpunkt ist am Hub auffindbar.
+# Ohne die Positivkontrolle ist der Rest von T-3.9 ungemessen.
+#   1. offen: neuer .v-Task fuer T-3.9, der diesen Halt aufloest
 8da66117cfa2ed509834cb78e818a6967dd7195ac1400ee71398f1641aa97224 tests/verify/T-3.9.sh
 20d6256a2f8bdc3237ac17b33669316837e5b15ac5b9ffc269920ad4443e2d4d tests/verify/t44_pruefstand.py
 d5cfe4fee6302153c4bba90f107d73e3c65a14318281f75d7c4d4543d30a9b4f tests/verify/T-4.4.sh
