@@ -1,71 +1,4 @@
-#
-#
-#   1. offen: neuer .v-Task fuer T-3.13b, der beide Halte aufloest
-#   1. offen: neuer .v-Task fuer T-3.14, der beide Halte aufloest
-# 26.08. die Attrappe neben `hub/sprechtext.aus_vorlage` und hatte keinen
-# 28.08. mit von Hand entfernten T-3.14-Zeilen; Mutationstest gruen
-#   2. ERLEDIGT -- das Gut-Muster fuehrt `tts_ungefragt` jetzt mit
-#   3. ERLEDIGT -- tests/mutants/T-3.13b/erzeugen.sh hat einen achten
-# Anteile sind ausschliesslich trusted-Werte"; die Tabellenzeile war bis zum
-# Aufrufer. Der Pruefstand folgt damit der Fassung, die jetzt gilt.
-# `bash tests/verify/T-3.13b.sh` im Arbeitsbaum ist am 26.08. 24 rot
-# Beide Halte sind aelter als dieser Nachzug und von ihm unabhaengig.
-# Beide Halte sind aelter als dieser Nachzug und von ihm unabhaengig.
-# beide Zeilen zusammen schreibt.
-# bleibt unberuehrt. Ohne das wies `ipc.accept` den Pruefstand als fremde
-# byte-identisch, und `None`/`()` werden nie gesetzt.
-#   Datei geoeffnet: tests/harness/vollbildfenster.py,
-#   Datei geoeffnet: tests/verify/T-metaprobe.sh, tests/verify/meta.sh
-# Dazu ein neues Kriterium W (WANDKONTROLLE): ein zweiter Hub OHNE das
-# deklarierte und vorhandene Abhaengigkeit mit ein, tests/verify/meta.sh
-# den zehn roten Pruefungen des 27.08. sind neun weg; die Prozesszaehlungen
-# der Lauf ist wegen K13-pytest Exit 1 (Erstlauf Exit 1, erlaubter Nachlauf
-# Die Zeile nachzutragen ist KEINE Reviewer-Entscheidung: freeze.sh friert
-# durchlassen -- eine pauschale Erwartung waere dort falsch rot.
-# entfernten T-3.13b-Zeilen; freeze.sh brach nach gruenem Mutationstest und
-# etwas umhaengen liesse. Er startet ihn jetzt ueber einen eigenen Starter
-# Exit 1; massgeblich ist der Nachlauf). Die T-3.9-Positivkontrolle 'ein
-#      Fehler wieder einbaut. `bash tests/verify/meta.sh T-3.13b` ist gruen:
-#   freeze-deps: ABGELEHNT -- Laufzeitspur: nicht deklarierte repo-lokale
-#   freeze-deps: ABGELEHNT — Laufzeitspur: nicht deklarierte repo-lokale
-# `freeze.sh T-3.13b` NICHT durchlaeuft. Gemessen am 26.08. mit von Hand
-# GENAU EINER roten Pruefung, K13-pytest. K1 9, K2 8, K3 3, K4 3, K5 10,
-# gruener Spur 'gut' an der Spur 'echt' ab:
-# Grund der Aenderung: der Pruefstand startete den Hub als
-# Grund: Zeile 1037-1044 erwartet fuer die Senke `tts_ungefragt` jetzt
-# (Gut-Muster besteht, 6 Mutanten, alle erkannt), Spur 'gut' ohne
-#      Gut-Muster besteht, alle acht Mutanten werden erkannt. Jeder der
-# Gut-Muster vom 11.08. kennt keine der vier Listen und muss folgerichtig
-# (HUB_STARTER), der seine EIGENE Unit ueber `ipc.peer_of` misst und
-# jede deklarierte und vorhandene Abhaengigkeit mit ein -- tests/verify/
-#      (je Mutant nachgemessen) -- keiner ist durch die Regel wirkungslos.
-# (K13: T-3.12 und T-3.13 einzeln rot, pytest rot an
-# K6 19, K7 6, K8 10, K9 5, K10 22, K11 5, K12 6, W 12 -- alle 0 rot. Von
-# laege danach selbst hinter einem .v-Task.
-#      Mark.USER_PTT: False; nur diese eine Regelzeile wurde nachgezogen,
-# meta.sh laege danach selbst hinter einem .v-Task.
-#      Mutanten `ptt-wird-ungefragt-gesprochen`, der genau den behobenen
-# NACHGEZOGEN am 26.08. (Rolle reviewer), VORLAEUFIG -- der Mutationstest steht
-# nachzutragen ist KEINE Reviewer-Entscheidung -- freeze.sh friert jede
-#      nicht die Umgestaltung von e83c961.
-# noch aus. Vorher: 4922461f5e9e7b86a2603664adf8e43f3e50c6fe5fd25bf1d6d47f65e23f23fe
-# nur das Modulattribut des GELADENEN Hubs; daimon/hub/daemon.py bleibt
-# OFFEN bleibt der Hash: `freeze.sh T-3.14` laeuft NICHT durch. Gemessen am
-# OFFEN bleibt der Hash selbst -- er ist weiterhin VORLAEUFIG, weil
-# PRODUZENT_UNITS['auth'], ['ears'], ['hookbridge'] sowie TTS_UNITS darauf
-# pytest-Suite, und die fasst diese drei Helfer an (am 27.08. waren es zwei;
-# `python -m daimon.hub.daemon` und hatte damit keine Stelle, an der sich
-# seit 7b385e6 gruen und laeuft in K13 durch.
-# (SENKEN["tts_ungefragt"][Mark.USER_PTT] ist False) und Design 8.3 "Variable
-# <sha256> <pfad relativ zum Repo> — von tests/verify/freeze.sh gepflegt
-#      sieben alten Mutanten scheitert weiterhin an seiner EIGENEN Mutation
-# sind repo-lokal und in FROZEN.deps nicht deklariert.
-# Sprech-Endpunkt ist am Hub auffindbar' steht NICHT mehr dabei -- T-3.9 ist
-# Stand 26.08. abends (Rolle reviewer), Punkte 2 und 3 ERLEDIGT:
-# Stand 28.08.: `bash tests/verify/T-3.14.sh` ist im Arbeitsbaum Exit 1 mit
-# T-3.13b) enthaelt sie tests/test_meta_erzeugung.py, das
-# (t313b_pruefstand.py:1373). Seit 5a78c51 (17.08., NACH dem Einfrieren von
-# test_egress.py::test_mind_traegt_keinen_fremden_schluessel_in_der_umgebung).
+# <sha256> <pfad relativ zum Repo> -- gepflegt von tests/verify/freeze.sh; Halte und Begruendungen: tests/verify/FROZEN-HALTE.md
 d10847e4fd90117b185470b945b5322337c104f027111a93322671657a9964f5 tests/harness/moodprobe.py
 d2b1c4b3789d6aebffe9f46d247c080dd4dfbbb233c539415b0efe5a46989f49 tests/harness/pixelprobe.py
 6ffa077e3a1e0a906e6b8793679700f763f3de50840e1065f8079b9ff0309e83 tests/harness/t09_socket_probe/sitecustomize.py
@@ -96,9 +29,7 @@ fe9060d34c7aea1a52926e06766df9a8c53543e627c067572886250dda4e69c4 tests/verify/t3
 842fa97ee1ea220e4839ca8ff4aaf22b9c40fc3170b0424d3029266244357b78 tests/verify/t313_pruefstand.py
 81f2206e7372bd62cb791e32044e45da54ce7bdb7abce8606ab8b7624e38f273 tests/verify/T-3.13.sh
 e8fa3681cfe0b274ec0a50be5d09f77c81322527a3c16507a9dada70ba36c236 tests/verify/t314_pruefstand.py
-# tests/verify/t314_pruefstand.py: NACHGEZOGEN am 28.08. (Rolle reviewer),
 8e69272633e634670b8d0b1799f1efd1d291a510b0c2609e9b0c665003616f92 tests/verify/T-3.14.sh
-# tests/verify/T-3.14.sh ist unveraendert und steht nur mit, weil freeze.sh
 056150b22d477ad276ffdc24e106a288fe8c5049618f17e599c452615e795c78 tests/verify/T-3.1.sh
 13530b22990e0ff1a34d27480da17977cd11b8bfaedd328b35061168c575d451 tests/verify/T-3.2.sh
 3f5a17fbbaf459100e102e394e8cd24e23d41c12f24650e8929076915834c6dd tests/verify/T-3.3.sh
@@ -120,20 +51,4 @@ f02b68120d080c3a23fc73be23d0b654afc68addd869a0d8f03e27fc8607c9ec tests/verify/T-
 a338db7876aac6c8382de723369fa5571d00d7e3dea5beb94c5936c140840684 tests/verify/t75_hub.py
 620da65205e4344955f22fd8d3d7328d11163c69c1b0cbeb1a16c3b866d50466 tests/verify/t75_pruefstand.py
 8559244b57969b4d09154e6e4dc7698855e4fb4ed2e06a4f403296e99ca76d10 tests/verify/T-7.5.sh
-# tests/verify/T-metaprobe.sh anlegt und tests/verify/meta.sh ruft. Beide
-#   tests/verify/T-metaprobe.sh, tests/verify/meta.sh
 dc475cae490a537145cb6a59a7f5b5865ab3420f8dd2aca908f96a0990d21c56 tests/verify/verify-frozen.sh
-# [trusted] statt [trusted, user_ptt]. Stuetzt sich auf daimon/common/taint.py
-# Umhaengen muss genau dann abgewiesen werden, wenn der geladene Baum diese
-# umhaengt -- eine Liste je Endpunkt, den der Pruefstand anspricht; 'face'
-# undeklarierte Helfer, Abbruch an der Spur 'echt':
-# Unit ab (dritte Fassung derselben Wand nach T-0.9 und T-3.9). Gesetzt wird
-# Unit sperrt (`ipc.unit_erlaubt`, mit seiner eigenen Liste gerechnet). Das
-# Ursache: K13 faehrt im Arbeitsbaumlauf die ganze pytest-Suite
-# Ursache wie am 27.08.: K13 faehrt im Arbeitsbaumlauf die ganze
-# vollbildfenster.py ist seither dazugekommen). Sie in FROZEN.deps
-# waren Messverschmutzung durch gleichzeitig laufende Sitzungs-Shells (der
-# weiterhin VORLAEUFIG. Vorher: bcff10c4f5f275b805a1cdd35e5ff5ce481a89a9f504c7be8ff6da3e35295438
-# Zaehler pgrep-t auf den Prueflingspfad) und sind im ruhigen Lauf gruen.
-# Zweiter, unabhaengiger Halt: freeze.sh verlangt die Spur 'echt' gruen.
-# Zweiter, unabhaengiger Halt: freeze.sh verlangt die Spur 'echt' gruen, und
