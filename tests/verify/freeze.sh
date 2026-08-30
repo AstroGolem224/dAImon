@@ -18,6 +18,64 @@ command -v strace >/dev/null 2>&1 || {
     exit 1
 }
 
+# >>> lauf-sperre
+# Prueflings-Anker: tests/test_freeze_sperre.py
+# --- Ein Lauf zur Zeit -------------------------------------------------------
+# Am 30.08. fuhren zwei Sitzungen gleichzeitig Verifizierer im selben Baum. Das
+# ist nicht bloss langsam, es faelscht in die HARMLOSE Richtung: `meta.sh:62`
+# wertet jeden Nicht-Null-Exit eines Fixture-Laufs als „Mutante erkannt".
+# Fremdlast laesst einen Mutanten aus dem falschen Grund scheitern, und er wird
+# als erkannt verbucht -- ein falsches GRUEN, das keine Auswertung sieht, weil
+# sie nur nach „alle erkannt" schaut.
+#
+# Die Sperre ist maschinenweit und nicht baumweit: umkaempft sind die Units,
+# die Sockets und die Karte, nicht die Dateien.
+#
+# ponytail: gedeckt sind freeze-gegen-freeze (die Sperre) und ein VORHER
+# gestarteter blanker Verifiziererlauf (die Vorpruefung). NICHT gedeckt ist ein
+# blanker `T-x.sh`, der WAEHREND eines Freeze startet -- genau die Bauform des
+# Vorfalls vom 30.08. Die Verifizierer selbst sind eingefroren; eine Sperre
+# dort hiesse dreissig Dateien neu einfrieren. Der Aufruestweg ist der
+# PreToolUse-Hook `.claude/hooks/role_guard.py`, der jedes Bash-Kommando
+# ohnehin schon sieht und die Sperrdatei mitlesen koennte.
+SPERRE="${XDG_RUNTIME_DIR:-/tmp}/daimon-verify.lock"
+
+# Anhaengend oeffnen, NICHT abschneidend: `9>` wuerde die Auskunft des
+# laufenden Halters loeschen, bevor `flock` ueberhaupt merkt, dass es einen
+# gibt -- und die Ablehnung koennte dann nicht sagen, wer blockiert.
+exec 9>>"$SPERRE" || {
+    echo "freeze: FEHLER — Sperrdatei $SPERRE nicht anlegbar." >&2
+    exit 1
+}
+if ! flock -n 9; then
+    echo "freeze: ABGELEHNT — es laeuft bereits ein Verifiziererlauf:" >&2
+    sed 's/^/  /' "$SPERRE" >&2 2>/dev/null || true
+    echo "freeze: warte, bis er durch ist. Zwei Laeufe messen einander mit." >&2
+    exit 1
+fi
+# Erst jetzt, mit der Sperre in der Hand, die Auskunft setzen. Das Abschneiden
+# ueber den Pfad laesst `flock` auf fd 9 unberuehrt.
+printf 'PID %s seit %s -- freeze.sh %s (%s)\n' \
+    "$$" "$(date '+%F %T')" "${task:-?}" "$REPO" > "$SPERRE"
+
+# Ein blanker Verifiziererlauf haelt diese Sperre nicht. Lief er schon, als wir
+# ankamen, ist er hier sichtbar. Das Muster verlangt einen Interpreter
+# unmittelbar vor dem Pfad -- ein `cat tests/verify/T-3.14.sh` faellt damit
+# nicht auf, ein `bash tests/verify/T-3.14.sh` schon. Der Anker `^` ist noetig,
+# weil `pgrep -af` die GANZE Kommandozeile prueft: ohne ihn meldet jeder Prozess
+# einen Fremdlauf, der den Befehl bloss als Text mitfuehrt -- etwa ein
+# `claude -p`, dessen Auftrag ihn zitiert.
+fremde="$(pgrep -af \
+    '^([^ ]*/)?(bash|sh|python3?)[^|]* tests/verify/(T-[0-9][^ ]*\.sh|t[0-9]+_pruefstand\.py|meta\.sh)' \
+    2>/dev/null | grep -v "^$$ " || true)"
+if [[ -n "$fremde" ]]; then
+    echo "freeze: ABGELEHNT — es laufen bereits Verifiziererprozesse:" >&2
+    echo "$fremde" | sed 's/^/  /' >&2
+    echo "freeze: sie messen mit. Erst abwarten, dann einfrieren." >&2
+    exit 1
+fi
+# <<< lauf-sperre
+
 # Erst die geschlossene Menge beweisen. Sonst koennte ein gruener Mutantenlauf
 # bereits seine eigentlichen Aussagen aus einem ungeschuetzten Helfer beziehen.
 tmp="$(mktemp -d)"
