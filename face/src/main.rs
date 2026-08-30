@@ -574,6 +574,7 @@ impl App {
         let sichtbar = self.sichtbarkeit.0;
         let qh = self.qh.clone();
         let name = self.aktueller_zustand.clone();
+        let mood = self.aktueller_mood.clone();
         let voice = self.aktueller_voice.clone();
         let mitschnitt = self.aktueller_mitschnitt;
         let ergebnis = {
@@ -592,6 +593,7 @@ impl App {
                     pool,
                     atlas,
                     &name,
+                    &mood,
                     &voice,
                     mitschnitt,
                     toenung,
@@ -1161,6 +1163,7 @@ impl LayerShellHandler for App {
                     pool,
                     atlas,
                     aktueller_zustand,
+                    aktueller_mood,
                     aktueller_voice,
                     aktueller_mitschnitt,
                     render,
@@ -1177,6 +1180,7 @@ impl LayerShellHandler for App {
                         pool,
                         atlas,
                         aktueller_zustand,
+                        aktueller_mood,
                         aktueller_voice,
                         *aktueller_mitschnitt,
                         toenung,
@@ -1277,7 +1281,7 @@ fn main() {
     });
     let fehlende_zustaende = ["ruhig", "dringend"]
         .into_iter()
-        .filter(|name| zustand_abbilden(name, &atlas.layout).zurueckgefallen)
+        .filter(|name| zustand_abbilden(name, "", &atlas.layout).zurueckgefallen)
         .collect::<Vec<_>>();
     if !fehlende_zustaende.is_empty() {
         eprintln!(

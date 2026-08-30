@@ -36,3 +36,8 @@ face/assets/preview_states.png
 # nach Fall 7 der Fehlerliste spaeter lautlos Fixtures gefressen.
 # Geholt wird das Modell mit spikes/stt-referenz/modell_holen.sh.
 spikes/stt-referenz/models/
+
+# Die erzeugten Doppel-Self-Gesichter bleiben lokal: acht Bilder eines
+# echten Gesichts gehoeren nicht in ein oeffentliches Repo, und der
+# Generator baut sie in drei Minuten neu.
+face/assets/doppelself/

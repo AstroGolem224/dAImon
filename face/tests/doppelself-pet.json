@@ -1,0 +1,47 @@
+{
+  "id": "doppelself",
+  "displayName": "Doppel-Self",
+  "description": "Das eigene Gesicht, ein Ausdruck je Mood.",
+  "spritesheetPath": "spritesheet.png",
+  "atlas": {
+    "cellW": 192,
+    "cellH": 208,
+    "cols": 1,
+    "rows": 8
+  },
+  "toenung": false,
+  "moods": {
+    "sleeping": {
+      "row": 0
+    },
+    "idle": {
+      "row": 1
+    },
+    "observing": {
+      "row": 2
+    },
+    "thinking": {
+      "row": 3
+    },
+    "working": {
+      "row": 4
+    },
+    "done": {
+      "row": 5
+    },
+    "failed": {
+      "row": 6
+    },
+    "needs_input": {
+      "row": 7
+    }
+  },
+  "states": {
+    "idle": {
+      "row": 1
+    },
+    "waiting": {
+      "row": 7
+    }
+  }
+}

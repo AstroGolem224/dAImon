@@ -96,6 +96,19 @@ fn kanal_toenen(intensitaet: u8, faktor: u8) -> u8 {
     ((u16::from(intensitaet) * u16::from(faktor) + 127) / 255) as u8
 }
 
+/// Die Weiche: toent nur, wenn das Pet-Manifest es erlaubt.
+///
+/// Eigene Funktion und nicht ein `if` in `surface.rs`, weil dort kein Test
+/// hinkommt -- der Aufrufer braucht eine Wayland-Verbindung. Ein `if`, das
+/// niemand pruefen kann, ist ein `if`, das niemand prueft.
+pub fn frame_toenen_wenn(frame: &[u8], toenung: Toenung, erlaubt: bool) -> Vec<u8> {
+    if erlaubt {
+        frame_toenen(frame, toenung)
+    } else {
+        frame.to_vec()
+    }
+}
+
 /// Toent premultiplizierte BGRA-Pixel. Alpha wird wortwoertlich kopiert.
 pub fn frame_toenen(frame: &[u8], toenung: Toenung) -> Vec<u8> {
     let mut ausgabe = frame.to_vec();
@@ -303,5 +316,21 @@ mod tests {
         assert!(fertig);
         assert!(!render.dirty);
         assert!(!render.callback_armieren());
+    }
+
+    /// Positivkontrolle im selben Test: `true` MUSS die Pixel veraendern.
+    /// Sonst waere „`false` laesst sie unveraendert" gruen, weil die Toenung
+    /// gar nichts tut -- und nicht, weil der Schalter greift.
+    #[test]
+    fn toenung_aus_laesst_die_pixel_unveraendert() {
+        let zelle: Vec<u8> = vec![40, 80, 120, 200, 10, 20, 30, 255];
+        let violett = mood_toenung("thinking");
+
+        let aus = frame_toenen_wenn(&zelle, violett, false);
+        assert_eq!(aus, zelle);
+
+        let an = frame_toenen_wenn(&zelle, violett, true);
+        assert_ne!(an, zelle);
+        assert_eq!(an, frame_toenen(&zelle, violett));
     }
 }

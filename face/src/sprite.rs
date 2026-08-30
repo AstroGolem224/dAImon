@@ -37,6 +37,17 @@ pub struct AtlasLayout {
     pub cols: u32,
     pub rows: u32,
     pub states: HashMap<String, u32>,
+    /// Optionaler zweiter Block: eine Zeile je MOOD statt je Pose. Leer heisst
+    /// „dieses Pet hat keine Mood-Zeilen" -- dann gilt der Weg ueber
+    /// `mood_zu_sprite` unveraendert. Ein eigener Block und nicht `states`,
+    /// weil die Namen kollidieren: das Ember-Sheet hat eine Pose `failed`,
+    /// die etwas anderes meint als der Mood `failed`.
+    pub moods: HashMap<String, u32>,
+    /// Darf der Mood-Farbton auf die Zellen gelegt werden? Fuer das
+    /// Ember-Sheet ja -- dort IST die Toenung der Mood. Fuer ein Pet mit
+    /// einem echten Gesicht je Mood nein: violette Haut sagt nichts, was das
+    /// Gesicht nicht schon sagt.
+    pub toenung: bool,
     pub spritesheet_path: PathBuf,
 }
 
@@ -51,6 +62,8 @@ impl Default for AtlasLayout {
                 .into_iter()
                 .map(|(name, row)| (name.to_owned(), row))
                 .collect(),
+            moods: HashMap::new(),
+            toenung: true,
             spritesheet_path: PathBuf::from("spritesheet.png"),
         }
     }
@@ -82,15 +95,24 @@ impl AtlasLayout {
         if let Some(states) = root.get("states").and_then(Value::as_object) {
             layout.states.clear();
             for (name, state) in states {
-                if let Some(row) = state
-                    .get("row")
-                    .and_then(Value::as_u64)
-                    .and_then(|row| u32::try_from(row).ok())
-                    .filter(|row| *row < layout.rows)
-                {
+                if let Some(row) = zeile_lesen(state, layout.rows) {
                     layout.states.insert(name.clone(), row);
                 }
             }
+        }
+
+        // Der Mood-Block ist optional und fuegt nur hinzu: fehlt er, bleibt
+        // die Karte leer und nichts am bisherigen Weg aendert sich.
+        if let Some(moods) = root.get("moods").and_then(Value::as_object) {
+            for (name, mood) in moods {
+                if let Some(row) = zeile_lesen(mood, layout.rows) {
+                    layout.moods.insert(name.clone(), row);
+                }
+            }
+        }
+
+        if let Some(an) = root.get("toenung").and_then(Value::as_bool) {
+            layout.toenung = an;
         }
         layout
     }
@@ -113,6 +135,15 @@ impl AtlasLayout {
     }
 }
 
+/// `{"row": n}` mit n innerhalb des Sheets. Alles andere ist kein Eintrag.
+fn zeile_lesen(eintrag: &Value, rows: u32) -> Option<u32> {
+    eintrag
+        .get("row")
+        .and_then(Value::as_u64)
+        .and_then(|row| u32::try_from(row).ok())
+        .filter(|row| *row < rows)
+}
+
 fn positive_u32(value: Option<&Value>) -> Option<u32> {
     value
         .and_then(Value::as_u64)
@@ -126,7 +157,19 @@ pub struct ZustandsAbbildung {
     pub zurueckgefallen: bool,
 }
 
-pub fn zustand_abbilden(name: &str, layout: &AtlasLayout) -> ZustandsAbbildung {
+/// `name` ist der bereits ueber `hub::mood_zu_sprite` verdichtete Zustand,
+/// `mood` der rohe Mood aus dem Hub. Erklaert das Pet eine eigene Zeile fuer
+/// diesen Mood, gilt sie -- sonst bleibt es beim alten Weg ueber die zwei
+/// Posen. Zwei Argumente statt eines, weil `mood_zu_sprite` acht Moods auf
+/// zwei Namen wirft und die verlorenen sechs genau die sind, die ein
+/// Gesichts-Pet unterscheiden will.
+pub fn zustand_abbilden(name: &str, mood: &str, layout: &AtlasLayout) -> ZustandsAbbildung {
+    if let Some(zeile) = layout.moods.get(mood).copied() {
+        return ZustandsAbbildung {
+            zeile,
+            zurueckgefallen: false,
+        };
+    }
     let manifest_name = match name {
         "ruhig" => "idle",
         "dringend" => "waiting",
@@ -438,26 +481,136 @@ mod tests {
     fn deutsche_zustaende_werden_auf_manifestzeilen_abgebildet() {
         let layout = AtlasLayout::default();
         assert_eq!(
-            zustand_abbilden("ruhig", &layout),
+            zustand_abbilden("ruhig", "idle", &layout),
             ZustandsAbbildung {
                 zeile: 0,
                 zurueckgefallen: false
             }
         );
         assert_eq!(
-            zustand_abbilden("dringend", &layout),
+            zustand_abbilden("dringend", "needs_input", &layout),
             ZustandsAbbildung {
                 zeile: 6,
                 zurueckgefallen: false
             }
         );
         assert_eq!(
-            zustand_abbilden("unbekannt", &layout),
+            zustand_abbilden("unbekannt", "gibt-es-nicht", &layout),
             ZustandsAbbildung {
                 zeile: 0,
                 zurueckgefallen: true
             }
         );
+    }
+
+    /// Das Ember-Sheet hat eine POSE `failed` (Zeile 5). Der MOOD `failed`
+    /// muss trotzdem auf `dringend`/Zeile 6 gehen, solange kein `moods`-Block
+    /// da ist. Sonst haette der neue Weg das bestehende Pet still umgestellt.
+    #[test]
+    fn ohne_mood_block_kollidieren_gleiche_namen_nicht() {
+        let layout = AtlasLayout::default();
+        assert!(layout.moods.is_empty());
+        assert_eq!(
+            zustand_abbilden("dringend", "failed", &layout),
+            ZustandsAbbildung {
+                zeile: 6,
+                zurueckgefallen: false
+            }
+        );
+    }
+
+    /// Positivkontrolle zum Test darueber: derselbe Mood, dasselbe Sheet --
+    /// nur mit `moods`-Block. Faende der neue Weg nichts, waere der Test
+    /// oben gruen, ohne irgendetwas zu belegen.
+    #[test]
+    fn mood_zeile_schlaegt_die_pose() {
+        let layout = AtlasLayout::aus_manifest_text(
+            r#"{"atlas":{"cols":1,"rows":8},
+                "moods":{"failed":{"row":5},"thinking":{"row":3}}}"#,
+        );
+        assert_eq!(
+            zustand_abbilden("dringend", "failed", &layout),
+            ZustandsAbbildung {
+                zeile: 5,
+                zurueckgefallen: false
+            }
+        );
+        assert_eq!(
+            zustand_abbilden("ruhig", "thinking", &layout),
+            ZustandsAbbildung {
+                zeile: 3,
+                zurueckgefallen: false
+            }
+        );
+        // Ein Mood ohne eigene Zeile faellt auf den alten Weg zurueck.
+        assert_eq!(
+            zustand_abbilden("ruhig", "working", &layout).zeile,
+            layout.idle_zeile()
+        );
+    }
+
+    /// Zeilen ausserhalb des Sheets sind kein Eintrag -- sonst liefe
+    /// `frame()` in einen Fehler, und das Pet bliebe schwarz.
+    #[test]
+    fn mood_zeile_ausserhalb_des_sheets_zaehlt_nicht() {
+        let layout = AtlasLayout::aus_manifest_text(
+            r#"{"atlas":{"cols":1,"rows":8},"moods":{"failed":{"row":99}}}"#,
+        );
+        assert!(layout.moods.is_empty());
+    }
+
+    #[test]
+    fn toenung_ist_an_ausser_das_manifest_schaltet_sie_ab() {
+        assert!(AtlasLayout::default().toenung);
+        assert!(AtlasLayout::aus_manifest_text(r#"{"toenung":false}"#).toenung == false);
+        assert!(AtlasLayout::aus_manifest_text(r#"{"toenung":true}"#).toenung);
+    }
+
+    /// Die NAHT: Hub-Snapshot -> Mood -> Zeile. Ohne diesen Test belegen die
+    /// Tests darueber nur, dass die Funktion rechnet -- nicht, dass der Mood,
+    /// den der Hub tatsaechlich schickt, jemals dort ankommt.
+    #[test]
+    fn mood_aus_dem_hub_erreicht_die_zeile() {
+        let layout = AtlasLayout::aus_manifest_text(
+            r#"{"atlas":{"cols":1,"rows":8},"moods":{"working":{"row":4}}}"#,
+        );
+        let zustand = crate::hub::snapshot_lesen(
+            r#"{"v":2,"rev":7,"mood":"working","bubble":null}"#,
+        )
+        .expect("Snapshot ist gueltig");
+        let name = crate::hub::mood_zu_sprite(&zustand.mood);
+        assert_eq!(zustand_abbilden(name, &zustand.mood, &layout).zeile, 4);
+    }
+
+    /// Die NAHT zum Erzeuger: `tools/doppelself_gesichter.py` schreibt genau
+    /// dieses Manifest, und sein Selbsttest vergleicht sich mit derselben
+    /// Datei. Ohne diesen Test waeren die Tests darueber gruen, waehrend das
+    /// Werkzeug ein Manifest erzeugt, das dieser Parser gar nicht liest.
+    #[test]
+    fn erzeugtes_doppelself_manifest_wird_verstanden() {
+        let layout =
+            AtlasLayout::aus_manifest_text(include_str!("../tests/doppelself-pet.json"));
+        assert_eq!(layout.moods.len(), 8, "{:?}", layout.moods);
+        assert!(!layout.toenung);
+        assert_eq!(layout.cols, 1);
+        for mood in [
+            "sleeping",
+            "idle",
+            "observing",
+            "thinking",
+            "working",
+            "done",
+            "failed",
+            "needs_input",
+        ] {
+            let ab = zustand_abbilden(crate::hub::mood_zu_sprite(mood), mood, &layout);
+            assert!(!ab.zurueckgefallen, "{mood} faellt zurueck");
+            assert!(ab.zeile < layout.rows, "{mood} -> Zeile {}", ab.zeile);
+        }
+        // Acht Moods, acht verschiedene Zeilen -- sonst zeigt das Pet
+        // zwei Zustaende mit demselben Gesicht an.
+        let zeilen: std::collections::HashSet<u32> = layout.moods.values().copied().collect();
+        assert_eq!(zeilen.len(), 8);
     }
 
     #[test]
@@ -466,7 +619,7 @@ mod tests {
             r#"{"states":{"idle":{"row":3}},"spritesheetPath":"spritesheet.png"}"#,
         );
         assert_eq!(
-            zustand_abbilden("dringend", &layout),
+            zustand_abbilden("dringend", "needs_input", &layout),
             ZustandsAbbildung {
                 zeile: 3,
                 zurueckgefallen: true

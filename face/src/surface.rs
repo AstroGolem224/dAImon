@@ -22,7 +22,7 @@ use wayland_client::{
 use crate::{
     bubble::{position_klemmen, Raster as BubbleRaster},
     input::{sichtbare_laeufe, Box2D, InputRegion},
-    render::{frame_toenen, Toenung},
+    render::{frame_toenen, frame_toenen_wenn, Toenung},
     sprite::{indikator_malen, mitschnitt_malen, zustand_abbilden, SpriteAtlas},
 };
 
@@ -235,6 +235,7 @@ impl OverlaySurface {
         pool: &mut SlotPool,
         atlas: &SpriteAtlas,
         zustand: &str,
+        mood: &str,
         voice: &str,
         mitschnitt: bool,
         toenung: Toenung,
@@ -242,9 +243,16 @@ impl OverlaySurface {
         qh: &QueueHandle<crate::App>,
         callback_armieren: bool,
     ) -> Result<(u64, bool, bool), String> {
-        let abbildung = zustand_abbilden(zustand, &atlas.layout);
+        let abbildung = zustand_abbilden(zustand, mood, &atlas.layout);
+        // Ein Pet mit eigener Zeile je Mood traegt den Mood im Bild. Die
+        // Toenung darueberzulegen zerstoert genau die Information, fuer die
+        // die Zeile da ist.
         let mut frame = sichtbaren_frame_bauen(
-            &frame_toenen(&atlas.frame(abbildung.zeile, 0)?, toenung),
+            &frame_toenen_wenn(
+                &atlas.frame(abbildung.zeile, 0)?,
+                toenung,
+                atlas.layout.toenung,
+            ),
             sichtbar,
         );
         // T-3.14: der Indikator gehoert in das BILD, nicht in die
