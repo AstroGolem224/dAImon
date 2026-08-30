@@ -268,6 +268,76 @@ Prüfstands und misst dabei die Nebenwirkungen seines eigenen Laufs mit.
    in `FROZEN.deps` deklariert, und sie dort nachzutragen ist keine
    Reviewer-Entscheidung.
 
+**Nachtrag 30.08. — der Helfer-Halt ist AUFGELÖST**
+
+`freeze.sh T-3.14` ist am 30.08. durchgelaufen: Mutationstest grün (Gut-Muster
+besteht, 6 Mutanten, alle erkannt), Spur 'gut' **und** Spur 'echt' ohne
+undeklarierte Helfer. Der neue Hash steht in `tests/verify/FROZEN`:
+`e3e5a779…`, vorher `e8fa3681…`.
+
+**Woran es lag.** Der pytest-Vollsuitelauf ist aus K13 heraus
+(`t314_pruefstand.py`, `pruefe_k13`; die Begründung steht dort im Quelltext).
+Die drei Helfer `tests/harness/vollbildfenster.py`, `tests/verify/T-metaprobe.sh`
+und `tests/verify/meta.sh` wurden ausschließlich über
+`tests/test_meta_erzeugung.py` angefasst, und das lief nur als Teil dieser
+Vollsuite. Ohne sie erreicht die Laufzeitspur die drei nicht mehr — es musste
+also kein Helfer nachdeklariert und mit eingefroren werden. `FROZEN.deps` bleibt
+unverändert (`tests/verify/T-3.14.sh tests/verify/t314_pruefstand.py`), `FROZEN`
+trägt weiterhin 53 Zeilen. Der Punkt 4 der Liste oben ist damit erledigt.
+
+Die Vollsuite ist nicht weggefallen, nur umgezogen: `pytest -q` ist letzte Zeile
+jedes Phasen-Gates (`docs/IMPLEMENTATION-PLAN.md`, Gate P0/P3/P4/P5/P6/P7/P8) —
+dort misst sie nicht die Sitzung eines Prüfstandslaufs mit.
+
+**Der zweite Halt ist damit ebenfalls weg.** `bash tests/verify/T-3.14.sh` ist im
+Arbeitsbaum am 30.08. vollständig grün: 13 Kriterien plus die Wandkontrolle W,
+**0 rot**. Von den elf roten Prüfungen des 27.08. und der einen des 29.08.
+(K13-pytest) ist keine mehr übrig.
+
+---
+
+## T-3.13b — Stand 30.08. (Änderung zurückgenommen)
+
+**Betroffen:** `tests/verify/t313b_pruefstand.py`
+
+**Was vorbereitet war.** Dieselbe Änderung wie bei T-3.14: der pytest-Vollsuitelauf
+fällt aus K13 heraus (`t313b_pruefstand.py:1373`), mit derselben Begründung — der
+Prüfstand misst sonst die Nebenwirkungen seines eigenen Laufs statt des
+Prüflings, und die Vollsuite läuft ohnehin an jedem Phasen-Gate. Bei T-3.14 hat
+genau das den Helfer-Halt aufgelöst (Abschnitt oben), und derselbe Halt steht
+seit dem 26.08. auch vor T-3.13b: `T-metaprobe.sh` und `meta.sh` kommen dort über
+denselben Weg in die Spur.
+
+**Warum sie hier nicht anwendbar ist.** Die Änderung verschiebt den Hash, und neu
+einfrieren geht nicht:
+
+- `bash tests/verify/T-3.13b.sh` meldet mit der Änderung **GEÄNDERT** — erwartet
+  `fe9060d3…`, gefunden `f762fccb…`. Das Gate ist damit rot, ohne dass ein
+  Befund über den Prüfling dahinterstünde.
+- `freeze.sh` verlangt für ein Neueinfrieren die Spur 'echt' grün. `bash
+  tests/verify/T-3.13b.sh` ist im Arbeitsbaum am 30.08. mit **22 roten
+  Prüfungen** breit rot (K2, K3, K5, K8, K9, K11, K13). Am 26.08. waren es 24.
+  Die Ursachen sind älter als diese Arbeit und **ungemessen**.
+
+Anders als bei T-3.14 löst der K13-Wegfall hier also nichts auf: er nimmt einen
+von zwei Halten weg und lässt den zweiten — den Prüfling selbst — unberührt
+stehen, während er zugleich das Gate rot macht.
+
+**Entscheidung (Matthias, 30.08.):** Änderung zurückgenommen.
+`tests/verify/t313b_pruefstand.py` steht wieder auf `fe9060d3…`;
+`bash tests/verify/verify-frozen.sh` meldet Exit 0, „53 eingefrorene Dateien
+unverändert; Abhängigkeiten geschlossen".
+
+**Was zur Auflösung fehlt**
+
+1. Die 22 roten Prüfungen von `T-3.13b.sh` klären — Ursachen ungemessen, keine
+  davon stammt aus dieser Arbeit. Erst wenn die Spur 'echt' grün ist, kann der
+  K13-Wegfall hier nachgezogen und der Prüfstand neu eingefroren werden.
+2. Bis dahin bleibt der Nachzug vom 26.08. **VORLÄUFIG** und der `.v`-Task für
+  T-3.13b offen.
+
+---
+
 ---
 
 ## Nicht zuordenbar

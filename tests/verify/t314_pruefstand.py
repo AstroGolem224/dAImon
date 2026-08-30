@@ -1324,10 +1324,21 @@ def pruefe_k13(pruefling: Path, verifier_repo: Path, bericht: Bericht) -> None:
         )
         bericht.pruefe("K13", rc == 0, f"{relativ} Exit {rc}: {ausgabe}")
 
-    rc, ausgabe = k13_element_mit_nachlauf(
-        "pytest", [sys.executable, "-m", "pytest"], pruefling, env, muster, bericht,
-    )
-    bericht.pruefe("K13", rc == 0, f"pytest Exit {rc}: {ausgabe}")
+    # KEIN pytest-Vollsuitelauf hier -- der Pruefstand wuerde sich selbst
+    # messen. Waehrend dieses Laufes stehen die Dienste, die er selbst
+    # gestartet und auf seine eigene Unit umgehaengt hat (auth/ears/
+    # hookbridge/TTS); die Suite sieht dann eine Maschine, die es im Betrieb
+    # nicht gibt. Gemessen 29.08.: derselbe Baum, derselbe Commit -- im
+    # Pruefstand 53 Fehlschlaege, ausserhalb 1872 passed und 1 echter
+    # Fehlschlag (fehlender NVIDIA_API_KEY in der Sitzung). Die 53 sind also
+    # Messartefakt des eigenen Laufes, kein Befund ueber den Pruefling. Dazu
+    # kam der zweite Halt: die strace-Spur des Laufes sieht die
+    # Kindprozesse der Suite ausserhalb der Huelle und bricht ab.
+    # Die Vollsuite laeuft stattdessen dort, wo nichts von ihr gestartet
+    # ist: `pytest -q` ist letzte Zeile jedes Phasen-Gates
+    # (docs/IMPLEMENTATION-PLAN.md, Gate P0/P3/P4/P5/P6/P7/P8). Die
+    # eingefrorenen Regressionsverifizierer oben bleiben -- sie raeumen
+    # jeweils selbst auf und messen nicht die Sitzung dieses Laufes.
     rc, ausgabe = k13_element_mit_nachlauf(
         "cargo test -p face", ["cargo", "test", "-p", "face"],
         pruefling / "face", env, muster, bericht,
