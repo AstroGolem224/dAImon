@@ -404,7 +404,7 @@ impl OverlaySurface {
                 wl_shm::Format::Argb8888,
             )
             .map_err(|fehler| format!("wl_shm-Blasen-Puffer: {fehler}"))?;
-        canvas.copy_from_slice(&raster.pixel);
+        puffer_fuellen(canvas, &raster.pixel).map_err(|fehler| format!("Blase: {fehler}"))?;
 
         let groesse = (raster.breite, raster.hoehe);
         let position = position_klemmen(
@@ -655,9 +655,55 @@ fn geaendertes_rechteck(vorher: &[u8], nachher: &[u8], breite: u32, hoehe: u32) 
     })
 }
 
+/// Legt ein Raster in einen wl_shm-Puffer, der GROESSER sein darf als das
+/// Raster.
+///
+/// Der `SlotPool` gibt einen freien Slot heraus, sobald er gross genug ist,
+/// und `create_buffer` liefert dessen ganzen Speicher zurueck -- nicht den
+/// angeforderten Ausschnitt. `copy_from_slice` verlangt aber gleiche Laengen
+/// und bricht sonst ab. Der Ueberhang wird geleert: der Compositor liest ihn
+/// zwar nicht, aber Reste eines fremden Puffers gehoeren nicht in einen, den
+/// wir gerade als fertig ausgeben.
+fn puffer_fuellen(canvas: &mut [u8], pixel: &[u8]) -> Result<(), String> {
+    if canvas.len() < pixel.len() {
+        return Err(format!(
+            "Puffer zu klein: {} Bytes fuer {} Bytes Raster",
+            canvas.len(),
+            pixel.len()
+        ));
+    }
+    canvas[..pixel.len()].copy_from_slice(pixel);
+    canvas[pixel.len()..].fill(0);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// BEFUND 31.08.: das Face stuerzte beim ersten Blasen-Commit ab --
+    /// `copy_from_slice: source slice length (216720) does not match
+    /// destination slice length (216768)`. Der `SlotPool` gibt einen freien
+    /// Slot heraus, sobald er GROSS GENUG ist, und `canvas` ist dann der
+    /// ganze Slot, nicht der angeforderte Ausschnitt. Solange die Blase eine
+    /// feste Hoehe hatte, traf das nie zu.
+    #[test]
+    fn ein_zu_grosser_slot_wird_vorne_gefuellt_und_hinten_geleert() {
+        let mut canvas = vec![9u8; 12];
+        assert!(puffer_fuellen(&mut canvas, &[1, 2, 3, 4, 5, 6, 7, 8]).is_ok());
+        assert_eq!(canvas, [1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0]);
+    }
+
+    /// Positivkontrolle und Gegenrichtung: passgenau muss durchgehen, zu
+    /// klein muss auffallen. Ohne beides waere ein `puffer_fuellen`, das gar
+    /// nichts kopiert, genauso gruen wie das richtige.
+    #[test]
+    fn passgenau_geht_durch_und_zu_klein_faellt_auf() {
+        let mut genau = vec![0u8; 4];
+        assert!(puffer_fuellen(&mut genau, &[1, 2, 3, 4]).is_ok());
+        assert_eq!(genau, [1, 2, 3, 4]);
+        assert!(puffer_fuellen(&mut vec![0u8; 3], &[1, 2, 3, 4]).is_err());
+    }
 
     #[test]
     fn damage_box_umschliesst_nur_geaenderte_pixel() {
