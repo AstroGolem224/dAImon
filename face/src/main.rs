@@ -740,6 +740,31 @@ impl App {
         }
     }
 
+    /// T-9.1 A2/A4: neuen Puffer an die offene Popup-Surface.
+    ///
+    /// Ohne `configure`, weil es keines gibt: Groesse und Position aendern sich
+    /// nicht, nur der Inhalt. Ein gemappter Puffer darf jederzeit durch einen
+    /// neuen ersetzt werden.
+    fn menu_neu_zeichnen(&mut self) {
+        let raster = menu::rendern(self.bubble_renderer.font(), self.menu.schwebe());
+        let Self { menu, pool, .. } = self;
+        match menu.puffer_committen(pool, &raster) {
+            Ok(_) => {}
+            Err(fehler) => {
+                eprintln!("Kontextmenue konnte nicht neu gezeichnet werden: {fehler}");
+                self.menu_schliessen();
+            }
+        }
+    }
+
+    /// T-9.1 A1: der Zeiger ist nicht mehr ueber dem Menue. Zeichnet nur neu,
+    /// wenn ueberhaupt eine Zeile hinterlegt war.
+    fn menu_schwebe_loeschen(&mut self) {
+        if self.menu.schwebe_setzen(None) {
+            self.menu_neu_zeichnen();
+        }
+    }
+
     fn menu_schliessen(&mut self) {
         if self.menu.schliessen() {
             self.diagnose_menu_offen_setzen(false);
@@ -1017,10 +1042,31 @@ impl PointerHandler for App {
                     button: BTN_LEFT, ..
                 } if auf_menu => {
                     if let Some(aktion) = menu::aktion_bei(event.position.0, event.position.1) {
-                        // Erst schliessen, dann handeln: bei "Beenden" laeuft
-                        // die Schleife sonst mit einem Popup im Zustand aus.
-                        self.menu_schliessen();
-                        self.menu_aktion_ausfuehren(aktion);
+                        if aktion == menu::Aktion::Beenden {
+                            // Erst schliessen, dann handeln: sonst laeuft die
+                            // Schleife mit einem Popup im Zustand aus.
+                            self.menu_schliessen();
+                            self.menu_aktion_ausfuehren(aktion);
+                        } else {
+                            // T-9.1 A4: das Menue bleibt offen und zeichnet neu.
+                            //
+                            // ENTSCHIEDEN: die Zeile zeigt weiter den GEMELDETEN
+                            // Zustand, nie den eigenen Wunsch. Fuer die Persona
+                            // ist das die eben geschriebene Auswahldatei, die
+                            // `eintraege()` neu liest -- der Punkt wandert also
+                            // sofort und zu Recht. Fuer "Ohren aus"/"Augen aus"
+                            // gibt es heute KEINEN gemeldeten Zustand: der Hub
+                            // meldet dem Face nichts zurueck, `hub.rs` ist eine
+                            // Einbahn. Solange nichts gemeldet ist, bleibt die
+                            // Zeile deshalb unveraendert klickbar -- ein Menue,
+                            // das "aus" zeigt, waehrend die Unit noch laeuft,
+                            // waere schlimmer als Stille. Sichtbar ist dort
+                            // heute nur, dass das Menue offen bleibt; eine
+                            // ehrliche Zeile braucht erst einen Rueckkanal vom
+                            // Hub, und den gibt es nicht (siehe T-9.1).
+                            self.menu_aktion_ausfuehren(aktion);
+                            self.menu_neu_zeichnen();
+                        }
                     }
                 }
                 // Rechtsklick auf das Pet. Das ist die EINZIGE Stelle, an der
@@ -1060,7 +1106,23 @@ impl PointerHandler for App {
                         .unwrap_or((0, 0));
                     self.ziehen = Some(Ziehen::beginnen(event.position, position));
                 }
+                // T-9.1 A1: Bewegung ueber dem Menue setzt den Schwebeindex,
+                // Bewegung ausserhalb loescht ihn. Getrennt vom Ziehen des
+                // Pets: die beiden teilen keine Koordinaten.
+                PointerEventKind::Motion { .. } if auf_menu => {
+                    if self
+                        .menu
+                        .zeiger_bewegt(event.position.0, event.position.1)
+                    {
+                        self.menu_neu_zeichnen();
+                    }
+                }
+                // Der Zeiger hat die Popup-Surface verlassen. `Motion` kommt
+                // danach nicht mehr fuer sie -- ohne dieses Ereignis bliebe
+                // die zuletzt beruehrte Zeile hinterlegt stehen.
+                PointerEventKind::Leave { .. } if auf_menu => self.menu_schwebe_loeschen(),
                 PointerEventKind::Motion { .. } => {
+                    self.menu_schwebe_loeschen();
                     let neue_position = self.ziehen.as_mut().and_then(|ziehen| {
                         ziehen.bewegen(event.position, self.sprite_groesse, self.output_groesse)
                     });
@@ -1232,7 +1294,7 @@ impl PopupHandler for App {
         if !self.menu.ist_popup(popup) {
             return;
         }
-        let raster = menu::rendern(self.bubble_renderer.font());
+        let raster = menu::rendern(self.bubble_renderer.font(), self.menu.schwebe());
         let Self { menu, pool, .. } = self;
         match menu.puffer_committen(pool, &raster) {
             Ok(true) => self.diagnose_menu_offen_setzen(true),

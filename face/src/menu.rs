@@ -508,6 +508,9 @@ const SCHRIFTGROESSE: f32 = 16.0;
 /// Eintrag lesbar bleibt und trotzdem eindeutig blasser ist.
 const ALPHA_AKTIV: u8 = 255;
 const ALPHA_DEAKTIVIERT: u8 = 80;
+/// T-9.1 A2: die Hinterlegung der Zeile unter dem Zeiger. Deckend gerechnet
+/// wie der Hintergrund, damit das Popup auf jedem Untergrund gleich aussieht.
+const SCHWEBE_HINTERGRUND: (u8, u8, u8, u8) = (54, 60, 74, 242);
 
 pub fn hoehe() -> i32 {
     2 * RAND + eintraege().len() as i32 * ZEILE_H
@@ -522,6 +525,14 @@ pub fn index_bei(x: f64, y: f64) -> Option<usize> {
     (index < eintraege().len()).then_some(index)
 }
 
+/// Die Byte-Grenzen der Zeile `index` im Raster -- dieselbe Rechnung wie in
+/// [`index_bei`], nur in Pixelzeilen statt in Zeigerkoordinaten.
+fn zeilen_band(index: usize) -> (usize, usize) {
+    let oben = RAND + index as i32 * ZEILE_H;
+    let zeile = (BREITE * 4) as usize;
+    (oben as usize * zeile, (oben + ZEILE_H) as usize * zeile)
+}
+
 /// Die Aktion unter dem Zeiger. `None` fuer deaktivierte Eintraege und fuer
 /// alles ausserhalb -- ein deaktivierter Eintrag darf nicht versehentlich auf
 /// den Nachbarn durchschlagen.
@@ -530,13 +541,35 @@ pub fn aktion_bei(x: f64, y: f64) -> Option<Aktion> {
     liste[index_bei(x, y)?].aktion
 }
 
-pub fn rendern(font: &Font) -> Raster {
+/// `schwebe` ist der Zeilenindex unter dem Zeiger, oder `None`.
+///
+/// Hinterlegt wird **nur ein Eintrag mit Aktion** (T-9.1 A3): ein
+/// ausgegrauter Eintrag, der auf den Zeiger reagiert, verspricht einen Klick,
+/// den es nicht gibt.
+pub fn rendern(font: &Font, schwebe: Option<usize>) -> Raster {
     let liste = eintraege();
     let hoehe = 2 * RAND + liste.len() as i32 * ZEILE_H;
     let mut pixel = vec![0u8; (BREITE * hoehe * 4) as usize];
     let hintergrund = premultipliziert(24, 27, 34, 242);
     for p in pixel.chunks_exact_mut(4) {
         p.copy_from_slice(&hintergrund);
+    }
+    if let Some(index) = schwebe {
+        if liste.get(index).is_some_and(|e| e.aktion.is_some()) {
+            // Genau das Band, das `index_bei` demselben Index zuordnet --
+            // sonst leuchtete eine andere Zeile als die getroffene.
+            let (von, bis) = zeilen_band(index);
+            let bis = bis.min(pixel.len());
+            let farbe = premultipliziert(
+                SCHWEBE_HINTERGRUND.0,
+                SCHWEBE_HINTERGRUND.1,
+                SCHWEBE_HINTERGRUND.2,
+                SCHWEBE_HINTERGRUND.3,
+            );
+            for p in pixel[von..bis].chunks_exact_mut(4) {
+                p.copy_from_slice(&farbe);
+            }
+        }
     }
     for (index, eintrag) in liste.iter().enumerate() {
         let alpha = if eintrag.aktion.is_some() {
@@ -617,6 +650,11 @@ impl ProvidesBoundGlobal<xdg_wm_base::XdgWmBase, 6> for PopupShell {
 pub struct Menu {
     popup: Option<Popup>,
     input_region: InputRegion,
+    /// T-9.1 A1: der Zeilenindex unter dem Zeiger. Reiner Anzeigezustand --
+    /// geklickt wird weiterhin gegen die Koordinate des Press-Events, nicht
+    /// gegen diesen Wert. Ein Klick, der einem gemerkten Index folgt, waere
+    /// ein Klick auf eine Zeile, die der Zeiger vielleicht schon verlassen hat.
+    schwebe: Option<usize>,
 }
 
 impl Menu {
@@ -624,7 +662,28 @@ impl Menu {
         Self {
             popup: None,
             input_region: InputRegion::new(),
+            schwebe: None,
         }
+    }
+
+    pub fn schwebe(&self) -> Option<usize> {
+        self.schwebe
+    }
+
+    /// Setzt den Schwebeindex und meldet, ob sich etwas geaendert hat. Nur
+    /// dann lohnt ein neuer Puffer -- jede Zeigerbewegung neu zu zeichnen
+    /// waere ein Commit je Mausbewegung.
+    pub fn schwebe_setzen(&mut self, index: Option<usize>) -> bool {
+        let geaendert = self.schwebe != index;
+        self.schwebe = index;
+        geaendert
+    }
+
+    /// Der Zeiger steht bei (`x`, `y`) in Popup-Koordinaten. Dieselbe
+    /// Zuordnung wie beim Klick, weil dieselbe Funktion -- zwei Rechnungen
+    /// waeren eine Hervorhebung neben dem, was der Klick trifft.
+    pub fn zeiger_bewegt(&mut self, x: f64, y: f64) -> bool {
+        self.schwebe_setzen(index_bei(x, y))
     }
 
     pub fn ist_menu_surface(&self, surface: &wl_surface::WlSurface) -> bool {
@@ -640,6 +699,9 @@ impl Menu {
     /// Gibt zurueck, ob wirklich etwas geschlossen wurde. Drop zerstoert
     /// xdg_popup, xdg_surface und wl_surface in dieser Reihenfolge.
     pub fn schliessen(&mut self) -> bool {
+        // Der Schwebeindex gehoert zum offenen Popup. Bliebe er stehen, waere
+        // beim naechsten Oeffnen eine Zeile hinterlegt, ueber der niemand steht.
+        self.schwebe = None;
         self.popup.take().is_some()
     }
 
@@ -953,12 +1015,108 @@ mod tests {
         assert_eq!(auswahl_lesen(&inhalt).as_deref(), Some("nordom"));
     }
 
+    fn mitte(index: usize) -> f64 {
+        f64::from(RAND + index as i32 * ZEILE_H + ZEILE_H / 2)
+    }
+
+    /// T-9.1 A1. Gefahren wird `Menu::zeiger_bewegt` -- genau die Methode, die
+    /// der `Motion`-Zweig in `main.rs` aufruft. Ein Test gegen `index_bei`
+    /// allein koennte nicht sehen, ob der Index auch gemerkt wird.
+    #[test]
+    fn schweben_merkt_die_zeile_unter_dem_zeiger_und_vergisst_sie_wieder() {
+        let mut menu = Menu::neu();
+        assert_eq!(menu.schwebe(), None);
+
+        assert!(menu.zeiger_bewegt(20.0, mitte(1)), "keine Aenderung gemeldet");
+        assert_eq!(menu.schwebe(), Some(1));
+        // Dieselbe Zeile noch einmal: kein neuer Puffer.
+        assert!(!menu.zeiger_bewegt(30.0, mitte(1)));
+        assert_eq!(menu.schwebe(), Some(1));
+
+        assert!(menu.zeiger_bewegt(20.0, mitte(3)));
+        assert_eq!(menu.schwebe(), Some(3));
+
+        // Hinaus: ueber dem Rand, links daneben, rechts daneben, unter der
+        // letzten Zeile. Jedes Mal loescht es den Index.
+        let unter_allem = mitte(eintraege().len());
+        for (x, y) in [
+            (20.0, 0.0),
+            (-1.0, mitte(3)),
+            (f64::from(BREITE), mitte(3)),
+            (20.0, unter_allem),
+        ] {
+            menu.schwebe_setzen(Some(3));
+            assert!(menu.zeiger_bewegt(x, y), "({x}, {y}) hat nichts geaendert");
+            assert_eq!(menu.schwebe(), None, "({x}, {y}) blieb hinterlegt");
+        }
+
+        // Und das geschlossene Menue merkt sich nichts.
+        menu.schwebe_setzen(Some(1));
+        menu.schliessen();
+        assert_eq!(menu.schwebe(), None);
+    }
+
+    /// T-9.1 A2: gemessen, nicht behauptet. Der Unterschied liegt genau im
+    /// Pixelband der Zeile 1 ("Ohren aus") und in keinem Pixel sonst.
+    #[test]
+    fn die_schwebende_zeile_ist_hinterlegt_und_nur_sie() {
+        let renderer = BubbleRenderer::neu().unwrap();
+        let ohne = rendern(renderer.font(), None);
+        let mit = rendern(renderer.font(), Some(1));
+        assert_eq!(ohne.pixel.len(), mit.pixel.len());
+
+        let (von, bis) = zeilen_band(1);
+        let anders: Vec<usize> = (0..ohne.pixel.len())
+            .filter(|i| ohne.pixel[*i] != mit.pixel[*i])
+            .collect();
+        assert!(!anders.is_empty(), "die Hinterlegung ist unsichtbar");
+        assert!(
+            anders.iter().all(|i| (von..bis).contains(i)),
+            "auch ausserhalb von Zeile 1 veraendert: {:?}",
+            anders.iter().find(|i| !(von..bis).contains(i))
+        );
+        // Und der Text steht noch da: der Balken liegt unter ihm, nicht ueber
+        // ihm. Sonst waere die hinterlegte Zeile die einzige unlesbare.
+        let hellster = |raster: &Raster| {
+            raster.pixel[von..bis]
+                .chunks_exact(4)
+                .map(|p| p[0])
+                .max()
+                .unwrap()
+        };
+        assert!(hellster(&mit) >= hellster(&ohne), "Text verschwunden");
+    }
+
+    /// T-9.1 A3: "Ohren an" ist deaktiviert und wird nicht hinterlegt -- eine
+    /// Hervorhebung verspraeche einen Klick, den es nicht gibt.
+    #[test]
+    fn ein_deaktivierter_eintrag_wird_nicht_hervorgehoben() {
+        let renderer = BubbleRenderer::neu().unwrap();
+        let liste = eintraege();
+        assert_eq!(
+            liste[0].aktion, None,
+            "Vorbedingung: Zeile 0 muss deaktiviert sein"
+        );
+        let ohne = rendern(renderer.font(), None);
+        assert_eq!(
+            rendern(renderer.font(), Some(0)).pixel,
+            ohne.pixel,
+            "der deaktivierte Eintrag wurde hinterlegt"
+        );
+        // Positivkontrolle: derselbe Aufruf mit einer AKTIVEN Zeile aendert
+        // sehr wohl etwas. Ohne sie wuerde ein kaputtes `rendern`, das nie
+        // hinterlegt, diesen Test bestehen.
+        assert_ne!(rendern(renderer.font(), Some(1)).pixel, ohne.pixel);
+        // Und ein Index jenseits der Liste faellt nicht um.
+        assert_eq!(rendern(renderer.font(), Some(liste.len())).pixel, ohne.pixel);
+    }
+
     /// Deaktiviert heisst sichtbar-aber-blass, nicht unsichtbar und nicht
     /// versteckt. Gemessen an den Pixeln, nicht an einem Flag.
     #[test]
     fn deaktivierte_eintraege_sind_sichtbar_und_blasser() {
         let renderer = BubbleRenderer::neu().unwrap();
-        let raster = rendern(renderer.font());
+        let raster = rendern(renderer.font(), None);
         let hellster = |index: usize| {
             let von = ((RAND + index as i32 * ZEILE_H) * BREITE * 4) as usize;
             let bis = ((RAND + (index as i32 + 1) * ZEILE_H) * BREITE * 4) as usize;
