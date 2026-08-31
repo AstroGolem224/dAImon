@@ -21,6 +21,7 @@ Rolle kommt aus DAIMON_ROLE. Fehlt sie, wird alles Schreibende abgelehnt.
 Fail closed.
 """
 
+import fcntl
 import json
 import os
 import re
@@ -216,6 +217,96 @@ def _schreibziele(kommando: str, tiefe: int = 0) -> list[str]:
     return ziele
 
 
+
+# ---------------------------------------------------------------------------
+# Ein Verifiziererlauf zur Zeit.
+#
+# Am 30.08. fuhren zwei Sitzungen gleichzeitig Verifizierer im selben Baum.
+# `tests/verify/freeze.sh` haelt seither selbst eine Sperre -- die greift aber
+# nur gegen ein zweites freeze.sh. Der Vorfall hatte eine andere Bauform: ein
+# BLANKER `bash tests/verify/T-3.14.sh` neben einem laufenden Freeze. Die
+# Verifizierer koennen die Sperre nicht selbst nehmen, sie sind eingefroren --
+# eine Zeile in jedem von ihnen hiesse dreissig Neueinfrierungen.
+#
+# Diese Stelle sieht jedes Bash-Kommando eines Agenten, bevor es laeuft. Sie
+# ist damit der einzige Ort, an dem sich die Luecke ohne das schliessen laesst.
+#
+# Warum das hier zaehlt: `tests/verify/meta.sh:62` wertet jeden Nicht-Null-Exit
+# eines Fixture-Laufs als „Mutante erkannt". Fremdlast laesst einen Mutanten aus
+# dem falschen Grund scheitern, und er wird als erkannt verbucht. Falsches
+# GRUEN -- der Fehler zeigt in die harmlose Richtung und faellt keiner
+# Auswertung auf, die nur nach „alle erkannt" schaut.
+#
+# FAIL OPEN, anders als die Rollenpruefung. Eine nicht lesbare Sperrdatei ist
+# kein Grund, die Arbeit im Repo anzuhalten: der Schaden einer verpassten
+# Ablehnung ist eine verschmutzte Messung, aergerlich und nachtraeglich
+# erkennbar. Der Schaden einer falschen Ablehnung waere ein Repo, in dem
+# niemand mehr etwas ausfuehren kann.
+VERIFIZIERER = re.compile(
+    r"^tests/verify/(?:T-[0-9][^/]*\.sh|t[0-9]+_pruefstand\.py|meta\.sh|freeze\.sh)$"
+)
+INTERPRETER = SHELLS | {"python", "python3", "env"}
+SPERRDATEI = "daimon-verify.lock"
+
+
+def _verifiziererpfad(wort: str) -> str | None:
+    rel = relative(wort)
+    return rel if rel and VERIFIZIERER.match(rel) else None
+
+
+def _laufender_verifizierer(kommando: str) -> str | None:
+    """Der Pfad, wenn dieses Kommando einen Verifizierer AUSFUEHRT.
+
+    Eine Kette zaehlt, wenn ihr erstes Wort selbst der Verifizierer ist
+    (`./tests/verify/T-3.14.sh`) oder wenn sie einen Interpreter enthaelt und
+    danach einen Verifiziererpfad (`bash -x tests/verify/T-3.14.sh`,
+    `timeout 60 bash tests/verify/freeze.sh T-0.8`).
+
+    `cat tests/verify/T-3.14.sh` faellt damit NICHT auf -- Lesen ist kein Lauf.
+    Und eine Commit-Botschaft, die einen Verifizierer nennt, ist nach `_lex`
+    ein einziges Token und trifft das Muster nicht; dieselbe Bauform, die
+    `test_eine_commit_botschaft_darf_einen_verifizierer_nennen` schon schuetzt.
+    """
+    try:
+        toks = _lex(_ohne_heredoc(kommando))
+    except ValueError:
+        # Unzerlegbar. Hier durchlassen: fail open gilt fuer diese Pruefung,
+        # anders als bei `_schreibziele`, wo der grobe Weg greift.
+        return None
+    for kette in _ketten(toks):
+        worte, _ = _umleitungen(kette)
+        if not worte:
+            continue
+        if pfad := _verifiziererpfad(worte[0]):
+            return pfad
+        interpreter_gesehen = False
+        for wort in worte:
+            if Path(wort).name in INTERPRETER:
+                interpreter_gesehen = True
+            elif interpreter_gesehen and (pfad := _verifiziererpfad(wort)):
+                return pfad
+    return None
+
+
+def _sperre_gehalten() -> str | None:
+    """Auskunft des Halters, oder None -- frei ODER unlesbar (fail open).
+
+    Dieselbe Datei, die `tests/verify/freeze.sh` nimmt. Gelesen wird sie nur,
+    wenn `flock` fehlschlaegt: dann haelt sie jemand, und dann steht dort, wer.
+    """
+    pfad = Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp") / SPERRDATEI
+    try:
+        with pfad.open("a+") as fh:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                fh.seek(0)
+                return fh.read().strip() or "(der Halter nennt sich nicht)"
+            fcntl.flock(fh, fcntl.LOCK_UN)
+    except OSError:
+        pass
+    return None
+
 def deny(reason: str) -> None:
     json.dump(
         {
@@ -306,7 +397,17 @@ def main() -> None:
         if fp := inp.get("file_path") or inp.get("notebook_path"):
             targets.append(fp)
     elif tool == "Bash":
-        targets = _schreibziele(inp.get("command", ""))
+        kommando = inp.get("command", "")
+        if lauf := _laufender_verifizierer(kommando):
+            if halter := _sperre_gehalten():
+                deny(
+                    f"role_guard: {lauf} jetzt nicht starten -- es laeuft schon "
+                    f"ein Verifiziererlauf: {halter}. Zwei Laeufe messen "
+                    f"einander mit, und meta.sh verbucht einen dadurch "
+                    f"gescheiterten Mutanten als ERKANNT. Warte, bis er durch "
+                    f"ist."
+                )
+        targets = _schreibziele(kommando)
     else:
         allow_through()
 
