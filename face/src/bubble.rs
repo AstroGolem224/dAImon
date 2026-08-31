@@ -179,11 +179,18 @@ impl BubbleRenderer {
 /// Die eine Stelle, an der die Blasenfarbe steht. Korpus und Zipfel muessen
 /// dieselbe treffen, und zwei Fassungen davon waeren eine Farbe und eine
 /// Attrappe.
+/// Der Korpus ist leicht durchscheinend, der Text NICHT: die Glyphen kommen
+/// mit vollem Alpha darueber (`glyph_pixel(deckung, 255)`). Was hier sinkt,
+/// ist allein der Untergrund hinter der Schrift -- die Schrift selbst bleibt
+/// deckend, und damit bleibt sie lesbar.
+///
+/// `urgent` bleibt dichter. Eine Warnung, die staerker mit dem Desktop
+/// verschwimmt als eine gewoehnliche Meldung, haette es genau falsch herum.
 fn blasenfarbe(urgent: bool) -> (u8, u8, u8, u8) {
     if urgent {
-        (78, 30, 35, 244)
+        (78, 30, 35, 228)
     } else {
-        (26, 31, 38, 238)
+        (26, 31, 38, 208)
     }
 }
 
@@ -369,6 +376,29 @@ mod tests {
 
     fn alpha(raster: &Raster, x: i32, y: i32) -> u8 {
         raster.pixel[((y * raster.breite + x) * 4 + 3) as usize]
+    }
+
+    /// Der Korpus ist durchscheinend -- und zwar messbar, nicht nur gemeint.
+    ///
+    /// `ecke_ist_durchsichtig_und_mitte_gefuellt` prueft nur `> 200`; ein
+    /// Rueckdreher auf volles Deckend ginge dort glatt durch. Diese Obergrenze
+    /// ist die fehlende Haelfte der Zusage.
+    #[test]
+    fn der_korpus_ist_durchscheinend_die_schrift_nicht() {
+        let (_, _, _, ruhig) = blasenfarbe(false);
+        let (_, _, _, dringend) = blasenfarbe(true);
+        assert!(
+            (160..=225).contains(&ruhig),
+            "Blasenkorpus soll durchscheinen, Alpha ist {ruhig}"
+        );
+        // Eine Warnung, die staerker mit dem Desktop verschwimmt als eine
+        // gewoehnliche Meldung, haette es genau falsch herum.
+        assert!(dringend > ruhig, "urgent {dringend} nicht dichter als {ruhig}");
+        assert!(dringend < 255, "urgent {dringend} ist voll deckend");
+
+        // Die Gegenprobe: die Schrift bleibt deckend. Sinkt sie mit, ist die
+        // Blase nicht durchscheinend, sondern unleserlich.
+        assert_eq!(glyph_pixel(255, 255)[3], 255);
     }
 
     /// Umlaute und Typografie muessen ANKOMMEN -- sie sind der Grund, warum
