@@ -54,3 +54,40 @@ Ein Test je Stück findet das **nie**. Er ruft das Stück ja selbst auf.
 > Aufruf selbst zu schreiben?
 
 Fällt die Antwort auf „der Prüfstand", ist das Stück nicht fertig.
+
+---
+
+## Ein eingefrorener Prüfstand ist eine Zusage MIT DATUM
+
+Die Kehrseite der Regel oben, und am 31.08. dreimal an einem Tag: der Code
+war in Ordnung, der Prüfstand hielt eine Zusage fest, die jemand **bewusst**
+geändert hatte. Jedes Mal sah es zuerst wie ein Fehler am Prüfling aus.
+
+| Der Prüfstand erwartete | Geändert am | Wirkung |
+|---|---|---|
+| `%t` im `ExecStart` bleibt wörtlich | 26.08., Modellweg-Weiche wurde Argument | Mind bekam einen Pfad, den es nicht gibt → 16 rote Kriterien |
+| Aktionswunsch wird `abgelehnt` | T-4.16, werkzeugfähiger Weg gebaut | 7 rote Kriterien, dazu „kostet kein Kontingent" |
+| `ProtectProc=invisible` steht in der Unit | `7b7deb9`, als wirkungslos entfernt | rot in vier eingebetteten Läufen |
+
+### Was daraus folgt
+
+1. **Wer eine Zusage ändert, sucht die Prüfstände, die die alte Fassung
+   festhalten.** `grep` über `tests/verify/` nach dem alten Wortlaut, bevor
+   der Commit steht. Billiger als drei Suchläufe an drei Tagen.
+2. **Ein rotes Kriterium ist erst ein Befund, wenn gemessen ist, an welcher
+   Seite es liegt.** Beide Fassungen gegeneinander fahren — hier war es je
+   ein Handlauf gegen den echten Dienst, der zeigte: der Prüfling tut das
+   Richtige.
+3. **Ein angepasstes Kriterium wird strenger, nicht schwächer.** Aus „wird
+   abgelehnt" wurden vier Prüfungen (ohne Marke abgelehnt, ohne Ziel
+   Rückfrage, beides kostenfrei, mit beidem genau ein Ticket) plus eine
+   fünfte, die es vorher nicht gab: `aktion.sock` bekommt keinen Aufruf,
+   solange kein Werkzeug gerufen wird. Wer nur die Erwartung umschreibt,
+   damit es grün wird, hat eine Attrappe mit neuem Hash.
+4. **Das Gut-Muster altert mit.** Es ist eine Kopie des Quellbaums; ändert
+   sich die Regel, wird es rot — und zwar zu Recht. Es gehört in denselben
+   Zug wie das Kriterium.
+5. **Ein Prüfstand, der abstürzt, meldet nichts.** In der Bilanz des
+   umgebenden Laufs erscheint er als ein roter Punkt wie jeder andere. Ob
+   dahinter ein Befund oder ein Absturz steckt, sieht nur, wer ihn einzeln
+   fährt.

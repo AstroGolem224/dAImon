@@ -338,6 +338,198 @@ unverändert; Abhängigkeiten geschlossen".
 
 ---
 
+## T-3.13b — Stand 31.08. (Prüfstand gemessen einen Pfad, den es nicht gibt)
+
+**Betroffen:** `tests/verify/t313b_pruefstand.py`
+
+Punkt 1 der Liste vom 30.08. — „die 22 roten Prüfungen klären, Ursachen
+ungemessen" — ist zur Hälfte erledigt. Zwei Befunde am **Prüfstand**, nicht am
+Prüfling; beide dieselbe Bauform: gemessen wurde ein Weg, den der Mind im
+Betrieb gar nicht nimmt.
+
+**Befund 1: keine Attrappe für `lokal.sock`.** Der Prüfstand stellte nur eine
+Attrappe für `egress.sock` bereit. Der Mind wird aber seit dem 26.08. über die
+Unit auf den lokalen Broker gewiesen (`--egress-socket %t/daimon/lokal.sock`,
+die Weiche steht seither in `daimon/mind/daemon.py: main`). Jede Modellfrage
+lief also ins Leere und endete in der kuratierten Absage — die zu Recht
+`trusted` trägt und damit die Markierungskriterien grün-falsch rot färbte.
+
+Die neue `LokalAttrappe` spricht das Protokoll des lokalen Brokers, belegt an
+`daimon/brokers/lokal/broker.py`: die Pflichtfelder `ticket` und `koerper`
+werden **vor** dem Modell geprüft, und die Antwort trägt **nur** `content` —
+kein `id`, kein `stop_reason`, die baut der Broker selbst. Dazu drei neue
+Voraussetzungs-Prüfungen: die Attrappe nimmt das Ticket, liefert einen
+Textblock, weist ein verbrauchtes Ticket ab. Ohne sie wäre grün nicht von „am
+toten Socket gemessen" zu unterscheiden.
+
+**Befund 2: `unit_execstart` löste die systemd-Kürzel nicht auf.** Es ersetzte
+nur den Repo-Pfad; `%t` blieb wörtlich stehen, und der Mind bekam als Modellweg
+die Zeichenkette `%t/daimon/lokal.sock`. Neu aufgelöst werden `%t` und `%h` —
+genau die, die in den ExecStart-Zeilen unter `config/systemd` vorkommen. Dazu
+eine Positivkontrolle `rest_kuerzel`: bleibt nach der Auflösung ein
+`%`-Kürzel stehen, wird der Lauf rot statt still falsch.
+
+**Gemessen, Gegenprobe an beiden Enden.** Hub-, Modell- und Aktions-Attrappe
+echt, nur der Modellweg variiert:
+
+| Modellweg | Antwort des Mind | Zähler |
+|---|---|---|
+| aufgelöst | `ok: true`, Marke `tainted` | 3 Tickets, 3 Modellaufrufe |
+| wörtlich `%t/daimon/lokal.sock` | `ok: false`, `grund: egress_weg`, Absage mit `trusted` | 3 Tickets, 0 Modellaufrufe |
+
+**Wirkung, voller Lauf.** `bash tests/verify/T-3.13b.sh` fällt von **23 rot**
+(148 Prüfungen) auf **9 rot** (149). Die gesamte Markierungsgruppe K2, K3, K5,
+K8, K9 ist grün.
+
+**Vier Fassungen derselben Funktion, eine davon richtig.** `unit_execstart`
+steht viermal im Repo: `t311_pruefstand.py:291`, `t312_pruefstand.py:445`,
+`t313_pruefstand.py:548` und `t313b_pruefstand.py:617`. Nur `t312` löst `%t`
+auf — dort ist der Befund am 26.08. bereits lokal repariert worden, und die
+Reparatur ist nie zu den Geschwistern gewandert. `t311` und `t313` führen
+weiterhin die naive Fassung. Das ist die Regel aus `CLAUDE.md` in Reinform:
+zwei (hier: vier) Fassungen einer Regel sind eine Regel und drei Attrappen.
+
+**Offen und ausdrücklich nicht Teil dieser Arbeit**
+
+1. Die restlichen **9 roten Prüfungen**: die drei Hook-Roten, `T-0.11` und die
+   Umgebungspunkte (`onnxruntime-gpu`, `ProtectProc`, `ProcSubset`).
+2. Die eingebetteten Prüfstände `t311` und `t313` führen dieselbe naive
+   Fassung von `unit_execstart` und messen denselben Fantasiepfad — ungemessen,
+   ob es dort auffällt.
+3. Der K13-Wegfall vom 30.08. bleibt zurückgenommen und weiterhin nicht
+   anwendbar.
+
+**Der Hash bleibt VORLÄUFIG, und das Einchecken hängt daran.** `freeze.sh`
+verlangt die Spur 'echt' grün; mit 9 rot ist der Prüfstand nicht dort, ein
+regulärer Neueinfrierlauf scheidet also aus. `.githooks/pre-commit` lehnt die
+geänderte Datei folgerichtig ab:
+
+```
+pre-commit: tests/verify/t313b_pruefstand.py ist eingefroren, der gestagte
+            Inhalt weicht ab.
+            erwartet fe9060d3…
+            gestaged  e1cd306d…
+            Eine Aenderung braucht einen neuen .v-Task mit Mutationstest.
+```
+
+Damit stehen genau zwei Wege offen, und keiner davon ist eine
+Reviewer-Entscheidung:
+
+1. Den Hash **von Hand** nach `tests/verify/FROZEN` nachziehen und hier als
+   VORLÄUFIG führen — so sind die Nachzüge vom 26.08. und 28.08. entstanden,
+   und so kam `fe9060d3…` überhaupt erst dorthin.
+2. Die Änderung liegen lassen, bis die 9 verbleibenden Roten geklärt sind und
+   `freeze.sh T-3.13b` durchläuft — der Weg, den Matthias am 30.08. für den
+   K13-Wegfall gewählt hat.
+
+Der `.v`-Task für T-3.13b bleibt in beiden Fällen offen.
+
+---
+
+## Nachzug vom 31.08. — vier Hashes, VORLAEUFIG
+
+**Betroffen:** `tests/verify/t311_pruefstand.py`,
+`tests/verify/t311_sandbox_probe.py`, `tests/verify/t313_pruefstand.py`,
+`tests/verify/t313b_pruefstand.py`; dazu neu aufgenommen
+`tests/verify/t311_hub_lauf.py`.
+
+Der Abschnitt oben („Stand 31.08.") hält den Zwischenstand des Tages fest —
+zwei Befunde an T-3.13b, 23 rot auf 9 rot. Hier steht, was danach noch gemessen
+wurde, und der Nachzug der Hashes, mit dem das alles eincheckbar wird.
+
+### Warum von Hand nachgezogen
+
+`freeze.sh` scheidet für alle vier aus: es verlangt die Spur 'echt' grün.
+`T-3.11.sh` ist 3 rot, `T-3.13b.sh` 7 rot — beide Male ohne Befund am Prüfling
+selbst (siehe „Was offen bleibt"). Es bleibt der Weg der Nachzüge vom 26.08.
+und 28.08.: Hash von Hand nach `tests/verify/FROZEN`, hier als **VORLAEUFIG**
+geführt, mit Grund und Datum. Der `.v`-Task bleibt für jeden der vier offen.
+
+| Datei | vorher | nachgezogen am 31.08. |
+|---|---|---|
+| `t311_pruefstand.py` | `72ab1f15…` | `5167f1f4…` |
+| `t311_sandbox_probe.py` | `f7a119a1…` | `a0670390…` |
+| `t313_pruefstand.py` | `842fa97e…` | `c47283bb…` |
+| `t313b_pruefstand.py` | `fe9060d3…` | `ba0abe01…` |
+| `t311_hub_lauf.py` | — (neu) | `be69fb1f…` |
+
+`t311_hub_lauf.py` ist neu und in `FROZEN.deps` als Abhängigkeit von
+`t311_pruefstand.py` deklariert; `freeze-deps.py pruefen` verlangt deshalb
+auch für ihn einen Manifest-Eintrag. Eine Zeile im Modulkopf nannte
+`tests/verify/T-3.9.sh` als Vorbild und wurde von der Entdeckung als
+undeklarierte Kante gelesen — der Starter ruft T-3.9 nicht auf. Der Verweis
+heißt jetzt „im Verifizierer T-3.9", ohne Pfadliteral; eine falsche Kante in
+`FROZEN.deps` wäre der teurere Weg gewesen.
+
+`bash tests/verify/verify-frozen.sh` meldet danach Exit 0: 54 eingefrorene
+Dateien unverändert, Abhängigkeiten geschlossen.
+
+### Die Befunde, alle derselben Klasse
+
+Der Prüfstand ist jeweils älter als eine bewusste Entscheidung. Die Klasse
+selbst steht seit heute in `CLAUDE.md`: „Ein eingefrorener Prüfstand ist eine
+Zusage MIT DATUM".
+
+**1. `unit_execstart` löste `%t` nicht auf** — in `t311`, `t313` und `t313b`.
+`t312` hatte den Befund am 26.08. bereits lokal repariert; die Reparatur ist
+nie zu den Geschwistern gewandert. Der Mind bekam `%t/daimon/lokal.sock`
+wörtlich, fand nichts und gab die kuratierte Absage zurück, die zu Recht
+`trusted` trägt. Gegenprobe an beiden Enden: aufgelöst → `ok: true`, Marke
+`tainted`, 3 Modellaufrufe; wörtlich → `ok: false`, `grund: egress_weg`,
+0 Modellaufrufe. Wirkung an T-3.13b: **23 rot → 9 rot**.
+
+**2. Attrappe für `lokal.sock`** (`t313b`) — der Prüfstand stellte nur eine für
+`egress.sock` bereit, seit die Weiche am 26.08. auf den lokalen Broker zeigt.
+Drei neue Voraussetzungs-Prüfungen: nimmt Ticket, liefert Textblock, weist
+verbrauchtes Ticket ab. Ohne sie wäre grün nicht von „am toten Socket
+gemessen" zu unterscheiden. (Beide Befunde im Abschnitt oben ausführlich.)
+
+**3. Aktionswünsche** (`t313b`) — aus **einer** Erwartung („wird abgelehnt",
+die Zusage der Phase 3) wurden **fünf**, die messen, was seit T-4.16 gilt:
+ohne Absichtsmarke abgelehnt und kostenfrei; ohne Ziel Rückfrage und
+kostenfrei; mit beidem `weg: "aktion"` mit genau einem Ticket und einem
+Modellaufruf; und — neu, vorher gab es das nicht — `aktion.sock` bekommt
+keinen Aufruf, solange kein Werkzeug gerufen wird. Wirkung: **9 rot → 7 rot**
+bei **170 statt 149** Prüfungen. Ein angepasstes Kriterium wird strenger, nicht
+schwächer; wer nur die Erwartung umschreibt, damit es grün wird, hat eine
+Attrappe mit neuem Hash.
+
+**4. `ProtectProc`/`ProcSubset`** (`t311`, K15) — beide wurden mit `7b7deb9`
+(T-4.14) absichtlich entfernt: in `--user`-Units wirkungslos laut
+systemd.exec(5), ersetzt durch leeren `CapabilityBoundingSet` und benannte
+`@resources`-Ausnahmen. Das Kriterium prüft jetzt diese. Das Gut-Muster
+(`tests/fixtures/known-good/T-3.11/config/systemd/daimon-{mind,egress}.service`)
+trug noch die zwei widerlegten Zeilen und keinen `SystemCallFilter` — es wurde
+im selben Zug mitgezogen, mit einer Kommentarzeile, die den Rückbau erklärt.
+
+**5. `T-3.11.sh` stürzte ab, statt rot zu melden.** `ConnectionResetError` an
+`ticket.sock` nach 51 Prüfungen; die Kapitel 5 bis 17 liefen nie. In der Bilanz
+des umgebenden Laufs sah das aus wie **ein** roter Punkt. Behoben; ein Abbruch
+liefert jetzt Rückgabewert **3** — nicht 1 wie rot, nicht 0 wie grün — belegt
+mit einer Positivkontrolle. Wirkung: **Absturz nach 51 → 225 Prüfungen, 3 rot**;
+Kapitel 15 lief zum ersten Mal überhaupt, mit 43 grünen Prüfungen.
+
+### Was offen bleibt
+
+1. **T-3.11, 3 rot:** alle drei sind eingebettete Prüfstände (`T-3.8`, `T-3.9`,
+   `T-3.10`), kein Befund an T-3.11 selbst. Wurzel ist `T-3.8`
+   (`ProtectProc`/`ProcSubset` in `T-3.8.sh:563`, dazu `onnxruntime-gpu`);
+   `T-3.10` ist nur rot, weil es `T-3.8` einbettet.
+2. **`T-3.9` kippt zwischen Läufen** — der Reviewer maß 2 rot, der Hauptfaden
+   3. Ursache gemessen: die Sonde zeigt auf den **echten**
+   `$XDG_RUNTIME_DIR/daimon/egress.sock`; ein Rest aus einem früheren Lauf
+   entscheidet mit. Ein Prüfstand, dessen Ergebnis von der Reihenfolge abhängt,
+   misst nicht den Prüfling.
+3. **T-3.13b, 7 rot:** drei am Hook-Weg (Kanarienvogel/`rev`, `Stop` meldet
+   `sleeping`, Claude-Code-PID), vier über eingebettete Prüfstände.
+4. **Dieselbe alte Erwartung steht noch** in `T-0.14.sh:62-63`, `T-3.8.sh:563`,
+   `t312_pruefstand.py:686-711` und `t313_pruefstand.py:1009-1012` — gemeldet,
+   nicht geändert, jeder mit eigenem Auftrag.
+5. **Nebenbefund, dreimal gemessen:** `systemd --user` hält hier kein
+   `CAP_SETPCAP`. Eine Nutzer-Unit mit `CapabilityBoundingSet=` und **ohne**
+   Mount-Sandboxing startet nicht (`218/CAPABILITIES`); mit `PrivateTmp=` oder
+   `ProtectSystem=` daneben geht es.
+
 ---
 
 ## Nicht zuordenbar

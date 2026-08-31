@@ -545,18 +545,55 @@ system_prompt = "Du bist die Prüfpersona. Erkennungszeichen: {PERSONA_KANARIE}.
 # ------------------------------------------------------------------ Mind
 
 
+# systemd loest seine Kuerzel vor dem exec auf; ein direkter Popen-Start
+# muss dasselbe tun. Sonst bekommt der Mind seinen Modellweg als woertliches
+# "%t/daimon/lokal.sock" -- einen Pfad, den es nicht gibt -- und jede
+# Modellfrage endet in der kuratierten Absage mit Marke `trusted`.
+# Aufgeloest wird genau, was in den ExecStart-Zeilen unter config/systemd
+# vorkommt: %t (Laufzeitverzeichnis) und %h (Heimatverzeichnis). Das dritte,
+# %i, steht nur in der Vorlage daimon-gpu@.service und hat ohne Instanz
+# keinen Wert -- es bleibt stehen und faellt in `rest_kuerzel` auf.
+# Bewusst wortgleich zu t312/t313/t313b dupliziert: die vier Pruefstaende
+# importieren kein gemeinsames Modul, und eine neue gemeinsame Datei waere
+# eine weitere eingefrorene Abhaengigkeit -- das ist Matthias' Entscheidung.
+KUERZEL = {"%t": str(RUNTIME), "%h": os.environ.get("HOME", str(RT))}
+
+
 def unit_execstart(pfad: Path) -> list[str]:
     text = pfad.read_text(encoding="utf-8")
     text = re.sub(r"\\\s*\n\s*", " ", text)
     treffer = re.search(r"(?m)^ExecStart=(.+)$", text)
     if not treffer:
         return []
-    argv = shlex.split(treffer.group(1))
-    return [a.replace(str(REPO), str(TARGET)) for a in argv]
+    argv = []
+    for a in shlex.split(treffer.group(1)):
+        a = a.replace(str(REPO), str(TARGET))
+        for k, v in KUERZEL.items():
+            a = a.replace(k, v)
+        argv.append(a)
+    if "--egress-socket" in argv:
+        i = argv.index("--egress-socket")
+        if i + 1 < len(argv):
+            # Wie in t312: die Produkt-Unit zeigt auf den vorgeschalteten
+            # lokalen Broker (%t/daimon/lokal.sock). T-3.13 haelt an dieser
+            # Stelle keine Attrappe -- es misst den Router bewusst an seiner
+            # eigenen Egress-Attrappe. Ohne diese Umleitung liefe der Mind
+            # trotz aufgeloestem %t gegen eine Datei, die es nicht gibt.
+            argv[i + 1] = str(DAIMON_RT / "egress.sock")
+    return argv
+
+
+def rest_kuerzel(argv: list[str]) -> list[str]:
+    """Positivkontrolle zu `unit_execstart`: was danach noch nach einem
+    systemd-Kuerzel aussieht. Ein stehengebliebenes Kuerzel ist ein Pfad,
+    den es nicht gibt -- er darf nie wieder stillschweigend als Modellweg
+    durchgehen, sondern muss den Lauf rot faerben."""
+    return sorted({m for a in argv for m in re.findall(r"%[a-zA-Z%]", a)})
 
 
 MIND_UNIT = TARGET / "config/systemd/daimon-mind.service"
 MIND_CMD = unit_execstart(MIND_UNIT) if MIND_UNIT.is_file() else []
+MIND_REST = rest_kuerzel(MIND_CMD)
 
 
 def mind_umgebung(extra: dict[str, str] | None = None) -> dict[str, str]:
@@ -641,6 +678,8 @@ P.kapitel("V", "Voraussetzungen und Messstrecke")
 for name, ok in (
     ("Mind-Service-Unit vorhanden", MIND_UNIT.is_file()),
     ("Mind-ExecStart aus Unit auflösbar", bool(MIND_CMD)),
+    (f"kein systemd-Kürzel bleibt im Mind-ExecStart stehen "
+     f"(gefunden: {MIND_REST or 'keins'})", not MIND_REST),
     ("wpctl-Attrappe antwortet lesbar", subprocess.run(
         [str(QUELLEN / "wpctl"), "get-volume", "@DEFAULT_AUDIO_SINK@"],
         capture_output=True).stdout == b"Volume: 0.42\n"),

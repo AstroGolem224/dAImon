@@ -64,6 +64,47 @@ class Pruefstand:
 
 
 P = Pruefstand()
+
+
+def abbruch(art, wert, spur) -> None:
+    """Ein Absturz ist KEIN rotes Kriterium und darf nicht als eines
+    durchgehen.
+
+    Bis heute stuerzte dieser Pruefstand in Kapitel 4 mit
+    ConnectionResetError ab. Im umgebenden T-3.13b-Lauf erschien das als ein
+    einziger roter Punkt ("bleibt einzeln vollstaendig gruen: erwartet 0, war
+    1") -- ununterscheidbar von einem echten Befund, und die Kapitel 5 bis 17
+    waren dabei ueberhaupt nicht gefahren.
+
+    Drei Dinge trennen den Abbruch ab jetzt vom Ergebnis: die Ueberschrift
+    sagt ABGEBROCHEN statt "Ergebnis je Kriterium", die Zeile nennt die
+    Stelle, und der Rueckgabewert ist 3 -- nicht 1 (rot) und nicht 0 (gruen).
+    Wer nur den Rueckgabewert sieht, sieht damit trotzdem den Unterschied.
+    """
+    import traceback
+    traceback.print_exception(art, wert, spur)
+    letzte = traceback.extract_tb(spur)[-1] if spur else None
+    stelle = f"{letzte.filename}:{letzte.lineno}" if letzte else "(unbekannt)"
+    gesamt = sum(P.n.values())
+    rot = sum(P.rot.values())
+    print("\n=== ABGEBROCHEN — keine Bilanz ===", flush=True)
+    print(f"  Stelle: {stelle}", flush=True)
+    print(f"  Grund:  {art.__name__}: {wert}", flush=True)
+    print(f"  Gefahren bis dahin: {gesamt} Pruefungen, {rot} rot.", flush=True)
+    print("  Alles dahinter ist UNGEFAHREN — weder gruen noch rot.", flush=True)
+    print(f"T-3.11: ABGEBROCHEN nach {gesamt} Pruefungen "
+          f"(Rueckgabewert 3, nicht 1)", flush=True)
+    sys.stdout.flush()
+    # Selbst aufraeumen und hart raus: `os._exit` ueberspringt die
+    # atexit-Registrierung, deshalb steht der Aufruf hier -- genau einmal.
+    try:
+        aufraeumen()
+    except Exception:  # noqa: BLE001 -- das Aufraeumen darf den Bericht nicht fressen
+        traceback.print_exc()
+    os._exit(3)
+
+
+sys.excepthook = abbruch
 laufzeit_basis = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "daimon"
 laufzeit_basis.mkdir(parents=True, exist_ok=True)
 RT = Path(tempfile.mkdtemp(prefix="t311-", dir=laufzeit_basis))
@@ -288,14 +329,41 @@ def konfig(fenster: float = 60, hoechstens: int = 1000) -> None:
         encoding="utf-8")
 
 
+# systemd loest seine Kuerzel vor dem exec auf; ein direkter Popen-Start
+# muss dasselbe tun. Sonst bekommt der Mind seinen Modellweg als woertliches
+# "%t/daimon/lokal.sock" -- einen Pfad, den es nicht gibt -- und jede
+# Modellfrage endet in der kuratierten Absage mit Marke `trusted`.
+# Aufgeloest wird genau, was in den ExecStart-Zeilen unter config/systemd
+# vorkommt: %t (Laufzeitverzeichnis) und %h (Heimatverzeichnis). Das dritte,
+# %i, steht nur in der Vorlage daimon-gpu@.service und hat ohne Instanz
+# keinen Wert -- es bleibt stehen und faellt in `rest_kuerzel` auf.
+# Bewusst wortgleich zu t312/t313/t313b dupliziert: die vier Pruefstaende
+# importieren kein gemeinsames Modul, und eine neue gemeinsame Datei waere
+# eine weitere eingefrorene Abhaengigkeit -- das ist Matthias' Entscheidung.
+KUERZEL = {"%t": str(RUNTIME), "%h": os.environ.get("HOME", str(RT))}
+
+
 def unit_execstart(pfad: Path) -> list[str]:
     text = pfad.read_text(encoding="utf-8")
     text = re.sub(r"\\\s*\n\s*", " ", text)
     treffer = re.search(r"(?m)^ExecStart=(.+)$", text)
     if not treffer:
         return []
-    argv = shlex.split(treffer.group(1))
-    return [a.replace(str(REPO), str(TARGET)) for a in argv]
+    argv = []
+    for a in shlex.split(treffer.group(1)):
+        a = a.replace(str(REPO), str(TARGET))
+        for k, v in KUERZEL.items():
+            a = a.replace(k, v)
+        argv.append(a)
+    return argv
+
+
+def rest_kuerzel(argv: list[str]) -> list[str]:
+    """Positivkontrolle zu `unit_execstart`: was danach noch nach einem
+    systemd-Kuerzel aussieht. Ein stehengebliebenes Kuerzel ist ein Pfad,
+    den es nicht gibt -- er darf nie wieder stillschweigend als Modellweg
+    durchgehen, sondern muss den Lauf rot faerben."""
+    return sorted({m for a in argv for m in re.findall(r"%[a-zA-Z%]", a)})
 
 
 EGRESS_UNIT = TARGET / "config/systemd/daimon-egress.service"
@@ -304,15 +372,54 @@ SOCKET_UNIT = TARGET / "config/systemd/daimon-egress.socket"
 ROTATION = TARGET / "docs/TOKEN-ROTATION.md"
 EGRESS_CMD = unit_execstart(EGRESS_UNIT) if EGRESS_UNIT.is_file() else []
 MIND_CMD = unit_execstart(MIND_UNIT) if MIND_UNIT.is_file() else []
+EGRESS_REST = rest_kuerzel(EGRESS_CMD)
+MIND_REST = rest_kuerzel(MIND_CMD)
+
+
+# Der Name der echten Egress-Testunit aus Kapitel 9 steht HIER und nicht erst
+# dort: der Hub muss sie in seiner Ticket-Allowlist haben, und die liest er
+# einmal beim Start.
+J_NAME = f"daimon-t311-journal-{uuid.uuid4().hex[:8]}.service"
 
 
 def start_hub() -> subprocess.Popen:
-    cmd = [str(PYTHON), "-B", "-P", "-m", "daimon.hub.daemon",
-           "--runtime-dir", str(DAIMON_RT)]
+    # NICHT `-m daimon.hub.daemon`, sondern der Starter daneben: er haengt
+    # `TICKET_UNITS` auf die Unit dieses Laufs um. Ohne das weist
+    # `_horche_einfach` jede Ticketanfrage ab und SCHLIESST die Verbindung
+    # ohne Antwort -- der Pruefstand stuerzte darum in Kapitel 4 mit
+    # ConnectionResetError ab, und alles dahinter (bis Kapitel 17) blieb
+    # ungefahren. Die Begruendung samt Unterscheidungskontrolle steht in
+    # t311_hub_lauf.py.
+    #
+    # stdout in eine Datei, nicht in eine PIPE: die Pipe hier las niemand,
+    # 64 KiB Hub-Ausgabe haetten den Hub blockiert.
+    logpfad = RT / "hub.log"
+    log = logpfad.open("wb")
+    cmd = [str(PYTHON), "-B", "-P", str(VERIFY / "t311_hub_lauf.py"),
+           str(DAIMON_RT), J_NAME]
     p = subprocess.Popen(cmd, env=umgebung(), cwd=TARGET,
-                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                         stdout=log, stderr=subprocess.STDOUT)
     prozesse.append(p)
-    P.check("V", "Hub-Ticketprozess lauscht", warten(DAIMON_RT / "ticket.sock", p), True)
+    lauscht = warten(DAIMON_RT / "ticket.sock", p)
+    log.flush()
+    marken = dict(
+        z.split("=", 1) for z in logpfad.read_text(errors="replace").splitlines()
+        if "=" in z and z.startswith("HUB_"))
+    P.check("V", "Hub-Ticketprozess lauscht", lauscht, True)
+    P.check("V", "Unit dieses Laufs ist am echten Socket gemessen",
+            bool(marken.get("HUB_UNIT")), True)
+    P.info(f"Unit dieses Laufs: {marken.get('HUB_UNIT', '(nicht gemessen)')}")
+    P.info(f"TICKET_UNITS vor dem Umhaengen: {marken.get('HUB_TICKET_UNITS_VOR', '(nichts)')}")
+    # Unterscheidungskontrolle: die Wand steht, sie wird nur umgehaengt.
+    # Im Gut-Muster ohne `TICKET_UNITS` gibt es keine Wand -- dort ist "nein"
+    # richtig, und der Prueffall haengt deshalb an der Existenz der Liste.
+    if marken.get("HUB_TICKET_UNITS_VOR", "None") != "None":
+        P.check("4", "Unterscheidungskontrolle: die Ticket-Allowlist sperrt "
+                "diese Unit ohne Umhaengen",
+                marken.get("HUB_TICKET_SPERRT_MICH"), "ja")
+        P.check("4", "Ticket-Allowlist traegt genau die Units dieses Laufs",
+                marken.get("HUB_TICKET_UNITS_NACH"),
+                repr((marken.get("HUB_UNIT", ""), J_NAME)))
     return p
 
 
@@ -385,8 +492,24 @@ def hash_body(raw: bytes) -> str:
 
 
 def ticket(body: bytes) -> str:
-    ans, _ = unix_json(DAIMON_RT / "ticket.sock", {
-        "v": 1, "art": "ausgeben", "zweck": "api", "auftrag_hash": hash_body(body)})
+    # Der Hub schliesst die Verbindung OHNE Antwort, wenn die Unit der
+    # Gegenstelle nicht in `TICKET_UNITS` steht (daemon.py `_horche_einfach`:
+    # `conn.close(); continue`). Fuer den Fragenden ist das ein
+    # ConnectionResetError -- und genau daran starb dieser Pruefstand. Die
+    # Zusage "hier kommt ein Ticket her" gehoert an diese Stelle: eine
+    # abgewiesene Verbindung wird rot gemeldet, nicht geworfen, sonst bleibt
+    # alles dahinter ungefahren. Verschluckt wird nichts; der Ausnahmetyp
+    # steht im Namen der Pruefung.
+    try:
+        ans, _ = unix_json(DAIMON_RT / "ticket.sock", {
+            "v": 1, "art": "ausgeben", "zweck": "api",
+            "auftrag_hash": hash_body(body)})
+    except (ConnectionResetError, ConnectionAbortedError,
+            BrokenPipeError, socket.timeout) as exc:
+        P.check("4", f"Hub beantwortet die Ticketanfrage ueberhaupt "
+                f"({type(exc).__name__}: Verbindung ohne Antwort geschlossen "
+                f"— Unit nicht in TICKET_UNITS?)", False, True)
+        return ""
     P.check("4", "Positivkontrolle: Hub gibt ein API-Ticket aus", ans.get("ok"), True)
     P.check("4", "Hub-Ticket trägt eine nichtleere Kennung", bool(ans.get("ticket")), True)
     return str(ans.get("ticket", ""))
@@ -482,6 +605,36 @@ def boolprop(unit: str, name: str) -> bool:
     return prop(unit, name).lower() in {"yes", "true", "1"}
 
 
+def resources_gruppe() -> set[str]:
+    """Was `@resources` heute wirklich umfasst -- gefragt, nicht abgeschrieben.
+
+    `systemd-analyze` ist dieselbe Quelle, aus der systemd den Seccomp-Filter
+    baut; eine hier abgetippte Liste waere eine zweite Fassung derselben Regel
+    und damit die Attrappe. Leere Rueckgabe faellt in der Positivkontrolle in
+    Kapitel 15 auf.
+    """
+    try:
+        aus = subprocess.check_output(
+            ["systemd-analyze", "syscall-filter", "@resources"],
+            text=True, stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.CalledProcessError):
+        return set()
+    return {z.strip() for z in aus.splitlines()
+            if z.startswith((" ", "\t")) and z.strip() and not z.strip().startswith("#")}
+
+
+def caps_status() -> dict:
+    """Die Faehigkeiten des Pruefers selbst -- Positivkontrolle zu den
+    Cap-Feldern der Sonden: "leer" muss von "nicht gemessen" unterscheidbar
+    sein."""
+    werte = {}
+    for zeile in Path("/proc/self/status").read_text().splitlines():
+        if zeile.startswith("Cap"):
+            name, _, wert = zeile.partition(":")
+            werte[name] = wert.strip()
+    return werte
+
+
 print("T-3.11 — Egress-Prüfstand, ausschließlich lokale Attrappen")
 print(f"  Baum: {TARGET}")
 print(f"  Modus: {'FIXTURE' if FIXTURE else 'ARBEITSBAUM'}")
@@ -494,6 +647,9 @@ for name, ok in (
     ("Mind-Service-Unit vorhanden", MIND_UNIT.is_file()),
     ("Egress-ExecStart aus Unit auflösbar", bool(EGRESS_CMD)),
     ("Mind-ExecStart aus Unit auflösbar", bool(MIND_CMD)),
+    (f"kein systemd-Kürzel bleibt in den ExecStart-Zeilen stehen "
+     f"(gefunden: {EGRESS_REST + MIND_REST or 'keins'})",
+     not (EGRESS_REST or MIND_REST)),
     ("systemd-socket-activate vorhanden", bool(shutil.which("systemd-socket-activate"))),
     ("systemctl --user erreichbar", subprocess.run(["systemctl", "--user", "show-environment"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0),
     ("openssl vorhanden", bool(shutil.which("openssl"))),
@@ -663,7 +819,7 @@ for token in (KANARIE, ANTWORT_KANARIE):
 
 # Derselbe Prüfling einmal als echte, eindeutig benannte User-Unit: damit ist
 # das Journal ein unabhängiger Messpunkt und nicht nur eine umgeleitete Datei.
-j_name = f"daimon-t311-journal-{uuid.uuid4().hex[:8]}.service"
+j_name = J_NAME
 j_ziel = unit_home / j_name
 j_ziel.write_text(EGRESS_UNIT.read_text(encoding="utf-8"), encoding="utf-8")
 j_drop = unit_home / f"{j_name}.d"; j_drop.mkdir()
@@ -788,18 +944,64 @@ erfolg(both := EgressProzess(umgebung(ziel=http.url), "grund-positiv"), body_a,
 both.stop()
 
 P.kapitel("15", "Härtung beider laufender Units und Socketmodus")
-for rolle, unit in (("mind", mind_name), ("egress", egress_name)):
+# HIER STANDEN `ProtectProc=invisible` und `ProcSubset=pid`. Beide sind in einer
+# `--user`-Unit WIRKUNGSLOS -- `systemd.exec(5)` sagt es zu `ProcSubset=`
+# ausdruecklich: "it is only available to system services". systemd nimmt die
+# Zeilen trotzdem widerspruchslos an, und `systemctl --user show` meldet an der
+# laufenden Unit `ProtectProc=default` / `ProcSubset=all`, zeichengleich mit
+# einem Lauf ganz ohne sie (Design 7.5, Berichtigung vom 20.08., dreifach
+# gemessen). Commit `7b7deb9` (T-4.14) hat sie deshalb aus allen 22 Units
+# entfernt und durch das ersetzt, was in `--user` WIRKT: den leeren
+# `CapabilityBoundingSet=` und die Sperrliste `~@resources` mit benannten
+# Ausnahmen je Unit. Vier Testdateien tragen denselben Grund im Kommentar
+# (tests/test_egress.py, test_stt.py, test_gpu_worker.py, test_tts.py).
+#
+# Wer die zwei Zeilen hier wieder einsetzt, friert zum dritten Mal eine Zusage
+# ein, die nichts tut. Geprueft wird stattdessen die WIRKUNG des Ersatzes:
+# die Faehigkeiten im laufenden Prozess (aus der Sonde, im Prozess selbst
+# gelesen) und der aufgeloeste Syscall-Filter an der laufenden Unit.
+RESOURCES = resources_gruppe()
+P.check("15", "Positivkontrolle: @resources ist als Gruppe auslesbar",
+        len(RESOURCES) >= 8, True)
+P.check("15", "Positivkontrolle: der Pruefer selbst haelt einen vollen Bounding-Set",
+        caps_status().get("CapBnd", "0" * 16) != "0" * 16, True)
+# Je Rolle eine eigene Erwartung. Die `@resources`-Ausnahme haben nach
+# Design 7.5 nur `auth`, `ears`, `eyes`, `stt`, `tts`, `recorder`, `gpu@` und
+# `cli-broker` -- jede mit gemessenem Grund (PipeWire-Echtzeitprioritaet,
+# CUDA, node-Thread-Affinitaet). Mind und Egress stehen dort NICHT: sie
+# brauchen die Faehigkeit nicht, also duerfen sie sie nicht behalten. Eine
+# Unit, die sie sich zurueckholt, faerbt diese Zeile rot.
+DARF_RESOURCES = {"mind": False, "egress": False}
+for rolle, unit, sonde in (("mind", mind_name, mind_probe),
+                           ("egress", egress_name, egress_probe)):
     P.check("15", f"{rolle}: NoNewPrivileges wirksam", boolprop(unit, "NoNewPrivileges"), True)
     P.check("15", f"{rolle}: CapabilityBoundingSet leer", prop(unit, "CapabilityBoundingSet"), "")
     P.check("15", f"{rolle}: ProtectSystem=strict wirksam", prop(unit, "ProtectSystem"), "strict")
     P.check("15", f"{rolle}: ProtectHome=read-only wirksam", prop(unit, "ProtectHome"), "read-only")
-    P.check("15", f"{rolle}: ProtectProc=invisible wirksam", prop(unit, "ProtectProc"), "invisible")
-    P.check("15", f"{rolle}: ProcSubset=pid wirksam", prop(unit, "ProcSubset"), "pid")
     P.check("15", f"{rolle}: PrivateTmp wirksam", boolprop(unit, "PrivateTmp"), True)
     P.check("15", f"{rolle}: LimitCORE=0 wirksam", prop(unit, "LimitCORE"), "0")
     P.check("15", f"{rolle}: UMask=0077 wirksam", prop(unit, "UMask"), "0077")
     P.check("15", f"{rolle}: RuntimeDirectory=daimon wirksam", "daimon" in prop(unit, "RuntimeDirectory"), True)
     P.check("15", f"{rolle}: RuntimeDirectoryPreserve=yes wirksam", prop(unit, "RuntimeDirectoryPreserve"), "yes")
+    caps = sonde.get("caps", {})
+    P.check("15", f"{rolle}: Sonde hat ihre Faehigkeiten gemeldet (Messvoraussetzung)",
+            bool(caps), True)
+    for feld in ("CapBnd", "CapEff", "CapPrm", "CapInh", "CapAmb"):
+        P.check("15", f"{rolle}: {feld} des laufenden Prozesses ist leer",
+                caps.get(feld), "0" * 16)
+    filter_ist = set(prop(unit, "SystemCallFilter").split())
+    P.check("15", f"{rolle}: Syscall-Filter ist aufgeloest lesbar (Positivkontrolle)",
+            "read" in filter_ist, True)
+    gefunden = sorted(filter_ist & RESOURCES)
+    if DARF_RESOURCES[rolle]:
+        # Die Tabelle gilt in beide Richtungen: eine als Ausnahme gefuehrte
+        # Rolle MUSS die Syscalls auch wirklich haben, sonst ist die Zeile in
+        # Design 7.5 veraltet und beschreibt den Baum nicht mehr.
+        P.check("15", f"{rolle}: dokumentierte @resources-Ausnahme ist wirklich offen",
+                bool(gefunden), True)
+    else:
+        P.check("15", f"{rolle}: kein @resources-Syscall im wirksamen Filter",
+                gefunden, [])
 raf_m = prop(mind_name, "RestrictAddressFamilies")
 raf_e = prop(egress_name, "RestrictAddressFamilies")
 P.check("15", "Mind effektiv nur AF_UNIX", "AF_UNIX" in raf_m and "AF_INET" not in raf_m, True)

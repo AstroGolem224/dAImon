@@ -28,6 +28,22 @@ except OSError as exc:
 else:
     fehler = ""
 
+
+def eigene_caps() -> dict:
+    """Die Faehigkeiten dieses Prozesses, im Prozess selbst gelesen.
+
+    Der Pruefstand kann sie spaeter nicht mehr aus /proc holen: diese Sonde
+    lebt 30 s, die Haertungspruefung (Kapitel 15) kommt danach. Gemessen wird
+    damit die WIRKUNG von `CapabilityBoundingSet=`, nicht die Zeile.
+    """
+    werte = {}
+    for zeile in Path("/proc/self/status").read_text().splitlines():
+        if zeile.startswith("Cap"):
+            name, _, wert = zeile.partition(":")
+            werte[name] = wert.strip()
+    return werte
+
+
 cred_hash = ""
 cred_dir = os.environ.get("CREDENTIALS_DIRECTORY")
 if cred_dir:
@@ -41,6 +57,7 @@ ziel.write_text(json.dumps({
     "pid": os.getpid(),
     "af_inet": af_inet,
     "fehler": fehler,
+    "caps": eigene_caps(),
     "credential_sha256": cred_hash,
     "proxy_umgebung": {n: os.environ.get(n) for n in
                          ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY")

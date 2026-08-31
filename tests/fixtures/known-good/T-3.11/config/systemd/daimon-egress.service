@@ -10,8 +10,12 @@ NoNewPrivileges=yes
 CapabilityBoundingSet=
 ProtectSystem=strict
 ProtectHome=read-only
-ProtectProc=invisible
-ProcSubset=pid
+# T-4.14 (7b7deb9): hier standen `ProtectProc=invisible`/`ProcSubset=pid`.
+# In `--user`-Units wirkungslos -- systemd.exec(5) zu `ProcSubset=`: "it is
+# only available to system services". Ersetzt durch das, was wirkt: leerer
+# CapabilityBoundingSet (oben) und die Sperrliste unten. Nicht zurueckschreiben.
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
 PrivateTmp=yes
 LimitCORE=0
 UMask=0077
