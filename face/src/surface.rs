@@ -20,7 +20,7 @@ use wayland_client::{
 };
 
 use crate::{
-    bubble::{position_klemmen, Raster as BubbleRaster},
+    bubble::{position_klemmen, zipfel_fuer, Raster as BubbleRaster, Zipfel},
     input::{sichtbare_laeufe, Box2D, InputRegion},
     render::{frame_toenen_wenn, Toenung},
     sprite::{indikator_malen, mitschnitt_malen, zustand_abbilden, SpriteAtlas},
@@ -364,6 +364,24 @@ impl OverlaySurface {
         self.sprite.surface.commit();
         self.sprite.letzter_frame = frame;
         Ok((1, indikator_gemalt, mitschnitt_gemalt))
+    }
+
+    /// Wohin der Zipfel einer Blase dieser Groesse gehoert. Getrennt vom
+    /// Commit, weil der Aufrufer ihn VOR dem Commit in den Puffer malen muss
+    /// -- und weil das Ziehen des Pet ihn ohne Neurendern abfragen koennen
+    /// muss.
+    pub fn zipfel_fuer_blase(&self, bubble_groesse: (i32, i32)) -> Zipfel {
+        zipfel_fuer(
+            self.sprite.position,
+            self.sprite_groesse,
+            bubble_groesse,
+            self.output_groesse,
+        )
+    }
+
+    /// Groesse der zuletzt gezeigten Blase, oder `None`, wenn keine steht.
+    pub fn bubble_groesse(&self) -> Option<(i32, i32)> {
+        self.bubble.sichtbar.then_some(self.bubble.groesse)
     }
 
     /// Zeichnet ausschliesslich die Blasen-Subsurface. Der Sprite-Puffer wird

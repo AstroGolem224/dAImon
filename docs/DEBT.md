@@ -103,7 +103,7 @@ Nachschreiben, und dafür ist der `grep` oben da.
 
 ## `face/src/main.rs`
 
-- **Zeile 1118** — // ponytail: kein Grund-Unterscheiden. Der Compositor sagt nicht, warum
+- **Zeile 1244** — // ponytail: kein Grund-Unterscheiden. Der Compositor sagt nicht, warum
 
 ## `face/src/menu.rs`
 

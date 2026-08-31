@@ -271,6 +271,11 @@ struct App {
     aktueller_mood: String,
     sichtbarkeit: Sichtbarkeit,
     aktuelle_bubble: Option<Bubble>,
+    /// Der Zipfel, der zuletzt in den Blasenpuffer gemalt wurde. Beim Ziehen
+    /// des Pet wird die Blase nur VERSCHOBEN, nicht neu gerendert -- ohne
+    /// diesen Vergleich zeigte der Zipfel nach dem Klemmen am Bildschirmrand
+    /// in die falsche Richtung weiter.
+    letzter_zipfel: Option<bubble::Zipfel>,
     hub: Option<HubVerbindung>,
     render: RenderSteuerung,
     ton: Tonspieler,
@@ -646,7 +651,16 @@ impl App {
         }
         match self.aktuelle_bubble.as_ref() {
             Some(bubble) => {
-                let raster = self.bubble_renderer.rendern(bubble);
+                let mut raster = self.bubble_renderer.rendern(bubble);
+                // Erst der Korpus, dann der Zipfel: seine Richtung haengt an
+                // der Klemmung, und die braucht die fertige Blasengroesse.
+                let zipfel = self
+                    .overlay
+                    .as_ref()
+                    .expect("Overlay existiert beim Blasenrendern")
+                    .zipfel_fuer_blase((raster.breite, raster.hoehe));
+                bubble::zipfel_malen(&mut raster, zipfel, bubble.urgent);
+                self.letzter_zipfel = Some(zipfel);
                 let ergebnis = {
                     let Self {
                         overlay,
@@ -681,6 +695,21 @@ impl App {
                     self.diagnose_bubble_setzen(false, true);
                 }
             }
+        }
+    }
+
+    /// Beim Ziehen wird die Blase nur verschoben. Kippt die Klemmung dabei
+    /// auf die andere Seite, zeigt der gemalte Zipfel ins Leere -- dann, und
+    /// nur dann, wird neu gerendert. Ein Neurendern je Mausbewegung waere ein
+    /// Puffer je Pixel Zugweg.
+    fn zipfel_nachfuehren(&mut self) {
+        let faellig = self.overlay.as_ref().and_then(|overlay| {
+            let groesse = overlay.bubble_groesse()?;
+            let zipfel = overlay.zipfel_fuer_blase(groesse);
+            (Some(zipfel) != self.letzter_zipfel).then_some(())
+        });
+        if faellig.is_some() {
+            self.bubble_aktualisieren();
         }
     }
 
@@ -823,8 +852,16 @@ impl App {
                     false,
                 ),
                 Err(fehler) => {
+                    // Der Wortlaut geht ins Journal, nicht in die Blase: dort
+                    // stehen Socketpfade und errno-Texte, die die eine Zeile
+                    // verdraengen, auf die es ankommt -- dass es NICHT still
+                    // ist.
                     eprintln!("Privatmodus nicht gemeldet: {fehler}");
-                    ("Privatmodus NICHT aktiv".to_owned(), fehler, true)
+                    (
+                        "Privatmodus NICHT aktiv".to_owned(),
+                        "Fehlgeschlagen; Grund steht im Journal".to_owned(),
+                        true,
+                    )
                 }
             },
             None => {
@@ -861,13 +898,19 @@ impl App {
     /// Deshalb sagt die Blase auch ausdruecklich, wann es wirkt.
     fn bildschirm_widerrufen(&mut self) {
         let (titel, text) = match menu::widerruf_vermerken() {
-            Ok(pfad) => (
-                "Bildschirmzugriff widerrufen".to_owned(),
-                format!("Vermerkt in {pfad}; gilt beim naechsten Blick"),
-            ),
+            Ok(pfad) => {
+                eprintln!("Widerruf vermerkt in {pfad}");
+                (
+                    "Bildschirmzugriff widerrufen".to_owned(),
+                    "Vermerkt; gilt beim naechsten Blick".to_owned(),
+                )
+            }
             Err(fehler) => {
                 eprintln!("Widerruf nicht vermerkt: {fehler}");
-                ("Widerruf nicht vermerkt".to_owned(), fehler)
+                (
+                    "Widerruf nicht vermerkt".to_owned(),
+                    "Fehlgeschlagen; Grund steht im Journal".to_owned(),
+                )
             }
         };
         self.aktuelle_bubble = Some(Bubble {
@@ -890,7 +933,10 @@ impl App {
             ),
             Err(fehler) => {
                 eprintln!("Persona nicht gewechselt: {fehler}");
-                ("Persona nicht gewechselt".to_owned(), fehler)
+                (
+                    "Persona nicht gewechselt".to_owned(),
+                    "Fehlgeschlagen; Grund steht im Journal".to_owned(),
+                )
             }
         };
         self.aktuelle_bubble = Some(Bubble {
@@ -1134,6 +1180,7 @@ impl PointerHandler for App {
                             self.sprite_groesse,
                         );
                         self.diagnose_position_setzen(position);
+                        self.zipfel_nachfuehren();
                     }
                 }
                 PointerEventKind::Release {
@@ -1441,6 +1488,7 @@ fn main() {
         aktueller_mood: "idle".into(),
         sichtbarkeit: Sichtbarkeit(true),
         aktuelle_bubble: None,
+        letzter_zipfel: None,
         hub: None,
         render: RenderSteuerung::neu("idle", Instant::now()),
         ton: Tonspieler::neu(ton_an),

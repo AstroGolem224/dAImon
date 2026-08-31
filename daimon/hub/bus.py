@@ -9,15 +9,42 @@ an der sie sichtbar sind.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Callable
 
 from daimon.common.protocol import Event
 
 Handler = Callable[[Event], None]
 
+# Freier Hook-Text (Assistant-Antwort, Fehlermeldung, Freigabefrage) enthaelt
+# Pfade, Codefragmente und Links. In der Sprechblase sind das Zeichenwuesten,
+# die den einen lesbaren Satz verdraengen -- und ein Pfad oder Token dort ist
+# ausserdem eine Anzeige, die niemand kuratiert hat. Ersetzt wird deshalb
+# durch eine Marke, nicht gekuerzt: der Satz bleibt lesbar, und man sieht,
+# DASS da etwas stand. Die Reihenfolge ist bindend -- Code zuerst, sonst
+# zerlegt die Pfadregel den Inhalt eines Codeblocks.
+_ERSETZUNGEN: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"```.*?```", re.DOTALL), "[Code]"),
+    (re.compile(r"`[^`]+`"), "[Code]"),
+    (re.compile(r"\b(?:https?|ftp|file)://\S+"), "[Link]"),
+    # Ein Pfad beginnt nach einem Nicht-Wortzeichen -- sonst waere "und/oder"
+    # einer.
+    (re.compile(r"(?<![\w~.])(?:~|\.{1,2})?/[\w.\-]+(?:/[\w.\-]+)*"), "[Pfad]"),
+    (re.compile(r"\b[\w.\-]+\.(?:py|rs|json|toml|md|sh|log|ya?ml|txt|c|h)\b"), "[Pfad]"),
+    # Undurchsichtige lange Zeichenkette: Hash, Token, Base64.
+    (re.compile(r"\b[A-Za-z0-9_\-]{24,}\b"), "[Wert]"),
+]
+
+
+def platzhalter_setzen(text: str) -> str:
+    """Technische Bestandteile durch eine Marke ersetzen."""
+    for muster, marke in _ERSETZUNGEN:
+        text = muster.sub(marke, text)
+    return text
+
 
 def _kurz(text: str, n: int = 240) -> str:
-    text = " ".join(str(text).split())
+    text = " ".join(platzhalter_setzen(str(text)).split())
     return text if len(text) <= n else text[: n - 1] + "…"
 
 
