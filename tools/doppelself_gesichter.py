@@ -67,8 +67,11 @@ ZELLE_B, ZELLE_H = 192, 208
 # Bildausschnitt bleiben ausdruecklich unangetastet: acht Bilder, die sich in
 # mehr als dem Ausdruck unterscheiden, flackern beim Moodwechsel.
 GLEICHBLEIBEND = ("Keep the same person, same face, same hair, same clothing, "
-                  "same background, same lighting, same camera angle. "
-                  "Change only the facial expression.")
+                  "same lighting, same camera angle. "
+                  "Change only the facial expression. "
+                  "Replace the background with a plain, flat, uniform pure "
+                  "green background, RGB 0,255,0, no gradient, no vignette, "
+                  "no stars, no glow, no shadow on the background.")
 MOODS = [
     ("sleeping", "The eyes are closed, the face relaxed and asleep."),
     ("idle", "A calm, neutral, relaxed expression, eyes open, looking ahead."),
@@ -238,6 +241,44 @@ def abholen(prompt_id: str, log: str, deckel_s: float) -> str:
 
 # --- Sheet und Manifest ------------------------------------------------------
 
+# Wie stark Gruen die anderen Kanaele schlagen muss, damit ein Pixel als
+# Hintergrund gilt. 40 von 255 laesst Hauttoene und das schwarze Hemd sicher
+# stehen und greift trotzdem bis in die Kante.
+CHROMA_SCHWELLE = 40
+
+
+def chroma_freistellen(bild):
+    """Macht den gruenen Hintergrund durchsichtig. `bild` ist RGBA.
+
+    Warum ein Gruenschirm und keine Freistellung im Nachhinein
+    ------------------------------------------------------------------------
+    Der erste Versuch am 31.08. schnitt die fertigen Bilder mit GrabCut aus.
+    Das ging schief, und zwar lehrreich: das schwarze Hemd hat dieselbe
+    Helligkeit wie der dunkle Hintergrund und flog mit hinaus, waehrend der
+    orange Schein hell genug war und drinblieb. Helligkeit trennt hier nichts.
+    Sauber trennen koennte das nur ein Modell, das „Person" kennt -- ein
+    Download von einigen hundert MB.
+
+    Ein flacher Gruenschirm dreht das Problem um: die Trennung entsteht beim
+    Erzeugen, wo das Modell ohnehin schon weiss, was Person ist, und der
+    Schnitt danach ist ein Schwellwert statt einer Schaetzung.
+    """
+    from PIL import Image, ImageChops, ImageFilter
+
+    r, g, b, _ = bild.split()
+    staerkster = ImageChops.lighter(r, b)
+    # Gruendominanz: wie weit uebertrifft Gruen den staerkeren der anderen?
+    dominanz = ImageChops.subtract(g, staerkster)
+    alpha = dominanz.point(lambda wert: 0 if wert > CHROMA_SCHWELLE else 255)
+    # Eine harte Alphakante sieht auf dem Desktop ausgeschnitten aus.
+    alpha = alpha.filter(ImageFilter.GaussianBlur(1))
+    # Gruenschleier an der Kante wegnehmen: Gruen darf den staerkeren der
+    # beiden anderen Kanaele nicht mehr ueberragen. Ohne das bekommt jede
+    # Silhouette einen giftgruenen Saum.
+    g = ImageChops.darker(g, staerkster)
+    return Image.merge("RGBA", (r, g, b, alpha))
+
+
 def sheet_bauen(bilder: list, ziel: str) -> None:
     """Eine Spalte, eine Zeile je Mood. Mehr Spalten waeren toter Speicher --
     das Face liest nur Spalte 0."""
@@ -246,7 +287,10 @@ def sheet_bauen(bilder: list, ziel: str) -> None:
     sheet = Image.new("RGBA", (ZELLE_B, ZELLE_H * len(bilder)), (0, 0, 0, 0))
     for zeile, pfad in enumerate(bilder):
         with Image.open(pfad) as bild:
-            sheet.paste(zellen_zuschnitt(bild.convert("RGBA")), (0, zeile * ZELLE_H))
+            # Erst freistellen, dann zuschneiden: der Schnitt bei voller
+            # Aufloesung gibt eine glattere Kante als einer auf 192 Pixeln.
+            zelle = chroma_freistellen(bild.convert("RGBA"))
+            sheet.paste(zellen_zuschnitt(zelle), (0, zeile * ZELLE_H))
     sheet.save(ziel)
 
 
@@ -389,6 +433,41 @@ def demo() -> None:
         for wert in k["inputs"].values():
             if isinstance(wert, list):
                 assert wert[0] in g, f"{kid} zeigt auf {wert[0]}"
+
+    # Chroma-Schnitt. Der zweite Teil ist der wichtigere: der erste Versuch
+    # (GrabCut auf dem fertigen Bild) schnitt genau das schwarze Hemd weg,
+    # weil es so dunkel war wie der Hintergrund.
+    # Bloecke statt einzelner Pixel: der 1-Pixel-Weichzeichner der Kante
+    # wuerde eine 4-Pixel-Probe komplett verschmieren und nur sich selbst
+    # messen. Gemessen wird je Blockmitte.
+    kante = 40
+    farben = [(0, 255, 0, 255),        # Gruenschirm
+              (222, 170, 135, 255),    # Haut
+              (12, 12, 14, 255),       # schwarzes Hemd
+              (35, 45, 42, 255),       # kalter Schatten auf dunklem Stoff
+              (40, 90, 45, 255)]       # gesaettigtes Gruen IM Motiv
+    probe = Image.new("RGBA", (kante * len(farben), kante))
+    for i, farbe in enumerate(farben):
+        probe.paste(farbe, (i * kante, 0, (i + 1) * kante, kante))
+    frei = chroma_freistellen(probe)
+    mitte = [(i * kante + kante // 2, kante // 2) for i in range(len(farben))]
+    a = [frei.getpixel(p)[3] for p in mitte]
+    assert a[0] == 0, f"Gruenschirm nicht entfernt: {a}"
+    assert a[1] == 255, f"Haut weggeschnitten: {a}"
+    assert a[2] == 255, f"schwarzes Hemd weggeschnitten: {a}"
+    assert a[3] == 255, f"kalter Schatten weggeschnitten: {a}"
+    # ponytail: die Decke des Verfahrens, ausdruecklich festgehalten statt
+    # weggewuenscht. Gesaettigtes Gruen IM Motiv faellt mit heraus -- so
+    # arbeitet jeder Chroma-Key, und darum traegt niemand Gruen vor einem
+    # Gruenschirm. Die Schwelle hochzudrehen, bis dieser Fall ueberlebt,
+    # wuerde die Kante weich und den Saum gruen machen. Traegt das Motiv je
+    # Gruen, ist der Weg ein Mattierungsmodell (RMBG-2.0), nicht ein
+    # anderer Schwellwert.
+    assert a[4] == 0, f"Chroma-Key greift nicht mehr wie beschrieben: {a}"
+    # Gruenschleier: reines Gruen darf nach der Daempfung nicht mehr
+    # ueberstrahlen.
+    gruen = frei.getpixel(mitte[0])
+    assert gruen[1] <= max(gruen[0], gruen[2]), f"Gruenschleier bleibt: {gruen}"
 
     # Zuschnitt: ein quadratisches Bild wird beschnitten, nicht gequetscht.
     quadrat = Image.new("RGBA", (640, 640))
