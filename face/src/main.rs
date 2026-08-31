@@ -201,6 +201,21 @@ fn pet_manifest_waehlen(
     if let Some(pfad) = umgebung.filter(|wert| !wert.is_empty()) {
         return (PathBuf::from(pfad), ManifestQuelle::Umgebung);
     }
+    // Ein Doppel-Self-Pet gilt vor dem Ember-Sheet -- WENN es da ist.
+    //
+    // Vorrang mit Rueckfall und kein fester Pfad: die acht Gesichter stehen
+    // absichtlich nicht im Repo (`.gitignore`; Bilder eines echten Gesichts
+    // gehoeren nicht in ein oeffentliches). Ein frischer Checkout hat sie
+    // also nicht. Zeigte die Vorgabe fest dorthin, waere das dort kein Pet,
+    // sondern Exit 2 aus `SpriteAtlas::laden` -- und unter systemd ein
+    // Neustartkarussell. So bleibt es dort schlicht beim Ember.
+    //
+    // `tools/doppelself_gesichter.py` legt das Verzeichnis an; wer es
+    // loescht, ist beim naechsten Start wieder beim Ember, ohne Zutun.
+    let doppelself = arbeitsverzeichnis.join("assets/doppelself/pet.json");
+    if doppelself.is_file() {
+        return (doppelself, ManifestQuelle::Arbeitsverzeichnis);
+    }
     let lokales_manifest = arbeitsverzeichnis.join("assets/pet.json");
     if lokales_manifest.is_file() {
         return (lokales_manifest, ManifestQuelle::Arbeitsverzeichnis);
@@ -1607,6 +1622,51 @@ mod tests {
         assert_eq!(
             pet_manifest_waehlen(None, None, &cwd, &dev),
             (dev, ManifestQuelle::Entwicklungsfallback)
+        );
+        fs::remove_dir_all(cwd).unwrap();
+    }
+
+    /// Das Doppel-Self-Pet ist die Vorgabe, sobald es da ist -- und nur dann.
+    ///
+    /// Die zweite Haelfte ist die wichtigere: die Gesichter sind nicht im
+    /// Repo. Ohne den Rueckfall waere ein frischer Checkout kein Ember,
+    /// sondern Exit 2 beim Laden des Sheets.
+    #[test]
+    fn doppelself_gilt_vor_ember_und_faellt_sauber_zurueck() {
+        let cwd = testverzeichnis();
+        let assets = cwd.join("assets");
+        fs::create_dir_all(&assets).unwrap();
+        fs::write(assets.join("pet.json"), b"{}").unwrap();
+        let dev = PathBuf::from("/entwicklung/pet.json");
+
+        // Ohne Doppel-Self bleibt es beim Ember -- die Positivkontrolle zum
+        // Fall darunter. Ohne sie hiesse ein gruener Test nur, dass
+        // IRGENDEIN Pfad herauskommt.
+        assert_eq!(
+            pet_manifest_waehlen(None, None, &cwd, &dev),
+            (assets.join("pet.json"), ManifestQuelle::Arbeitsverzeichnis)
+        );
+
+        let ds = assets.join("doppelself");
+        fs::create_dir_all(&ds).unwrap();
+        fs::write(ds.join("pet.json"), b"{}").unwrap();
+        assert_eq!(
+            pet_manifest_waehlen(None, None, &cwd, &dev),
+            (ds.join("pet.json"), ManifestQuelle::Arbeitsverzeichnis)
+        );
+
+        // Und die ausdrueckliche Wahl schlaegt die Vorgabe weiterhin.
+        let cli = PathBuf::from("/cli/pet.json");
+        assert_eq!(
+            pet_manifest_waehlen(Some(cli.clone()), None, &cwd, &dev),
+            (cli, ManifestQuelle::Kommandozeile)
+        );
+
+        // Verzeichnis da, Manifest weg: kein halber Zustand, sondern Ember.
+        fs::remove_file(ds.join("pet.json")).unwrap();
+        assert_eq!(
+            pet_manifest_waehlen(None, None, &cwd, &dev),
+            (assets.join("pet.json"), ManifestQuelle::Arbeitsverzeichnis)
         );
         fs::remove_dir_all(cwd).unwrap();
     }

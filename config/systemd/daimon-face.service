@@ -17,11 +17,15 @@ WorkingDirectory=/home/itiger013/Dokumente/Github/dAImon/face
 
 # WICHTIG: kein Python-Interpreter. Das Face ist das im Release-Profil
 # gebaute Rust-Binary; der absolute Pfad verhindert einen PATH-Zufallstreffer.
+# Kein --pet-manifest: die Wahl trifft das Binary aus dem WorkingDirectory
+# heraus, und zwar assets/doppelself/pet.json vor assets/pet.json. Ein fester
+# Pfad hier wuerde diese Vorgabe ueberfahren -- die Kommandozeile schlaegt sie
+# (face/src/main.rs, pet_manifest_waehlen). Wer ein anderes Pet will, setzt
+# DAIMON_PET_MANIFEST oder traegt die Zeile wieder ein.
 ExecStart=/home/itiger013/Dokumente/Github/dAImon/face/target/release/daimon-face \
     --hub-socket %t/daimon/events.sock \
     --diag-socket %t/daimon/face-diag.sock \
-    --control-socket %t/daimon/face-control.sock \
-    --pet-manifest /home/itiger013/Dokumente/Github/dAImon/face/assets/pet.json
+    --control-socket %t/daimon/face-control.sock
 # Der Entwicklungs-Watchdog beendet das Binary nach Vorgabe nach 90 s.
 # Im systemd-Dauerbetrieb bleibt er praktisch deaktiviert; Prozessaufsicht
 # und Neustart uebernimmt systemd.

@@ -22,7 +22,7 @@ use wayland_client::{
 use crate::{
     bubble::{position_klemmen, Raster as BubbleRaster},
     input::{sichtbare_laeufe, Box2D, InputRegion},
-    render::{frame_toenen, frame_toenen_wenn, Toenung},
+    render::{frame_toenen_wenn, Toenung},
     sprite::{indikator_malen, mitschnitt_malen, zustand_abbilden, SpriteAtlas},
 };
 
