@@ -135,11 +135,15 @@ def test_der_plan_socket_existiert_vor_dem_dienst(hub):
 
 def test_blasentext_aus_dem_plan_wird_gesaeubert(hub):
     """Dieselbe Saeuberung wie Hook-Text: der Titel kommt aus einer
-    Datenbank, in die auch Transkripte geschrieben werden."""
+    Datenbank, in die auch Transkripte geschrieben werden.
+
+    Seit dem 31.08. ist das `anzeige_saeubern` -- Unsichtbares raus, Umlaute
+    bleiben. Ein `isascii()` waere hier die alte Zusage der Aktionsvorschau.
+    """
     sende(hub.runtime_dir, {"titel": "Erinnerung", "text": "böse‮txt​"},
           "termin_faellig")
     body = hole_state(hub.runtime_dir)["bubble"]["body"]
-    assert body.isascii()
+    assert body == "bösetxt"
 
 
 # -- Die Grenze ---------------------------------------------------------------

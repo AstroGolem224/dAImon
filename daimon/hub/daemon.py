@@ -38,7 +38,7 @@ import time
 import threading
 from pathlib import Path
 
-from daimon.auth.preview import wert_saeubern
+from daimon.auth.preview import anzeige_saeubern
 from daimon.common import ipc
 from daimon.gpu import worker as gpu
 from daimon.common.config import Config, load as load_config
@@ -434,10 +434,14 @@ class Hub:
             # Hook-Text wird genau an der Hub-Grenze fuer alle Anzeigen
             # gesaeubert. Das Face rendert nur diesen Zustand und baut die
             # Unicode-/Laengenregeln aus preview.py absichtlich nicht nach.
+            #
+            # `anzeige_saeubern`, nicht `wert_saeubern`: die Blase zeigt an,
+            # sie fragt nicht. Die Begruendung fuer beide Profile steht in
+            # `preview.py`.
             bubble = {
                 **bubble,
-                "title": wert_saeubern(str(bubble.get("title", ""))),
-                "body": wert_saeubern(str(bubble.get("body", ""))),
+                "title": anzeige_saeubern(str(bubble.get("title", ""))),
+                "body": anzeige_saeubern(str(bubble.get("body", ""))),
             }
         cwd = p.get("cwd", "") or ""
         pid = p.get("pid")
@@ -515,8 +519,8 @@ class Hub:
                     # Bildschirm schieben (Befund 26.08.).
                     p_plan = event.payload or {}
                     if not self.state.erinnerungsblase(
-                            wert_saeubern(str(p_plan.get("titel", ""))),
-                            wert_saeubern(str(p_plan.get("text", "")))):
+                            anzeige_saeubern(str(p_plan.get("titel", ""))),
+                            anzeige_saeubern(str(p_plan.get("text", "")))):
                         # Zurueckgestellt, nicht verworfen: `HubState` haelt
                         # sie und zeigt sie, sobald die dringende Blase weg
                         # ist. Der Plan-Dienst hat keinen Rueckkanal.

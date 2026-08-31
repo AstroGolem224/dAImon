@@ -93,15 +93,24 @@ def test_ereignis_setzt_mood_und_bubble(hub):
 
 
 def test_blasentext_wird_vor_dem_zustand_gesaeubert(hub):
+    """Bidi-Override und Nullbreite werden ENTFERNT, nicht escapt.
+
+    Bis zum 31.08. lief die Blase durch `wert_saeubern`, den Sanitizer der
+    Aktionsvorschau -- der escapt jedes Nicht-ASCII sichtbar, und in einem
+    deutschen Satz war damit jedes dritte Wort unlesbar. Die Blase
+    bestaetigt nichts; sie benutzt jetzt `anzeige_saeubern`. Die
+    Aktionsvorschau escapt weiter, siehe `tests/test_preview.py`.
+    """
     sende(hub.runtime_dir, {
         "hook_event_name": "Notification",
         "session_id": "s1",
         "notification_type": "permission_prompt",
-        "message": "harmlos\u202Etxt\u200B",
+        "message": "harmlos\u202Etxt\u200B und ein \u00fcbles \u00c4",
     })
     body = hole_state(hub.runtime_dir)["bubble"]["body"]
-    assert body == r"harmlos\u202Etxt\u200B"
-    assert body.isascii()
+    assert "\u202E" not in body and "\u200B" not in body
+    assert "\\u" not in body, "escapt statt entfernt"
+    assert body == "harmlostxt und ein \u00fcbles \u00c4"
 
 
 def test_bubble_dismiss_ueber_face_loescht_blase(hub):

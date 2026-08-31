@@ -1,8 +1,13 @@
 //! CPU-gerasterte Sprechblase fuer eine eigene Wayland-Subsurface.
 //!
-//! Der Hub liefert bereits gesaeubertes ASCII. Dieses Modul macht deshalb
-//! ausschliesslich Layout und Pixel: keine zweite Unicode-Policy, keine GPU
-//! und keine System-Fontsuche.
+//! Der Hub liefert bereits gesaeuberten Text -- ohne Steuerzeichen, aber
+//! seit dem Befund vom 31.08. MIT Umlauten (`preview.anzeige_saeubern`).
+//! Dieses Modul macht deshalb ausschliesslich Layout und Pixel: keine
+//! zweite Unicode-Policy, keine GPU und keine System-Fontsuche.
+//!
+//! Eine Sache muss es trotzdem selbst entscheiden, weil nur es sie wissen
+//! kann: ob die eingebettete Schrift ein Zeichen ueberhaupt hat. Siehe
+//! `darstellbar`.
 
 use fontdue::{
     layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle, WrapStyle},
@@ -91,7 +96,29 @@ impl BubbleRenderer {
         self.text_rendern(&bubble.title, &bubble.body, bubble.urgent)
     }
 
+    /// Ersetzt, was die eingebettete Schrift nicht hat.
+    ///
+    /// `fontdue` rastert ein fehlendes Zeichen als leere Flaeche -- eine
+    /// Luecke im Satz, die nach einem Fehler im Text aussieht statt nach
+    /// einem fehlenden Glyph. DejaVu Sans deckt Latein, Griechisch,
+    /// Kyrillisch und die uebliche Typografie ab; Emoji und CJK nicht.
+    ///
+    /// Diese Entscheidung gehoert hierher und nicht in den Hub: welche
+    /// Zeichen darstellbar sind, weiss nur, wer die Schrift haelt.
+    fn darstellbar(&self, text: &str) -> String {
+        text.chars()
+            .map(|z| {
+                if z == ' ' || self.font.lookup_glyph_index(z) != 0 {
+                    z
+                } else {
+                    '?'
+                }
+            })
+            .collect()
+    }
+
     fn text_rendern(&self, titel: &str, body: &str, urgent: bool) -> Raster {
+        let (titel, body) = (&self.darstellbar(titel), &self.darstellbar(body));
         let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
         layout.reset(&LayoutSettings {
             x: (INNEN_ABSTAND + ZIPFEL_HOEHE) as f32,
@@ -342,6 +369,20 @@ mod tests {
 
     fn alpha(raster: &Raster, x: i32, y: i32) -> u8 {
         raster.pixel[((y * raster.breite + x) * 4 + 3) as usize]
+    }
+
+    /// Umlaute und Typografie muessen ANKOMMEN -- sie sind der Grund, warum
+    /// der Hub seit dem 31.08. nicht mehr escapt. Ein Ersatz, der zu viel
+    /// greift, waere derselbe Befund von der anderen Seite.
+    #[test]
+    fn nur_zeichen_ohne_glyph_werden_ersetzt() {
+        let renderer = BubbleRenderer::neu().unwrap();
+        assert_eq!(
+            renderer.darstellbar("Prüfstand -- „ändert\u{00A0}es\u{2019}s\" ß"),
+            "Prüfstand -- „ändert\u{00A0}es\u{2019}s\" ß"
+        );
+        // DejaVu Sans hat keine Emoji und kein CJK.
+        assert_eq!(renderer.darstellbar("ok 🙂 und 漢"), "ok ? und ?");
     }
 
     #[test]

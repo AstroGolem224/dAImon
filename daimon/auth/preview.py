@@ -109,6 +109,64 @@ def wert_saeubern(wert: str, *, max_laenge: int = MAX_WERT_LAENGE) -> str:
     return ausgabe
 
 
+# Unsichtbares und Steuerndes, nach Unicode-Kategorie statt nach Einzelliste
+# -- dieselbe Ueberlegung wie bei `_escapen`: eine Liste veraltet, sobald
+# Unicode waechst. Cc/Cf decken Bidi-Overrides (U+202A-U+202E), Isolate
+# (U+2066-U+2069), Nullbreiten (U+200B-U+200F, U+FEFF) und ANSI-Sequenzen ab;
+# Zl/Zp die Zeilen- und Absatztrenner; Cs/Co/Cn Surrogate, Privatgebrauch und
+# Unzugewiesenes.
+_UNSICHTBAR = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"})
+
+MAX_ANZEIGE_LAENGE = 240        # eine Sprechblase, nicht ein Textfenster
+
+
+def anzeige_saeubern(wert: str, *, max_laenge: int = MAX_ANZEIGE_LAENGE) -> str:
+    r"""Untrusted Text, sicher **und lesbar** fuer eine reine Anzeige.
+
+    Das dritte Profil neben `wert_saeubern` (escapen) und
+    `sprechtext.pruefe` (fuer die Stimme entfernen). Es gibt es, weil die
+    Sprechblase seit T-1.7 durch `wert_saeubern` lief und damit die
+    Abwaegung der **Aktionsvorschau** geerbt hat: dort ist `ä` statt
+    `ä` ausdruecklich gewollt, weil eine Bestaetigung wertlos ist, wenn man
+    einen verwechselbaren Codepunkt nicht sieht. Eine Sprechblase
+    bestaetigt nichts. Sie war dadurch stellenweise schlicht unlesbar --
+    „Prüfstand" statt „Prüfstand", und in einem deutschen Satz ist
+    das jedes dritte Wort.
+
+    Was bleibt: alles Druckbare, auch Umlaute, Gedankenstriche und
+    typografische Anfuehrungszeichen. Was geht: Unsichtbares und Steuerndes
+    (siehe `_UNSICHTBAR`), **entfernt statt escapt** -- ein escapter
+    Bidi-Override waere hier wieder unlesbarer Text, und entfernt kann er
+    nichts mehr drehen. Zeilenumbrueche und Tabulatoren werden zu
+    Leerzeichen, mehrfacher Leerraum zu einem.
+
+    DIE ABWAEGUNG, AUSDRUECKLICH: verwechselbare Glyphen (kyrillisches `а`
+    fuer lateinisches `a`) kommen damit in der Blase durch. Das ist
+    hinnehmbar, WEIL die Blase keine Senke fuer eine Entscheidung ist --
+    sie zeigt an, sie fragt nicht. Jede Stelle, an der der Nutzer auf
+    Grundlage des Textes zustimmt, benutzt weiter `wert_saeubern`; das ist
+    die Aktionsvorschau, und die bleibt unveraendert.
+    """
+    if not isinstance(wert, str):
+        raise VorschauFehler(f"Zeichenkette erwartet, war {type(wert).__name__}")
+    if max_laenge < len(KUERZUNG_ANHANG) + 1:
+        raise VorschauFehler(f"max_laenge {max_laenge} zu klein")
+
+    # NFC zuerst, dann pruefen -- dieselbe Reihenfolge und derselbe Grund wie
+    # bei `wert_saeubern`: sonst filtert man Zeichen, die nach der
+    # Normalisierung andere sind.
+    wert = unicodedata.normalize("NFC", wert)
+    ausgabe = "".join(
+        " " if z in "\n\r\t" else z
+        for z in wert
+        if z in "\n\r\t" or unicodedata.category(z) not in _UNSICHTBAR
+    )
+    ausgabe = " ".join(ausgabe.split())
+    if len(ausgabe) > max_laenge:
+        ausgabe = ausgabe[: max_laenge - len(KUERZUNG_ANHANG)] + KUERZUNG_ANHANG
+    return ausgabe
+
+
 def pfad_saeubern(pfad: str, *, max_laenge: int = MAX_WERT_LAENGE) -> str:
     """Wie `wert_saeubern`, aber fuer Zielpfade.
 
