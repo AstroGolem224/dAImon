@@ -279,22 +279,23 @@ def chroma_freistellen(bild):
     return Image.merge("RGBA", (r, g, b, alpha))
 
 
-def sheet_bauen(bilder: list, ziel: str) -> None:
+def sheet_bauen(bilder: list, ziel: str, zelle: tuple = (ZELLE_B, ZELLE_H)) -> None:
     """Eine Spalte, eine Zeile je Mood. Mehr Spalten waeren toter Speicher --
     das Face liest nur Spalte 0."""
     from PIL import Image
 
-    sheet = Image.new("RGBA", (ZELLE_B, ZELLE_H * len(bilder)), (0, 0, 0, 0))
+    b, h = zelle
+    sheet = Image.new("RGBA", (b, h * len(bilder)), (0, 0, 0, 0))
     for zeile, pfad in enumerate(bilder):
         with Image.open(pfad) as bild:
             # Erst freistellen, dann zuschneiden: der Schnitt bei voller
             # Aufloesung gibt eine glattere Kante als einer auf 192 Pixeln.
-            zelle = chroma_freistellen(bild.convert("RGBA"))
-            sheet.paste(zellen_zuschnitt(zelle), (0, zeile * ZELLE_H))
+            freigestellt = chroma_freistellen(bild.convert("RGBA"))
+            sheet.paste(zellen_zuschnitt(freigestellt, zelle), (0, zeile * h))
     sheet.save(ziel)
 
 
-def zellen_zuschnitt(bild):
+def zellen_zuschnitt(bild, zelle: tuple = (ZELLE_B, ZELLE_H)):
     """Mittig auf das Zellverhaeltnis beschneiden, dann skalieren.
 
     Beschneiden VOR dem Skalieren: ein quadratisches Portrait auf 192x208 zu
@@ -302,24 +303,45 @@ def zellen_zuschnitt(bild):
     """
     from PIL import Image
 
+    zb, zh = zelle
     b, h = bild.size
-    ziel = ZELLE_B / ZELLE_H
+    ziel = zb / zh
     if b / h > ziel:                      # zu breit -> links und rechts weg
         neu_b = round(h * ziel)
         kasten = ((b - neu_b) // 2, 0, (b - neu_b) // 2 + neu_b, h)
     else:                                 # zu hoch -> oben und unten weg
         neu_h = round(b / ziel)
         kasten = (0, (h - neu_h) // 2, b, (h - neu_h) // 2 + neu_h)
-    return bild.crop(kasten).resize((ZELLE_B, ZELLE_H), Image.LANCZOS)
+    return bild.crop(kasten).resize((zb, zh), Image.LANCZOS)
 
 
-def manifest_bauen(moods: list) -> dict:
+def zelle_lesen(text: str) -> tuple:
+    """`"208x208"` -> `(208, 208)`. Eine krumme Angabe ist ein Abbruch und
+    keine stille Vorgabe: ein Sheet in der falschen Groesse faellt erst am
+    schwarzen Pet auf."""
+    try:
+        b, h = (int(teil) for teil in text.lower().split("x", 1))
+    except ValueError:
+        raise SystemExit(f"Abbruch: --zelle braucht BREITExHOEHE, war {text!r}")
+    if not (0 < b <= 4096 and 0 < h <= 4096):
+        raise SystemExit(f"Abbruch: --zelle ausserhalb 1..4096, war {b}x{h}")
+    return (b, h)
+
+
+def manifest_bauen(moods: list, zelle: tuple = (ZELLE_B, ZELLE_H),
+                   pet_id: str = "doppelself", anzeige: str = "Doppel-Self",
+                   beschreibung: str = "Das eigene Gesicht, ein Ausdruck je Mood.") -> dict:
+    """Die Vorgaben sind NICHT beliebig: sie erzeugen woertlich
+    `face/tests/doppelself-pet.json`, und daran haengt die Naht zum
+    Rust-Parser (`erzeugtes_doppelself_manifest_wird_verstanden`). Wer sie
+    aendert, zerreisst die Naht -- neue Pets bekommen Argumente, keine neuen
+    Vorgaben."""
     return {
-        "id": "doppelself",
-        "displayName": "Doppel-Self",
-        "description": "Das eigene Gesicht, ein Ausdruck je Mood.",
+        "id": pet_id,
+        "displayName": anzeige,
+        "description": beschreibung,
         "spritesheetPath": "spritesheet.png",
-        "atlas": {"cellW": ZELLE_B, "cellH": ZELLE_H,
+        "atlas": {"cellW": zelle[0], "cellH": zelle[1],
                   "cols": 1, "rows": len(moods)},
         # Der Mood steckt im Bild. Die Mood-Toenung darueberzulegen faerbt das
         # Gesicht violett und loescht genau die Information, die es traegt.
@@ -384,8 +406,13 @@ def lauf(args) -> None:
             os.remove(bild)
 
     print("[3/3] Sheet und Manifest …", flush=True)
-    sheet_bauen(bilder, os.path.join(args.ziel, "spritesheet.png"))
-    manifest = manifest_bauen([name for name, _ in MOODS])
+    zelle = zelle_lesen(args.zelle)
+    sheet_bauen(bilder, os.path.join(args.ziel, "spritesheet.png"), zelle)
+    pet_id = os.path.basename(os.path.normpath(args.ziel))
+    manifest = manifest_bauen(
+        [name for name, _ in MOODS], zelle, pet_id,
+        args.anzeige or pet_id.replace("_", " ").replace("-", " ").title(),
+        args.beschreibung or f"Ein Ausdruck je Mood ({pet_id}).")
     with open(os.path.join(args.ziel, "pet.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2, ensure_ascii=False)
         f.write("\n")
@@ -422,6 +449,30 @@ def demo() -> None:
                            "face", "tests", "doppelself-pet.json")
     with open(fixture, encoding="utf-8") as f:
         assert json.load(f) == m, f"{fixture} passt nicht mehr zu manifest_bauen()"
+
+    # Zellangabe: eine krumme Eingabe muss abbrechen, nicht still auf eine
+    # Vorgabe zurueckfallen.
+    assert zelle_lesen("208x208") == (208, 208)
+    assert zelle_lesen("192X208") == (192, 208)
+    for schlecht in ("208", "axb", "0x10", "10x0", "-4x8", "5000x5000", ""):
+        try:
+            zelle_lesen(schlecht)
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError(f"--zelle {schlecht!r} haette abbrechen muessen")
+
+    # Ein zweites Pet aendert Zelle, Kennung und Namen -- und laesst die
+    # Mood-Zuordnung in Ruhe. Das ist der ganze Zweck der Parameter.
+    zweites = manifest_bauen(namen, (208, 208), "magier", "Magier", "Umhang.")
+    assert zweites["id"] == "magier" and zweites["displayName"] == "Magier"
+    assert zweites["atlas"]["cellW"] == 208 and zweites["atlas"]["cellH"] == 208
+    assert zweites["moods"] == m["moods"], "Mood-Zuordnung darf nicht mitwandern"
+    assert zweites["toenung"] is False
+
+    # Quadratische Vorlage auf quadratische Zelle: nichts wird beschnitten.
+    quadrat_gross = Image.new("RGBA", (1254, 1254))
+    assert zellen_zuschnitt(quadrat_gross, (208, 208)).size == (208, 208)
 
     g = graph_bauen("x.png", "laechelt", 42, "p")
     knoten = {k: v["class_type"] for k, v in g.items()}
@@ -484,6 +535,11 @@ def main() -> None:
     p.add_argument("--foto", help="Portraitfoto, moeglichst frontal")
     p.add_argument("--ziel", default="face/assets/doppelself",
                    help="Verzeichnis fuer pet.json und spritesheet.png")
+    p.add_argument("--zelle", default=f"{ZELLE_B}x{ZELLE_H}",
+                   help="Zellgroesse BREITExHOEHE. Quadratisch, wenn die "
+                        "Vorlage quadratisch ist und ihr Format bleiben soll")
+    p.add_argument("--anzeige", help="Name im Menue (Vorgabe: aus --ziel)")
+    p.add_argument("--beschreibung")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--force", action="store_true")
     p.add_argument("--selbsttest", action="store_true")

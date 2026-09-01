@@ -37,7 +37,13 @@ face/assets/preview_states.png
 # Geholt wird das Modell mit spikes/stt-referenz/modell_holen.sh.
 spikes/stt-referenz/models/
 
-# Die erzeugten Doppel-Self-Gesichter bleiben lokal: acht Bilder eines
-# echten Gesichts gehoeren nicht in ein oeffentliches Repo, und der
-# Generator baut sie in drei Minuten neu.
-face/assets/doppelself/
+# Erzeugte Pets bleiben lokal: Bilder eines echten Gesichts gehoeren nicht in
+# ein oeffentliches Repo, und der Generator baut sie in Minuten neu. Dazu die
+# Vorlagen unter face/assets/pics/.
+#
+# Das Muster trifft JEDES Unterverzeichnis, nicht die vier von heute: alle
+# verfolgten Dateien liegen direkt in `face/assets/` (Ember-Sheet, Manifest,
+# Schrift, Icon), jedes Unterverzeichnis ist erzeugt. Eine Liste von Namen
+# waere beim naechsten Pet schon unvollstaendig -- und ein vergessener Name
+# hiesse: ein Gesicht rutscht ins oeffentliche Repo.
+face/assets/*/

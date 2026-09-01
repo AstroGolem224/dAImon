@@ -176,6 +176,8 @@ enum ManifestQuelle {
     Umgebung,
     Arbeitsverzeichnis,
     Entwicklungsfallback,
+    /// Im Menue gewaehlt, Marke unter `state_dir()`.
+    Auswahl,
 }
 
 impl ManifestQuelle {
@@ -185,6 +187,7 @@ impl ManifestQuelle {
             Self::Umgebung => "DAIMON_PET_MANIFEST",
             Self::Arbeitsverzeichnis => "Arbeitsverzeichnis",
             Self::Entwicklungsfallback => "CARGO_MANIFEST_DIR-Entwicklungsfallback",
+            Self::Auswahl => "Menueauswahl",
         }
     }
 }
@@ -192,6 +195,7 @@ impl ManifestQuelle {
 fn pet_manifest_waehlen(
     kommandozeile: Option<PathBuf>,
     umgebung: Option<OsString>,
+    gewaehltes_pet: Option<String>,
     arbeitsverzeichnis: &Path,
     entwicklungsmanifest: &Path,
 ) -> (PathBuf, ManifestQuelle) {
@@ -200,6 +204,21 @@ fn pet_manifest_waehlen(
     }
     if let Some(pfad) = umgebung.filter(|wert| !wert.is_empty()) {
         return (PathBuf::from(pfad), ManifestQuelle::Umgebung);
+    }
+    // Die im Menue getroffene Wahl -- HINTER Kommandozeile und Umgebung, denn
+    // wer das Pet ausdruecklich vorgibt, meint es auch. Und VOR den Vorgaben,
+    // sonst ueberlebte der Wechsel den naechsten Start nicht.
+    //
+    // Zeigt die Marke auf ein Pet, das es nicht mehr gibt (Verzeichnis
+    // geloescht), faellt es still auf die Vorgaben zurueck. Ein Abbruch waere
+    // hier falsch: das Face haette dann keine Anzeige, weil jemand ein
+    // Verzeichnis aufgeraeumt hat.
+    if let Some(name) = gewaehltes_pet.filter(|n| !n.is_empty()) {
+        let gewaehlt = arbeitsverzeichnis.join(format!("assets/{name}/pet.json"));
+        if gewaehlt.is_file() {
+            return (gewaehlt, ManifestQuelle::Auswahl);
+        }
+        eprintln!("Gewaehltes Pet {name:?} nicht gefunden; Vorgabe gilt");
     }
     // Ein Doppel-Self-Pet gilt vor dem Ember-Sheet -- WENN es da ist.
     //
@@ -823,6 +842,7 @@ impl App {
                 }
             }
             menu::Aktion::Persona(index) => self.persona_waehlen(index),
+            menu::Aktion::Pet(index) => self.pet_waehlen(index),
             menu::Aktion::BildschirmWiderrufen => self.bildschirm_widerrufen(),
             menu::Aktion::Privatmodus => self.privatmodus(),
             // Geordnet: die Hauptschleife laeuft aus, und erst dadurch
@@ -945,6 +965,59 @@ impl App {
             urgent: false,
         });
         self.bubble_aktualisieren();
+    }
+
+    /// Das Pet wechseln -- und anders als bei der Persona SOFORT.
+    ///
+    /// Erlaubt ist das, weil hier nichts Fremdes angefasst wird: der Atlas ist
+    /// das eigene Bild dieses Prozesses. Kein Unit-Start, kein Signal, keine
+    /// Meldung an den Hub. Die Grenze aus dem Modulkopf von `menu.rs` bleibt.
+    ///
+    /// Die Marke wird ZUERST geschrieben. Scheitert danach das Laden, laeuft
+    /// das alte Pet weiter, aber der naechste Start nimmt das neue -- und der
+    /// Fehler steht in der Blase. Andersherum haette ein geladenes Pet die
+    /// Wahl nicht ueberlebt.
+    fn pet_waehlen(&mut self, index: usize) {
+        let (titel, text) = match menu::pet_setzen(index) {
+            Ok(pet) => match sprite::SpriteAtlas::laden(&pet.manifest) {
+                Ok(neuer) => {
+                    // Die Zellgroesse darf sich aendern -- Ember ist 192x208,
+                    // ein Pet aus einer quadratischen Vorlage 208x208. Der
+                    // Sprite-PUFFER entsteht ohnehin bei jedem Commit aus
+                    // `atlas.layout`; stehen bliebe nur `sprite_groesse`, und
+                    // daran haengen Klemmung und Blasenposition.
+                    let groesse = (neuer.layout.cell_w as i32, neuer.layout.cell_h as i32);
+                    self.atlas = neuer;
+                    self.sprite_groesse = groesse;
+                    if let Some(overlay) = self.overlay.as_mut() {
+                        overlay.sprite_groesse_setzen(groesse);
+                    }
+                    (format!("Pet: {}", pet.anzeige), "gilt ab sofort".to_owned())
+                }
+                Err(fehler) => {
+                    eprintln!("Pet-Sheet nicht ladbar: {fehler}");
+                    (
+                        "Pet erst beim Neustart".to_owned(),
+                        "Das Sheet liess sich nicht laden; Grund steht im Journal"
+                            .to_owned(),
+                    )
+                }
+            },
+            Err(fehler) => {
+                eprintln!("Pet nicht gewechselt: {fehler}");
+                (
+                    "Pet nicht gewechselt".to_owned(),
+                    "Fehlgeschlagen; Grund steht im Journal".to_owned(),
+                )
+            }
+        };
+        self.aktuelle_bubble = Some(Bubble {
+            title: titel,
+            body: text,
+            urgent: false,
+        });
+        self.bubble_aktualisieren();
+        self.sprite_rendern();
     }
 
     fn position_speichern(&self, position: (i32, i32)) {
@@ -1391,6 +1464,7 @@ fn main() {
     let (manifest, manifest_quelle) = pet_manifest_waehlen(
         optionen.pet_manifest.clone(),
         std::env::var_os("DAIMON_PET_MANIFEST"),
+        menu::aktives_pet(),
         &arbeitsverzeichnis,
         &entwicklungsmanifest,
     );
@@ -1716,22 +1790,67 @@ mod tests {
         let env = OsString::from("/env/pet.json");
 
         assert_eq!(
-            pet_manifest_waehlen(Some(cli.clone()), Some(env.clone()), &cwd, &dev),
+            pet_manifest_waehlen(Some(cli.clone()), Some(env.clone()), None, &cwd, &dev),
             (cli, ManifestQuelle::Kommandozeile)
         );
         assert_eq!(
-            pet_manifest_waehlen(None, Some(env), &cwd, &dev),
+            pet_manifest_waehlen(None, Some(env), None, &cwd, &dev),
             (PathBuf::from("/env/pet.json"), ManifestQuelle::Umgebung)
         );
         assert_eq!(
-            pet_manifest_waehlen(None, None, &cwd, &dev),
+            pet_manifest_waehlen(None, None, None, &cwd, &dev),
             (assets.join("pet.json"), ManifestQuelle::Arbeitsverzeichnis)
         );
 
         fs::remove_file(assets.join("pet.json")).unwrap();
         assert_eq!(
-            pet_manifest_waehlen(None, None, &cwd, &dev),
+            pet_manifest_waehlen(None, None, None, &cwd, &dev),
             (dev, ManifestQuelle::Entwicklungsfallback)
+        );
+        fs::remove_dir_all(cwd).unwrap();
+    }
+
+    /// Die Menueauswahl gilt vor der Vorgabe -- und faellt still zurueck,
+    /// wenn das gewaehlte Pet verschwunden ist.
+    ///
+    /// Der Rueckfall ist der wichtige Teil: ein Abbruch haette zur Folge, dass
+    /// ein geloeschtes Verzeichnis das Face ohne Anzeige laesst. Ein anderes
+    /// Pet zu zeigen als gewaehlt, ist der harmlosere Fehler.
+    #[test]
+    fn die_menueauswahl_gilt_vor_der_vorgabe_und_faellt_sauber_zurueck() {
+        let cwd = testverzeichnis();
+        let assets = cwd.join("assets");
+        fs::create_dir_all(assets.join("doppelself")).unwrap();
+        fs::create_dir_all(assets.join("magier")).unwrap();
+        fs::write(assets.join("doppelself/pet.json"), b"{}").unwrap();
+        fs::write(assets.join("magier/pet.json"), b"{}").unwrap();
+        let dev = PathBuf::from("/entwicklung/pet.json");
+
+        // Ohne Wahl die Vorgabe -- Positivkontrolle zum Fall darunter.
+        assert_eq!(
+            pet_manifest_waehlen(None, None, None, &cwd, &dev).0,
+            assets.join("doppelself/pet.json")
+        );
+        assert_eq!(
+            pet_manifest_waehlen(None, None, Some("magier".into()), &cwd, &dev),
+            (assets.join("magier/pet.json"), ManifestQuelle::Auswahl)
+        );
+        let cli = PathBuf::from("/cli/pet.json");
+        assert_eq!(
+            pet_manifest_waehlen(Some(cli.clone()), None, Some("magier".into()), &cwd, &dev),
+            (cli, ManifestQuelle::Kommandozeile)
+        );
+        // Marke ins Leere: zurueck auf die Vorgabe, kein Abbruch.
+        assert_eq!(
+            pet_manifest_waehlen(None, None, Some("gibtsnicht".into()), &cwd, &dev),
+            (
+                assets.join("doppelself/pet.json"),
+                ManifestQuelle::Arbeitsverzeichnis
+            )
+        );
+        assert_eq!(
+            pet_manifest_waehlen(None, None, Some(String::new()), &cwd, &dev).1,
+            ManifestQuelle::Arbeitsverzeichnis
         );
         fs::remove_dir_all(cwd).unwrap();
     }
@@ -1753,7 +1872,7 @@ mod tests {
         // Fall darunter. Ohne sie hiesse ein gruener Test nur, dass
         // IRGENDEIN Pfad herauskommt.
         assert_eq!(
-            pet_manifest_waehlen(None, None, &cwd, &dev),
+            pet_manifest_waehlen(None, None, None, &cwd, &dev),
             (assets.join("pet.json"), ManifestQuelle::Arbeitsverzeichnis)
         );
 
@@ -1761,21 +1880,21 @@ mod tests {
         fs::create_dir_all(&ds).unwrap();
         fs::write(ds.join("pet.json"), b"{}").unwrap();
         assert_eq!(
-            pet_manifest_waehlen(None, None, &cwd, &dev),
+            pet_manifest_waehlen(None, None, None, &cwd, &dev),
             (ds.join("pet.json"), ManifestQuelle::Arbeitsverzeichnis)
         );
 
         // Und die ausdrueckliche Wahl schlaegt die Vorgabe weiterhin.
         let cli = PathBuf::from("/cli/pet.json");
         assert_eq!(
-            pet_manifest_waehlen(Some(cli.clone()), None, &cwd, &dev),
+            pet_manifest_waehlen(Some(cli.clone()), None, None, &cwd, &dev),
             (cli, ManifestQuelle::Kommandozeile)
         );
 
         // Verzeichnis da, Manifest weg: kein halber Zustand, sondern Ember.
         fs::remove_file(ds.join("pet.json")).unwrap();
         assert_eq!(
-            pet_manifest_waehlen(None, None, &cwd, &dev),
+            pet_manifest_waehlen(None, None, None, &cwd, &dev),
             (assets.join("pet.json"), ManifestQuelle::Arbeitsverzeichnis)
         );
         fs::remove_dir_all(cwd).unwrap();

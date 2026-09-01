@@ -92,6 +92,13 @@ pub enum Aktion {
     /// beim Start wirklich gefunden wurde. Ein Name als Nutzlast waere ein
     /// Feld, in das der Steuer-Socket schreiben koennte.
     Persona(usize),
+    /// Das Pet wechseln. Index in [`pets()`], aus demselben Grund wie oben:
+    /// nur ein Index, den dieses Modul selbst gefunden hat.
+    ///
+    /// Anders als [`Aktion::Persona`] wirkt diese Wahl SOFORT -- das Pet ist
+    /// das eigene Bild dieses Prozesses, kein fremder Dienst. Begruendung
+    /// ausfuehrlich beim Pet-Abschnitt weiter unten.
+    Pet(usize),
 }
 
 impl Aktion {
@@ -116,6 +123,13 @@ impl Aktion {
                 Some(p) => format!("persona:{}", p.datei),
                 // Unerreichbar, solange der Index aus `personas()` stammt.
                 None => "persona:?".to_owned(),
+            },
+            // Gleiche Bauform wie die Persona, aus demselben Grund: ein
+            // blosses `pet` waere ein Befehl, den der Steuer-Socket ohne
+            // Ziel absetzen koennte.
+            Self::Pet(index) => match pets().get(index) {
+                Some(p) => format!("pet:{}", p.verzeichnis),
+                None => "pet:?".to_owned(),
             },
         }
     }
@@ -155,6 +169,9 @@ impl Aktion {
             // Erlaubnis behalten -- genau andersherum als gemeint.
             Self::Beenden
             | Self::Persona(_)
+            // Kein Ziel: der Pet-Wechsel schaltet nichts ab. Er tauscht das
+            // eigene Bild, mehr nicht.
+            | Self::Pet(_)
             | Self::BildschirmWiderrufen
             // Kein Ziel: der Privatmodus schaltet KEINE Unit ab. Er
             // pausiert die ABLAGE, das Mikrofon bleibt an -- wer nur
@@ -217,6 +234,28 @@ pub fn eintraege() -> Vec<Eintrag> {
             aktion: (!ist_aktiv).then_some(Aktion::Persona(index)),
         });
     }
+    // Die Pet-Auswahl direkt hinter der Persona: beide sind Auswahl, beide
+    // aendern nichts an der Wahrnehmung. Vor den folgenreichen Eintraegen.
+    liste.push(fest("Pet wechseln", None));
+    if pets().is_empty() {
+        liste.push(fest("   (keins gefunden)", None));
+    }
+    let aktives = aktives_pet();
+    for (index, pet) in pets().iter().enumerate() {
+        // Ohne getroffene Wahl traegt KEINER den Punkt. Einen zu raten hiesse
+        // behaupten, welches Pet gerade laeuft -- das weiss hier niemand,
+        // die Vorgabe faellt in `pet_manifest_waehlen`.
+        let ist_aktiv = aktives.as_deref() == Some(pet.verzeichnis.as_str());
+        liste.push(Eintrag {
+            text: format!(
+                "   {} {}",
+                if ist_aktiv { "●" } else { "○" },
+                pet.anzeige
+            ),
+            aktion: (!ist_aktiv).then_some(Aktion::Pet(index)),
+        });
+    }
+
     // Ans Ende, nicht zwischen die Wahrnehmungseintraege: der Widerruf ist
     // die seltenste und folgenreichste Aktion im Menue, und die Positionen
     // der ersten fuenf Eintraege sind in den Tests unten festgeschrieben.
@@ -497,6 +536,130 @@ pub fn persona_setzen(index: usize) -> Result<String, String> {
         format!("{}: {fehler}", pfad.display())
     })?;
     Ok(persona.anzeige.clone())
+}
+
+// -- Pets: finden, lesen, schreiben ----------------------------------------
+//
+// Dieselbe Bauform wie die Personaauswahl darueber, mit EINEM Unterschied,
+// der im Modulkopf begruendet werden muss: der Pet-Wechsel wirkt SOFORT.
+//
+// Die Personaauswahl darf das nicht -- sie betrifft den Mind, einen anderen
+// Prozess, und sofort hiesse dort: eine Unit aus dem Overlay heraus neu
+// starten. Genau die Faehigkeit soll dieses Modul nicht haben.
+//
+// Das Pet ist dagegen das eigene Bild DIESES Prozesses. Es neu zu laden
+// startet nichts, sendet nichts und beruehrt keine fremde Unit; es tauscht
+// einen Puffer, den das Face ohnehin bei jedem Commit neu baut. Die Grenze
+// aus dem Modulkopf bleibt damit unangetastet.
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PetDatei {
+    /// Der Verzeichnisname unter `assets/`, zugleich die Kennung.
+    pub verzeichnis: String,
+    pub anzeige: String,
+    pub manifest: PathBuf,
+}
+
+static PETS: OnceLock<Vec<PetDatei>> = OnceLock::new();
+
+/// Die Marke neben `persona.json`. Eigene Datei, kein Feld darin: der Mind
+/// liest `persona.json`, und ein Feld, das ihn nichts angeht, waere eine
+/// Einladung, es dort auszuwerten.
+pub const PET_AUSWAHL_DATEI: &str = "pet-auswahl.json";
+
+/// Wie bei den Personas zwei relative Pfade, aus demselben Grund: die Unit
+/// setzt `WorkingDirectory` auf `<repo>/face`, ein Aufruf aus der Repowurzel
+/// steht eine Ebene hoeher.
+fn pet_verzeichnisse() -> Vec<PathBuf> {
+    vec![PathBuf::from("assets"), PathBuf::from("face/assets")]
+}
+
+/// Der Scan ohne `OnceLock` -- damit ihn ein Test gegen ein eigenes
+/// Verzeichnis fahren kann.
+fn pets_aus(verzeichnisse: &[PathBuf]) -> Vec<PetDatei> {
+    let mut gefunden: Vec<PetDatei> = Vec::new();
+    for verzeichnis in verzeichnisse {
+        let Ok(eintraege) = std::fs::read_dir(verzeichnis) else {
+            continue;
+        };
+        for eintrag in eintraege.flatten() {
+            let pfad = eintrag.path();
+            if !pfad.is_dir() {
+                continue;
+            }
+            let Some(name) = pfad.file_name().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            if !ist_zulaessiger_dateiname(name) {
+                continue;
+            }
+            let manifest = pfad.join("pet.json");
+            if !manifest.is_file() {
+                continue; // Ein Verzeichnis ohne Manifest ist kein Pet.
+            }
+            if gefunden.iter().any(|p| p.verzeichnis == name) {
+                continue; // Der erste Pfad gewinnt, wie bei den Personas.
+            }
+            let anzeige = anzeigename_lesen(&manifest)
+                .unwrap_or_else(|| name.to_owned());
+            gefunden.push(PetDatei {
+                verzeichnis: name.to_owned(),
+                anzeige,
+                manifest,
+            });
+        }
+    }
+    gefunden.sort_by(|a, b| a.anzeige.cmp(&b.anzeige));
+    gefunden
+}
+
+/// `displayName` aus dem Manifest. Fehlt es oder ist die Datei kaputt, faellt
+/// der Aufrufer auf den Verzeichnisnamen zurueck -- ein Pet ohne schoenen
+/// Namen ist besser als ein Pet, das im Menue fehlt.
+fn anzeigename_lesen(manifest: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(manifest).ok()?;
+    let wert: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let name = wert.get("displayName")?.as_str()?.trim();
+    (!name.is_empty()).then(|| name.to_owned())
+}
+
+/// Einmal gescannt, dann fest -- dieselbe Begruendung wie bei [`personas()`].
+pub fn pets() -> &'static [PetDatei] {
+    PETS.get_or_init(|| pets_aus(&pet_verzeichnisse()))
+}
+
+/// Der Verzeichnisname des gewaehlten Pets, oder `None`.
+///
+/// `None` heisst ausdruecklich „keine Wahl getroffen" und NICHT „Ember":
+/// welches Pet dann gilt, entscheidet `pet_manifest_waehlen` in `main.rs`,
+/// und zwei Stellen mit einer Vorgabe waeren eine Vorgabe und eine Attrappe.
+pub fn aktives_pet() -> Option<String> {
+    let inhalt = std::fs::read_to_string(state_dir().join(PET_AUSWAHL_DATEI)).ok()?;
+    auswahl_lesen(&inhalt)
+}
+
+/// Schreibt die Wahl. Erst in eine Nebendatei, dann umbenennen -- ein
+/// abgebrochener Schreibvorgang darf keine halbe Datei hinterlassen.
+pub fn pet_setzen(index: usize) -> Result<PetDatei, String> {
+    let pet = pets()
+        .get(index)
+        .ok_or_else(|| format!("Pet-Index {index} gibt es nicht"))?;
+    if !ist_zulaessiger_dateiname(&pet.verzeichnis) {
+        return Err(format!("Pet-Name {:?} ist nicht zulaessig", pet.verzeichnis));
+    }
+    let verzeichnis = state_dir();
+    std::fs::create_dir_all(&verzeichnis)
+        .map_err(|fehler| format!("{}: {fehler}", verzeichnis.display()))?;
+    let pfad = verzeichnis.join(PET_AUSWAHL_DATEI);
+    let vorlaeufig = verzeichnis.join(format!("{PET_AUSWAHL_DATEI}.neu"));
+    let inhalt = format!("{{\"v\": 1, \"name\": \"{}\"}}\n", pet.verzeichnis);
+    std::fs::write(&vorlaeufig, inhalt.as_bytes())
+        .map_err(|fehler| format!("{}: {fehler}", vorlaeufig.display()))?;
+    std::fs::rename(&vorlaeufig, &pfad).map_err(|fehler| {
+        let _ = std::fs::remove_file(&vorlaeufig);
+        format!("{}: {fehler}", pfad.display())
+    })?;
+    Ok(pet.clone())
 }
 
 pub const BREITE: i32 = 208;
@@ -823,7 +986,13 @@ mod tests {
                 | Some(Aktion::Persona(_))
                 | Some(Aktion::BildschirmWiderrufen)
                 // Ebenfalls kein Einschalten: er PAUSIERT die Ablage.
-                | Some(Aktion::Privatmodus) => {}
+                | Some(Aktion::Privatmodus)
+                // Der Pet-Wechsel startet nichts und schaltet nichts ein. Er
+                // tauscht das eigene Bild dieses Prozesses -- kein Unit-Start,
+                // kein Signal, keine Meldung nach aussen. Er steht hier aus
+                // demselben Grund wie die Persona, nur wirkt er sofort, weil
+                // kein fremder Dienst beteiligt ist.
+                | Some(Aktion::Pet(_)) => {}
                 Some(aktion) => assert!(
                     eintrag.text.ends_with("aus"),
                     "{} traegt eine Aktion {:?}, die nicht abschaltet",
@@ -918,6 +1087,67 @@ mod tests {
         // Der Anzeigename kommt aus der Datei, nicht aus dem Dateinamen.
         let nordom = liste.iter().find(|p| p.datei == "nordom").unwrap();
         assert_eq!(nordom.anzeige, "Nordom");
+    }
+
+    /// Der Pet-Scan: ein Verzeichnis ist nur dann ein Pet, wenn ein Manifest
+    /// darin liegt. Die zweite Haelfte ist die wichtigere -- ohne sie wuerde
+    /// jedes Unterverzeichnis unter `assets/` im Menue auftauchen, auch
+    /// `pics/` mit den Vorlagen und `doppelself/` waehrend es erst entsteht.
+    #[test]
+    fn pets_braucht_ein_manifest_und_nimmt_den_anzeigenamen() {
+        let temp = std::env::temp_dir().join(format!("daimon-pets-{}", std::process::id()));
+        let assets = temp.join("assets");
+        for name in ["magier", "ohne_manifest", "kaputt", "namenlos"] {
+            std::fs::create_dir_all(assets.join(name)).unwrap();
+        }
+        std::fs::write(
+            assets.join("magier/pet.json"),
+            br#"{"id":"magier","displayName":"Magier","atlas":{}}"#,
+        )
+        .unwrap();
+        // Kein Manifest -> kein Pet. Das ist `pics/`.
+        std::fs::write(assets.join("ohne_manifest/bild.png"), b"x").unwrap();
+        // Kaputtes JSON: das Pet bleibt, der Name faellt auf das Verzeichnis
+        // zurueck. Ein Pet, das wegen eines Tippfehlers im Namen ganz aus dem
+        // Menue faellt, waere die schlechtere Antwort.
+        std::fs::write(assets.join("kaputt/pet.json"), b"{ kein json").unwrap();
+        std::fs::write(assets.join("namenlos/pet.json"), br#"{"id":"x"}"#).unwrap();
+
+        let liste = pets_aus(&[assets]);
+        let _ = std::fs::remove_dir_all(&temp);
+
+        let namen: Vec<&str> = liste.iter().map(|p| p.verzeichnis.as_str()).collect();
+        assert_eq!(namen.len(), 3, "{liste:?}");
+        assert!(!namen.contains(&"ohne_manifest"), "{namen:?}");
+        assert_eq!(
+            liste.iter().find(|p| p.verzeichnis == "magier").unwrap().anzeige,
+            "Magier"
+        );
+        for ersatz in ["kaputt", "namenlos"] {
+            assert_eq!(
+                liste.iter().find(|p| p.verzeichnis == ersatz).unwrap().anzeige,
+                ersatz,
+                "ohne displayName gilt der Verzeichnisname"
+            );
+        }
+    }
+
+    /// Ohne getroffene Wahl traegt KEIN Eintrag den vollen Punkt. Einen zu
+    /// raten hiesse behaupten, welches Pet laeuft -- das entscheidet
+    /// `pet_manifest_waehlen`, nicht das Menue.
+    #[test]
+    fn ohne_marke_ist_kein_pet_als_aktiv_markiert() {
+        assert!(
+            aktives_pet().is_none() || !aktives_pet().unwrap().is_empty(),
+            "aktives_pet liefert entweder None oder einen echten Namen"
+        );
+        let eintraege_mit_punkt = eintraege()
+            .into_iter()
+            .filter(|e| e.text.contains('●'))
+            .count();
+        // Hoechstens einer: die Persona hat immer genau einen, das Pet nur
+        // mit Marke. Zwei Punkte in EINEM der beiden Bloecke waeren der Fehler.
+        assert!(eintraege_mit_punkt <= 2, "{eintraege_mit_punkt} Punkte");
     }
 
     /// Die Datei unter XDG gewinnt gegen die mitgelieferte -- dieselbe

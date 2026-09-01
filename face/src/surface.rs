@@ -486,6 +486,25 @@ impl OverlaySurface {
 
     /// Verschiebt das Pet ohne Buffer-Aenderung. Nur die Position und die
     /// Input-Bounding-Box werden auf dem Parent angewandt.
+    /// Die Sprite-Groesse nachziehen, wenn ein anderes Pet eine andere
+    /// Zelle hat (Ember 192x208, ein quadratisches Doppel-Self 208x208).
+    ///
+    /// Der PUFFER braucht das nicht -- `sprite_committen` baut ihn bei jedem
+    /// Commit aus `atlas.layout`. Hier haengen nur die beiden Dinge, die die
+    /// Groesse ausserhalb des Puffers braucht: die Position der Sprechblase,
+    /// die als Kind am unteren rechten Eck des Pets sitzt, und der Wert, mit
+    /// dem `position_klemmen` das Pet am Bildschirmrand haelt.
+    pub fn sprite_groesse_setzen(&mut self, groesse: (i32, i32)) {
+        if self.sprite_groesse == groesse {
+            return;
+        }
+        self.sprite_groesse = groesse;
+        self.bubble.position = groesse;
+        self.bubble
+            .subsurface
+            .set_position(groesse.0, groesse.1);
+    }
+
     pub fn sprite_position_setzen(
         &mut self,
         compositor: &CompositorState,
