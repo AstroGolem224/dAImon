@@ -513,38 +513,13 @@ def test_mind_hat_nur_unix_und_keinen_token():
     assert any("ANTHROPIC_API_KEY" in z for z in unset), unset
 
 
-def test_mind_traegt_keinen_fremden_schluessel_in_der_umgebung():
-    """T-6.9, und diesmal am LAUFENDEN Prozess statt am Unit-Text.
-
-    Gemessen am 14.08.: `/proc/<pid>/environ` von daimon-mind enthielt
-    `ELEVENLABS_API_KEY` und `MISTRAL_API_KEY`, geerbt aus der Umgebung des
-    systemd-Benutzermanagers. Der anthropic-token war gesperrt, fremde
-    Schluessel waren es nicht -- und der Egress traegt Prompt-Koerper, ohne
-    sie zu deuten.
-
-    Geprueft werden NAMEN, nie Werte: ein Pruefstand, der ein Geheimnis in
-    seine eigene Fehlermeldung schreibt, ist der Angriff, den er sucht.
-    """
-    import shutil
-    import subprocess
-    if shutil.which("systemctl") is None:
-        pytest.skip("kein systemd")
-    roh = subprocess.run(["systemctl", "--user", "show",
-                          "daimon-mind.service", "-p", "MainPID", "--value"],
-                         capture_output=True, text=True, timeout=10)
-    pid = int((roh.stdout or "0").strip() or 0)
-    if pid <= 0:
-        pytest.skip("daimon-mind laeuft nicht -- nicht messbar")
-    try:
-        umgebung = pathlib.Path(f"/proc/{pid}/environ").read_bytes()
-    except OSError as exc:
-        pytest.skip(f"environ nicht lesbar: {exc}")
-    namen = [v.split(b"=", 1)[0].decode("utf-8", "replace")
-             for v in umgebung.split(b"\0") if b"=" in v]
-    verdacht = [n for n in namen
-                if any(m in n.upper()
-                       for m in ("KEY", "TOKEN", "SECRET", "ANTHROPIC"))]
-    assert verdacht == [], verdacht
+# `test_mind_traegt_keinen_fremden_schluessel_in_der_umgebung` (T-6.9, 14.08.)
+# stand hier und ist am 01.09. nach `tests/test_umgebungswaechter.py` gezogen.
+# Grund: er kannte eine von 23 Units und hatte drei `pytest.skip`-Ausgaenge --
+# kein systemd, MainPID <= 0, environ nicht lesbar. Ein Skip ist in der Bilanz
+# gruen, und genau deshalb ist derselbe Befund dreimal aufgetreten (14.08.
+# ELEVENLABS/MISTRAL, 29.08. NVIDIA, 01.09. NVIDIA/OPENROUTER). Zwei Fassungen
+# waeren eine Regel und eine Attrappe; hier bleibt nur der Zeiger.
 
 
 def test_egress_hat_netz_und_den_token_ueber_credentials():

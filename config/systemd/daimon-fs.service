@@ -83,5 +83,29 @@ SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
 # Verbot hier würde den Broker um seine einzige TOCTOU-freie Auflösung
 # bringen.
 
+# --- Fremde Schluessel aus der Umgebung des Benutzermanagers ---------------
+# PFLASTER, kein Entwurf. Die Liste ist per Konstruktion ENGER als das
+# Suchmuster des Waechters (KEY|TOKEN|SECRET|ANTHROPIC) und kann es nie
+# einholen: sie faengt nur Namen, die jemand aufgeschrieben hat. Wer morgen
+# einen Schluessel anders nennt, kommt durch. Die Erlaubnislisten-Frage --
+# Umgebung leeren und nur das Gebrauchte zurueckgeben -- ist offen und wird
+# getrennt entschieden.
+#
+# Dritte Auflage desselben Befundes, nicht die zweite: 14.08. (T-6.9,
+# ELEVENLABS/MISTRAL im Mind), 29.08. (NVIDIA, FROZEN-HALTE.md: "Befund am
+# Betrieb, kein Pruefstandsfehler"), 01.09. (NVIDIA/OPENROUTER in Mind und
+# Plan). Zweimal war die Liste da und die zwei neuen Namen fehlten darin.
+#
+# Wortgleich in JEDER Unit unter config/systemd/, auch in denen ohne Netz:
+# ein Kindprozess erbt die Umgebung erneut, und /proc/<pid>/environ liest
+# jeder Prozess desselben Benutzers. Systemd kennt keine gemeinsame Fassung
+# ohne Drop-in ausserhalb des Repos; deckungsgleich haelt die Kopien
+# tests/test_umgebungswaechter.py -- derselbe Waechter misst die laufenden
+# Prozesse, und ein nicht laufender Dienst ist bei ihm kein stiller Skip.
+UnsetEnvironment=ANTHROPIC_API_KEY ELEVENLABS_API_KEY MISTRAL_API_KEY
+UnsetEnvironment=OPENAI_API_KEY GEMINI_API_KEY GOOGLE_API_KEY HF_TOKEN
+UnsetEnvironment=GITHUB_TOKEN GH_TOKEN AWS_SECRET_ACCESS_KEY
+UnsetEnvironment=NVIDIA_API_KEY OPENROUTER_API_KEY
+
 [Install]
 WantedBy=graphical-session.target

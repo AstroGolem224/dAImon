@@ -83,6 +83,12 @@ InaccessiblePaths=%t/daimon/aktion.sock
 UnsetEnvironment=ANTHROPIC_API_KEY ELEVENLABS_API_KEY MISTRAL_API_KEY
 UnsetEnvironment=OPENAI_API_KEY GEMINI_API_KEY GOOGLE_API_KEY HF_TOKEN
 UnsetEnvironment=GITHUB_TOKEN GH_TOKEN AWS_SECRET_ACCESS_KEY
+UnsetEnvironment=NVIDIA_API_KEY OPENROUTER_API_KEY
+# NVIDIA_API_KEY und OPENROUTER_API_KEY nachgetragen am 01.09.:
+# dritte Auflage desselben Befundes, beide standen im laufenden
+# Prozess dieser Unit. Der Rest der Begruendung -- Pflaster, enger
+# als das Suchmuster des Waechters -- steht wortgleich in jeder
+# anderen Unit unter config/systemd/.
 
 # --- Haertung nach Design 7.5 ----------------------------------------------
 NoNewPrivileges=yes

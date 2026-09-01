@@ -5,7 +5,7 @@ Eintrag ist eine BEWUSSTE Vereinfachung mit benannter Obergrenze -- keine
 Nachlaessigkeit, sondern eine Entscheidung, die jemand zurueckdrehen darf,
 wenn die Obergrenze erreicht ist.
 
-**24 Eintraege in 20 Dateien.**
+**25 Eintraege in 21 Dateien.**
 
 Gesucht wird in `daimon/`, `face/src/`, `tools/` und `config/` -- NICHT in
 `tests/mutants/` und `tests/fixtures/known-good/`. Die enthalten Kopien des
@@ -108,6 +108,11 @@ Nachschreiben, und dafür ist der `grep` oben da.
 ## `face/src/menu.rs`
 
 - **Zeile 293** — /// ponytail: relative Pfade. Ein absoluter gehoert in die Konfiguration,
+
+## `tools/doppelself_gesichter.py`
+
+- **Zeile 459** — die Decke des Verfahrens, ausdruecklich festgehalten statt
+  weggewuenscht: gesaettigtes Gruen IM Motiv faellt beim Chroma-Key mit heraus.
 
 ## `tools/generate-action-candidates.py`
 
