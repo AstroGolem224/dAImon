@@ -34,6 +34,16 @@ pub struct FaceState {
     pub frames_rendered: u64,
     /// T-2.2: gezeichnete Buffer der eigenen Blasen-Subsurface.
     pub bubble_frames_rendered: u64,
+    /// T-9.2: jeder Schlag der Animationsuhr -- auch einer, der nichts
+    /// zeichnet.
+    ///
+    /// Getrennt von `frames_rendered`, weil die beiden verschiedene Fehler
+    /// sehen. Ein Takt, der sich nicht wieder aushaengt, feuert weiter, bekommt
+    /// von `Animator::tick` aber `false` und zeichnet nichts: `frames_rendered`
+    /// bliebe stehen und meldete Ruhe, wo die Schleife zwoelfmal je Sekunde
+    /// aufwacht. Genau diese Zusage misst T-9.2, und ohne eigenen Zaehler
+    /// musste der Verifizierer sie am Kernel ablesen.
+    pub takt_schlaege: u64,
     /// T-1.8: wie oft ein Ton tatsaechlich gestartet wurde.
     pub toene_gespielt: u64,
     /// Jedes vom Compositor empfangene Layer-Surface-configure.
@@ -86,6 +96,7 @@ impl Default for FaceState {
             last_render_ts: 0.0,
             frames_rendered: 0,
             bubble_frames_rendered: 0,
+            takt_schlaege: 0,
             toene_gespielt: 0,
             configure_empfangen: 0,
             sprite_x: 0,
@@ -109,6 +120,7 @@ impl FaceState {
                 "{{\"v\":1,\"rev\":{},\"mood\":\"{}\",\"sprite\":\"{}\",",
                 "\"bubble_visible\":{},\"sichtbar\":{},\"last_render_ts\":{:.6},",
                 "\"frames_rendered\":{},\"bubble_frames_rendered\":{},",
+                "\"takt_schlaege\":{},",
                 "\"toene_gespielt\":{},\"configure_empfangen\":{},",
                 "\"sprite_x\":{},\"sprite_y\":{},",
                 "\"output\":\"{}\",\"output_wechsel\":{},",
@@ -125,6 +137,7 @@ impl FaceState {
             self.last_render_ts,
             self.frames_rendered,
             self.bubble_frames_rendered,
+            self.takt_schlaege,
             self.toene_gespielt,
             self.configure_empfangen,
             self.sprite_x,
@@ -163,6 +176,12 @@ impl FaceState {
 
     pub fn bubble_frame_gezaehlt(&mut self) {
         self.bubble_frames_rendered += 1;
+    }
+
+    /// T-9.2: die Uhr hat geschlagen. Ob daraus ein Bild wurde, sagt
+    /// `frames_rendered` -- hier wird nur das Wecken gezaehlt.
+    pub fn takt_schlag_gezaehlt(&mut self) {
+        self.takt_schlaege += 1;
     }
 }
 
@@ -234,6 +253,7 @@ mod tests {
             last_render_ts: 1.5,
             frames_rendered: 7,
             bubble_frames_rendered: 2,
+            takt_schlaege: 12,
             toene_gespielt: 3,
             configure_empfangen: 4,
             sprite_x: 120,
@@ -258,6 +278,7 @@ mod tests {
             "last_render_ts",
             "frames_rendered",
             "bubble_frames_rendered",
+            "takt_schlaege",
             "configure_empfangen",
             "sprite_x",
             "sprite_y",
@@ -361,6 +382,32 @@ mod tests {
         s.commit_gezaehlt(false);
         assert_eq!(s.frames_rendered, 0);
         assert_eq!(s.last_render_ts, 0.0);
+    }
+
+    /// Die Zusage aus T-9.2: der Taktzaehler zaehlt WECKVORGAENGE, nicht
+    /// Bilder. Ein Schlag ohne gezeichnetes Bild -- genau der Fall, den ein
+    /// haengengebliebener Timer erzeugt -- muss ihn trotzdem bewegen.
+    #[test]
+    fn taktschlag_ohne_gezeichnetes_bild_bewegt_nur_den_taktzaehler() {
+        // GIVEN einen Zustand, in dem schon drei Bilder gezeichnet wurden:
+        let mut s = FaceState {
+            frames_rendered: 3,
+            ..Default::default()
+        };
+
+        // WHEN die Uhr schlaegt, ohne dass etwas committet wird,
+        s.takt_schlag_gezaehlt();
+
+        // THEN steigt nur der Taktzaehler:
+        assert_eq!(s.takt_schlaege, 1);
+        assert_eq!(s.frames_rendered, 3);
+
+        // Positivkontrolle: ein Commit bewegt weiterhin den Bildzaehler und
+        // NICHT den Taktzaehler -- sonst waere oben nur gemessen, dass
+        // `commit_gezaehlt` nie gerufen wurde.
+        s.commit_gezaehlt(true);
+        assert_eq!(s.frames_rendered, 4);
+        assert_eq!(s.takt_schlaege, 1);
     }
 
     #[test]

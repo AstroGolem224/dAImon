@@ -36,13 +36,13 @@ pub struct AtlasLayout {
     pub cell_h: u32,
     pub cols: u32,
     pub rows: u32,
-    pub states: HashMap<String, u32>,
+    pub states: HashMap<String, Zeileneintrag>,
     /// Optionaler zweiter Block: eine Zeile je MOOD statt je Pose. Leer heisst
     /// „dieses Pet hat keine Mood-Zeilen" -- dann gilt der Weg ueber
     /// `mood_zu_sprite` unveraendert. Ein eigener Block und nicht `states`,
     /// weil die Namen kollidieren: das Ember-Sheet hat eine Pose `failed`,
     /// die etwas anderes meint als der Mood `failed`.
-    pub moods: HashMap<String, u32>,
+    pub moods: HashMap<String, Zeileneintrag>,
     /// Darf der Mood-Farbton auf die Zellen gelegt werden? Fuer das
     /// Ember-Sheet ja -- dort IST die Toenung der Mood. Fuer ein Pet mit
     /// einem echten Gesicht je Mood nein: violette Haut sagt nichts, was das
@@ -60,7 +60,7 @@ impl Default for AtlasLayout {
             rows: STANDARD_ROWS,
             states: STANDARD_STATES
                 .into_iter()
-                .map(|(name, row)| (name.to_owned(), row))
+                .map(|(name, row)| (name.to_owned(), Zeileneintrag::standbild(row)))
                 .collect(),
             moods: HashMap::new(),
             toenung: true,
@@ -95,8 +95,8 @@ impl AtlasLayout {
         if let Some(states) = root.get("states").and_then(Value::as_object) {
             layout.states.clear();
             for (name, state) in states {
-                if let Some(row) = zeile_lesen(state, layout.rows) {
-                    layout.states.insert(name.clone(), row);
+                if let Some(eintrag) = eintrag_lesen(state, layout.rows, layout.cols) {
+                    layout.states.insert(name.clone(), eintrag);
                 }
             }
         }
@@ -105,8 +105,8 @@ impl AtlasLayout {
         // die Karte leer und nichts am bisherigen Weg aendert sich.
         if let Some(moods) = root.get("moods").and_then(Value::as_object) {
             for (name, mood) in moods {
-                if let Some(row) = zeile_lesen(mood, layout.rows) {
-                    layout.moods.insert(name.clone(), row);
+                if let Some(eintrag) = eintrag_lesen(mood, layout.rows, layout.cols) {
+                    layout.moods.insert(name.clone(), eintrag);
                 }
             }
         }
@@ -130,18 +130,49 @@ impl AtlasLayout {
             .join(&self.spritesheet_path)
     }
 
-    fn idle_zeile(&self) -> u32 {
-        self.states.get("idle").copied().unwrap_or(0)
+    fn idle_eintrag(&self) -> Zeileneintrag {
+        self.states
+            .get("idle")
+            .copied()
+            .unwrap_or_else(|| Zeileneintrag::standbild(0))
+    }
+}
+
+/// Eine Zeile des Sheets samt der Frage, ob sie ein Standbild ist oder ein
+/// Bewegungsloop.
+///
+/// `spalten` ist der Vertrag mit der Idle-CPU-Zusage aus T-1.5 (T-9.2): eine
+/// Zeile mit einer Spalte bekommt keinen Takt, also keinen Timer und keinen
+/// Frame-Callback. Die Zusage haengt damit an einer Zahl im Manifest, nicht am
+/// Namen eines Moods.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Zeileneintrag {
+    pub nummer: u32,
+    pub spalten: u32,
+}
+
+impl Zeileneintrag {
+    pub fn standbild(nummer: u32) -> Self {
+        Self { nummer, spalten: 1 }
     }
 }
 
 /// `{"row": n}` mit n innerhalb des Sheets. Alles andere ist kein Eintrag.
-fn zeile_lesen(eintrag: &Value, rows: u32) -> Option<u32> {
-    eintrag
+///
+/// `frames` ist optional; fehlt es, ist die Zeile ein Standbild. Das ist
+/// bewusst die Vorgabe und nicht `cols`: sonst faengt jedes bestehende Pet mit
+/// mehrspaltigem Sheet -- das mitgelieferte hat acht -- ungefragt an zu laufen,
+/// auch im Ruhezustand. Mehr Bilder als das Sheet hat, gibt es nicht.
+fn eintrag_lesen(eintrag: &Value, rows: u32, cols: u32) -> Option<Zeileneintrag> {
+    let nummer = eintrag
         .get("row")
         .and_then(Value::as_u64)
         .and_then(|row| u32::try_from(row).ok())
-        .filter(|row| *row < rows)
+        .filter(|row| *row < rows)?;
+    let spalten = positive_u32(eintrag.get("frames"))
+        .unwrap_or(1)
+        .min(cols.max(1));
+    Some(Zeileneintrag { nummer, spalten })
 }
 
 fn positive_u32(value: Option<&Value>) -> Option<u32> {
@@ -154,7 +185,19 @@ fn positive_u32(value: Option<&Value>) -> Option<u32> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ZustandsAbbildung {
     pub zeile: u32,
+    /// Animationsbilder dieser Zeile, mindestens 1.
+    pub spalten: u32,
     pub zurueckgefallen: bool,
+}
+
+impl ZustandsAbbildung {
+    fn zurueckgefallen(eintrag: Zeileneintrag) -> Self {
+        Self {
+            zeile: eintrag.nummer,
+            spalten: eintrag.spalten,
+            zurueckgefallen: true,
+        }
+    }
 }
 
 /// `name` ist der bereits ueber `hub::mood_zu_sprite` verdichtete Zustand,
@@ -164,9 +207,10 @@ pub struct ZustandsAbbildung {
 /// zwei Namen wirft und die verlorenen sechs genau die sind, die ein
 /// Gesichts-Pet unterscheiden will.
 pub fn zustand_abbilden(name: &str, mood: &str, layout: &AtlasLayout) -> ZustandsAbbildung {
-    if let Some(zeile) = layout.moods.get(mood).copied() {
+    if let Some(eintrag) = layout.moods.get(mood).copied() {
         return ZustandsAbbildung {
-            zeile,
+            zeile: eintrag.nummer,
+            spalten: eintrag.spalten,
             zurueckgefallen: false,
         };
     }
@@ -174,21 +218,16 @@ pub fn zustand_abbilden(name: &str, mood: &str, layout: &AtlasLayout) -> Zustand
         "ruhig" => "idle",
         "dringend" => "waiting",
         _ => {
-            return ZustandsAbbildung {
-                zeile: layout.idle_zeile(),
-                zurueckgefallen: true,
-            };
+            return ZustandsAbbildung::zurueckgefallen(layout.idle_eintrag());
         }
     };
     match layout.states.get(manifest_name).copied() {
-        Some(zeile) => ZustandsAbbildung {
-            zeile,
+        Some(eintrag) => ZustandsAbbildung {
+            zeile: eintrag.nummer,
+            spalten: eintrag.spalten,
             zurueckgefallen: false,
         },
-        None => ZustandsAbbildung {
-            zeile: layout.idle_zeile(),
-            zurueckgefallen: true,
-        },
+        None => ZustandsAbbildung::zurueckgefallen(layout.idle_eintrag()),
     }
 }
 
@@ -427,8 +466,63 @@ mod tests {
             (192, 208, 8, 9)
         );
         assert_eq!(layout.states.len(), 9);
-        assert_eq!(layout.states["idle"], 0);
-        assert_eq!(layout.states["waiting"], 6);
+        // Das mitgelieferte Sheet traegt seine Bildzahlen seit jeher im
+        // hatch-pet-Format. Bis T-9.2 hat sie nur niemand gelesen.
+        assert_eq!(
+            layout.states["idle"],
+            Zeileneintrag {
+                nummer: 0,
+                spalten: 6
+            }
+        );
+        assert_eq!(
+            layout.states["waiting"],
+            Zeileneintrag {
+                nummer: 6,
+                spalten: 6
+            }
+        );
+    }
+
+    /// Ohne `frames` ein Standbild -- und zwar auch dann, wenn das Sheet acht
+    /// Spalten hat. Die Vorgabe `cols` waere bequem und wuerde jedes
+    /// bestehende Pet ungefragt in Bewegung setzen.
+    #[test]
+    fn eintrag_ohne_frames_ist_ein_standbild_trotz_mehrspaltigem_sheet() {
+        // GIVEN ein achtspaltiges Sheet, dessen Moods nichts ueber Bilder sagen:
+        let layout = AtlasLayout::aus_manifest_text(
+            r#"{"atlas":{"cols":8,"rows":8},"moods":{"working":{"row":4}}}"#,
+        );
+
+        // WHEN der Eintrag gelesen wird,
+        // THEN steht er auf einem Bild:
+        assert_eq!(
+            layout.moods["working"],
+            Zeileneintrag {
+                nummer: 4,
+                spalten: 1
+            }
+        );
+    }
+
+    /// Positivkontrolle zum Test darueber: mit `frames` kommt die Zahl auch
+    /// wirklich an. Sonst waere „ohne `frames` ein Standbild" gruen, weil das
+    /// Feld gar nicht gelesen wird.
+    #[test]
+    fn eintrag_mit_frames_uebernimmt_die_zahl_und_deckelt_sie_auf_die_spalten() {
+        // GIVEN ein achtspaltiges Sheet mit einer ehrlichen und einer
+        // uebertriebenen Angabe:
+        let layout = AtlasLayout::aus_manifest_text(
+            r#"{"atlas":{"cols":8,"rows":8},
+                "moods":{"working":{"row":4,"frames":6},
+                         "failed":{"row":6,"frames":99}}}"#,
+        );
+
+        // WHEN beide gelesen werden,
+        // THEN gilt die ehrliche Zahl, und die uebertriebene endet bei der
+        // Spaltenzahl -- sonst liefe der Loop in Zellen, die es nicht gibt:
+        assert_eq!(layout.moods["working"].spalten, 6);
+        assert_eq!(layout.moods["failed"].spalten, 8);
     }
 
     #[test]
@@ -484,6 +578,7 @@ mod tests {
             zustand_abbilden("ruhig", "idle", &layout),
             ZustandsAbbildung {
                 zeile: 0,
+                spalten: 1,
                 zurueckgefallen: false
             }
         );
@@ -491,6 +586,7 @@ mod tests {
             zustand_abbilden("dringend", "needs_input", &layout),
             ZustandsAbbildung {
                 zeile: 6,
+                spalten: 1,
                 zurueckgefallen: false
             }
         );
@@ -498,6 +594,7 @@ mod tests {
             zustand_abbilden("unbekannt", "gibt-es-nicht", &layout),
             ZustandsAbbildung {
                 zeile: 0,
+                spalten: 1,
                 zurueckgefallen: true
             }
         );
@@ -514,6 +611,7 @@ mod tests {
             zustand_abbilden("dringend", "failed", &layout),
             ZustandsAbbildung {
                 zeile: 6,
+                spalten: 1,
                 zurueckgefallen: false
             }
         );
@@ -532,6 +630,7 @@ mod tests {
             zustand_abbilden("dringend", "failed", &layout),
             ZustandsAbbildung {
                 zeile: 5,
+                spalten: 1,
                 zurueckgefallen: false
             }
         );
@@ -539,13 +638,14 @@ mod tests {
             zustand_abbilden("ruhig", "thinking", &layout),
             ZustandsAbbildung {
                 zeile: 3,
+                spalten: 1,
                 zurueckgefallen: false
             }
         );
         // Ein Mood ohne eigene Zeile faellt auf den alten Weg zurueck.
         assert_eq!(
             zustand_abbilden("ruhig", "working", &layout).zeile,
-            layout.idle_zeile()
+            layout.idle_eintrag().nummer
         );
     }
 
@@ -609,7 +709,8 @@ mod tests {
         }
         // Acht Moods, acht verschiedene Zeilen -- sonst zeigt das Pet
         // zwei Zustaende mit demselben Gesicht an.
-        let zeilen: std::collections::HashSet<u32> = layout.moods.values().copied().collect();
+        let zeilen: std::collections::HashSet<u32> =
+            layout.moods.values().map(|e| e.nummer).collect();
         assert_eq!(zeilen.len(), 8);
     }
 
@@ -622,6 +723,7 @@ mod tests {
             zustand_abbilden("dringend", "needs_input", &layout),
             ZustandsAbbildung {
                 zeile: 3,
+                spalten: 1,
                 zurueckgefallen: true
             }
         );

@@ -23,13 +23,14 @@ use std::{
 use bubble::{Bubble, BubbleRenderer};
 use calloop::{
     channel::{channel, Event as ChannelEvent},
-    EventLoop,
+    timer::{TimeoutAction, Timer},
+    EventLoop, LoopHandle, RegistrationToken,
 };
 use control::ControlSocket;
 use diag::{DiagSocket, FaceState};
 use hub::{HubVerbindung, HubZustand};
 use position::{Loslassen, Ziehen};
-use render::RenderSteuerung;
+use render::{Animator, RenderSteuerung};
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
@@ -56,6 +57,35 @@ use wayland_client::{
     protocol::{wl_output, wl_pointer, wl_seat, wl_surface},
     Connection, QueueHandle,
 };
+
+/// Bildrate der Sprite-Animation. 12 statt 24: der Loop ist ein
+/// Bewegungszitat, kein Film, und jedes Bild kostet eine 173-KB-Kopie auf der
+/// CPU. Bis das Manifest eine eigene Rate je Mood traegt (T-9.2 Schritt 5)
+/// gilt diese eine.
+const ANIMATION_FPS: u32 = 12;
+
+/// Moods, in denen das Pet stillsteht -- gleich wie viele Bilder das Sheet
+/// fuer die Zeile anbietet.
+///
+/// Das mitgelieferte Pet erklaert fuer seine idle-Zeile sechs Bilder. Ohne
+/// diese Liste liefe es im Ruhezustand dauerhaft mit 12 fps, und die
+/// gemessene Idle-CPU-Zusage aus T-1.5 (unter 1,0 %, nachgefahren von T-2.1,
+/// T-2.2 und T-2.4) faellt beim naechsten Lauf.
+///
+/// `sleeping` steht dabei, obwohl `Sichtbarkeit::fuer_mood` es ohnehin
+/// unsichtbar macht: unsichtbar ist nicht dasselbe wie stillstehend, und ein
+/// Takt fuer Pixel, die niemand sieht, ist genau die Rechenzeit, die hier
+/// nicht anfallen soll.
+const RUHIGE_MOODS: [&str; 2] = ["idle", "sleeping"];
+
+/// Wie viele Bilder die aktuell gezeigte Zeile laufen darf.
+fn spalten_fuer(abbildung: &sprite::ZustandsAbbildung, mood: &str) -> u32 {
+    if RUHIGE_MOODS.contains(&mood) {
+        1
+    } else {
+        abbildung.spalten
+    }
+}
 
 #[derive(Debug, Default)]
 struct Optionen {
@@ -297,6 +327,17 @@ struct App {
     letzter_zipfel: Option<bubble::Zipfel>,
     hub: Option<HubVerbindung>,
     render: RenderSteuerung,
+    /// Der Bildtakt eines animierten Moods. Steht bei einem einspaltigen
+    /// Sheet still und fordert dann weder Timer noch Frame-Callback an --
+    /// das ist der Vertrag mit der Idle-CPU-Zusage aus T-1.5.
+    animator: Animator,
+    /// Handgriff auf die Ereignisschleife, um die Taktquelle einzuhaengen.
+    /// `None` bis kurz nach dem Bau der Schleife -- vorher wird nicht
+    /// gerendert.
+    schleife: Option<LoopHandle<'static, App>>,
+    /// Die EINE Taktquelle. `None` heisst: es gibt keinen Timer, und die
+    /// Schleife blockiert wie eh und je in `poll()`. Genau das misst T-1.5.
+    takt: Option<RegistrationToken>,
     ton: Tonspieler,
     ziehen: Option<Ziehen>,
     menu: menu::Menu,
@@ -315,6 +356,13 @@ impl App {
         match self.diagnose.lock() {
             Ok(mut zustand) => zustand.commit_gezaehlt(mit_buffer),
             Err(vergiftet) => vergiftet.into_inner().commit_gezaehlt(mit_buffer),
+        }
+    }
+
+    fn takt_schlag_zaehlen(&self) {
+        match self.diagnose.lock() {
+            Ok(mut zustand) => zustand.takt_schlag_gezaehlt(),
+            Err(vergiftet) => vergiftet.into_inner().takt_schlag_gezaehlt(),
         }
     }
 
@@ -607,7 +655,69 @@ impl App {
         self.sprite_rendern();
     }
 
+    /// Haelt den Bildtakt an der gezeigten Zeile. Muss vor jedem Rendern
+    /// laufen, weil Mood und Zustand aus zwei verschiedenen Quellen kommen und
+    /// keine davon hier ihren Wechsel meldet.
+    fn animator_nachfuehren(&mut self) {
+        let abbildung = zustand_abbilden(
+            &self.aktueller_zustand,
+            &self.aktueller_mood,
+            &self.atlas.layout,
+        );
+        let spalten = spalten_fuer(&abbildung, &self.aktueller_mood);
+        self.animator
+            .mood_setzen(abbildung.zeile, spalten, ANIMATION_FPS, Instant::now());
+        self.takt_einhaengen_wenn_noetig();
+    }
+
+    /// Haengt die Taktquelle ein, sobald eine Zeile mehr als ein Bild hat.
+    ///
+    /// Nur einhaengen, nie aushaengen: das Aushaengen macht die Quelle selbst,
+    /// indem sie `Drop` zurueckgibt. Von hier aus zu entfernen waere ein
+    /// `remove()` auf genau die Quelle, aus deren Callback dieser Aufruf
+    /// stammt.
+    fn takt_einhaengen_wenn_noetig(&mut self) {
+        if self.takt.is_some() || !self.animator.laeuft() {
+            return;
+        }
+        let Some(schleife) = self.schleife.clone() else {
+            return;
+        };
+        let dauer = self.animator.schrittdauer();
+        match schleife.insert_source(Timer::from_duration(dauer), move |_, _, app| {
+            app.takt_schlagen()
+        }) {
+            Ok(token) => self.takt = Some(token),
+            // Ohne Takt steht das Pet still. Das ist haesslich, aber kein
+            // Grund, das Face zu beenden.
+            Err(fehler) => eprintln!("Animationstakt konnte nicht starten: {fehler}"),
+        }
+    }
+
+    /// Ein Schlag der Taktquelle. Gibt zurueck, ob sie weiterlaufen soll.
+    fn takt_schlagen(&mut self) -> TimeoutAction {
+        // Vor jeder Weiche gezaehlt: ein Schlag, der nichts zeichnet, ist
+        // genau der Fall, den dieser Zaehler sichtbar machen soll.
+        self.takt_schlag_zaehlen();
+        if !self.animator.laeuft() {
+            self.takt = None;
+            return TimeoutAction::Drop;
+        }
+        if self.animator.tick(Instant::now()) {
+            self.sprite_rendern();
+        }
+        // Nach dem Rendern erneut fragen: `sprite_rendern` fuehrt den Animator
+        // nach, und der Mood kann in derselben Runde still geworden sein.
+        if self.animator.laeuft() {
+            TimeoutAction::ToDuration(self.animator.schrittdauer())
+        } else {
+            self.takt = None;
+            TimeoutAction::Drop
+        }
+    }
+
     fn sprite_rendern(&mut self) {
+        self.animator_nachfuehren();
         let (toenung, _) = self.render.wert(Instant::now());
         let callback_armieren = self.sichtbarkeit.0 && self.render.callback_armieren();
         let sichtbar = self.sichtbarkeit.0;
@@ -622,6 +732,7 @@ impl App {
                 compositor,
                 pool,
                 atlas,
+                animator,
                 ..
             } = self;
             overlay
@@ -635,6 +746,7 @@ impl App {
                     &mood,
                     &voice,
                     mitschnitt,
+                    animator,
                     toenung,
                     sichtbar,
                     &qh,
@@ -982,8 +1094,8 @@ impl App {
             Ok(pet) => match sprite::SpriteAtlas::laden(&pet.manifest) {
                 Ok(neuer) => {
                     // Die Zellgroesse darf sich aendern -- Ember ist 192x208,
-                    // ein Pet aus einer quadratischen Vorlage 208x208. Der
-                    // Sprite-PUFFER entsteht ohnehin bei jedem Commit aus
+                    // ein Doppel-Self aus einer quadratischen Vorlage 208x208.
+                    // Der Sprite-PUFFER entsteht ohnehin bei jedem Commit aus
                     // `atlas.layout`; stehen bliebe nur `sprite_groesse`, und
                     // daran haengen Klemmung und Blasenposition.
                     let groesse = (neuer.layout.cell_w as i32, neuer.layout.cell_h as i32);
@@ -1352,6 +1464,7 @@ impl LayerShellHandler for App {
             .as_mut()
             .is_some_and(|overlay| overlay.transparenten_puffer_committen(&mut self.pool));
         if basis_committiert {
+            self.animator_nachfuehren();
             let sprite_ergebnis = {
                 let sichtbar = self.sichtbarkeit.0;
                 let Self {
@@ -1364,6 +1477,7 @@ impl LayerShellHandler for App {
                     aktueller_voice,
                     aktueller_mitschnitt,
                     render,
+                    animator,
                     qh,
                     ..
                 } = self;
@@ -1380,6 +1494,7 @@ impl LayerShellHandler for App {
                         aktueller_mood,
                         aktueller_voice,
                         *aktueller_mitschnitt,
+                        animator,
                         toenung,
                         sichtbar,
                         qh,
@@ -1565,6 +1680,9 @@ fn main() {
         letzter_zipfel: None,
         hub: None,
         render: RenderSteuerung::neu("idle", Instant::now()),
+        animator: Animator::neu(0, 1, ANIMATION_FPS, Instant::now()),
+        schleife: None,
+        takt: None,
         ton: Tonspieler::neu(ton_an),
         ziehen: None,
         menu: menu::Menu::neu(),
@@ -1639,6 +1757,7 @@ fn main() {
     let mut event_loop: EventLoop<App> =
         EventLoop::try_new().expect("calloop-EventLoop konnte nicht starten");
     let handle = event_loop.handle();
+    app.schleife = Some(handle.clone());
     WaylandSource::new(verbindung.clone(), event_queue)
         .insert(handle.clone())
         .expect("Wayland-FD konnte nicht in calloop eingefuegt werden");
@@ -1711,7 +1830,8 @@ fn main() {
         .map(|pfad| HubVerbindung::starten(pfad, hub_sender));
 
     // None blockiert bis Wayland oder ein Steuerbefehl den poll()-Aufruf
-    // weckt. Es gibt weder Timer noch dauernd neu armierte Frame-Callbacks.
+    // weckt. Ein Timer existiert nur, solange eine Zeile mehr als ein Bild
+    // hat -- im Ruhezustand gibt es ihn nicht, und genau das misst T-1.5.
     while !app.beendet {
         if let Err(fehler) = event_loop.dispatch(None, &mut app) {
             eprintln!("calloop-Ereignisschleife beendet: {fehler}");
@@ -1732,6 +1852,25 @@ mod tests {
 
     fn argumente(werte: &[&str]) -> Vec<String> {
         werte.iter().map(|wert| (*wert).to_string()).collect()
+    }
+
+    /// Die Zusage aus T-9.2: `idle` und `sleeping` stehen still. Gemessen wird
+    /// gegen das mitgelieferte Manifest, das fuer seine idle-Zeile sechs
+    /// Bilder erklaert -- ohne die Weiche liefe das Pet im Ruhezustand.
+    #[test]
+    fn spalten_fuer_ruhigen_mood_bleibt_eins_obwohl_das_sheet_mehr_bilder_hat() {
+        // GIVEN das mitgelieferte Pet:
+        let layout = sprite::AtlasLayout::aus_manifest_text(include_str!("../assets/pet.json"));
+        let ruhig = zustand_abbilden("ruhig", "idle", &layout);
+
+        // WHEN dieselbe Abbildung einmal als Ruhe-Mood und einmal als
+        // Arbeits-Mood bewertet wird,
+        // THEN steht nur der Ruhe-Mood still -- und die 1 kommt von der
+        // Weiche, nicht davon, dass das Sheet nur ein Bild haette:
+        assert!(ruhig.spalten > 1, "Testvoraussetzung: mehrbildige Zeile");
+        assert_eq!(spalten_fuer(&ruhig, "idle"), 1);
+        assert_eq!(spalten_fuer(&ruhig, "sleeping"), 1);
+        assert_eq!(spalten_fuer(&ruhig, "working"), ruhig.spalten);
     }
 
     #[test]
@@ -1835,6 +1974,7 @@ mod tests {
             pet_manifest_waehlen(None, None, Some("magier".into()), &cwd, &dev),
             (assets.join("magier/pet.json"), ManifestQuelle::Auswahl)
         );
+        // Ausdrueckliche Angaben schlagen die Wahl weiterhin.
         let cli = PathBuf::from("/cli/pet.json");
         assert_eq!(
             pet_manifest_waehlen(Some(cli.clone()), None, Some("magier".into()), &cwd, &dev),

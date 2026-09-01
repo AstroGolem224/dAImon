@@ -221,6 +221,96 @@ impl RenderSteuerung {
     }
 }
 
+/// Schaltet die Spalte eines animierten Moods weiter.
+///
+/// Der Takt gehoert nicht in die `RenderSteuerung`: der Farbuebergang dort ist
+/// endlich und laeuft nach 320 ms aus, dieser hier laeuft, solange der Mood
+/// gilt. Zwei Uhren mit verschiedener Lebensdauer in einer Struktur waeren
+/// zwei Fassungen derselben Regel.
+///
+/// `spalten == 1` ist der Vertrag mit der Idle-CPU-Zusage aus T-1.5: ein Mood
+/// mit einer Spalte hat keinen Takt, also auch keinen Timer und keinen
+/// Frame-Callback. Das gilt ueber die Zahl, nicht ueber den Namen des Moods.
+pub struct Animator {
+    zeile: u32,
+    spalten: u32,
+    schrittdauer: Duration,
+    spalte: u32,
+    letzter_schritt: Instant,
+}
+
+impl Animator {
+    /// `spalten` und `fps` kommen aus dem Pet-Manifest, also von ausserhalb.
+    /// Null waere eine Division durch null bzw. ein Modulo durch null, darum
+    /// hier die einzige Klemme -- weiter innen gibt es keine mehr.
+    pub fn neu(zeile: u32, spalten: u32, fps: u32, jetzt: Instant) -> Self {
+        Self {
+            zeile,
+            spalten: spalten.max(1),
+            schrittdauer: Duration::from_secs(1) / fps.max(1),
+            spalte: 0,
+            letzter_schritt: jetzt,
+        }
+    }
+
+    pub fn spalte(&self) -> u32 {
+        self.spalte
+    }
+
+    /// Wie viele Bilder die gezeigte Zeile hat. Der Eingaberegion-Cache
+    /// braucht die Zahl, weil dieselbe Zeile als Standbild eine andere
+    /// Silhouette hat als im Lauf.
+    pub fn spalten(&self) -> u32 {
+        self.spalten
+    }
+
+    /// Abstand zweier Bilder. Der Timer braucht ihn, um sich selbst
+    /// nachzulegen.
+    pub fn schrittdauer(&self) -> Duration {
+        self.schrittdauer
+    }
+
+    /// Ob ueberhaupt ein Takt noetig ist. Die Weiche fuer den Timer.
+    pub fn laeuft(&self) -> bool {
+        self.spalten > 1
+    }
+
+    /// Schaltet auf den Stand von `jetzt` und meldet, ob sich die Spalte
+    /// geaendert hat -- das ist das `dirty` des Aufrufers.
+    ///
+    /// Es werden alle seit dem letzten Schritt faelligen Schritte auf einmal
+    /// nachgeholt. Ein verspaeteter Weckruf darf die Schleife nicht bummeln
+    /// lassen, sonst laeuft ein Loop unter Last langsamer als der naechste.
+    pub fn tick(&mut self, jetzt: Instant) -> bool {
+        if !self.laeuft() {
+            return false;
+        }
+        let vergangen = jetzt.saturating_duration_since(self.letzter_schritt);
+        let schritte = (vergangen.as_nanos() / self.schrittdauer.as_nanos()) as u32;
+        if schritte == 0 {
+            return false;
+        }
+        self.letzter_schritt += self.schrittdauer * schritte;
+        let neue_spalte = (self.spalte + schritte) % self.spalten;
+        let geaendert = neue_spalte != self.spalte;
+        self.spalte = neue_spalte;
+        geaendert
+    }
+
+    /// Beim Wechsel der Zeile oder der Bildzahl: Loop faengt vorn an.
+    ///
+    /// Unveraendert heisst hier: nichts tun. Der Aufrufer ruft das vor jedem
+    /// Rendern auf, und ein bedingungsloses Zuruecksetzen wuerde die Spalte
+    /// bei jedem Frame wieder auf 0 stellen -- die Animation stuende dann
+    /// still und saehe aus wie der Zustand von vorher.
+    pub fn mood_setzen(&mut self, zeile: u32, spalten: u32, fps: u32, jetzt: Instant) {
+        if self.zeile == zeile && self.spalten == spalten.max(1) {
+            return;
+        }
+        *self = Self::neu(zeile, spalten, fps, jetzt);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,6 +406,109 @@ mod tests {
         assert!(fertig);
         assert!(!render.dirty);
         assert!(!render.callback_armieren());
+    }
+
+    /// 12 fps ergeben 83,3 ms je Schritt. Die Weckzeitpunkte liegen absichtlich
+    /// auf 84 ms und nicht exakt auf dem Schritt: ein Timer trifft nie genau.
+    #[test]
+    fn tick_vier_spalten_bei_zwoelf_fps_schaltet_der_reihe_nach_und_kehrt_zurueck() {
+        // GIVEN einen Animator mit vier Spalten bei 12 fps:
+        let start = Instant::now();
+        let mut animator = Animator::neu(0, 4, 12, start);
+        assert_eq!(animator.spalte(), 0);
+        assert!(animator.laeuft());
+
+        // WHEN wir ihn viermal im Schritttakt wecken,
+        // THEN durchlaeuft er 1, 2, 3 und landet wieder auf 0:
+        let schritt = Duration::from_millis(84);
+        for erwartet in [1, 2, 3, 0] {
+            assert!(animator.tick(start + schritt * erwartet_index(erwartet)));
+            assert_eq!(animator.spalte(), erwartet);
+        }
+    }
+
+    /// Hilft nur dem Test oben: die Spalten 1,2,3,0 liegen auf den Weckrufen
+    /// 1,2,3,4 -- die Null am Ende ist der vierte, nicht der nullte.
+    fn erwartet_index(spalte: u32) -> u32 {
+        if spalte == 0 {
+            4
+        } else {
+            spalte
+        }
+    }
+
+    /// Positivkontrolle zur Zusage aus T-1.5: ein Standbild-Mood hat keinen
+    /// Takt. Ohne diesen Test waere „`idle` zappelt nicht" nur eine Behauptung
+    /// ueber den Namen des Moods statt ueber seine Spaltenzahl.
+    #[test]
+    fn tick_eine_spalte_bleibt_auf_null_und_meldet_nie_eine_aenderung() {
+        // GIVEN einen Animator mit genau einer Spalte:
+        let start = Instant::now();
+        let mut animator = Animator::neu(0, 1, 12, start);
+
+        // WHEN wir ihn ueber eine volle Sekunde immer wieder wecken,
+        // THEN meldet er nie eine Aenderung und laeuft nach eigener Auskunft nicht:
+        assert!(!animator.laeuft());
+        for ms in [84, 168, 500, 1000] {
+            assert!(!animator.tick(start + Duration::from_millis(ms)), "{ms} ms");
+            assert_eq!(animator.spalte(), 0, "{ms} ms");
+        }
+    }
+
+    #[test]
+    fn tick_verspaeteter_weckruf_holt_alle_faelligen_schritte_auf_einmal_nach() {
+        // GIVEN einen Animator mit vier Spalten bei 12 fps:
+        let start = Instant::now();
+        let mut animator = Animator::neu(0, 4, 12, start);
+
+        // WHEN der erste Weckruf erst nach 250 ms kommt -- drei Schritte spaet,
+        // THEN steht er auf Spalte 3 und nicht auf 1:
+        assert!(animator.tick(start + Duration::from_millis(250)));
+        assert_eq!(animator.spalte(), 3);
+
+        // WHEN weitere 500 ms ohne Weckruf vergehen -- sechs Schritte,
+        // THEN laeuft der Loop einmal ganz durch und zwei darueber:
+        assert!(animator.tick(start + Duration::from_millis(750)));
+        assert_eq!(animator.spalte(), 1);
+    }
+
+    /// `animator_nachfuehren()` laeuft vor JEDEM Rendern. Setzte
+    /// `mood_setzen` bedingungslos zurueck, stuende die Spalte dauerhaft auf 0
+    /// -- die Animation saehe aus wie das Standbild von vorher, und zwar ohne
+    /// dass irgendein anderer Test es merkt.
+    #[test]
+    fn mood_setzen_mit_unveraenderter_zeile_laesst_den_laufenden_loop_stehen() {
+        // GIVEN einen Animator, der schon bei Spalte 2 steht:
+        let start = Instant::now();
+        let mut animator = Animator::neu(4, 8, 12, start);
+        let jetzt = start + Duration::from_millis(168);
+        animator.tick(jetzt);
+        assert_eq!(animator.spalte(), 2);
+
+        // WHEN dieselbe Zeile mit derselben Bildzahl erneut gesetzt wird,
+        // THEN bleibt die Spalte stehen:
+        animator.mood_setzen(4, 8, 12, jetzt);
+        assert_eq!(animator.spalte(), 2);
+
+        // WHEN dagegen die Bildzahl derselben Zeile wechselt,
+        // THEN faengt der Loop vorn an:
+        animator.mood_setzen(4, 6, 12, jetzt);
+        assert_eq!(animator.spalte(), 0);
+    }
+
+    #[test]
+    fn mood_setzen_nach_halbem_loop_faengt_mit_neuer_spaltenzahl_wieder_vorn_an() {
+        // GIVEN einen Animator, der schon bei Spalte 2 steht:
+        let start = Instant::now();
+        let mut animator = Animator::neu(0, 4, 12, start);
+        animator.tick(start + Duration::from_millis(168));
+        assert_eq!(animator.spalte(), 2);
+
+        // WHEN ein Standbild-Mood gesetzt wird,
+        // THEN steht die Spalte wieder auf 0 und der Takt ist aus:
+        animator.mood_setzen(7, 1, 12, start + Duration::from_millis(168));
+        assert_eq!(animator.spalte(), 0);
+        assert!(!animator.laeuft());
     }
 
     /// Positivkontrolle im selben Test: `true` MUSS die Pixel veraendern.

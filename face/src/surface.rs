@@ -22,8 +22,8 @@ use wayland_client::{
 use crate::{
     bubble::{position_klemmen, zipfel_fuer, Raster as BubbleRaster, Zipfel},
     input::{sichtbare_laeufe, Box2D, InputRegion},
-    render::{frame_toenen_wenn, Toenung},
-    sprite::{indikator_malen, mitschnitt_malen, zustand_abbilden, SpriteAtlas},
+    render::{frame_toenen_wenn, Animator, Toenung},
+    sprite::{indikator_malen, mitschnitt_malen, zustand_abbilden, SpriteAtlas, ZustandsAbbildung},
 };
 
 struct SpriteSurface {
@@ -66,19 +66,21 @@ struct InputLaufCache {
 }
 
 impl InputLaufCache {
-    fn fuer_frame(
-        &mut self,
-        frame_koordinaten: (u32, u32),
-        frame: &[u8],
-        breite: u32,
-        hoehe: u32,
-    ) -> &[Box2D] {
-        self.laeufe.entry(frame_koordinaten).or_insert_with(|| {
+    /// Die klickbare Silhouette einer ZEILE, nicht einer Zelle.
+    ///
+    /// `maske` wird nur beim Fehltreffer gerufen -- das Vereinigen kostet
+    /// `spalten` mal eine Zelle, und das soll einmal je Zeile anfallen und
+    /// nicht zwoelfmal je Sekunde.
+    fn fuer_zeile<F>(&mut self, schluessel: (u32, u32), maske: F, breite: u32, hoehe: u32) -> &[Box2D]
+    where
+        F: FnOnce() -> Vec<u8>,
+    {
+        self.laeufe.entry(schluessel).or_insert_with(|| {
             #[cfg(test)]
             {
                 self.berechnungen += 1;
             }
-            sichtbare_laeufe(frame, breite, hoehe)
+            sichtbare_laeufe(&maske(), breite, hoehe)
         })
     }
 }
@@ -238,30 +240,19 @@ impl OverlaySurface {
         mood: &str,
         voice: &str,
         mitschnitt: bool,
+        animator: &Animator,
         toenung: Toenung,
         sichtbar: bool,
         qh: &QueueHandle<crate::App>,
         callback_armieren: bool,
     ) -> Result<(u64, bool, bool), String> {
-        let abbildung = zustand_abbilden(zustand, mood, &atlas.layout);
-        // Ein Pet mit eigener Zeile je Mood traegt den Mood im Bild. Die
-        // Toenung darueberzulegen zerstoert genau die Information, fuer die
-        // die Zeile da ist.
-        let mut frame = sichtbaren_frame_bauen(
-            &frame_toenen_wenn(
-                &atlas.frame(abbildung.zeile, 0)?,
-                toenung,
-                atlas.layout.toenung,
-            ),
-            sichtbar,
-        );
+        let (abbildung, mut frame) =
+            sprite_zelle_bauen(atlas, zustand, mood, animator.spalte(), toenung, sichtbar)?;
         // T-3.14: der Indikator gehoert in das BILD, nicht in die
         // Eingabemaske. Waere er in beidem, waechse die Klickflaeche des Pets
         // mit dem Sprachzustand -- und das Ziehen aus T-2.4 haette je nach
-        // Zustand eine andere Trefferflaeche. Deshalb hier eine Kopie des
-        // Standes davor, und zwar nur, wenn ueberhaupt gemalt wird.
-        let ohne_indikator =
-            (sichtbar && (voice != "idle" || mitschnitt)).then(|| frame.clone());
+        // Zustand eine andere Trefferflaeche. Seit T-9.2 ist das strukturell
+        // erledigt: die Maske kommt aus dem Atlas und sieht den Indikator nie.
         let indikator_gemalt = sichtbar
             && indikator_malen(
                 &mut frame,
@@ -328,13 +319,13 @@ impl OverlaySurface {
             .attach_to(&self.sprite.surface)
             .map_err(|fehler| format!("wl_shm-Sprite anhaengen: {fehler}"))?;
 
-        let frame_koordinaten = (abbildung.zeile, 0);
+        let spalten = animator.spalten();
         let input_laeufe = if sichtbar {
             self.sprite
                 .input_laeufe
-                .fuer_frame(
-                    frame_koordinaten,
-                    ohne_indikator.as_deref().unwrap_or(&frame),
+                .fuer_zeile(
+                    (abbildung.zeile, spalten),
+                    || alpha_vereinigen(atlas, abbildung.zeile, spalten),
                     atlas.layout.cell_w,
                     atlas.layout.cell_h,
                 )
@@ -619,6 +610,66 @@ fn laeufe_versetzen(laeufe: &[Box2D], position: (i32, i32)) -> Vec<Box2D> {
         .collect()
 }
 
+/// Waehlt die Zelle und baut die Pixel, die committet werden. Gibt die
+/// Abbildung mit zurueck, weil der Eingaberegion-Cache dieselbe Zeile braucht
+/// -- zwei Fassungen derselben Wahl waeren eine Wahl und eine Attrappe.
+///
+/// Eigene Funktion und nicht ein Block in `sprite_committen`, weil dorthin
+/// kein Test kommt: der Aufrufer braucht eine Wayland-Verbindung. Genau hier
+/// wird aber die Spalte gewaehlt, und genau die soll pruefbar sein.
+///
+/// `spalte` kommt ueber das Pet-Manifest von aussen und wird darum auf die
+/// vorhandene Spaltenzahl zurueckgefaltet statt in einen Fehler zu laufen --
+/// dieselbe Nachsicht, die `zustand_abbilden` einer zu grossen Zeile gewaehrt.
+/// Ein Fehler waere hier ein schwarzes Pet.
+pub fn sprite_zelle_bauen(
+    atlas: &SpriteAtlas,
+    zustand: &str,
+    mood: &str,
+    spalte: u32,
+    toenung: Toenung,
+    sichtbar: bool,
+) -> Result<(ZustandsAbbildung, Vec<u8>), String> {
+    let abbildung = zustand_abbilden(zustand, mood, &atlas.layout);
+    let spalte = spalte % atlas.layout.cols.max(1);
+    // Ein Pet mit eigener Zeile je Mood traegt den Mood im Bild. Die
+    // Toenung darueberzulegen zerstoert genau die Information, fuer die
+    // die Zeile da ist.
+    let frame = sichtbaren_frame_bauen(
+        &frame_toenen_wenn(
+            &atlas.frame(abbildung.zeile, spalte)?,
+            toenung,
+            atlas.layout.toenung,
+        ),
+        sichtbar,
+    );
+    Ok((abbildung, frame))
+}
+
+/// Vereinigt die Alphamasken aller Bilder einer Zeile zu einer Silhouette.
+///
+/// Sonst wanderte die klickbare Flaeche zwoelfmal je Sekunde mit der Bewegung:
+/// ein Klick auf den Arm ginge ins Leere, sobald der Arm sich geruehrt hat, und
+/// landete auf dem Desktop. Nur Alpha wird gelesen -- die Toenung laesst es
+/// unveraendert, und die Farbe entscheidet nicht ueber Treffer.
+fn alpha_vereinigen(atlas: &SpriteAtlas, zeile: u32, spalten: u32) -> Vec<u8> {
+    let breite = atlas.layout.cell_w;
+    let hoehe = atlas.layout.cell_h;
+    let mut maske = vec![0u8; (breite as usize) * (hoehe as usize) * 4];
+    for spalte in 0..spalten.max(1) {
+        let Ok(zelle) = atlas.frame(zeile, spalte) else {
+            continue;
+        };
+        if zelle.len() != maske.len() {
+            continue;
+        }
+        for (ziel, quelle) in maske.chunks_exact_mut(4).zip(zelle.chunks_exact(4)) {
+            ziel[3] = ziel[3].max(quelle[3]);
+        }
+    }
+    maske
+}
+
 /// T-2.4 umgeht KDE-Bug 503121 vollstaendig: statt NULL-Buffer-Unmap bleibt
 /// die Surface gemappt. Der Spike lieferte nach NULL-Unmap 0/20 configure ohne
 /// erneute Properties und 20/20 mit; ein transparenter Puffer betritt diesen
@@ -742,15 +793,118 @@ mod tests {
         assert_eq!(geaendertes_rechteck(&vorher, &vorher, 4, 3), None);
     }
 
+    fn standard_atlas() -> SpriteAtlas {
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/pet.json");
+        SpriteAtlas::laden(&manifest).unwrap()
+    }
+
+    /// Die Naht aus T-9.2: eine Spaltennummer geht hinein, andere Pixel kommen
+    /// heraus. Bis zum 01.09. stand hier eine feste 0, und jedes zusaetzliche
+    /// Bild im Sheet war Rechenzeit fuer Pixel, die niemand sah.
+    #[test]
+    fn sprite_zelle_bauen_zwei_spalten_derselben_zeile_liefert_verschiedene_pixel() {
+        // GIVEN das mitgelieferte Pet -- acht Spalten je Zeile:
+        let atlas = standard_atlas();
+        assert!(atlas.layout.cols > 1, "Testvoraussetzung: mehrspaltiges Sheet");
+        let farblos = Toenung {
+            r: 255,
+            g: 255,
+            b: 255,
+        };
+
+        // WHEN dieselbe Zeile einmal mit Spalte 0 und einmal mit Spalte 1 gebaut wird,
+        let (abbildung_null, erste) =
+            sprite_zelle_bauen(&atlas, "ruhig", "idle", 0, farblos, true).unwrap();
+        let (abbildung_eins, zweite) =
+            sprite_zelle_bauen(&atlas, "ruhig", "idle", 1, farblos, true).unwrap();
+
+        // THEN unterscheiden sich die Pixel, und die Zeile bleibt dieselbe:
+        assert_eq!(abbildung_null.zeile, abbildung_eins.zeile);
+        assert_ne!(erste, zweite);
+    }
+
+    /// Die Spaltenzahl kommt aus dem Pet-Manifest, also von aussen. Eine zu
+    /// grosse Spalte darf kein `Err` werden -- das waere ein schwarzes Pet,
+    /// weil `sprite_committen` den Fehler nach oben reicht.
+    #[test]
+    fn sprite_zelle_bauen_spalte_jenseits_der_spaltenzahl_faltet_zurueck_statt_zu_scheitern() {
+        // GIVEN dasselbe achtspaltige Sheet:
+        let atlas = standard_atlas();
+        let spalten = atlas.layout.cols;
+        let farblos = Toenung {
+            r: 255,
+            g: 255,
+            b: 255,
+        };
+        let bauen = |spalte| sprite_zelle_bauen(&atlas, "ruhig", "idle", spalte, farblos, true);
+
+        // WHEN eine Spalte jenseits der Spaltenzahl verlangt wird,
+        // THEN kommt genau die zurueckgefaltete Zelle, kein Fehler:
+        assert_eq!(bauen(spalten).unwrap(), bauen(0).unwrap());
+        assert_eq!(bauen(spalten + 1).unwrap(), bauen(1).unwrap());
+    }
+
+    /// Die Zusage aus T-9.2 Schritt 4: die klickbare Flaeche gehoert der
+    /// ZEILE, nicht dem Einzelbild. Sonst ginge ein Klick auf den Arm ins
+    /// Leere, sobald der Arm sich geruehrt hat.
+    #[test]
+    fn alpha_vereinigen_deckt_jedes_einzelbild_der_zeile_ab() {
+        // GIVEN eine Zeile des mitgelieferten Pets mit sechs Bildern:
+        let atlas = standard_atlas();
+        let zeile = 0;
+        let spalten = 6;
+        let breite = atlas.layout.cell_w;
+        let hoehe = atlas.layout.cell_h;
+
+        // WHEN die Vereinigung gebildet wird,
+        let vereint = sichtbare_laeufe(&alpha_vereinigen(&atlas, zeile, spalten), breite, hoehe);
+        let flaeche = |laeufe: &[Box2D]| laeufe.iter().map(|b| b.w * b.h).sum::<i32>();
+
+        // THEN deckt sie jedes Einzelbild ab und ist mindestens so gross wie
+        // das groesste davon:
+        let mut groesstes_einzelbild = 0;
+        let mut irgendeines_kleiner = false;
+        for spalte in 0..spalten {
+            let zelle = atlas.frame(zeile, spalte).unwrap();
+            let einzeln = flaeche(&sichtbare_laeufe(&zelle, breite, hoehe));
+            assert!(einzeln > 0, "Spalte {spalte} ist leer -- Test misst nichts");
+            groesstes_einzelbild = groesstes_einzelbild.max(einzeln);
+            irgendeines_kleiner |= einzeln < flaeche(&vereint);
+        }
+        assert!(flaeche(&vereint) >= groesstes_einzelbild);
+        // Positivkontrolle: die Bilder unterscheiden sich ueberhaupt. Waeren
+        // alle sechs gleich, waere der Test oben gruen ohne etwas zu belegen.
+        assert!(
+            irgendeines_kleiner,
+            "alle Einzelbilder gleich gross wie die Vereinigung"
+        );
+    }
+
+    /// Und die Kehrseite: dieselbe Zeile als Standbild hat eine ANDERE, engere
+    /// Silhouette als im Lauf. Darum steht die Bildzahl im Cache-Schluessel.
+    #[test]
+    fn alpha_vereinigen_ueber_ein_bild_ist_enger_als_ueber_die_ganze_zeile() {
+        let atlas = standard_atlas();
+        let breite = atlas.layout.cell_w;
+        let hoehe = atlas.layout.cell_h;
+        let flaeche = |spalten| {
+            sichtbare_laeufe(&alpha_vereinigen(&atlas, 0, spalten), breite, hoehe)
+                .iter()
+                .map(|b| b.w * b.h)
+                .sum::<i32>()
+        };
+        assert!(flaeche(1) < flaeche(6));
+    }
+
     #[test]
     fn verschieben_berechnet_sprite_zeilenlaeufe_nicht_neu() {
         let mut cache = InputLaufCache::default();
-        let frame = [0, 0, 0, 255, 0, 0, 0, 0];
-        assert_eq!(cache.fuer_frame((0, 0), &frame, 2, 1).len(), 1);
-        // Eine andere Parent-Position aendert weder Frame-Schluessel noch
+        let maske = || vec![0, 0, 0, 255, 0, 0, 0, 0];
+        assert_eq!(cache.fuer_zeile((0, 1), maske, 2, 1).len(), 1);
+        // Eine andere Parent-Position aendert weder Zeilen-Schluessel noch
         // lokale Sprite-Region; der zweite Zugriff muss ein Cache-Treffer sein.
         assert_eq!(
-            laeufe_versetzen(cache.fuer_frame((0, 0), &frame, 2, 1), (200, 100))[0],
+            laeufe_versetzen(cache.fuer_zeile((0, 1), maske, 2, 1), (200, 100))[0],
             Box2D {
                 x: 200,
                 y: 100,
@@ -758,7 +912,7 @@ mod tests {
                 h: 1
             }
         );
-        assert_eq!(cache.fuer_frame((0, 0), &frame, 2, 1).len(), 1);
+        assert_eq!(cache.fuer_zeile((0, 1), maske, 2, 1).len(), 1);
         assert_eq!(cache.berechnungen, 1);
     }
 
