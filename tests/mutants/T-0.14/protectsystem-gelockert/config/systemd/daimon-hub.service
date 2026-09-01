@@ -17,8 +17,6 @@ Restart=on-failure
 NoNewPrivileges=yes
 CapabilityBoundingSet=
 ProtectSystem=full  # MUTANT
-ProtectProc=invisible
-ProcSubset=pid
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
 # Der TCP-Port liegt in der Bridge, nicht hier. Nur deshalb ist diese

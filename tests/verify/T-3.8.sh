@@ -560,10 +560,36 @@ P.check("K11", "RestrictAddressFamilies ist exakt AF_UNIX",
         "RestrictAddressFamilies=AF_UNIX" in svc.splitlines(), True)
 for direktive in (
     "NoNewPrivileges=yes", "CapabilityBoundingSet=", "ProtectSystem=strict",
-    "ProtectHome=read-only", "ProtectProc=invisible", "ProcSubset=pid",
+    "ProtectHome=read-only",
     "PrivateTmp=yes", "LimitCORE=0", "UMask=0077", "PrivateDevices=yes",
     "MemoryDenyWriteExecute=yes"):
     P.check("K12", f"Service: {direktive}", direktive in svc.splitlines(), True)
+# HIER STANDEN `ProtectProc=invisible` und `ProcSubset=pid`. Beide sind in einer
+# `--user`-Unit WIRKUNGSLOS -- `systemd.exec(5)` sagt es zu `ProcSubset=`
+# ausdruecklich: "it is only available to system services". systemd nimmt die
+# Zeilen trotzdem widerspruchslos an, und `systemctl --user show` meldet an der
+# laufenden Unit `ProtectProc=default` / `ProcSubset=all`, zeichengleich mit
+# einem Lauf ganz ohne sie. Commit `7b7deb9` (T-4.14) hat sie deshalb aus allen
+# 22 Units entfernt und durch das ersetzt, was in `--user` WIRKT: den leeren
+# `CapabilityBoundingSet=` und die Syscall-Sperrliste. Vier Testdateien tragen
+# denselben Grund im Kommentar (tests/test_egress.py, test_stt.py,
+# test_gpu_worker.py, test_tts.py); die Bauform unten ist die aus
+# `t311_pruefstand.py`, Kapitel 15.
+#
+# Wer die zwei Zeilen wieder einsetzt, friert zum vierten Mal eine Zusage ein,
+# die nichts tut. Darum ist ihre ABWESENHEIT das Kriterium, und geprueft wird
+# stattdessen die WIRKUNG des Ersatzes -- weiter unten am laufenden Dienst.
+for tot in ("ProtectProc=", "ProcSubset="):
+    P.check("K12", f"Service ohne die in --user wirkungslose Direktive {tot} (7b7deb9)",
+            any(z.startswith(tot) for z in svc.splitlines()), False)
+# Die Sperrliste ist der Teil, der in `--user` wirklich greift. Sie ist damit
+# das, was die zwei gestrichenen Zeilen ersetzt -- und sie wird hier benannt,
+# nicht bloss auf Vorhandensein geprueft.
+sperrzeilen = [z for z in svc.splitlines() if z.startswith("SystemCallFilter=~")]
+P.check("K12", "Service hat eine Syscall-Sperrliste", bool(sperrzeilen), True)
+for gruppe in ("@privileged", "@obsolete", "@mount", "@swap", "@reboot", "@module"):
+    P.check("K12", f"Sperrliste nennt {gruppe}",
+            any(gruppe in z for z in sperrzeilen), True)
 for pfadname, text in (("Service", svc), ("Socket", sck)):
     P.check("K12", f"{pfadname}: RuntimeDirectory=daimon",
             "RuntimeDirectory=daimon" in text.splitlines(), True)
@@ -573,6 +599,77 @@ if "~@resources" not in svc:
     P.check("K12", "fehlendes ~@resources ist in der Unit begruendet",
             "resources" in svc_roh.lower() and any(w in svc_roh.lower()
             for w in ("sperr", "toetet", "tötet", "braucht")), True)
+
+
+def sd_prop(unit: str, name: str) -> str:
+    try:
+        return subprocess.check_output(
+            ["systemctl", "--user", "show", "-p", name, "--value", unit],
+            text=True, stderr=subprocess.DEVNULL).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+
+
+def syscall_gruppe(name: str) -> set[str]:
+    """Was die Gruppe HEUTE umfasst -- gefragt, nicht abgeschrieben. Eine hier
+    abgetippte Liste waere eine zweite Fassung derselben Regel und damit die
+    Attrappe; `systemd-analyze` ist dieselbe Quelle, aus der systemd den
+    Seccomp-Filter baut. Leere Rueckgabe faellt in der Positivkontrolle auf."""
+    try:
+        aus = subprocess.check_output(["systemd-analyze", "syscall-filter", name],
+                                      text=True, stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.CalledProcessError):
+        return set()
+    return {z.strip() for z in aus.splitlines()
+            if z.startswith((" ", "\t")) and z.strip() and not z.strip().startswith("#")}
+
+
+print("\n--- K12: die WIRKUNG der Haertung am laufenden Dienst ---")
+# Der Dateitext ist eine Absichtserklaerung; ob eine Direktive greift,
+# entscheidet systemd. Gemessen wird deshalb `systemctl --user show`, und nur
+# dann, wenn die installierte Unit WIRKLICH die gepruefte Datei ist. Ein
+# Fixture installiert nichts -- dort ist das Ergebnis "nicht gemessen", und
+# genau das steht dann auch da, statt eines gruenen Punktes ohne Messung.
+STT_UNIT = "daimon-stt.service"
+_fragment = sd_prop(STT_UNIT, "FragmentPath")
+gemessen = bool(_fragment) and Path(_fragment).resolve() == SERVICE.resolve()
+P.check("K12", "installierte Unit ist der gepruefte Baum (sonst: nicht gemessen)",
+        gemessen, TARGET == REPO)
+if gemessen:
+    for name, soll in (
+            ("NoNewPrivileges", "yes"), ("CapabilityBoundingSet", ""),
+            ("ProtectSystem", "strict"), ("ProtectHome", "read-only"),
+            ("PrivateTmp", "yes"), ("LimitCORE", "0"), ("UMask", "0077"),
+            ("PrivateDevices", "yes"), ("MemoryDenyWriteExecute", "yes"),
+            ("RestrictAddressFamilies", "AF_UNIX"),
+            ("RuntimeDirectory", "daimon"), ("RuntimeDirectoryPreserve", "yes")):
+        P.check("K12", f"wirksam: {name}={soll!r}", sd_prop(STT_UNIT, name), soll)
+    # Der Beleg zur Streichung, gemessen statt behauptet: systemd meldet an
+    # der Nutzer-Unit den Vorgabewert, ob die Zeile dasteht oder nicht.
+    P.check("K12", "ProtectProc meldet in --user den Vorgabewert (Beleg zu 7b7deb9)",
+            sd_prop(STT_UNIT, "ProtectProc"), "default")
+    P.check("K12", "ProcSubset meldet in --user den Vorgabewert (Beleg zu 7b7deb9)",
+            sd_prop(STT_UNIT, "ProcSubset"), "all")
+    filter_ist = set(sd_prop(STT_UNIT, "SystemCallFilter").split())
+    P.check("K12", "Syscall-Filter ist aufgeloest lesbar (Positivkontrolle)",
+            "read" in filter_ist, True)
+    priv = syscall_gruppe("@privileged")
+    res = syscall_gruppe("@resources")
+    P.check("K12", "Positivkontrolle: @privileged ist als Gruppe auslesbar",
+            len(priv) >= 8, True)
+    P.check("K12", "Positivkontrolle: @resources ist als Gruppe auslesbar",
+            len(res) >= 8, True)
+    # Strenger als der Dateitext: nicht "die Sperrzeile steht da", sondern
+    # "kein einziger Syscall der Gruppe ist im wirksamen Filter uebrig".
+    P.check("K12", "kein @privileged-Syscall im wirksamen Filter",
+            sorted(filter_ist & priv), [])
+    # Und die Gegenrichtung, damit die Ausnahme nicht zur Freikarte wird: der
+    # STT ist die EINE dokumentierte @resources-Ausnahme (onnxruntime heftet
+    # Rechenthreads an Kerne, sonst status=31/SYS). Faellt der Grund weg,
+    # steht die Ausnahme unbegruendet in der Unit -- dann wird diese Zeile rot
+    # und verlangt die Sperre zurueck.
+    P.check("K12", "die dokumentierte @resources-Ausnahme ist wirklich offen",
+            bool(filter_ist & res), True)
 
 print("\n--- K13: Abschluss-Kanarienvogel nach allen Absagen ---")
 schluss = positiv_sprache(sockpfad, sprachwav, "allen Absagefaellen")

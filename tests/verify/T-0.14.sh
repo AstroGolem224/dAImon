@@ -59,11 +59,33 @@ if [[ -f "$HUB" ]]; then
   chk "NoNewPrivileges=yes" "$(hat "$HUB" '^NoNewPrivileges=(yes|true|1)')" ja
   chk "CapabilityBoundingSet leer" "$(hat "$HUB" '^CapabilityBoundingSet=$')" ja
   chk "ProtectSystem=strict" "$(hat "$HUB" '^ProtectSystem=strict')" ja
-  chk "ProtectProc=invisible" "$(hat "$HUB" '^ProtectProc=invisible')" ja
-  chk "ProcSubset=pid" "$(hat "$HUB" '^ProcSubset=pid')" ja
+  # HIER STANDEN `ProtectProc=invisible` und `ProcSubset=pid`. Beide sind in
+  # einer `--user`-Unit WIRKUNGSLOS -- systemd.exec(5) sagt es zu
+  # `ProcSubset=` ausdruecklich: "it is only available to system services".
+  # systemd nimmt die Zeilen widerspruchslos an, und `systemctl --user show`
+  # meldet an der laufenden Unit `ProtectProc=default` / `ProcSubset=all`,
+  # zeichengleich mit einem Lauf ganz ohne sie. Commit `7b7deb9` (T-4.14) hat
+  # sie deshalb aus allen 22 Units entfernt und durch das ersetzt, was in
+  # `--user` WIRKT: den leeren `CapabilityBoundingSet=` und die
+  # Syscall-Sperrliste. Vier Testdateien tragen denselben Grund im Kommentar
+  # (tests/test_egress.py, test_stt.py, test_gpu_worker.py, test_tts.py).
+  #
+  # Geprueft wird deshalb ihre ABWESENHEIT -- wer sie wieder einsetzt, friert
+  # zum vierten Mal eine Zusage ein, die nichts tut -- und in Abschnitt B die
+  # WIRKUNG des Ersatzes am laufenden Dienst.
+  chk "kein ProtectProc= (in --user wirkungslos, 7b7deb9)" \
+    "$(hat "$HUB" '^ProtectProc=')" nein
+  chk "kein ProcSubset= (in --user wirkungslos, 7b7deb9)" \
+    "$(hat "$HUB" '^ProcSubset=')" nein
   chk "SystemCallFilter gesetzt" "$(hat "$HUB" '^SystemCallFilter=@system-service')" ja
   chk "SystemCallFilter schliesst @privileged aus" \
     "$(hat "$HUB" '^SystemCallFilter=~.*@privileged')" ja
+  # Der Ersatz, den T-4.14 zugesagt hat: der Hub steht in Design 7.5 NICHT in
+  # der @resources-Ausnahmeliste (das sind auth, ears, eyes, stt, tts,
+  # recorder, gpu@, cli-broker, jede mit gemessenem Grund). Er braucht die
+  # Gruppe nicht, also darf er sie nicht behalten.
+  chk "SystemCallFilter schliesst @resources aus" \
+    "$(hat "$HUB" '^SystemCallFilter=~.*@resources')" ja
   chk "InaccessiblePaths deckt .ssh ab" "$(hat "$HUB" '^InaccessiblePaths=.*\.ssh')" ja
   chk "InaccessiblePaths deckt .gnupg ab" "$(hat "$HUB" '^InaccessiblePaths=.*\.gnupg')" ja
   # Der Hub schreibt Ticketbuch und Audit -- ohne ReadWritePaths waere er mit
@@ -89,6 +111,16 @@ if [[ -f "$FACE" ]]; then
     "$(grep -E '^RestrictAddressFamilies=' "$FACE" | grep -q 'AF_INET' && echo nein || echo ja)" ja
   chk "NoNewPrivileges=yes" "$(hat "$FACE" '^NoNewPrivileges=(yes|true|1)')" ja
   chk "kein ProtectHome=yes" "$(hat "$FACE" '^ProtectHome=(yes|true)')" nein
+  # Dieselbe Rechnung wie am Hub (7b7deb9): die zwei wirkungslosen Direktiven
+  # sind gestrichen, der wirksame Ersatz wird verlangt. Das Face steht in
+  # Design 7.5 ebenfalls nicht in der @resources-Ausnahmeliste.
+  chk "kein ProtectProc= (in --user wirkungslos, 7b7deb9)" \
+    "$(hat "$FACE" '^ProtectProc=')" nein
+  chk "kein ProcSubset= (in --user wirkungslos, 7b7deb9)" \
+    "$(hat "$FACE" '^ProcSubset=')" nein
+  chk "CapabilityBoundingSet leer" "$(hat "$FACE" '^CapabilityBoundingSet=$')" ja
+  chk "SystemCallFilter schliesst @resources aus" \
+    "$(hat "$FACE" '^SystemCallFilter=~.*@resources')" ja
 fi
 
 chk "docs/INSTALL.md existiert" \
@@ -147,6 +179,67 @@ chk "Hub meldet AF_UNIX am laufenden Dienst" \
   "$(grep -q 'AF_UNIX' <<<"$raf_hub" && echo ja || echo nein)" ja
 chk "Hub meldet KEIN AF_INET am laufenden Dienst" \
   "$(grep -q 'AF_INET' <<<"$raf_hub" && echo nein || echo ja)" ja
+
+# --- B2. Die Haertung, die T-4.14 an die Stelle von ProtectProc gesetzt hat ---
+# Der Beleg zur Streichung, gemessen statt behauptet: eine transiente Unit mit
+# `ProtectProc=invisible` sieht GENAUSO VIELE fremde PIDs wie eine ohne.
+# systemd nimmt die Direktive an und tut nichts -- das ist der Grund aus
+# `7b7deb9`, hier als Versuch und nicht als Behauptung.
+PROC_PROBE='import os,sys
+print(len([p for p in os.listdir("/proc") if p.isdigit()]))'
+pids_frei="$(systemd-run --user --wait --quiet --collect --pipe \
+  /usr/bin/python3 -c "$PROC_PROBE" 2>/dev/null)"
+pids_eng="$(systemd-run --user --wait --quiet --collect --pipe \
+  --property=ProtectProc=invisible --property=ProcSubset=pid \
+  /usr/bin/python3 -c "$PROC_PROBE" 2>/dev/null)"
+echo "  sichtbare PIDs ohne Direktive: ${pids_frei:-?}, mit ProtectProc=invisible: ${pids_eng:-?}"
+# Positivkontrolle: die Messung sieht ueberhaupt fremde Prozesse. Ohne sie
+# waere "gleich viele" auch bei kaputter Sonde gruen.
+chk "die PID-Sonde sieht ueberhaupt fremde Prozesse (Positivkontrolle)" \
+  "$([[ "${pids_frei:-0}" -gt 5 ]] && echo ja || echo nein)" ja
+chk "ProtectProc=invisible aendert in --user nichts (Beleg zu 7b7deb9)" \
+  "$([[ -n "$pids_eng" && "${pids_eng:-0}" -gt 5 ]] && echo ja || echo nein)" ja
+
+# Und nun der Ersatz, an der laufenden Unit gemessen -- nicht im Dateitext.
+# Bauform aus tests/verify/t311_pruefstand.py, Kapitel 15.
+wert() { systemctl --user show -p "$2" --value "$1" 2>/dev/null; }
+# Positivkontrolle der Gruppenaufloesung: eine hier abgetippte Syscall-Liste
+# waere eine zweite Fassung derselben Regel. Gefragt wird dieselbe Quelle, aus
+# der systemd den Seccomp-Filter baut.
+gruppe() { systemd-analyze syscall-filter "$1" 2>/dev/null | sed -n 's/^[[:space:]]\{1,\}\([a-z_0-9]\{1,\}\)$/\1/p'; }
+RES_N="$(gruppe @resources | wc -l)"
+PRIV_N="$(gruppe @privileged | wc -l)"
+chk "@resources ist als Gruppe auslesbar (Positivkontrolle)" \
+  "$([[ "$RES_N" -ge 8 ]] && echo ja || echo nein)" ja
+chk "@privileged ist als Gruppe auslesbar (Positivkontrolle)" \
+  "$([[ "$PRIV_N" -ge 8 ]] && echo ja || echo nein)" ja
+for u in daimon-hub.service daimon-face.service; do
+  echo "  -- $u (wirksam)"
+  chk "$u: NoNewPrivileges wirksam" "$(wert "$u" NoNewPrivileges)" yes
+  # Der leere Bounding-Set ist das, was in --user WIRKLICH greift.
+  chk "$u: CapabilityBoundingSet leer wirksam" "$(wert "$u" CapabilityBoundingSet)" ""
+  chk "$u: ProtectSystem=strict wirksam" "$(wert "$u" ProtectSystem)" strict
+  chk "$u: UMask=0077 wirksam" "$(wert "$u" UMask)" 0077
+  chk "$u: LimitCORE=0 wirksam" "$(wert "$u" LimitCORE)" 0
+  # Zeichengleich mit einem Lauf ganz ohne die Zeilen -- deshalb sind sie weg.
+  chk "$u: ProtectProc meldet den Vorgabewert" "$(wert "$u" ProtectProc)" default
+  chk "$u: ProcSubset meldet den Vorgabewert" "$(wert "$u" ProcSubset)" all
+  filter="$(wert "$u" SystemCallFilter)"
+  chk "$u: Syscall-Filter ist aufgeloest lesbar (Positivkontrolle)" \
+    "$(grep -qw read <<<"$filter" && echo ja || echo nein)" ja
+  # Strenger als der Dateitext: nicht "die Sperrzeile steht da", sondern kein
+  # einziger Syscall der Gruppe bleibt im wirksamen Filter uebrig. Weder Hub
+  # noch Face stehen in der @resources-Ausnahmeliste aus Design 7.5.
+  for g in @resources @privileged; do
+    uebrig=""
+    for s in $(gruppe "$g"); do
+      grep -qw "$s" <<<"$filter" && uebrig="$uebrig $s"
+    done
+    echo "  $u: $g im wirksamen Filter:${uebrig:- (keiner)}"
+    chk "$u: kein $g-Syscall im wirksamen Filter" \
+      "$([[ -z "$uebrig" ]] && echo ja || echo nein)" ja
+  done
+done
 
 # --- C. Der Hub haelt keinen TCP-Socket ---------------------------------------
 hub_pid="$(systemctl --user show -p MainPID --value daimon-hub.service 2>/dev/null)"

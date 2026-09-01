@@ -12,8 +12,6 @@ Restart=on-failure
 NoNewPrivileges=yes
 CapabilityBoundingSet=
 ProtectSystem=strict
-ProtectProc=invisible
-ProcSubset=pid
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources @obsolete @mount @swap @reboot @module
 # AF_UNIX MUSS drin bleiben: ohne ihn faellt der Wayland-Socket weg, und das

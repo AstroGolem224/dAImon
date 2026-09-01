@@ -532,6 +532,97 @@ Kapitel 15 lief zum ersten Mal überhaupt, mit 43 grünen Prüfungen.
 
 ---
 
+## Nachzug vom 01.09. — die Haertungskriterien, VORLAEUFIG
+
+**Betroffen:** `tests/verify/T-0.14.sh`, `tests/verify/T-3.8.sh`.
+
+Das ist der Punkt 4 aus „Was offen bleibt" des Nachzugs vom 31.08. — dort
+gemeldet und ausdrücklich nicht geändert, weil jeder einen eigenen Auftrag
+bekam. Hier sind die ersten zwei der vier abgearbeitet.
+
+| Datei | vorher | nachgezogen am 01.09. |
+|---|---|---|
+| `T-0.14.sh` | `058a1e00…` | `c3189ca8…` |
+| `T-3.8.sh` | `6f0f7966…` | `6563e165…` |
+
+### Der Befund, an beiden derselbe
+
+Beide Prüfstände verlangten `ProtectProc=invisible` und `ProcSubset=pid`
+**als Text in der Unit-Datei** (`T-0.14.sh:62-63`, `T-3.8.sh:563`). Beide
+Direktiven wurden mit `7b7deb9` (21.08., T-4.14) **absichtlich** aus allen 22
+Units entfernt: in einer `--user`-Unit sind sie wirkungslos — `systemd.exec(5)`
+sagt es zu `ProcSubset=` ausdrücklich („it is only available to system
+services") — und systemd nimmt sie trotzdem widerspruchslos an. An der
+laufenden Unit gemessen: `ProtectProc=default`, `ProcSubset=all`,
+zeichengleich mit einem Lauf ganz ohne die Zeilen. An ihre Stelle trat, was in
+`--user` wirklich greift: der leere `CapabilityBoundingSet=` und die
+Syscall-Sperrliste mit benannten `@resources`-Ausnahmen.
+
+Damit war es dieselbe Klasse wie am 31.08.: der Code war in Ordnung, der
+Prüfstand hielt eine widerlegte Zusage fest. `t311_pruefstand.py` K15 wurde am
+31.08. bereits so berichtigt; diese zwei zogen nach.
+
+### Was die Kriterien jetzt prüfen
+
+Nicht den Dateitext, sondern die **Wirkung** — und strenger als vorher:
+
+- die **Abwesenheit** der zwei Direktiven, mit `7b7deb9` als Grund im
+  Kriterium selbst, damit sie niemand ein viertes Mal einfriert;
+- `systemctl --user show` an der laufenden Unit: `ProtectProc=default` und
+  `ProcSubset=all` als **gemessener Beleg** zur Streichung, dazu
+  `NoNewPrivileges`, leerer `CapabilityBoundingSet`, `ProtectSystem`,
+  `UMask`, `LimitCORE` und die übrigen als wirksam;
+- den aufgelösten Seccomp-Filter statt der Sperrzeile: **kein einziger**
+  Syscall aus `@privileged` bzw. `@resources` bleibt im wirksamen Filter
+  übrig. Die Gruppen werden bei `systemd-analyze syscall-filter` erfragt,
+  nicht abgeschrieben — eine abgetippte Liste wäre eine zweite Fassung
+  derselben Regel;
+- die Gegenrichtung am STT: die **eine** dokumentierte `@resources`-Ausnahme
+  (onnxruntime heftet Rechenthreads an Kerne, sonst `status=31/SYS`) muss
+  wirklich offen sein. Fällt der Grund weg, wird die Zeile rot und verlangt
+  die Sperre zurück;
+- `T-0.14.sh` führt den Beleg zusätzlich als **Versuch**: zwei transiente
+  Wegwerf-Units zählen fremde PIDs, einmal ohne und einmal mit
+  `ProtectProc=invisible`. Gleiche Zahl — die Direktive tut in `--user`
+  nichts.
+
+Positivkontrollen an jeder dieser Messungen: die PID-Sonde muss überhaupt
+fremde Prozesse sehen, die Gruppen müssen auflösbar sein, der Filter muss
+lesbar sein (`read` steht drin). „Kein `@resources`-Syscall übrig" ist sonst
+nicht von „nichts gemessen" zu unterscheiden. `T-3.8.sh` weist zudem aus,
+wenn die **installierte** Unit gar nicht der geprüfte Baum ist: dann steht
+dort „nicht gemessen" statt eines grünen Punktes ohne Messung.
+
+### Mitgezogen, weil sonst rot zu Recht
+
+Das Gut-Muster ist eine Kopie des Quellbaums; ändert sich die Regel, altert es
+mit. Alle drei trugen noch die widerlegten Zeilen:
+`tests/fixtures/known-good/T-0.14/config/systemd/daimon-{hub,face}.service`
+und `tests/fixtures/known-good/T-3.8/config/systemd/daimon-stt.service`. Sie
+tragen jetzt an derselben Stelle den Grund des Rückbaus als Kommentar. Die
+acht betroffenen Mutanten ebenso — ein Mutant, der eine widerlegte Zeile
+mitschleppt, prüft nicht mehr seine eigene Mutation.
+
+### Zahlen
+
+| Prüfstand | vorher | nachher |
+|---|---|---|
+| `T-0.14.sh` | 179 Prüfungen, 2 rot | **206 Prüfungen, 0 rot** |
+| `T-3.8.sh` | 2 rot | **0 rot** |
+
+Ein angepasstes Kriterium wird strenger, nicht schwächer: aus zwei
+Textvergleichen wurden 27 zusätzliche Prüfungen, die meisten davon am
+laufenden Dienst statt an der Datei.
+
+### Warum von Hand nachgezogen
+
+Wie am 26., 28. und 31.08.: `freeze.sh` verlangt die Spur `echt` grün, und
+`T-3.13b` steht bei 2 rot (`T-0.11` und `T-3.13`, beide eingebettet, kein
+Befund am Prüfling). Also Hash von Hand nach `tests/verify/FROZEN`, hier als
+**VORLAEUFIG** geführt. Der `.v`-Task bleibt für beide offen.
+
+---
+
 ## Nicht zuordenbar
 
 Keine. Die Buchführung geht auf: `tests/verify/FROZEN` trug vor dem Aufräumen

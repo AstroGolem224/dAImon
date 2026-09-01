@@ -11,8 +11,12 @@ NoNewPrivileges=yes
 CapabilityBoundingSet=
 ProtectSystem=strict
 ProtectHome=read-only
-ProtectProc=invisible
-ProcSubset=pid
+# `ProtectProc=`/`ProcSubset=` stehen hier ABSICHTLICH NICHT: in einer
+# `--user`-Unit sind sie wirkungslos (systemd.exec(5) zu `ProcSubset=`:
+# "it is only available to system services"), und `systemctl --user show`
+# meldet mit wie ohne sie `default`/`all`. Commit `7b7deb9` (T-4.14) hat sie
+# aus allen 22 Units gestrichen; was in `--user` WIRKT, steht darueber und
+# darunter: leerer `CapabilityBoundingSet=` und die Syscall-Sperrliste.
 PrivateTmp=yes
 PrivateDevices=yes
 MemoryDenyWriteExecute=yes
