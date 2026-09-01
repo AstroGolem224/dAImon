@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Erzeugt die fünf bindenden T-3.12-Mutanten frisch aus dem Gut-Muster.
+# Erzeugt die sechs bindenden T-3.12-Mutanten frisch aus dem Gut-Muster.
 set -euo pipefail
 
 HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,6 +11,7 @@ trap 'rm -rf -- "$TMP"' EXIT INT TERM
 mutanten=(
   titel-im-prompt
   aktion-wird-ausgefuehrt
+  aktion-ohne-absichtsmarke
   user-audio-durchgelassen
   referenz-ueberlebt-die-runde
   lokale-frage-geht-an-die-api
@@ -43,12 +44,14 @@ ersetze(
     '                for ref, e in tabelle.items()}  # MUTATION',
     "Der Modellaufruf bekommt neben der app_id auch den Fenstertitel (K6).")
 
+# Seit T-4.16 K1 lehnt der Aktionszweig nicht mehr ab, er waehlt den
+# werkzeugfaehigen Weg -- der Anker der Mutation wandert mit. Der Angriff
+# bleibt derselbe: der Router oeffnet die Tuer selbst, statt den
+# Koordinator zu fragen.
 ersetze(
     "aktion-wird-ausgefuehrt", R,
     '            if absicht == "aktion":\n'
-    '                return {"v": 1, "ok": True, "weg": "abgelehnt",\n'
-    '                        "absicht": "aktion", "antwort": ABLEHNUNG_AKTION,\n'
-    '                        "marke": "trusted", "api": False}',
+    '                marke = req.get("marke")',
     '            if absicht == "aktion":\n'
     '                try:\n'
     '                    subprocess.run([text.split()[-1]], capture_output=True)  # MUTATION\n'
@@ -56,9 +59,22 @@ ersetze(
     '                    pass\n'
     '                return {"v": 1, "ok": True, "weg": "lokal",\n'
     '                        "absicht": "aktion", "antwort": "Erledigt.",\n'
-    '                        "marke": "trusted", "api": False}',
-    "Aktionswünsche werden ausgeführt (letztes Wort als Befehl) und als "
-    "erledigt gemeldet statt abgelehnt (K3).")
+    '                        "marke": "trusted", "api": False}\n'
+    '                marke = req.get("marke")',
+    "Aktionswünsche werden vom Router selbst ausgeführt (letztes Wort als "
+    "Befehl) und als erledigt gemeldet, statt den werkzeugfähigen Weg über "
+    "den Koordinator zu nehmen (K3).")
+
+# T-4.19, neu mit dem Kriterium: der Riegel gegen eine Aktion OHNE
+# Absichtsmarke. `tainted` und `user_audio` fallen schon an der Senke --
+# diesen Riegel bindet allein der `trusted`-Fall.
+ersetze(
+    "aktion-ohne-absichtsmarke", R,
+    '                if marke != "user_ptt":',
+    '                if False and marke != "user_ptt":  # MUTATION',
+    "Eine Aktionsbitte ohne Absichtsmarke (trusted) wird nicht mehr "
+    "abgelehnt, sondern geht den werkzeugfähigen Weg und kostet ein "
+    "Ticket (K3).")
 
 ersetze(
     "user-audio-durchgelassen", R,

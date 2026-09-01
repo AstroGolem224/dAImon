@@ -623,6 +623,74 @@ Befund am Prüfling). Also Hash von Hand nach `tests/verify/FROZEN`, hier als
 
 ---
 
+## Nachzug vom 01.09. — t312 und t313, VORLAEUFIG
+
+**Betroffen:** `tests/verify/t312_pruefstand.py`, `tests/verify/t313_pruefstand.py`.
+
+Die anderen zwei aus Punkt 4 der Liste „Was offen bleibt" vom 31.08. Damit ist
+sie abgearbeitet.
+
+| Datei | vorher | nachgezogen am 01.09. |
+|---|---|---|
+| `t312_pruefstand.py` | `454708eb…` | `65fe0e63…` |
+| `t313_pruefstand.py` | `c47283bb…` | `54625643…` |
+
+### Der Befund
+
+Beide hielten die Zusage der **Phase 3** fest — „keine Aktionen". Seit
+**T-4.16 K1** gibt es den werkzeugfähigen Weg, seit **T-8.5** die Absichten
+`erinnerung` und `fokus` (acht statt sechs). Das ist dieselbe Klasse wie am
+31.08. an `t313b`, wo aus derselben einen Erwartung fünf Prüfungen wurden: der
+Prüfstand ist älter als eine bewusste Entscheidung.
+
+### Was die Kriterien jetzt prüfen
+
+Aus je **einer** Erwartung wurden mehrere Prüfungen, gemessen am echten Mind
+über echte Sockets:
+
+- ohne Absichtsmarke **abgelehnt** — und kostenfrei;
+- ohne Ziel **Rückfrage** — und kostenfrei;
+- mit beidem `weg: "aktion"`, mit **genau einem** Ticket und **einem**
+  Modellaufruf;
+- und `aktion.sock` bekommt **keinen** Aufruf, solange kein Werkzeug gerufen
+  wird — diese Prüfung gab es vorher überhaupt nicht.
+
+### Zahlen
+
+| Prüfstand | vorher | nachher |
+|---|---|---|
+| `T-3.12` | 136 Prüfungen, 8 rot | **177 Prüfungen, 0 rot** |
+| `t313` (K1–K9) | 8 rot | **135 Prüfungen, 0 rot** |
+
+K6 wuchs von 14 auf 20 Prüfungen, K9 von 12 auf 52. Wer nur die Erwartung
+umschreibt, damit es grün wird, hat eine Attrappe mit neuem Hash.
+
+### Mitgezogen
+
+Gut-Muster und Mutanten bei beiden:
+`tests/fixtures/known-good/T-3.12/daimon/mind/router.py`,
+`tests/fixtures/known-good/T-3.13/daimon/mind/{answer,router}.py`. `T-3.12`
+hat jetzt **sechs** Mutanten, `T-3.13` **sieben** — je einer neu
+(`aktion-ohne-absichtsmarke`, dazu `d2-antwort-im-werkzeugprompt` an T-3.13),
+alle erkannt.
+
+### Warum von Hand nachgezogen
+
+Derselbe Grund wie im Abschnitt darüber: `freeze.sh` verlangt die Spur `echt`
+grün, `T-3.13b` steht bei 2 rot. Der `.v`-Task bleibt für beide offen.
+
+### Stand der Prüfstände am 01.09.
+
+- `T-3.13b`: 23 rot → **2 rot** (`T-0.11` und `T-3.13`, beide eingebettet)
+- `T-3.11`, `T-3.8`, `T-0.14`, `T-3.12` einzeln grün
+- **Neuer Befund, noch ungemessen:** `T-3.11` ist *eingebettet* rot, *einzeln*
+  grün (225 Prüfungen, 0 rot). Im eingebetteten Protokoll steht
+  `POSITIVKONTROLLE: der Hauptdienst hat den geprueften Baum im PYTHONPATH
+  (war nein)` — die Verschachtelung reicht die Umgebung nicht durch. Kein
+  Befund am Prüfling; eigener Faden.
+
+---
+
 ## Nicht zuordenbar
 
 Keine. Die Buchführung geht auf: `tests/verify/FROZEN` trug vor dem Aufräumen

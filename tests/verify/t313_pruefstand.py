@@ -46,8 +46,30 @@ FENSTER_KANARIE = "T313-FENSTER-KANARIE-6c5f02"
 SITZUNG_KANARIE = "T313-SITZUNG-KANARIE-58e1d3"
 PROJEKT_KANARIE = "T313-PROJEKT-KANARIE-27aa90"
 ANTWORT_KANARIE = "T313-ANTWORT-KANARIE-1b7d90"
+# Zwei eigene Kanarien fuer den Gedaechtnisschnitt in K9: eine Frage,
+# die Durchgang 2 gestellt bekam, und die Antwort, die Durchgang 2
+# darauf gab. Die eine darf im werkzeugfaehigen Prompt stehen, die
+# andere nie -- mit EINER Kanarie waere das nicht zu unterscheiden.
+D2_FRAGE_KANARIE = "T313-D2-FRAGE-KANARIE-5c1e88"
+D2_ANTWORT_KANARIE = "T313-D2-ANTWORT-KANARIE-a91c07"
 HISTORIE_KANARIE = "T313-HISTORIE-KANARIE-4e6a28"
 NUTZER_KANARIE = "T313-NUTZER-KANARIE-7f3c55"
+
+# T-4.19: die EINE kuratierte Rueckmeldung fuer "Aktion ohne
+# Absichtsmarke", und die EINE Rueckfrage fuer "Aktion ohne Ziel".
+# Wort fuer Wort am laufenden Mind gemessen (01.09.); zwei
+# Formulierungen waeren zwei Wahrheiten.
+ABSICHTSMARKE_HINWEIS = ("Fuer eine Aktion brauche ich eine "
+                         "Absichtsmarke — bitte Push-to-Talk "
+                         "druecken.")
+RUECKFRAGE_AKTION = "Was soll ich womit machen?"
+
+# T-4.16 K1: der Werkzeugname, den dieser Pruefstand fuer seine
+# Positivkontrolle benutzt, und die action_id, die daraus werden MUSS.
+# Anthropic erlaubt im Werkzeugnamen keinen Punkt -- die Abbildung ist
+# eine Tabelle im Pruefling, kein blindes Zuruecksetzen.
+WERKZEUG_NAME = "media_playpause"
+WERKZEUG_ACTION_ID = "media.playpause"
 
 # Das Vertragsbeispiel für einen wohlgeformten Aktionsvorschlag (§2).
 AKTION_VORSCHLAG = '{"action": "close_window", "window_ref": "w_1"}'
@@ -183,22 +205,33 @@ def schluessel_weg(obj: object, gesucht: frozenset) -> list[str]:
     return treffer
 
 
-def kontext_aus_inhalt(inhalt: object) -> tuple[str | None, dict | None]:
-    """Den abgesetzten Kontextblock am Ende des Nutzertexts lesen (§6):
-    Körper parsen, messages[0].content lesen, den angehängten Teil parsen.
-    (None, None), wenn die Marke fehlt; (Frageteil, None), wenn das JSON
-    darunter nicht lesbar ist."""
+def kontext_aus_inhalt(inhalt: object) -> tuple[str | None, dict | None, str]:
+    """Den abgesetzten Kontextblock im Nutzertext lesen (§6): Marke suchen,
+    das JSON darunter lesen, den REST zurueckgeben.
+
+    Bis zum 31.08. las diese Funktion mit `json.loads` bis zum Zeilenende
+    und meldete `(Frageteil, None)`, sobald hinter dem JSON noch etwas
+    stand. Seit T-3.9 steht dort etwas -- der Ausgabeform-Block. Der
+    Kontext war die ganze Zeit da; nur der Leser kam nicht an ihm vorbei
+    (gemessen am 01.09., siehe die Begruendung in K6). `raw_decode` liest
+    genau EIN JSON-Gefuege und sagt, wo es endet; was danach kommt, geht
+    als `rest` heraus und wird geprueft statt verschwiegen.
+
+    (None, None, "") wenn die Marke fehlt; (Frageteil, None, Rohtext),
+    wenn das JSON darunter nicht lesbar ist.
+    """
     if not isinstance(inhalt, str):
-        return None, None
+        return None, None, ""
     marke = "\n" + KONTEXT_MARKE + "\n"
     if marke not in inhalt:
-        return None, None
+        return None, None, ""
     frage_teil, json_teil = inhalt.rsplit(marke, 1)
+    rumpf = json_teil.lstrip()
     try:
-        obj = json.loads(json_teil.strip())
+        obj, ende = json.JSONDecoder().raw_decode(rumpf)
     except json.JSONDecodeError:
-        return frage_teil, None
-    return frage_teil, obj if isinstance(obj, dict) else None
+        return frage_teil, None, json_teil
+    return (frage_teil, obj if isinstance(obj, dict) else None, rumpf[ende:])
 
 
 # ---------------------------------------------------------------- Attrappen
@@ -324,6 +357,11 @@ class EgressAttrappe:
         self.pfad = rt / "egress.sock"
         self.modus = "normal"  # normal | absage
         self.antwort_text = ANTWORT_KANARIE
+        # Freie Antwortbloecke statt nur Text: nur so kann dieser Pruefstand
+        # das Modell EIN WERKZEUG rufen lassen (K9) -- und damit belegen,
+        # dass die Stille an `aktion.sock` gemessen und nicht bloss
+        # ungebunden ist.
+        self.bloecke: list[dict] | None = None
         self.aufrufe: list[bytes] = []
         self.lock = threading.Lock()
         self._stopp = threading.Event()
@@ -396,6 +434,7 @@ class EgressAttrappe:
         with self.lock:
             self.aufrufe.append(kanonisch)
             text = self.antwort_text
+            bloecke = self.bloecke
         h = hashlib.sha256(kanonisch).hexdigest()
         try:
             eingel, _ = unix_json(self.rt / "ticket.sock",
@@ -411,8 +450,8 @@ class EgressAttrappe:
             return {"v": 1, "ok": False, "grund": "ziel_weg",
                     "meldung": "Ziel nicht erreichbar"}
         antwort = {"id": "lokal",
-                   "content": [{"type": "text", "text": text}],
-                   "stop_reason": "end_turn"}
+                   "content": bloecke or [{"type": "text", "text": text}],
+                   "stop_reason": "tool_use" if bloecke else "end_turn"}
         return {"v": 1, "ok": True, "status": 200, "bytes": 80,
                 "dauer_ms": 1.0, "antwort": antwort}
 
@@ -427,6 +466,73 @@ class EgressAttrappe:
     def setze_antwort(self, text: str) -> None:
         with self.lock:
             self.antwort_text = text
+
+    def setze_bloecke(self, bloecke: list[dict] | None) -> None:
+        with self.lock:
+            self.bloecke = bloecke
+
+
+class AktionAttrappe:
+    """Der Koordinator des Reviewers an `aktion.sock` (T-4.16 K1).
+
+    Er zaehlt, was ankommt, und fuehrt nichts aus. Er MUSS gebunden sein,
+    damit "aktion.sock bekommt keinen Aufruf" ein MESSWERT ist: an einem
+    ungebundenen Socket ist Stille von Abwesenheit nicht zu unterscheiden --
+    und genau das waere ein Falschbefund in die harmlose Richtung.
+    """
+
+    def __init__(self, rt: Path) -> None:
+        self.aufrufe: list[bytes] = []
+        self.lock = threading.Lock()
+        self._stopp = threading.Event()
+        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        pfad = rt / "aktion.sock"
+        pfad.unlink(missing_ok=True)
+        srv.bind(str(pfad))
+        pfad.chmod(0o600)
+        srv.listen(16)
+        srv.settimeout(0.3)
+        self._srv = srv
+        threading.Thread(target=self._schleife, daemon=True).start()
+
+    def _schleife(self) -> None:
+        while not self._stopp.is_set():
+            try:
+                conn, _ = self._srv.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            with conn:
+                try:
+                    conn.settimeout(5)
+                    zeile = conn.makefile("rb").readline(1 << 20)
+                    with self.lock:
+                        self.aufrufe.append(zeile.strip())
+                    conn.sendall(json.dumps(
+                        {"v": 1, "ok": True, "ausgefuehrt": False,
+                         "verdikt": "deny", "grund": "pruefstand",
+                         "gesprochen": ""}).encode() + b"\n")
+                except OSError:
+                    continue
+
+    def zaehler(self) -> int:
+        with self.lock:
+            return len(self.aufrufe)
+
+    def letzte(self) -> dict:
+        with self.lock:
+            if not self.aufrufe:
+                return {}
+            roh = self.aufrufe[-1]
+        try:
+            return json.loads(roh)
+        except json.JSONDecodeError:
+            return {}
+
+    def zuruecksetzen(self) -> None:
+        with self.lock:
+            self.aufrufe.clear()
 
 
 # ------------------------------------------------------- Quellen-Attrappen
@@ -672,6 +778,7 @@ print(f"  Laufzeitraum: {RT}")
 
 hub = HubAttrappe(DAIMON_RT)
 egress = EgressAttrappe(DAIMON_RT, hub)
+aktion = AktionAttrappe(DAIMON_RT)
 mind = Mind()
 
 P.kapitel("V", "Voraussetzungen und Messstrecke")
@@ -712,6 +819,15 @@ selbst_ans, _ = unix_json(DAIMON_RT / "egress.sock",
 P.check("V", "Messstrecke: Egress-Attrappe nimmt das Ticket an",
         selbst_ans.get("ok"), True)
 P.check("V", "Messstrecke: Einlösung wurde gezählt", hub.zaehler(), (1, 1))
+# Derselbe Selbsttest für `aktion.sock`: den Weg, der in K9 STILL bleiben
+# soll. Ein Socket, der schon hier nicht antwortet, könnte dort keine Stille
+# belegen — er zeigte nur seine eigene Abwesenheit.
+akt_ans, _ = unix_json(DAIMON_RT / "aktion.sock",
+                       {"v": 1, "art": "ausfuehren",
+                        "action_id": "messstrecke.selbsttest", "params": {}})
+P.check("V", "Messstrecke: Aktions-Attrappe antwortet und zählt",
+        (akt_ans.get("ok"), aktion.zaehler()), (True, 1))
+aktion.zuruecksetzen()
 hub.zuruecksetzen()
 with egress.lock:
     egress.aufrufe.clear()
@@ -875,21 +991,76 @@ P.kapitel("6", "der Kontext ist leer, aber vorhanden — im Nutzertext (§6)")
 # Messsonden zuerst: der Blockleser muss einen gelegten Block finden und
 # einen fehlenden als fehlend melden, und der Feldwächter muss ein fremdes
 # Top-Level-Feld erkennen — sonst sind die Nullmessungen keine Aussagen.
-probe_frage, probe_block = kontext_aus_inhalt(
+probe_frage, probe_block, probe_rest = kontext_aus_inhalt(
     f"Frage {FRAGE_KANARIE}\n\n{KONTEXT_MARKE}\n"
     + json.dumps({"kontext": {"quellen": ["probe"],
                               "deklassifiziert": []}}))
 P.check("6", "Messsonde: Blockleser findet den abgesetzten Kontextblock",
         ((probe_frage or "").strip(),
-         (probe_block or {}).get("kontext", {}).get("quellen")),
-        (f"Frage {FRAGE_KANARIE}", ["probe"]))
+         (probe_block or {}).get("kontext", {}).get("quellen"), probe_rest),
+        (f"Frage {FRAGE_KANARIE}", ["probe"], ""))
 P.check("6", "Messsonde: ohne Marke meldet der Leser keinen Kontext",
-        kontext_aus_inhalt(f"Frage {FRAGE_KANARIE} ohne Block"), (None, None))
+        kontext_aus_inhalt(f"Frage {FRAGE_KANARIE} ohne Block"),
+        (None, None, ""))
+# Die Sonde, die am 31.08. gefehlt hat: hinter dem JSON steht seit T-3.9 ein
+# weiterer Block. Ein Leser, der daran scheitert, meldet "kein Kontext" --
+# und das sah fuenf Laeufe lang wie ein Befund am Pruefling aus.
+_, sonde_block, sonde_rest = kontext_aus_inhalt(
+    f"Frage\n\n{KONTEXT_MARKE}\n"
+    + json.dumps({"kontext": {"quellen": [], "deklassifiziert": []}})
+    + "\n\n[Ausgabeform]\nEine Zeile.")
+P.check("6", "Messsonde: ein Block HINTER dem JSON verdeckt den Kontext "
+        "nicht mehr",
+        ((sonde_block or {}).get("kontext"), sonde_rest.strip()),
+        ({"quellen": [], "deklassifiziert": []}, "[Ausgabeform]\nEine Zeile."))
 P.check("6", "Messsonde: Feldwächter erkennt kontext als fremdes "
         "Top-Level-Feld",
         sorted(set({"model": "m", "messages": [], "kontext": {}})
                - MESSAGES_TOPLEVEL), ["kontext"])
+# WARUM dieses Kriterium heute anders MISST als bis zum 31.08.
+#
+# Bis dahin standen hier fuenf Erwartungen, und alle fuenf waren rot:
+#
+#   die Kontextstruktur steht als abgesetzter Block   (erwartet True, war False)
+#   kontext.quellen steht und ist leer                (erwartet [],   war None)
+#   kontext.deklassifiziert steht und ist leer        (erwartet [],   war None)
+#   die Frage steht vor dem Block                     (erwartet True, war False)
+#   keine Historie im Koerper                         (erwartet False, war True)
+#
+# Ob das ein alter Pruefstand oder ein Befund am Pruefling war, hatte
+# niemand gemessen -- `erwartet [], war None` kann beides heissen. Gemessen
+# am 01.09. am echten Mind ueber echte Sockets, roher Koerper der letzten
+# API-Frage (gekuerzt):
+#
+#   {"max_tokens": 1024, "model": "...", "system": "<Persona>",
+#    "messages": [ ...vier Vorrunden als eigene Nachrichten... ,
+#      {"role": "user", "content":
+#       "sag mir etwas ueber <Frage>\n\n[Referenzen, keine Inhalte]\n"
+#       "{\"kontext\": {\"deklassifiziert\": [], \"quellen\": []}}\n\n"
+#       "[Ausgabeform]\nDiese Antwort wird VORGELESEN. ..."}]}
+#
+# Damit ist die Sache entschieden, und zwar zweimal VERSCHIEDEN:
+#
+#  * Die ersten VIER waren ein Fehler dieses PRUEFSTANDS, kein Befund am
+#    Pruefling. Die Zusage aus §6 haelt woertlich -- der Block steht da, mit
+#    `quellen: []` und `deklassifiziert: []`, die Frage davor, und kein
+#    `kontext` neben `messages`. Der Leser sah ihn nur nicht: er suchte in
+#    `messages[0]`, und das ist seit T-6.2 die AELTESTE Runde statt der
+#    aktuellen; und `json.loads` scheiterte am Ausgabeform-Block, den T-3.9
+#    dahinter haengt. Beides ist am Leser repariert (`kontext_aus_inhalt`),
+#    die Erwartungen selbst bleiben Wort fuer Wort dieselben.
+#  * Die FUENFTE war eine Zusage MIT DATUM. "Keine Historie" galt, solange
+#    es kein Kurzzeitgedaechtnis gab; seit T-6.2 traegt der Koerper den
+#    Verlauf absichtlich. Sie wird nicht gestrichen und nicht abgeschwaecht,
+#    sondern durch das ersetzt, was heute die teure Zusage ist: der Verlauf
+#    steht als eigene NACHRICHTEN und nicht im Nutzertext; nur die aktuelle
+#    Aeusserung traegt einen Kontextblock; und -- die Gegenprobe, die den
+#    Schnitt wirklich bindet -- die Antwort aus Durchgang 2 erreicht den
+#    werkzeugfaehigen Durchgang 1 nie. Die steht in K9, wo der Werkzeugweg
+#    laeuft.
+egress.setze_antwort(D2_ANTWORT_KANARIE)
 frage(f"erkläre mir {HISTORIE_KANARIE}")
+egress.setze_antwort(ANTWORT_KANARIE)
 ans6, _ = frage(f"sag mir etwas über {FRAGE_KANARIE_2}")
 koerper6 = egress.letzter_koerper()
 try:
@@ -904,13 +1075,22 @@ P.check("6", "der Körper trägt ausschließlich Top-Level-Felder der "
          if koerper6_json is not None else ["<kein lesbarer JSON-Körper>"]),
         [])
 nachrichten6 = (koerper6_json or {}).get("messages")
-inhalt6 = None
-if (isinstance(nachrichten6, list) and nachrichten6
-        and isinstance(nachrichten6[0], dict)):
-    inhalt6 = nachrichten6[0].get("content")
-P.check("6", "messages[0].content ist eine Zeichenkette",
-        isinstance(inhalt6, str), True)
-frage6, block6 = kontext_aus_inhalt(inhalt6)
+P.check("6", "messages ist eine nichtleere Liste",
+        isinstance(nachrichten6, list) and bool(nachrichten6), True)
+nachrichten6 = nachrichten6 if isinstance(nachrichten6, list) else []
+P.check("6", "jede Nachricht trägt eine Rolle aus {user, assistant} und "
+        "content als Zeichenkette",
+        [i for i, m in enumerate(nachrichten6)
+         if not isinstance(m, dict)
+         or m.get("role") not in ("user", "assistant")
+         or not isinstance(m.get("content"), str)], [])
+letzte6 = nachrichten6[-1] if nachrichten6 else {}
+inhalt6 = letzte6.get("content") if isinstance(letzte6, dict) else None
+P.check("6", "die aktuelle Äußerung ist die LETZTE Nachricht und hat die "
+        "Rolle user",
+        (letzte6.get("role") if isinstance(letzte6, dict) else None,
+         isinstance(inhalt6, str)), ("user", True))
+frage6, block6, rest6 = kontext_aus_inhalt(inhalt6)
 kontext6 = (block6 or {}).get("kontext")
 P.check("6", "die Kontextstruktur steht als abgesetzter Block im Nutzertext",
         isinstance(kontext6, dict), True)
@@ -920,10 +1100,27 @@ P.check("6", "kontext.deklassifiziert steht und ist leer",
         (kontext6 or {}).get("deklassifiziert"), [])
 P.check("6", "die Frage steht vor dem Block (angehängt, nicht ersetzt)",
         FRAGE_KANARIE_2 in (frage6 or ""), True)
+# Hinter dem Kontextblock darf genau eines stehen: der Ausgabeform-Block aus
+# T-3.9. Alles andere waere ein dritter, ungeprueffter Anbau am Nutzertext.
+P.check("6", "hinter dem Kontextblock steht nichts außer der Ausgabeform "
+        "(T-3.9)",
+        rest6.strip() == "" or rest6.strip().startswith("[Ausgabeform]"), True)
+P.check("6", "nur die aktuelle Äußerung trägt einen Kontextblock, keine "
+        "Vorrunde",
+        [i for i, m in enumerate(nachrichten6[:-1])
+         if KONTEXT_MARKE in str(m.get("content", ""))], [])
+# T-6.2: die Historie IST da, und das ist die Zusage -- nicht ihre Duldung.
+P.check("6", "die Frage der Vorrunde steht im Verlauf (T-6.2)",
+        any(HISTORIE_KANARIE in str(m.get("content", ""))
+            for m in nachrichten6[:-1]), True)
+P.check("6", "und sie steht dort als eigene Nachricht, nicht im Nutzertext "
+        "dieser Runde", HISTORIE_KANARIE in str(inhalt6 or ""), False)
+P.check("6", "die Antwort der Vorrunde steht genau einmal, und als "
+        "assistant-Nachricht",
+        [m.get("role") for m in nachrichten6
+         if D2_ANTWORT_KANARIE in str(m.get("content", ""))], ["assistant"])
 P.check("6", "kein Fenstertitel im Körper",
         FENSTER_KANARIE.encode() in koerper6, False)
-P.check("6", "keine Historie im Körper (Frage der Vorrunde fehlt)",
-        HISTORIE_KANARIE.encode() in koerper6, False)
 P.check("6", "kein Hub-Zustand im Körper (Sitzungs- und Projekt-Kanarie "
         "fehlen)",
         kanariefrei(koerper6, SITZUNG_KANARIE, PROJEKT_KANARIE), True)
@@ -971,10 +1168,12 @@ ans8d, _ = frage("erkläre mir etwas über schiffe")
 P.check("8", "Positivkontrolle: nach dem Neustart gelingt die API wieder",
         ans8d.get("ok"), True)
 
-P.kapitel("9", "Durchgang 1 bleibt unberührt")
+P.kapitel("9", "Durchgang 1 bleibt unberührt — die lokalen Auskünfte, "
+          "und der Aktionsweg, wie er heute läuft")
 basis = hub.zaehler()
 ebasis = egress.zaehler()
 bbasis = beobachter_log()
+abasis = aktion.zaehler()
 ans, _ = frage("wie spät ist es")
 P.check("9", "uhrzeit bleibt lokal und trusted",
         (ans.get("ok"), ans.get("weg"), ans.get("absicht"),
@@ -1006,15 +1205,195 @@ P.check("9", "fensterliste bleibt lokal und tainted",
         (True, "lokal", "fensterliste", "tainted", False))
 P.check("9", "fensterliste trägt den Kanarientitel (Positivkontrolle)",
         FENSTER_KANARIE in str(ans.get("antwort", "")), True)
-ans, roh9 = frage("mach das fenster zu")
-P.check("9", "Aktionswunsch bleibt abgelehnt",
-        (ans.get("ok"), ans.get("weg"), ans.get("absicht"), ans.get("api")),
-        (True, "abgelehnt", "aktion", False))
-P.check("9", "Ablehnung nennt keinen Fenstertitel",
-        kanariefrei(roh9, FENSTER_KANARIE), True)
 P.check("9", "kein Ausführungswerkzeug wurde angerührt (Beobachter leer)",
         beobachter_log(), bbasis)
-kein_ticket_verbraucht("9", basis, ebasis, "Durchgang 1 gesamt")
+kein_ticket_verbraucht("9", basis, ebasis, "die vier lokalen Auskünfte")
+P.check("9", "die vier lokalen Auskünfte rühren aktion.sock nicht an",
+        aktion.zaehler(), abasis)
+
+# --- Der Aktionsweg ------------------------------------------------------
+#
+# WARUM diese Prüfung heute anders lautet als bis zum 31.08.
+#
+# Bis dahin stand hier EINE Erwartung: (ok, weg, absicht, api) ==
+# (True, "abgelehnt", "aktion", False), dazu "Durchgang 1 gesamt: kein
+# Ticket ausgegeben oder eingelöst" über alle fünf Äußerungen. Das war die
+# Zusage der PHASE 3 — "Sprache, Egress, Markierungsverfolgung, KEINE
+# Aktionen". Sie galt, solange es keinen werkzeugfähigen Weg gab.
+#
+# Seit T-4.16 K1 gibt es ihn: der Router wählt für einen Aktionswunsch mit
+# Absichtsmarke und benanntem Ziel `weg: "aktion"` mit `api: true`, und ein
+# `tool_use`-Block des Modells geht über `aktion.sock` an den Koordinator.
+# Die alte Erwartung ist heute nicht mehr die Zusage, sondern ihr Nachhall:
+# gemessen am 31.08. im eingebetteten Lauf `(True, 'aktion', ...)` statt
+# `(True, 'abgelehnt', ...)` und `(13, 12)` statt `(12, 11)` — drei rote
+# Punkte, ohne dass etwas kaputt wäre. CLAUDE.md, "Ein eingefrorener
+# Prüfstand ist eine Zusage MIT DATUM", trägt die Bauform.
+#
+# Aufgeweicht wird dabei NICHTS. Aus einer Erwartung werden vier Familien,
+# und die teure Zusage — dass eine Ablehnung nichts kostet und dass keine
+# Aktion entsteht, solange das Modell kein Werkzeug ruft — wird hier zum
+# ersten Mal GEMESSEN statt vorausgesetzt. Am echten Mind über echte
+# Sockets (Reviewer-Attrappen für Hub, Modell und Koordinator), 01.09.:
+#
+#   tainted    + "mach das fenster zu" -> ok:false, marke_verboten, ohne Zeile
+#   user_audio + dasselbe              -> ok:false, marke_verboten + Zeile
+#   trusted    + dasselbe              -> ok:true,  weg "abgelehnt", Zeile
+#   user_ptt   + "mach das"            -> ok:true,  weg "rueckfrage"
+#   user_ptt   + "mach das fenster zu" -> ok:true,  weg "aktion"
+#   Summe über die fünf: 1 Ticket, 1 Modellaufruf, 0 Aufrufe an aktion.sock.
+#
+# Der Weg heißt `aktion`, weil er werkzeugFÄHIG ist — die Aktion entsteht
+# erst, wenn das Modell ein Werkzeug ruft. Katalog, Policy und Consent
+# liegen dahinter, in der Kette, nicht hier.
+
+# (a) Ohne Absichtsmarke fällt der Wunsch an der Senke, und zwar
+# kostenfrei: werkzeuglos, ohne Ticket, ohne Modellaufruf, ohne Aufruf am
+# Koordinator.
+for marke9 in ("tainted", "user_audio"):
+    tb9, eb9, ab9 = hub.zaehler(), egress.zaehler(), aktion.zaehler()
+    bb9 = beobachter_log()
+    ans, roh9 = frage("mach das fenster zu", marke=marke9)
+    P.check("9", f"{marke9}: der Aktionswunsch fällt an der Senke",
+            (ans.get("ok"), ans.get("grund")), (False, "marke_verboten"))
+    P.check("9", f"{marke9}: kostet kein Ticket, keinen Modellaufruf, "
+            f"keinen Aufruf am Koordinator",
+            (hub.zaehler(), egress.zaehler(), aktion.zaehler()),
+            (tb9, eb9, ab9))
+    P.check("9", f"{marke9}: kein Ausführungswerkzeug wurde angerührt",
+            beobachter_log(), bb9)
+    P.check("9", f"{marke9}: die Absage nennt weder Fenstertitel noch "
+            f"Nutzertext", kanariefrei(roh9, FENSTER_KANARIE, NUTZER_KANARIE),
+            True)
+# T-4.19: nur wer wirklich gesprochen hat, erfährt WARUM — und die
+# Rückmeldung ist die kuratierte Vorlage, nicht Material aus der Äußerung.
+ans9a, _ = frage("mach das fenster zu", marke="user_audio")
+P.check("9", "user_audio bekommt den Absichtsmarken-Hinweis, trusted",
+        (ans9a.get("antwort"), ans9a.get("marke")),
+        (ABSICHTSMARKE_HINWEIS, "trusted"))
+ans9b, _ = frage("mach das fenster zu", marke="tainted")
+P.check("9", "tainted bekommt ihn NICHT — injiziertem Text sagt niemand, "
+        "wie er eskaliert", ans9b.get("antwort"), None)
+
+# (b) `trusted` kommt an der Senke vorbei — eine Systemzeile ist kein
+# injizierter Text. Sie ist aber auch keine ABSICHT: ein Tastendruck belegt,
+# dass jemand etwas wollte, und den hat hier niemand getan. Dies ist die
+# Prüfung, die den Riegel `marke != "user_ptt"` bindet; die beiden Fälle
+# oben fallen schon vorher an der Senke.
+tb9, eb9, ab9 = hub.zaehler(), egress.zaehler(), aktion.zaehler()
+bb9 = beobachter_log()
+ans9t, _ = frage("mach das fenster zu", marke="trusted")
+P.check("9", "trusted: ohne Absichtsmarke werkzeuglos abgelehnt",
+        (ans9t.get("ok"), ans9t.get("weg"), ans9t.get("absicht"),
+         ans9t.get("api")), (True, "abgelehnt", "aktion", False))
+P.check("9", "trusted: bekommt die kuratierte Vorlage, trusted",
+        (ans9t.get("antwort"), ans9t.get("marke")),
+        (ABSICHTSMARKE_HINWEIS, "trusted"))
+P.check("9", "trusted: kostet kein Ticket, keinen Modellaufruf, keinen "
+        "Aufruf am Koordinator",
+        (hub.zaehler(), egress.zaehler(), aktion.zaehler()),
+        (tb9, eb9, ab9))
+P.check("9", "trusted: kein Ausführungswerkzeug wurde angerührt",
+        beobachter_log(), bb9)
+
+# (c) Mit Marke, ohne benanntes Ziel: Rückfrage, kostenfrei. Ein Fürwort
+# wird NICHT aus dem Kontext aufgelöst (Design 5.2) — sonst hinge die
+# Aktion an etwas, das der Nutzer in dieser Runde nie gesagt hat.
+tb9, eb9, ab9 = hub.zaehler(), egress.zaehler(), aktion.zaehler()
+bb9 = beobachter_log()
+ans9c, _ = frage("mach das")
+P.check("9", "ohne Ziel: weg ist rueckfrage, absicht bleibt aktion",
+        (ans9c.get("weg"), ans9c.get("absicht")), ("rueckfrage", "aktion"))
+P.check("9", "ohne Ziel: die Antwortform des Vertrags, Wort für Wort",
+        ans9c.get("antwort"), RUECKFRAGE_AKTION)
+P.check("9", "ohne Ziel: ok true, marke trusted, api false",
+        (ans9c.get("ok"), ans9c.get("marke"), ans9c.get("api")),
+        (True, "trusted", False))
+P.check("9", "Rückfrage: kostet kein Ticket, keinen Modellaufruf, keinen "
+        "Aufruf am Koordinator",
+        (hub.zaehler(), egress.zaehler(), aktion.zaehler()),
+        (tb9, eb9, ab9))
+P.check("9", "Rückfrage: kein Ausführungswerkzeug wurde angerührt",
+        beobachter_log(), bb9)
+
+# (d) Mit Marke UND Ziel: der werkzeugfähige Weg. Je Äußerung genau ein
+# Ticket und genau ein Modellaufruf — nicht mehr, und kein zweiter Versuch.
+bb9 = beobachter_log()
+qb9 = quellen_log()
+ab9 = aktion.zaehler()
+for text9 in ("mach das fenster zu", "stell die lautstärke auf 30",
+              f"mach das fenster »{NUTZER_KANARIE} äöü« zu"):
+    tb9, eb9 = hub.zaehler(), egress.zaehler()
+    ans, roh9 = frage(text9)
+    P.check("9", f"Aktionswunsch geht den Werkzeugweg: {text9[:38]!r}",
+            (ans.get("ok"), ans.get("weg"), ans.get("absicht"),
+             ans.get("api")), (True, "aktion", "aktion", True))
+    P.check("9", f"und kostet genau ein Ticket und einen Modellaufruf: "
+            f"{text9[:38]!r}", (hub.zaehler(), egress.zaehler()),
+            ((tb9[0] + 1, tb9[1] + 1), eb9 + 1))
+    P.check("9", f"und nennt im Ergebnis keinen Fenstertitel: {text9[:38]!r}",
+            kanariefrei(roh9, FENSTER_KANARIE), True)
+P.check("9", "der Aktionsweg rührt kein Ausführungswerkzeug an "
+        "(Beobachter leer)", beobachter_log(), bb9)
+neue_quellen9 = quellen_log()[len(qb9):]
+P.check("9", "keine verändernde Quellenbedienung hinter dem Aktionsweg",
+        [z for z in neue_quellen9
+         if "set-volume" in z or " Run" in z or "close" in z.lower()], [])
+P.check("9", "Positivkontrolle: die freie Modellausgabe kommt an und bleibt "
+        "tainted",
+        (ANTWORT_KANARIE in str(ans.get("antwort", "")), ans.get("marke")),
+        (True, "tainted"))
+
+# (e) Die eigene Zusage: solange das Modell KEIN Werkzeug ruft, sieht der
+# Koordinator nichts. `aktion.sock` ist gebunden und hat in K V geantwortet
+# — diese Null ist gemessen, nicht geerbt.
+P.check("9", "acht Aktionswünsche, kein Werkzeugruf: aktion.sock bekam "
+        "keinen Aufruf", aktion.zaehler(), ab9)
+# Positivkontrolle: dieselbe Bauform, aber das Modell ruft ein Werkzeug aus
+# dem freigegebenen Katalog. Jetzt MUSS genau ein Aufruf ankommen — sonst
+# wäre die Null oben die Null einer kaputten Vorrichtung.
+egress.setze_bloecke([{"type": "tool_use", "id": "tu-t313",
+                       "name": WERKZEUG_NAME, "input": {}}])
+ans9d, _ = frage("mach die musik an")
+P.check("9", "Positivkontrolle: mit tool_use sieht aktion.sock genau einen "
+        "Aufruf", aktion.zaehler(), ab9 + 1)
+P.check("9", "Positivkontrolle: der Koordinator bekommt die action_id aus "
+        "dem Katalog, nicht den Werkzeugnamen",
+        (aktion.letzte().get("art"), aktion.letzte().get("action_id")),
+        ("ausfuehren", WERKZEUG_ACTION_ID))
+P.check("9", "Positivkontrolle: der Router meldet das Verdikt des "
+        "Koordinators, nicht sein eigenes",
+        (ans9d.get("weg"), ans9d.get("action_id"), ans9d.get("ausgefuehrt")),
+        ("aktion", WERKZEUG_ACTION_ID, False))
+# (f) Und die Gegenprobe zur Positivkontrolle: ein erfundener Werkzeugname
+# fuehrt zu einer Textantwort, nicht zu einem Rateversuch. Sonst waere
+# „genau ein Aufruf" mit „jeder Name kommt durch" verwechselbar.
+egress.setze_bloecke([{"type": "tool_use", "id": "tu-t313b",
+                       "name": "erfundenes_werkzeug", "input": {}}])
+ans9e, _ = frage("mach die musik an")
+P.check("9", "erfundener Werkzeugname: aktion.sock bekommt keinen Aufruf",
+        aktion.zaehler(), ab9 + 1)
+P.check("9", "erfundener Werkzeugname: keine action_id im Ergebnis",
+        ans9e.get("action_id"), None)
+egress.setze_bloecke(None)
+
+# (g) Der Schnitt, der die alte K6-Zeile „keine Historie im Körper"
+# ersetzt. Historie gibt es seit T-6.2 — aber NICHT jede. Die Antwort aus
+# Durchgang 2 ist Modellausgabe; sie trägt die Herkunft `durchgang2` und
+# wird darüber erzwungen-`tainted`, und die Senke `kurzzeitgedaechtnis`
+# nimmt kein `tainted`. Damit erreicht sie den werkzeugfähigen Durchgang
+# nie — auch nicht über das Gedächtnis. Gemessen am 01.09.: die eigene
+# `user_ptt`-Frage steht im Werkzeugkörper, die Antwort darauf nicht.
+egress.setze_antwort(D2_ANTWORT_KANARIE)
+frage(f"erzähl mir etwas über {D2_FRAGE_KANARIE}")
+egress.setze_antwort(ANTWORT_KANARIE)
+frage("mach das fenster zu")
+koerper9 = egress.letzter_koerper()
+P.check("9", "der werkzeugfähige Körper trägt die Antwort aus Durchgang 2 "
+        "nicht", D2_ANTWORT_KANARIE.encode() in koerper9, False)
+P.check("9", "Positivkontrolle: die eigene user_ptt-Frage der Vorrunde "
+        "steht sehr wohl darin — die Null oben ist gefiltert, nicht leer",
+        D2_FRAGE_KANARIE.encode() in koerper9, True)
 
 P.kapitel("10", "eingefrorene Prüfstände bleiben grün, dazu pytest")
 if FIXTURE:

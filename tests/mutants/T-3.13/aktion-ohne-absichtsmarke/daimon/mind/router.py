@@ -1,8 +1,11 @@
-"""Gut-Muster T-3.12: der Router, ausschließlich aus dem Vertrag §2 gebaut.
+"""Gut-Muster T-3.13: der Router, ausschließlich aus dem Vertrag §2 gebaut.
 
-Vier lokale Absichten ohne Modell, die Referenztabelle je Runde, Ablehnung
-von Aktionswünschen, die Senke für `user_audio` und der Weg zur API über
-Ticket und Egress. Keine Zeile hier ist aus der echten Implementierung
+Durchgang 1 unverändert aus T-3.12: vier lokale Absichten ohne Modell,
+die Referenztabelle je Runde, Ablehnung von Aktionswünschen. Neu: die
+Absicht `api` geht an Durchgang 2 (`daimon/mind/answer.py`), und die
+Senke für `user_audio` gilt nur noch für Durchgang 1 — eine gespoofte
+Äußerung darf eine Frage beantworten lassen, mehr nicht (Senkentabelle,
+Design §5.2). Keine Zeile hier ist aus der echten Implementierung
 übernommen — der Reviewer hat sie nie gesehen.
 """
 
@@ -18,16 +21,12 @@ import subprocess
 import time
 from pathlib import Path
 
+from daimon.mind.answer import (DurchgangZwei, Gedaechtnis,
+                                lade_persona_prompt)
+
 MAX = 4 << 20
 
-# Die geschlossene Aufzaehlung. Sechs stammen aus Vertrag T-3.12 §2;
-# `erinnerung` und `fokus` kamen mit T-8.5 dazu (beide lokal, beide an den
-# Zeitplaner). Der Zeitplaner ist nicht Gegenstand von T-3.12 -- das
-# Gut-Muster nennt die beiden, wie der Vertrag es verlangt, und leitet sie
-# nicht weiter: kein Vorratscode fuer einen Zulauf, den dieser Pruefstand
-# nicht misst.
-ABSICHTEN = ["uhrzeit", "lautstaerke", "sitzung", "fensterliste", "aktion",
-             "erinnerung", "fokus", "api"]
+ABSICHTEN = ["uhrzeit", "lautstaerke", "sitzung", "fensterliste", "aktion", "api"]
 
 # Geschlossene Musterlisten, deutsch und englisch, ohne Modell. `aktion`
 # steht an erster Stelle, weil „stell die Lautstärke auf 30" ein
@@ -49,28 +48,32 @@ MUSTER_FENSTERLISTE = ["welche fenster", "fensterliste", "which windows",
 APP_IDS = ["discord", "konsole", "firefox", "chromium", "code", "freecad",
            "kate", "dolphin", "thunderbird", "spotify"]
 
-# T-4.19: die EINE kuratierte Rueckmeldung fuer "Aktion ohne Absichtsmarke".
-# Wortlaut aus der Akzeptanzliste; zwei Formulierungen waeren zwei Wahrheiten.
+# T-4.19: die EINE kuratierte Rückmeldung für „Aktion ohne Absichtsmarke",
+# und die EINE Rückfrage für „Aktion ohne Ziel". Zwei Formulierungen wären
+# zwei Wahrheiten.
 ABSICHTSMARKE_HINWEIS = ("Fuer eine Aktion brauche ich eine "
                          "Absichtsmarke — bitte Push-to-Talk druecken.")
 RUECKFRAGE_AKTION = "Was soll ich womit machen?"
+KEIN_WERKZEUG = "Dafuer habe ich kein passendes Werkzeug gefunden."
 
-# T-4.16 K1: der freigegebene Katalog, so weit dieser Pruefstand ihn nennt.
+# T-4.16 K1: der freigegebene Katalog, so weit dieses Gut-Muster ihn nennt.
 # Werkzeugname (Anthropic erlaubt dort keinen Punkt) -> action_id. Eine
-# TABELLE und keine Umformung: `window.to_next_desktop` traegt selbst einen
-# Unterstrich, ein blindes Zuruecksetzen kollidierte mit ihm.
+# TABELLE und keine Umformung: `window.to_next_desktop` trägt selbst einen
+# Unterstrich, ein blindes Zurücksetzen kollidierte mit ihm.
 KATALOG = {"media_playpause": "media.playpause",
            "audio_volume_set": "audio.volume.set"}
 
-# Fuellwoerter, die kein Ziel benennen. Bleibt nach Verb und Fuellwort nichts
-# mehr stehen, ist "mach das" eine Rueckfrage und keine Aktion (Design 5.2).
+# Füllwörter, die kein Ziel benennen. Bleibt nach Verb und Füllwort nichts
+# mehr stehen, ist „mach das" eine Rückfrage und keine Aktion (Design 5.2):
+# ein Fürwort wird NICHT aus dem Kontext aufgelöst, sonst hinge die Aktion
+# an etwas, das der Nutzer in dieser Runde nie gesagt hat.
 FUELLWORT = re.compile(
     r"\b(das|es|die|der|den|dem|mal|bitte|jetzt|doch|the|it|this|that|"
     r"please|now)\b", re.IGNORECASE)
 
 
 def ziel_benannt(text: str) -> bool:
-    """Bleibt nach Verb und Fuellwoertern noch etwas stehen?"""
+    """Bleibt nach Verb und Füllwörtern noch etwas stehen?"""
     rest = text or ""
     for muster in MUSTER_AKTION:
         rest = re.sub(re.escape(muster), " ", rest, flags=re.IGNORECASE)
@@ -92,15 +95,10 @@ def erkenne_absicht(text: str) -> str:
     return "api"
 
 
-def absage(grund: str, meldung: str, antwort: str | None = None) -> dict:
+def absage(grund: str, meldung: str) -> dict:
     # Die Meldung ist statisch: kein Fenstertitel und kein Nutzertext darf
-    # in einer Absage auftauchen. `antwort` traegt, wenn ueberhaupt, die
-    # kuratierte Vorlage -- nie Material aus der Aeusserung.
-    ans = {"v": 1, "ok": False, "grund": grund, "meldung": meldung}
-    if antwort is not None:
-        ans["antwort"] = antwort
-        ans["marke"] = "trusted"
-    return ans
+    # in einer Absage auftauchen.
+    return {"v": 1, "ok": False, "grund": grund, "meldung": meldung}
 
 
 def lokal(absicht: str, antwort: str, marke: str) -> dict:
@@ -135,6 +133,11 @@ class Router:
         self._tabelle: dict[str, dict[str, str]] = {}
         self.runden = 0
         self.api_aufrufe = 0
+        # EIN geteiltes Gedächtnis für beide Durchgänge (T-6.2).
+        self._gedaechtnis = Gedaechtnis()
+        self._persona = lade_persona_prompt()
+        self._zwei = DurchgangZwei(self._laufzeit, self._persona,
+                                   self._inhalt, self._gedaechtnis)
 
     # -- Zustand ---------------------------------------------------------
 
@@ -201,17 +204,6 @@ class Router:
             raise QuelleWeg("hub: Zustand ist kein Objekt")
         return snap
 
-    def _hub_rufen(self, obj: dict) -> dict:
-        pfad = self._laufzeit / "ticket.sock"
-        c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        c.settimeout(3)
-        try:
-            c.connect(str(pfad))
-            c.sendall(json.dumps(obj, separators=(",", ":")).encode() + b"\n")
-            return json.loads(c.makefile("rb").readline(MAX))
-        finally:
-            c.close()
-
     # -- Referenztabelle ---------------------------------------------------
 
     def _referenzen(self, runde: object) -> dict[str, dict[str, str]]:
@@ -232,58 +224,54 @@ class Router:
     # -- Die eigentliche Bearbeitung ---------------------------------------
 
     def frage(self, req: dict) -> dict:
-        # Die Senke steht vor jeder Quellenabfrage und vor jedem
-        # Ticketversuch: user_audio erreicht Durchgang 1 nicht.
-        if req.get("marke") == "user_audio":
-            # T-4.19: nur wer wirklich GESPROCHEN hat, erfaehrt WARUM nichts
-            # passiert -- und nur bei einer Aktionsbitte. Die Absicht steht
-            # dafuer schon fest, und das ist unbedenklich: sie entsteht aus
-            # einer lokalen Musterliste, ohne Quelle und ohne Ticket. Die
-            # Absage selbst bleibt (ok false, marke_verboten).
-            roh = req.get("text")
-            bittet_um_aktion = (isinstance(roh, str)
-                                and erkenne_absicht(roh) == "aktion")
-            return absage("marke_verboten",
-                          "Diese Markierung erreicht Durchgang 1 nicht.",
-                          ABSICHTSMARKE_HINWEIS if bittet_um_aktion else None)
         text = req.get("text")
         if not isinstance(text, str) or not text.strip():
             return absage("kein_text", "Feld text fehlt oder ist leer.")
         self.runden += 1
         absicht = erkenne_absicht(text)
         runde = req.get("runde")
+        # Senkentabelle (Design §5.2): user_audio erreicht Durchgang 1
+        # nicht, Durchgang 2 schon — eine gespoofte Äußerung darf eine
+        # Frage beantworten lassen, mehr nicht. Die Senke steht vor jeder
+        # Quellenabfrage und vor jedem Ticketversuch.
+        if req.get("marke") == "user_audio" and absicht != "api":
+            ans = absage("marke_verboten",
+                         "Diese Markierung erreicht Durchgang 1 nicht.")
+            if absicht == "aktion":
+                # T-4.19: nur wer wirklich GESPROCHEN hat, erfährt WARUM
+                # nichts passiert — und nur bei einer Aktionsbitte. Die
+                # Rückmeldung ist die kuratierte Vorlage, nie Material aus
+                # der Äußerung. Die Absage selbst bleibt.
+                ans["antwort"] = ABSICHTSMARKE_HINWEIS
+                ans["marke"] = "trusted"
+            return ans
         try:
             if absicht == "aktion":
                 marke = req.get("marke")
                 if marke == "tainted":
                     # Markierter Text ist keine Absicht: er erreicht
-                    # Durchgang 1 gar nicht -- und bekommt AUCH KEINEN
+                    # Durchgang 1 gar nicht — und bekommt AUCH KEINEN
                     # Hinweis. Wer injiziert, soll nicht erfahren, wie er
                     # eskaliert (T-4.19).
                     return absage(
                         "marke_verboten",
                         "Diese Markierung erreicht Durchgang 1 nicht.")
-                if marke != "user_ptt":
-                    # T-4.19: eine Aktionsbitte ohne Absichtsmarke wird
-                    # WERKZEUGLOS abgelehnt -- kein Ticket, kein Modell,
-                    # kein Aufruf am Koordinator. Eine Rueckfrage waere hier
-                    # selbst ein Angriffsweg: gefaelschtes Audio koennte den
-                    # Nutzer mit Dialogen zumuellen, bis er einen wegklickt.
+                if False and marke != "user_ptt":  # MUTATION
+                    # Werkzeuglos abgelehnt — kein Ticket, kein Modell,
+                    # kein Aufruf am Koordinator. Eine Rückfrage wäre hier
+                    # selbst ein Angriffsweg: gefälschtes Audio könnte den
+                    # Nutzer mit Dialogen zumüllen, bis er einen wegklickt.
                     return {"v": 1, "ok": True, "weg": "abgelehnt",
                             "absicht": "aktion",
                             "antwort": ABSICHTSMARKE_HINWEIS,
                             "marke": "trusted", "api": False}
                 if not ziel_benannt(text):
-                    # Design 5.2: "Mach das" verweist NICHT auf
-                    # Assistententext oder Kontext. Die aktuelle Aeusserung
-                    # muss Aktion und Ziel nennen.
                     return {"v": 1, "ok": True, "weg": "rueckfrage",
                             "absicht": "aktion",
                             "antwort": RUECKFRAGE_AKTION,
                             "marke": "trusted", "api": False}
                 return self._werkzeugweg(text)
             if absicht == "uhrzeit":
-                self._api(text, runde)  # MUTATION: lokale Frage kostet Kontingent
                 return lokal("uhrzeit",
                              f"Es ist {time.strftime('%H:%M')}.", "trusted")
             if absicht == "lautstaerke":
@@ -294,7 +282,7 @@ class Router:
             if absicht == "sitzung":
                 snap = self._hub_zustand()
                 fokus = snap.get("focus") or {}
-                # §8: nur Zahl, geschlossene Aufzählung und die opake Kennung.
+                # Nur Zahl, geschlossene Aufzählung und die opake Kennung.
                 # focus.project ist tainted und bleibt aus der trusted-
                 # Auskunft draußen.
                 sitzung_id = fokus.get("session_id") or "keine"
@@ -311,26 +299,33 @@ class Router:
                            if titel else "Es sind keine Fenster offen.")
                 # Ein Fenstertitel ist angreiferbeeinflusst: tainted.
                 return lokal("fensterliste", antwort, "tainted")
-            return self._api(text, runde)
+            ans = self._zwei.antwort(text, runde,
+                                     str(req.get("marke") or "tainted"))
+            if ans.get("api"):
+                self.api_aufrufe += 1
+            return ans
         except QuelleWeg:
             return absage("quelle_weg", "Eine lokale Quelle antwortet nicht.")
 
-    # -- Der werkzeugfaehige Weg (T-4.16 K1) ---------------------------------
+    # -- Der werkzeugfähige Weg (T-4.16 K1) ---------------------------------
 
     def _werkzeugweg(self, text: str) -> dict:
-        """Durchgang 1, werkzeugfaehig: KEIN Kontext, ein Modellaufruf.
+        """Durchgang 1, werkzeugfähig: KEIN Kontext, ein Modellaufruf.
 
-        Die Aktion entsteht erst, wenn das Modell ein Werkzeug ruft --
+        Die Aktion entsteht erst, wenn das Modell ein Werkzeug ruft —
         vorher sieht `aktion.sock` nichts. Ein erfundener Werkzeugname
-        fuehrt zu einer Textantwort, nicht zu einem Rateversuch.
+        führt zu einer Textantwort, nicht zu einem Rateversuch.
+
+        Der Verlauf kommt durch die Senke `kurzzeitgedaechtnis` und ist
+        damit enger als der von Durchgang 2: eine Modellantwort ist
+        `tainted` und steht hier nie.
         """
         koerper = {
             "model": "claude-test",
             "max_tokens": 64,
-            "system": "Du bist dAImon.",
-            # Kein Kontext, keine Bildschirmreferenz: nur die Aeusserung
-            # dieser Runde -- sie ist user_ptt, das ist oben geprueft.
-            "messages": [{"role": "user", "content": text}],
+            "system": self._persona,
+            "messages": (self._gedaechtnis.fuer_prompt("kurzzeitgedaechtnis")
+                         + [{"role": "user", "content": text}]),
             "tools": [{"name": n, "description": a,
                        "input_schema": {"type": "object", "properties": {}}}
                       for n, a in sorted(KATALOG.items())],
@@ -338,24 +333,27 @@ class Router:
         kanonisch = json.dumps(koerper, sort_keys=True, separators=(",", ":"),
                                ensure_ascii=False).encode("utf-8")
         try:
-            ausgabe = self._hub_rufen({"v": 1, "art": "ausgeben",
-                                       "zweck": "api",
-                                       "auftrag_hash": hashlib.sha256(
-                                           kanonisch).hexdigest()})
+            ausgabe = self._rufen("ticket.sock",
+                                  {"v": 1, "art": "ausgeben", "zweck": "api",
+                                   "auftrag_hash": hashlib.sha256(
+                                       kanonisch).hexdigest()}, timeout=3)
         except OSError:
             raise QuelleWeg("hub: Ticket-Endpunkt nicht erreichbar")
         if not ausgabe.get("ok"):
             return absage("kein_kontingent",
                           "Der Hub gibt kein Kontingent aus.")
         try:
-            antwort = self._egress({"v": 1, "art": "anfrage",
-                                    "ticket": ausgabe["ticket"],
-                                    "koerper": koerper})
+            antwort = self._rufen("egress.sock",
+                                  {"v": 1, "art": "anfrage",
+                                   "ticket": ausgabe["ticket"],
+                                   "koerper": koerper})
         except (OSError, ValueError):
-            return {"v": 1, "ok": False, "weg": "aktion", "grund": "egress_weg",
+            return {"v": 1, "ok": False, "weg": "aktion",
+                    "grund": "egress_weg",
                     "meldung": "Der Ausgang ist nicht erreichbar."}
         if not antwort.get("ok"):
-            return {"v": 1, "ok": False, "weg": "aktion", "grund": "egress_weg",
+            return {"v": 1, "ok": False, "weg": "aktion",
+                    "grund": "egress_weg",
                     "meldung": "Der Ausgang hat abgesagt."}
         self.api_aufrufe += 1
         inhalt = (antwort.get("antwort") or {}).get("content")
@@ -363,44 +361,49 @@ class Router:
         gesagt = "\n".join(str(b.get("text", "")) for b in bloecke
                            if isinstance(b, dict)
                            and b.get("type") == "text").strip()
+        # T-6.2: die Runde ins Gedächtnis, ERST nachdem die Antwort kam.
+        self._gedaechtnis.merken("user", text, "user_ptt",
+                                 quelle="durchgang1")
+        if gesagt:
+            self._gedaechtnis.merken("assistant", gesagt, "trusted",
+                                     quelle="durchgang1")
         werkzeug = next((b for b in bloecke if isinstance(b, dict)
                          and b.get("type") == "tool_use"), None)
         action_id = KATALOG.get(str((werkzeug or {}).get("name") or ""))
         if action_id is None:
-            # Das Modell hat kein (oder ein unbekanntes) Werkzeug gewaehlt --
+            # Das Modell hat kein (oder ein unbekanntes) Werkzeug gewählt —
             # kein Fehler, nur keine Aktion. Freier Modelltext ist tainted.
             return {"v": 1, "ok": True, "weg": "aktion", "absicht": "aktion",
-                    "antwort": gesagt or "Dafuer habe ich kein passendes "
-                                         "Werkzeug gefunden.",
+                    "antwort": gesagt or KEIN_WERKZEUG,
                     "marke": "tainted" if gesagt else "trusted", "api": True}
         try:
-            lauf = self._aktion({"v": 1, "art": "ausfuehren",
-                                 "action_id": action_id,
-                                 "params": werkzeug.get("input") or {},
-                                 "tool_use_id": str(werkzeug.get("id") or "")})
+            lauf = self._rufen("aktion.sock",
+                               {"v": 1, "art": "ausfuehren",
+                                "action_id": action_id,
+                                "params": werkzeug.get("input") or {},
+                                "tool_use_id": str(werkzeug.get("id") or "")})
         except (OSError, ValueError):
             raise QuelleWeg("koordinator: aktion.sock nicht erreichbar")
         # Das Verdikt kommt vom Koordinator, nicht von hier: der Router
-        # waehlt den Weg, er oeffnet keine Tuer.
+        # wählt den Weg, er öffnet keine Tür.
         return {"v": 1, "ok": True, "weg": "aktion", "absicht": "aktion",
                 "action_id": action_id,
                 "ausgefuehrt": bool(lauf.get("ausgefuehrt")),
                 "antwort": lauf.get("gesprochen") or "",
                 "marke": "trusted", "api": True}
 
-    def _aktion(self, anfrage: dict) -> dict:
-        pfad = self._laufzeit / "aktion.sock"
+    def _rufen(self, sock: str, obj: dict, timeout: float = 15) -> dict:
         c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        c.settimeout(15)
+        c.settimeout(timeout)
         try:
-            c.connect(str(pfad))
-            c.sendall(json.dumps(anfrage, ensure_ascii=False,
+            c.connect(str(self._laufzeit / sock))
+            c.sendall(json.dumps(obj, ensure_ascii=False,
                                  separators=(",", ":")).encode() + b"\n")
             return json.loads(c.makefile("rb").readline(MAX))
         finally:
             c.close()
 
-    # -- Der Weg zur API ----------------------------------------------------
+    # -- Was ein Modell über Fenster erfahren darf --------------------------
 
     def _inhalt(self, text: str, runde: object) -> str:
         # Was ein Modellaufruf über Fenster erfährt, sind ausschließlich
@@ -411,57 +414,6 @@ class Router:
         opak = {ref: {"app_id": e["app_id"]} for ref, e in tabelle.items()}
         return (text + "\nFenster (opake Referenzen): "
                 + json.dumps(opak, ensure_ascii=False, sort_keys=True))
-
-    def _api(self, text: str, runde: object) -> dict:
-        koerper = {
-            "model": "claude-test",
-            "max_tokens": 64,
-            "system": "Du bist dAImon.",
-            "messages": [{"role": "user",
-                          "content": self._inhalt(text, runde)}],
-        }
-        kanonisch = json.dumps(koerper, sort_keys=True, separators=(",", ":"),
-                               ensure_ascii=False).encode("utf-8")
-        auftrag_hash = hashlib.sha256(kanonisch).hexdigest()
-        try:
-            ausgabe = self._hub_rufen({"v": 1, "art": "ausgeben",
-                                       "zweck": "api",
-                                       "auftrag_hash": auftrag_hash})
-        except OSError:
-            raise QuelleWeg("hub: Ticket-Endpunkt nicht erreichbar")
-        if not ausgabe.get("ok"):
-            return absage("kein_kontingent",
-                          "Der Hub gibt kein Kontingent aus.")
-        anfrage = {"v": 1, "art": "anfrage", "ticket": ausgabe["ticket"],
-                   "koerper": koerper}
-        try:
-            antwort = self._egress(anfrage)
-        except (OSError, ValueError):
-            return {"v": 1, "ok": False, "weg": "api", "grund": "egress_weg",
-                    "meldung": "Der Ausgang ist nicht erreichbar."}
-        if not antwort.get("ok"):
-            return {"v": 1, "ok": False, "weg": "api", "grund": "egress_weg",
-                    "meldung": "Der Ausgang hat abgesagt."}
-        self.api_aufrufe += 1
-        try:
-            sprechbar = antwort["antwort"]["content"][0]["text"]
-        except (KeyError, IndexError, TypeError):
-            return {"v": 1, "ok": False, "weg": "api", "grund": "egress_weg",
-                    "meldung": "Die Antwort des Ausgangs ist nicht lesbar."}
-        return {"v": 1, "ok": True, "weg": "api", "absicht": "api",
-                "antwort": str(sprechbar), "marke": "tainted", "api": True}
-
-    def _egress(self, anfrage: dict) -> dict:
-        pfad = self._laufzeit / "egress.sock"
-        c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        c.settimeout(15)
-        try:
-            c.connect(str(pfad))
-            c.sendall(json.dumps(anfrage, ensure_ascii=False,
-                                 separators=(",", ":")).encode() + b"\n")
-            return json.loads(c.makefile("rb").readline(MAX))
-        finally:
-            c.close()
 
 
 _NEUE_RUNDE = object()

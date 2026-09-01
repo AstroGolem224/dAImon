@@ -238,6 +238,11 @@ class EgressAttrappe:
         self.hub = hub
         self.pfad = rt / "egress.sock"
         self.modus = "normal"  # normal | absage
+        # Freie Antwortbloecke statt nur Text: nur so kann dieser Pruefstand
+        # das Modell EIN WERKZEUG rufen lassen (K3) -- und damit belegen,
+        # dass die Stille an `aktion.sock` gemessen und nicht bloss
+        # ungebunden ist.
+        self.bloecke: list[dict] | None = None
         self.aufrufe: list[bytes] = []
         self.lock = threading.Lock()
         self._stopp = threading.Event()
@@ -305,6 +310,7 @@ class EgressAttrappe:
                                ensure_ascii=False).encode("utf-8")
         with self.lock:
             self.aufrufe.append(kanonisch)
+            bloecke = self.bloecke
         h = hashlib.sha256(kanonisch).hexdigest()
         try:
             eingel, _ = unix_json(self.rt / "ticket.sock",
@@ -320,14 +326,82 @@ class EgressAttrappe:
             return {"v": 1, "ok": False, "grund": "ziel_weg",
                     "meldung": "Ziel nicht erreichbar"}
         antwort = {"id": "lokal",
-                   "content": [{"type": "text", "text": ANTWORT_KANARIE}],
-                   "stop_reason": "end_turn"}
+                   "content": bloecke or [{"type": "text",
+                                           "text": ANTWORT_KANARIE}],
+                   "stop_reason": "tool_use" if bloecke else "end_turn"}
         return {"v": 1, "ok": True, "status": 200, "bytes": 80,
                 "dauer_ms": 1.0, "antwort": antwort}
 
     def zaehler(self) -> int:
         with self.lock:
             return len(self.aufrufe)
+
+    def setze_bloecke(self, bloecke: list[dict] | None) -> None:
+        with self.lock:
+            self.bloecke = bloecke
+
+
+class AktionAttrappe:
+    """Der Koordinator des Reviewers an `aktion.sock` (T-4.16 K1).
+
+    Er zaehlt, was ankommt, und fuehrt nichts aus. Er MUSS gebunden sein,
+    damit "aktion.sock bekommt keinen Aufruf" ein MESSWERT ist: an einem
+    ungebundenen Socket ist Stille von Abwesenheit nicht zu unterscheiden --
+    und genau das waere ein Falschbefund in die harmlose Richtung.
+    """
+
+    def __init__(self, rt: Path) -> None:
+        self.aufrufe: list[bytes] = []
+        self.lock = threading.Lock()
+        self._stopp = threading.Event()
+        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        pfad = rt / "aktion.sock"
+        pfad.unlink(missing_ok=True)
+        srv.bind(str(pfad))
+        pfad.chmod(0o600)
+        srv.listen(16)
+        srv.settimeout(0.3)
+        self._srv = srv
+        threading.Thread(target=self._schleife, daemon=True).start()
+
+    def _schleife(self) -> None:
+        while not self._stopp.is_set():
+            try:
+                conn, _ = self._srv.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            with conn:
+                try:
+                    conn.settimeout(5)
+                    zeile = conn.makefile("rb").readline(1 << 20)
+                    with self.lock:
+                        self.aufrufe.append(zeile.strip())
+                    conn.sendall(json.dumps(
+                        {"v": 1, "ok": True, "ausgefuehrt": False,
+                         "verdikt": "deny", "grund": "pruefstand",
+                         "gesprochen": ""}).encode() + b"\n")
+                except OSError:
+                    continue
+
+    def zaehler(self) -> int:
+        with self.lock:
+            return len(self.aufrufe)
+
+    def letzte(self) -> dict:
+        with self.lock:
+            if not self.aufrufe:
+                return {}
+            roh = self.aufrufe[-1]
+        try:
+            return json.loads(roh)
+        except json.JSONDecodeError:
+            return {}
+
+    def zuruecksetzen(self) -> None:
+        with self.lock:
+            self.aufrufe.clear()
 
 
 # ------------------------------------------------------- Quellen-Attrappen
@@ -555,6 +629,7 @@ print(f"  Laufzeitraum: {RT}")
 
 hub = HubAttrappe(DAIMON_RT)
 egress = EgressAttrappe(DAIMON_RT, hub)
+aktion = AktionAttrappe(DAIMON_RT)
 mind = Mind()
 
 P.kapitel("V", "Voraussetzungen und Messstrecke")
@@ -586,6 +661,15 @@ selbst_ans, _ = unix_json(DAIMON_RT / "egress.sock",
                            "koerper": selbst_koerper})
 P.check("V", "Messstrecke: Egress-Attrappe nimmt das Ticket an", selbst_ans.get("ok"), True)
 P.check("V", "Messstrecke: Einlösung wurde gezählt", hub.zaehler(), (1, 1))
+# Derselbe Selbsttest für `aktion.sock`: den Weg, der in K3 STILL bleiben
+# soll. Ein Socket, der schon hier nicht antwortet, könnte dort keine Stille
+# belegen — er zeigte nur seine eigene Abwesenheit.
+akt_ans, _ = unix_json(DAIMON_RT / "aktion.sock",
+                       {"v": 1, "art": "ausfuehren",
+                        "action_id": "messstrecke.selbsttest", "params": {}})
+P.check("V", "Messstrecke: Aktions-Attrappe antwortet und zählt",
+        (akt_ans.get("ok"), aktion.zaehler()), (True, 1))
+aktion.zuruecksetzen()
 hub.zuruecksetzen()
 egress.aufrufe.clear()
 quellen_log()  # Logdatei existiert ab jetzt sicher
@@ -599,9 +683,17 @@ if P.rot["V"]:
 z0 = zustand()
 P.check("V", "Zustand antwortet und meldet das Testprofil sichtbar",
         (z0.get("ok"), z0.get("testprofil")), (True, True))
-P.check("V", "Zustand nennt genau die sechs Absichten des Vertrags",
+# Bis zum 30.08. waren es sechs — die geschlossene Aufzählung des Vertrags
+# T-3.12 §2. Mit T-8.5 kamen `erinnerung` und `fokus` dazu (beide lokal,
+# beide an den Zeitplaner, keine an eine Aktion); die Liste steht in
+# `daimon/mind/router.py:49` und ist die Quelle dieser Erwartung.
+# Geschlossen bleibt sie: eine NEUNTE Absicht ist ein Fehler und keine
+# Erweiterung, und dieses Kriterium ist die Stelle, die das merkt.
+P.check("V", "Zustand nennt genau die acht Absichten des Vertrags "
+        "(sechs aus T-3.12 §2, `erinnerung` und `fokus` aus T-8.5)",
         sorted(z0.get("absichten", [])),
-        sorted(["uhrzeit", "lautstaerke", "sitzung", "fensterliste", "aktion", "api"]))
+        sorted(["uhrzeit", "lautstaerke", "sitzung", "fensterliste", "aktion",
+                "erinnerung", "fokus", "api"]))
 P.check("V", "Selbstauskunft pid stimmt mit dem gestarteten Prozess überein",
         z0.get("pid"), mind.pid)
 
@@ -680,11 +772,40 @@ P.check("2", "Umgebungswechsel (TZ, LC_ALL=C) ändert die Absicht nicht",
 mind.start()
 P.check("2", "Mind startet unter Normalumgebung wieder", warten(MIND_SOCK, mind.p), True)
 
-P.kapitel("3", "Aktionswünsche werden abgelehnt, nicht ausgeführt")
-bbasis = beobachter_log()
-qbasis = quellen_log()
-tbasis = hub.zaehler()
-tebasis = egress.zaehler()
+P.kapitel("3", "der Aktionsweg: ohne Absichtsmarke abgelehnt, ohne Ziel "
+          "Rückfrage, mit beidem werkzeugfähig — und aktion.sock bleibt still")
+# WARUM dieses Kriterium heute anders lautet als bis zum 30.08.
+#
+# Bis dahin stand hier EINE Erwartung je Aktionswunsch: (ok, weg, absicht,
+# api) == (True, "abgelehnt", "aktion", False), dazu die Zeile "Ablehnungen
+# kosten kein Kontingent und keinen Egress". Das war die Zusage der PHASE 3
+# — "Sprache, Egress, Markierungsverfolgung, KEINE Aktionen". Sie galt,
+# solange es keinen werkzeugfähigen Weg gab.
+#
+# Seit T-4.16 K1 gibt es ihn: `Mind.frage_werkzeug` (daemon.py:362) reicht
+# einen `tool_use`-Block über `aktion.sock` an den Koordinator, und
+# `router.py:548` wählt dafür `weg: "aktion"` mit `api: true`. Die alte
+# Erwartung ist heute nicht mehr die Zusage, sondern ihr Nachhall: gemessen
+# am 31.08. im Arbeitsbaum sechsmal `(True, 'aktion', 'aktion', True)` und
+# `((7, 7), 7)` statt `((1, 1), 1)` — sieben rote Punkte, ohne dass etwas
+# kaputt wäre. CLAUDE.md, "Ein eingefrorener Prüfstand ist eine Zusage MIT
+# DATUM", trägt die Bauform.
+#
+# Aufgeweicht wird dabei NICHTS. Aus einer Erwartung werden vier Familien,
+# und die teure Zusage — dass eine Ablehnung nichts kostet und dass keine
+# Aktion entsteht, solange das Modell kein Werkzeug ruft — wird hier zum
+# ersten Mal GEMESSEN statt vorausgesetzt. Am echten Mind über echte Sockets
+# (Reviewer-Attrappen für Hub, Modell und Koordinator), 31.08.:
+#
+#   tainted    + "mach das fenster zu" -> ok:false, marke_verboten
+#   user_audio + dasselbe              -> ok:false, marke_verboten + Hinweis
+#   user_ptt   + "mach das"            -> ok:true,  weg "rueckfrage"
+#   user_ptt   + "mach das fenster zu" -> ok:true,  weg "aktion"
+#   Summe über die vier: 1 Ticket, 1 Modellaufruf, 0 Aufrufe an aktion.sock.
+#
+# Der Weg heißt `aktion`, weil er werkzeugFÄHIG ist — die Aktion entsteht
+# erst, wenn das Modell ein Werkzeug ruft. Katalog, Policy und Consent liegen
+# dahinter, in der Kette, nicht hier.
 aktionen = [
     "mach das fenster zu",
     "stell die lautstärke auf 30",
@@ -693,23 +814,141 @@ aktionen = [
     "starte t312-werkzeug",
     f"mach das fenster »{NUTZER_KANARIE} äöü« zu",
 ]
-for text in aktionen:
-    ans, roh = frage(text)
-    P.check("3", f"Aktionswunsch abgelehnt: {text[:38]!r}",
-            (ans.get("ok"), ans.get("weg"), ans.get("absicht"), ans.get("api")),
-            (True, "abgelehnt", "aktion", False))
-    P.check("3", "Ablehnung nennt weder Nutzertext noch Fenstertitel",
+
+# (a) Ohne Absichtsmarke: abgelehnt, und die Ablehnung ist kostenfrei —
+# werkzeuglos, ohne Ticket, ohne Modellaufruf, ohne Aufruf am Koordinator.
+for marke3 in ("tainted", "user_audio"):
+    tbasis = hub.zaehler()
+    ebasis = egress.zaehler()
+    abasis = aktion.zaehler()
+    bbasis = beobachter_log()
+    ans, roh = frage("mach das fenster zu", marke=marke3)
+    P.check("3", f"{marke3}: der Aktionswunsch wird abgelehnt",
+            (ans.get("ok"), ans.get("grund")), (False, "marke_verboten"))
+    P.check("3", f"{marke3}: die Ablehnung kostet kein Ticket",
+            hub.zaehler(), tbasis)
+    P.check("3", f"{marke3}: die Ablehnung kostet keinen Modellaufruf",
+            egress.zaehler(), ebasis)
+    P.check("3", f"{marke3}: aktion.sock bekommt keinen Aufruf",
+            aktion.zaehler(), abasis)
+    P.check("3", f"{marke3}: kein Ausführungswerkzeug wurde angerührt",
+            beobachter_log(), bbasis)
+    P.check("3", f"{marke3}: die Ablehnung nennt den Nutzertext nicht",
             keine_kanarien(roh), True)
-P.check("3", "kein Ausführungswerkzeug wurde angerührt (Beobachter leer)",
+# T-4.19: nur wer wirklich gesprochen hat, erfährt WARUM — und die
+# Rückmeldung ist die kuratierte Vorlage, nicht Material aus der Äußerung.
+ans3a, _ = frage("mach das fenster zu", marke="user_audio")
+P.check("3", "user_audio bekommt den Absichtsmarken-Hinweis, trusted",
+        (ans3a.get("antwort"), ans3a.get("marke")),
+        ("Fuer eine Aktion brauche ich eine Absichtsmarke — bitte "
+         "Push-to-Talk druecken.", "trusted"))
+ans3b, _ = frage("mach das fenster zu", marke="tainted")
+P.check("3", "tainted bekommt ihn NICHT — injiziertem Text sagt niemand, "
+        "wie er eskaliert", ans3b.get("antwort"), None)
+
+# `trusted` kommt an der Senke vorbei — eine Systemzeile ist kein injizierter
+# Text. Sie ist aber auch keine ABSICHT: ein Tastendruck belegt, dass jemand
+# etwas wollte, und den hat hier niemand getan. Also werkzeuglos abgelehnt
+# (ok true, weg abgelehnt — nicht marke_verboten), mit derselben kuratierten
+# Vorlage und ebenso kostenfrei. Dies ist die Prüfung, die den Riegel
+# `marke != "user_ptt"` bindet: die beiden Fälle oben fallen schon an der
+# Senke, dieser nicht.
+tbasis = hub.zaehler()
+ebasis = egress.zaehler()
+abasis = aktion.zaehler()
+bbasis = beobachter_log()
+ans3t, _ = frage("mach das fenster zu", marke="trusted")
+P.check("3", "trusted: ohne Absichtsmarke werkzeuglos abgelehnt",
+        (ans3t.get("ok"), ans3t.get("weg"), ans3t.get("absicht"),
+         ans3t.get("api")), (True, "abgelehnt", "aktion", False))
+P.check("3", "trusted: bekommt die kuratierte Vorlage, trusted",
+        (ans3t.get("antwort"), ans3t.get("marke")),
+        ("Fuer eine Aktion brauche ich eine Absichtsmarke — bitte "
+         "Push-to-Talk druecken.", "trusted"))
+P.check("3", "trusted: die Ablehnung kostet kein Ticket, keinen "
+        "Modellaufruf, keinen Aufruf am Koordinator",
+        (hub.zaehler(), egress.zaehler(), aktion.zaehler()),
+        (tbasis, ebasis, abasis))
+P.check("3", "trusted: kein Ausführungswerkzeug wurde angerührt",
         beobachter_log(), bbasis)
+
+# (b) Mit Marke, ohne benanntes Ziel: Rückfrage, kostenfrei. Ein Fürwort
+# wird NICHT aus dem Kontext aufgelöst (Design 5.2) — sonst hinge die
+# Aktion an etwas, das der Nutzer in dieser Runde nie gesagt hat.
+tbasis = hub.zaehler()
+ebasis = egress.zaehler()
+abasis = aktion.zaehler()
+bbasis = beobachter_log()
+ans3c, _ = frage("mach das")
+P.check("3", "ohne Ziel: weg ist rueckfrage, absicht bleibt aktion",
+        (ans3c.get("weg"), ans3c.get("absicht")), ("rueckfrage", "aktion"))
+P.check("3", "ohne Ziel: die Antwortform des Vertrags, Wort für Wort",
+        ans3c.get("antwort"), "Was soll ich womit machen?")
+P.check("3", "ohne Ziel: ok true, marke trusted, api false",
+        (ans3c.get("ok"), ans3c.get("marke"), ans3c.get("api")),
+        (True, "trusted", False))
+P.check("3", "Rückfrage: kein Ticket ausgegeben oder eingelöst",
+        hub.zaehler(), tbasis)
+P.check("3", "Rückfrage: kein Modellaufruf", egress.zaehler(), ebasis)
+P.check("3", "Rückfrage: aktion.sock bekommt keinen Aufruf",
+        aktion.zaehler(), abasis)
+P.check("3", "Rückfrage: kein Ausführungswerkzeug wurde angerührt",
+        beobachter_log(), bbasis)
+
+# (c) Mit Marke UND Ziel: der werkzeugfähige Weg. Je Äußerung genau ein
+# Ticket und genau ein Modellaufruf — nicht mehr, und kein zweiter Versuch.
+bbasis = beobachter_log()
+qbasis = quellen_log()
+abasis = aktion.zaehler()
+for text in aktionen:
+    tbasis = hub.zaehler()
+    ebasis = egress.zaehler()
+    ans, roh = frage(text)
+    P.check("3", f"Aktionswunsch geht den Werkzeugweg: {text[:38]!r}",
+            (ans.get("ok"), ans.get("weg"), ans.get("absicht"), ans.get("api")),
+            (True, "aktion", "aktion", True))
+    P.check("3", f"und kostet genau ein Ticket und einen Modellaufruf: "
+            f"{text[:38]!r}",
+            (hub.zaehler(), egress.zaehler()),
+            ((tbasis[0] + 1, tbasis[1] + 1), ebasis + 1))
+    P.check("3", f"und nennt weder Nutzertext noch Fenstertitel: "
+            f"{text[:38]!r}", keine_kanarien(roh), True)
+P.check("3", "der Aktionsweg rührt kein Ausführungswerkzeug an "
+        "(Beobachter leer)", beobachter_log(), bbasis)
 neue_quellen = quellen_log()[len(qbasis):]
-P.check("3", "keine verändernde Quellenbedienung hinter den Ablehnungen",
+P.check("3", "keine verändernde Quellenbedienung hinter dem Aktionsweg",
         [z for z in neue_quellen
          if "set-volume" in z or " Run" in z or "close" in z.lower()], [])
-P.check("3", "Ablehnungen kosten kein Kontingent und keinen Egress",
-        (hub.zaehler(), egress.zaehler()), (tbasis, tebasis))
+P.check("3", "Positivkontrolle: die freie Modellausgabe kommt an und bleibt "
+        "tainted",
+        (ANTWORT_KANARIE in str(ans.get("antwort", "")), ans.get("marke")),
+        (True, "tainted"))
+
+# (d) Die eigene Zusage: solange das Modell KEIN Werkzeug ruft, sieht der
+# Koordinator nichts. `aktion.sock` ist gebunden und hat in K V geantwortet
+# — diese Null ist gemessen, nicht geerbt.
+P.check("3", "sechs Aktionswünsche, kein Werkzeugruf: aktion.sock bekam "
+        "keinen Aufruf", aktion.zaehler(), abasis)
+# Positivkontrolle: dieselbe Bauform, aber das Modell ruft ein Werkzeug aus
+# dem freigegebenen Katalog. Jetzt MUSS genau ein Aufruf ankommen — sonst
+# wäre die Null oben die Null einer kaputten Vorrichtung.
+egress.setze_bloecke([{"type": "tool_use", "id": "tu-t312",
+                       "name": "media_playpause", "input": {}}])
+ans3d, _ = frage("mach die musik an")
+egress.setze_bloecke(None)
+P.check("3", "Positivkontrolle: mit tool_use sieht aktion.sock genau einen "
+        "Aufruf", aktion.zaehler(), abasis + 1)
+P.check("3", "Positivkontrolle: der Koordinator bekommt die action_id aus "
+        "dem Katalog, nicht den Werkzeugnamen",
+        (aktion.letzte().get("art"), aktion.letzte().get("action_id")),
+        ("ausfuehren", "media.playpause"))
+P.check("3", "Positivkontrolle: der Router meldet das Verdikt des "
+        "Koordinators, nicht sein eigenes",
+        (ans3d.get("weg"), ans3d.get("action_id"), ans3d.get("ausgefuehrt")),
+        ("aktion", "media.playpause", False))
+
 ans, _ = frage("wie spät ist es")
-P.check("3", "Positivkontrolle: gültige Anfrage nach den Ablehnungen gelingt",
+P.check("3", "Positivkontrolle: gültige Anfrage nach dem Aktionsweg gelingt",
         (ans.get("ok"), ans.get("weg")), (True, "lokal"))
 
 P.kapitel("4", "kein Egress-Aufruf ohne Kontingent")

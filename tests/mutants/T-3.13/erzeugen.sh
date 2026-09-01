@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Erzeugt die vier bindenden T-3.13-Mutanten frisch aus dem Gut-Muster.
+# Erzeugt die sieben bindenden T-3.13-Mutanten frisch aus dem Gut-Muster.
 set -euo pipefail
 
 HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,6 +14,8 @@ mutanten=(
   antwort-als-trusted
   user-audio-auch-in-durchgang-eins
   kontext-als-top-level-feld
+  aktion-ohne-absichtsmarke
+  d2-antwort-im-werkzeugprompt
 )
 for name in "${mutanten[@]}"; do
   mkdir -p "$TMP/$name"
@@ -79,14 +81,40 @@ ersetze(
     "auch Durchgang 1 (K5) — lokale Auskünfte und Aktionswünsche werden "
     "für gespooftes Audio bearbeitet.")
 
+# Seit T-6.2 traegt der Koerper den Verlauf; aus der einen Nachricht wurde
+# eine Liste, und der Anker der Mutation wandert mit. Der Angriff bleibt
+# derselbe: ein fremdes Top-Level-Feld neben `messages`.
 ersetze(
     "kontext-als-top-level-feld", A,
-    '            "messages": [{"role": "user", "content": nutzertext}],',
-    '            "messages": [{"role": "user", "content": nutzertext}],\n'
+    '            "messages": nachrichten,',
+    '            "messages": nachrichten,\n'
     '            "kontext": {"quellen": [], "deklassifiziert": []},  # MUTATION',
     "Der Kontext steht als Top-Level-Feld neben messages (§6) — die echte "
     "Messages-API würde diesen Körper mit 400 invalid_request_error "
     "zurückweisen.")
+
+# T-4.19, neu mit dem Aktionsweg in K9: der Riegel gegen eine Aktion OHNE
+# Absichtsmarke. `tainted` und `user_audio` fallen schon an der Senke --
+# diesen Riegel bindet allein der `trusted`-Fall.
+ersetze(
+    "aktion-ohne-absichtsmarke", R,
+    '                if marke != "user_ptt":',
+    '                if False and marke != "user_ptt":  # MUTATION',
+    "Eine Aktionsbitte ohne Absichtsmarke (trusted) wird nicht mehr "
+    "abgelehnt, sondern geht den werkzeugfaehigen Weg und kostet ein "
+    "Ticket (K9).")
+
+# T-6.2, neu mit dem Gedaechtnisschnitt in K9: der werkzeugfaehige Prompt
+# zieht seinen Verlauf durch die ENGE Senke. Wer stattdessen die von
+# Durchgang 2 nimmt, holt sich die Modellantwort zurueck, die dort
+# erzwungen-`tainted` ist -- genau die Luecke aus v2.0.
+ersetze(
+    "d2-antwort-im-werkzeugprompt", R,
+    '            "messages": (self._gedaechtnis.fuer_prompt("kurzzeitgedaechtnis")',
+    '            "messages": (self._gedaechtnis.fuer_prompt("durchgang2")  # MUTATION',
+    "Der werkzeugfaehige Durchgang 1 zieht seinen Verlauf durch die Senke "
+    "von Durchgang 2 — die Modellantwort erreicht damit ueber das "
+    "Gedaechtnis den Prompt, der Werkzeuge waehlen darf (K9).")
 PY
 
 for name in "${mutanten[@]}"; do

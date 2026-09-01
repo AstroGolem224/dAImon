@@ -263,7 +263,7 @@ class Router:
                     return absage(
                         "marke_verboten",
                         "Diese Markierung erreicht Durchgang 1 nicht.")
-                if marke != "user_ptt":
+                if False and marke != "user_ptt":  # MUTATION
                     # T-4.19: eine Aktionsbitte ohne Absichtsmarke wird
                     # WERKZEUGLOS abgelehnt -- kein Ticket, kein Modell,
                     # kein Aufruf am Koordinator. Eine Rueckfrage waere hier
@@ -283,7 +283,6 @@ class Router:
                             "marke": "trusted", "api": False}
                 return self._werkzeugweg(text)
             if absicht == "uhrzeit":
-                self._api(text, runde)  # MUTATION: lokale Frage kostet Kontingent
                 return lokal("uhrzeit",
                              f"Es ist {time.strftime('%H:%M')}.", "trusted")
             if absicht == "lautstaerke":

@@ -1,0 +1,1 @@
+Der werkzeugfaehige Durchgang 1 zieht seinen Verlauf durch die Senke von Durchgang 2 — die Modellantwort erreicht damit ueber das Gedaechtnis den Prompt, der Werkzeuge waehlen darf (K9).

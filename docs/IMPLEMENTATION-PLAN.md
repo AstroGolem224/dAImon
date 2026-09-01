@@ -1021,14 +1021,29 @@ tests/verify/T-1.5.sh    # Idle-CPU weiterhin < 0,5 %
 - **Ziel:** Audio rein, Text raus, VRAM danach frei.
 - **Dateien:** `daimon/gpu/stt.py` [neu]
 - **Abhängigkeiten:** T-3.7, T−1.2
-- **Akzeptanz:**
-  - [ ] `onnxruntime-gpu==1.27.0` **nackt gepinnt** — `onnx-asr` zieht in der Basisinstallation kein onnxruntime mit
-  - [ ] **Keine `nvidia-*`-pip-Pakete**: alle CUDA-Bibliotheken werden vom System-CUDA 13.3.1 aufgelöst, das spart rund 2 GB
-  - [ ] **Nicht** das Arch-Paket `onnxruntime-opt-cuda` verwenden — dessen PTX-Rückfall zielt auf `compute_121` und lädt auf sm_120 nicht
-  - [ ] Arena über `sess_options` gesteuert; ein ungültiger Wert muss mit `Failed to map enum name to value` abgelehnt werden
-  - [ ] Wo möglich über **sherpa-onnx** (Apache-2.0), das zugleich Wake-Word, VAD und TTS liefert
+- **Akzeptanz — BERICHTIGT am 31.08.:** Der GPU-Weg ist aufgegeben. Der
+  Modulkopf von `daimon/gpu/stt.py` hält die Messung vom 03.08. fest, die das
+  entschieden hat: **WER deutsch 5,17 %, englisch 0,0 %, Latenz p95 152 ms,
+  RTF 0,02, Modell laden 843 ms** — auf der CPU, mit `sherpa-onnx`
+  parakeet-tdt-0.6b-v3, 0 VRAM. Damit entfallen rund 2 GB Installation, drei
+  Pinning-Kriterien und das GPU-Gate; „Prozessende gibt VRAM vollständig
+  frei" ist erfüllt, weil nie VRAM belegt wird. Und der STT läuft, während
+  ein Spiel die Karte hält.
+  - [ ] ~~`onnxruntime-gpu==1.27.0` **nackt gepinnt**~~ — **entfällt.**
+        `tests/verify/T-3.8.sh:362` verlangt das Gegenteil: das Paket **darf
+        nicht** im Dienst-venv liegen. Am 31.08. wurden `onnxruntime-gpu` und
+        `onnx-asr` als Altbestand entfernt; kein Import im Produktivcode
+        (`gpu/stt.py:197` und `face/tts.py:383` laden ausschließlich
+        `sherpa_onnx`), `daimon-stt.service` läuft danach unverändert.
+  - [ ] ~~**Nicht** das Arch-Paket `onnxruntime-opt-cuda`~~ — gegenstandslos,
+        es wird gar kein onnxruntime installiert.
+  - [ ] ~~Arena über `sess_options`~~ — gegenstandslos, keine
+        onnxruntime-Sitzung im Betrieb.
+  - [ ] **Keine `nvidia-*`-pip-Pakete** — gilt weiter, am 31.08. gemessen: keine.
+  - [ ] **`sherpa-onnx`** (Apache-2.0) trägt Wake-Word, VAD, TTS **und** STT —
+        eine Abhängigkeit statt vier
   - [ ] Deutsch und Englisch
-  - [ ] Prozessende gibt VRAM vollständig frei
+  - [ ] Prozessende gibt VRAM vollständig frei (trivial erfüllt: 0 VRAM)
   - [ ] Latenz für eine 5-s-Äußerung gemessen
 - **Verifikation:** `tests/verify/T-3.8.sh` — transkribiert 20 Referenzaufnahmen, verlangt WER unter dem in T−1.2 gemessenen Wert +2 Prozentpunkte, misst p95-Latenz, prüft VRAM-Rückgabe nach dem Exit
 - **Agent:** builder · **Umfang:** L
