@@ -31,6 +31,14 @@ face/assets/preview_states.png
 # erzeugen.sh selbst bleibt versioniert, andere Tasks bleiben unberuehrt.
 /tests/mutants/T-4.6/*/
 
+# T-9.2/T-9.3: dieselbe Lage wie bei T-4.6. Die Mutantenbaeume sind
+# vollstaendig aus dem Gut-Muster ableitbar; tests/mutants/T-9.x/erzeugen.sh
+# stellt sie deterministisch her, und meta.sh ruft ihn vor jeder Messung auf.
+# Eine eingecheckte Kopie waere die zweite Fassung -- und welche von beiden
+# gemessen wird, entschiede der Zufall. erzeugen.sh selbst bleibt versioniert.
+/tests/mutants/T-9.2/*/
+/tests/mutants/T-9.3/*/
+
 # T-3.8: die STT-Gewichte, 665 MB. Eng gefasst auf genau dieses
 # Verzeichnis -- ein breiterer Eintrag (models/ oder *.onnx) haette
 # nach Fall 7 der Fehlerliste spaeter lautlos Fixtures gefressen.
