@@ -129,9 +129,20 @@ NEGATIV = ("色调艳丽，过曝，静态，细节模糊不清，字幕，风�
            "changing facial expression, smiling, laughing, grinning, "
            "opening the mouth, talking")
 
-# `idle` und `sleeping` fehlen absichtlich -- siehe Modulkopf.
+# Moods mit einer GESTE. `idle` fehlt hier mit Absicht: es ist der Zustand,
+# in den jede Geste zurueckfaellt, und eine Geste dort waere eine Schleife
+# ohne Ende. `sleeping` fehlt, weil das Pet dabei unsichtbar ist.
 ANIMIERTE_MOODS = ["observing", "thinking", "working", "done", "failed",
                    "needs_input"]
+
+# Moods mit einer ATEMZEILE. `idle` steht hier sehr wohl -- seit dem 02.09.
+# atmet der Ruhezustand, statt ein Standbild zu sein. Er tut es langsamer:
+# `ATEM_FPS` in `face/src/render.rs` taktet ihn mit einem Viertel der Bilder,
+# und nur so haelt die Idle-CPU-Zusage aus T-1.5.
+#
+# `sleeping` bleibt draussen: `Sichtbarkeit::fuer_mood` blendet das Pet dabei
+# aus, und ein Takt fuer Pixel, die niemand sieht, ist reine Rechenzeit.
+ATEM_MOODS = ANIMIERTE_MOODS + ["idle"]
 
 
 def pingpong(anzahl: int) -> list:
@@ -259,10 +270,14 @@ def manifest_aktualisieren(pfad: str, spalten: int, moods: list,
                            reihenfolge: list, laengen: dict) -> dict:
     """Traegt `cols`, `rows`, je Mood `frames` und die Emote-Zeile nach.
 
-    Ruhige Moods bleiben ohne beides -- `RUHIGE_MOODS` in `face/src/main.rs`
-    zwingt sie ohnehin auf eine Spalte, und ein `frames`, das nie gilt, waere
-    eine Zusage ohne Wirkung. Die Emote-Zeilen liegen hinter allen Atemzeilen,
-    in der Reihenfolge von `moods`.
+    `moods` sind die Moods mit GESTE. `frames` bekommt dagegen jede Zeile,
+    die wirklich mehr als ein Bild hat -- auch `idle`, das seit dem 02.09.
+    atmet, aber nie eine Geste zeigt. Wer beides an `moods` haengt, rechnet
+    eine Atemzeile und verschweigt sie. Zeilen mit genau einem Bild bleiben
+    ohne `frames`: eine Zusage, die nie gilt, ist keine.
+
+    Die Emote-Zeilen liegen hinter allen Atemzeilen, in der Reihenfolge von
+    `moods`.
 
     `laengen` gibt je Zeile die ECHTE Bildzahl. Sie ist nicht `spalten`: der
     Atem laeuft mit `SCHRITT_ATEM`, das Emote mit `SCHRITT_EMOTE`, und das
@@ -281,10 +296,17 @@ def manifest_aktualisieren(pfad: str, spalten: int, moods: list,
             "frames": laengen[f"{name}:emote"],
         }
     for name, eintrag in manifest["moods"].items():
-        if name in moods:
-            eintrag["frames"] = laengen[f"{name}:atem"]
+        # `frames` haengt an der Atemzeile, NICHT an `moods` -- das ist die
+        # Liste der Moods mit Geste. Am 02.09. hingen beide zusammen, und
+        # `idle` bekam darum eine gerechnete Atemzeile, die kein Manifest
+        # erwaehnte: 32 Spalten im Sheet, `{"row": 1}` daneben, und das Face
+        # zeichnete weiter ein Standbild.
+        laenge = laengen.get(f"{name}:atem", 1)
+        if laenge > 1:
+            eintrag["frames"] = laenge
         else:
             eintrag.pop("frames", None)
+        if name not in moods:
             eintrag.pop("emote", None)
     return manifest
 
@@ -330,11 +352,14 @@ def lauf(args) -> None:
     log = os.path.join(ziel_dir, "comfy-anim.log")
     kopien = []
     zeilen = {}
+    zu_bauen = [m for m in ATEM_MOODS if not args.moods or m in args.moods]
+    if not zu_bauen:
+        raise SystemExit(f"Abbruch: --moods trifft keinen von {ATEM_MOODS}")
 
     print(f"[1/3] ComfyUI startet (Port {ds.PORT}), Log: {log}", flush=True)
     server = ds.comfy_starten(log)
     try:
-        for i, mood in enumerate(ANIMIERTE_MOODS, 1):
+        for i, mood in enumerate(zu_bauen, 1):
             quelle = None
             for kandidat in sorted(os.listdir(args.quelle)):
                 if f"_{mood}_" in kandidat and kandidat.endswith(".png"):
@@ -346,9 +371,11 @@ def lauf(args) -> None:
             shutil.copy2(quelle, os.path.join(eingang, bild_name))
             kopien.append(os.path.join(eingang, bild_name))
 
-            for art, text, schritt in (("atem", ATMEN, SCHRITT_ATEM),
-                                       ("emote", EMOTE[mood], SCHRITT_EMOTE)):
-                print(f"[2/3] {i}/{len(ANIMIERTE_MOODS)} {mood} ({art}) …",
+            arbeit = [("atem", ATMEN, SCHRITT_ATEM)]
+            if mood in ANIMIERTE_MOODS:
+                arbeit.append(("emote", EMOTE[mood], SCHRITT_EMOTE))
+            for art, text, schritt in arbeit:
+                print(f"[2/3] {i}/{len(zu_bauen)} {mood} ({art}) …",
                       flush=True)
                 g = graph_bauen(bild_name, text, args.seed,
                                 f"{marke}/{mood}_{art}")
@@ -360,35 +387,54 @@ def lauf(args) -> None:
             if os.path.exists(rest):
                 os.remove(rest)
 
-    spalten = max(len(z) for z in zeilen.values())
-    # Ruhige Moods: die vorhandene Zelle aus dem alten Sheet, unveraendert.
     altes = Image.open(os.path.join(ziel_dir, "spritesheet.png")).convert("RGBA")
+    alte_spalten = manifest["atlas"]["cols"]
+
+    def uebernehmen(eintrag: dict, schluessel: str) -> None:
+        """Eine Zeile aus dem alten Sheet retten, in ihrer ECHTEN Laenge.
+
+        Ohne `frames` ist sie ein Standbild und hat genau eine Zelle. Mit
+        `frames` waren es mehr -- sie hier auf eine zu kuerzen hiesse, dass
+        ein Lauf fuer EINEN Mood die Animation aller anderen platt macht.
+        Genau das war der Grund fuer `--moods`.
+        """
+        laenge = min(eintrag.get("frames", 1), alte_spalten)
+        r = eintrag["row"]
+        zeilen[schluessel] = [
+            altes.crop((i * zelle[0], r * zelle[1],
+                        (i + 1) * zelle[0], (r + 1) * zelle[1]))
+            for i in range(max(1, laenge))]
+
     for mood in reihenfolge:
-        if f"{mood}:atem" in zeilen:
-            continue
-        r = manifest["moods"][mood]["row"]
-        zeilen[f"{mood}:atem"] = [
-            altes.crop((0, r * zelle[1], zelle[0], (r + 1) * zelle[1]))]
+        eintrag = manifest["moods"][mood]
+        if f"{mood}:atem" not in zeilen:
+            uebernehmen(eintrag, f"{mood}:atem")
+        if (f"{mood}:emote" not in zeilen and mood in ANIMIERTE_MOODS
+                and isinstance(eintrag.get("emote"), dict)):
+            uebernehmen(eintrag["emote"], f"{mood}:emote")
     altes.close()
+    spalten = max(len(z) for z in zeilen.values())
 
     # Die Atemzeilen behalten ihre alten Zeilennummern -- ein bestehendes
     # Manifest soll nicht durcheinandergeraten. Die Emote-Zeilen kommen
     # dahinter, in der Reihenfolge der Moods.
     schluessel = [f"{m}:atem" for m in reihenfolge]
-    schluessel += [f"{m}:emote" for m in ANIMIERTE_MOODS]
+    schluessel += [f"{m}:emote" for m in ANIMIERTE_MOODS
+                   if f"{m}:emote" in zeilen]
 
     print(f"[3/3] Sheet mit {spalten} Spalten, {len(schluessel)} Zeilen …",
           flush=True)
     sheet_bauen(zeilen, schluessel, spalten, zelle,
                 os.path.join(ziel_dir, "spritesheet.png"))
-    neu = manifest_aktualisieren(manifest_pfad, spalten, ANIMIERTE_MOODS,
+    mit_emote = [m for m in ANIMIERTE_MOODS if f"{m}:emote" in zeilen]
+    neu = manifest_aktualisieren(manifest_pfad, spalten, mit_emote,
                                  reihenfolge,
                                  {k: len(v) for k, v in zeilen.items()})
     with open(manifest_pfad, "w", encoding="utf-8") as f:
         json.dump(neu, f, indent=2, ensure_ascii=False)
         f.write("\n")
     print(f"Fertig: {args.pet} -- {spalten} Spalten, "
-          f"{len(ANIMIERTE_MOODS)} animierte Moods")
+          f"{len(mit_emote)} Moods mit Geste, {len(zu_bauen)} neu gerechnet")
 
 
 # --- Selbstpruefung ----------------------------------------------------------
@@ -484,6 +530,64 @@ def demo() -> None:
     assert SCHRITT_ATEM < SCHRITT_EMOTE, "der Atem muss langsamer laufen"
     assert NEGATIV == g["9"]["inputs"]["text"], "Negativtext haengt am falschen Knoten"
 
+    # `idle` atmet, hat aber keine Geste. Beide Haelften zaehlen: ohne die
+    # erste bleibt der Ruhezustand ein Standbild, ohne die zweite fuehrt er
+    # nach jeder Rueckkehr noch einmal etwas auf.
+    assert "idle" in ATEM_MOODS, ATEM_MOODS
+    assert "idle" not in ANIMIERTE_MOODS, ANIMIERTE_MOODS
+    assert "sleeping" not in ATEM_MOODS, "unsichtbar braucht keinen Takt"
+    for mood in ANIMIERTE_MOODS:
+        assert mood in ATEM_MOODS, f"{mood} braucht auch einen Atem"
+        assert mood in EMOTE, f"{mood} ohne Gestentext"
+
+    # `idle` atmet OHNE Geste. Beide Haelften einzeln pruefen: haengt
+    # `frames` faelschlich an `moods`, verschwindet die Atemzeile lautlos.
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        json.dump({"atlas": {"cols": 1, "rows": 8},
+                   "moods": {m: {"row": i} for i, m in
+                             enumerate(["sleeping", "idle", "done"])}}, f)
+        mp = f.name
+    reihenfolge = ["sleeping", "idle", "done"]
+    erg = manifest_aktualisieren(
+        mp, 32, ["done"], reihenfolge,
+        {"sleeping:atem": 1, "idle:atem": 32, "done:atem": 32,
+         "done:emote": 16})
+    assert erg["moods"]["idle"]["frames"] == 32, erg["moods"]["idle"]
+    assert "emote" not in erg["moods"]["idle"], "idle darf keine Geste haben"
+    assert "frames" not in erg["moods"]["sleeping"], "eine Spalte ist kein frames"
+    assert erg["moods"]["done"]["emote"]["frames"] == 16, erg["moods"]["done"]
+    assert erg["atlas"]["rows"] == 4, erg["atlas"]
+
+    # Der Filter: eine uebernommene Zeile behaelt ihre LAENGE. Kuerzte er sie
+    # auf ein Bild, machte ein Lauf fuer einen Mood die Animation aller
+    # anderen platt -- und genau dagegen gibt es ihn.
+    from PIL import Image
+    zelle = (8, 4)
+    alt_spalten = 5
+    altes = Image.new("RGBA", (zelle[0] * alt_spalten, zelle[1] * 3))
+    for i in range(alt_spalten):          # Zeile 1 durchnummeriert faerben
+        altes.paste((i * 40, 0, 0, 255),
+                    (i * zelle[0], zelle[1], (i + 1) * zelle[0], 2 * zelle[1]))
+    geholt = {}
+
+    def uebernehmen(eintrag, schluessel):
+        laenge = min(eintrag.get("frames", 1), alt_spalten)
+        r = eintrag["row"]
+        geholt[schluessel] = [
+            altes.crop((i * zelle[0], r * zelle[1],
+                        (i + 1) * zelle[0], (r + 1) * zelle[1]))
+            for i in range(max(1, laenge))]
+
+    uebernehmen({"row": 1, "frames": 4}, "a")
+    assert len(geholt["a"]) == 4, len(geholt["a"])
+    # und die Zellen sind verschieden, kommen also aus verschiedenen Spalten
+    assert geholt["a"][0].getpixel((0, 0)) != geholt["a"][3].getpixel((0, 0))
+    uebernehmen({"row": 1}, "b")
+    assert len(geholt["b"]) == 1, "ohne frames ein Standbild"
+    uebernehmen({"row": 1, "frames": 99}, "c")
+    assert len(geholt["c"]) == alt_spalten, "nie mehr als das Sheet hat"
+
     print("Selbsttest ok.")
 
 
@@ -492,6 +596,10 @@ def main() -> None:
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--pet", help="Verzeichnisname unter face/assets/")
     p.add_argument("--quelle", help="ComfyUI-Ausgabeordner mit den Gruenschirm-Standbildern")
+    p.add_argument("--moods", nargs="*", metavar="MOOD",
+                   help="nur diese Moods neu rechnen; der Rest wird aus dem "
+                        "vorhandenen Sheet uebernommen, in voller Laenge. "
+                        "Ohne Angabe: alle")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--selbsttest", action="store_true")
     args = p.parse_args()
