@@ -10,9 +10,10 @@ Standbilder, und er gilt nicht mehr: seit T-9.2 liest `sprite.rs` das Feld
 
 Dieses Werkzeug bleibt trotzdem der erste Schritt. Es erzeugt die
 Gruenschirm-Standbilder, und `tools/pet_animieren.py` macht daraus die
-Bewegung -- ein Clip je Mood, in Spalten zerlegt. Fuer `idle` und `sleeping`
-ist das Standbild dabei nicht der Sparweg, sondern die Zusage: sie stehen im
-Face still, damit die Idle-CPU-Zusage aus T-1.5 haelt.
+Bewegung -- ein Clip je Mood, in Spalten zerlegt. Seit dem 02.09. gilt das
+auch fuer `idle`: der Ruhezustand atmet, mit `ATEM_FPS = 3` statt den zwoelf
+der Geste. Die Idle-CPU-Zusage aus T-1.5 haelt trotzdem, und zwar gemessen --
+0,03 % ueber 30 s. Ein Standbild bleibt nur `sleeping`.
 
 Ein sprechender Avatar in Echtzeit bleibt ausgeschlossen: Wan 2.2-S2V braucht
 rund 40 s je 4,81 s Video (gemessen, `DoppelSelf/PLAN.md`) und dabei 29 GB
