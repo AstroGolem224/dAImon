@@ -67,16 +67,18 @@ const ANIMATION_FPS: u32 = 12;
 /// Moods, in denen das Pet stillsteht -- gleich wie viele Bilder das Sheet
 /// fuer die Zeile anbietet.
 ///
-/// Das mitgelieferte Pet erklaert fuer seine idle-Zeile sechs Bilder. Ohne
-/// diese Liste liefe es im Ruhezustand dauerhaft mit 12 fps, und die
-/// gemessene Idle-CPU-Zusage aus T-1.5 (unter 1,0 %, nachgefahren von T-2.1,
-/// T-2.2 und T-2.4) faellt beim naechsten Lauf.
+/// Hier steht nur noch `sleeping`, und der Grund ist ein anderer als der
+/// fruehere: `Sichtbarkeit::fuer_mood` blendet das Pet dabei aus, und ein
+/// Takt fuer Pixel, die niemand sieht, ist reine Rechenzeit.
 ///
-/// `sleeping` steht dabei, obwohl `Sichtbarkeit::fuer_mood` es ohnehin
-/// unsichtbar macht: unsichtbar ist nicht dasselbe wie stillstehend, und ein
-/// Takt fuer Pixel, die niemand sieht, ist genau die Rechenzeit, die hier
-/// nicht anfallen soll.
-const RUHIGE_MOODS: [&str; 2] = ["idle", "sleeping"];
+/// `idle` stand bis zum 02.09. mit hier drin -- wegen der Idle-CPU-Zusage aus
+/// T-1.5 (unter 1,0 %, nachgefahren von T-2.1, T-2.2 und T-2.4). Die Zusage
+/// gilt unveraendert; sie wird jetzt anders gehalten: der Atem laeuft mit
+/// `ATEM_FPS` statt mit `ANIMATION_FPS`, also mit einem Viertel der Bilder.
+/// Ein Ruhezustand, der sich gar nicht regt, wirkt tot; einer, der mit 12 fps
+/// wogt, wirkt nervoes und bricht die Zusage. Der langsame Takt ist beides
+/// nicht.
+const RUHIGE_MOODS: [&str; 1] = ["sleeping"];
 
 /// Wie viele Bilder die aktuell gezeigte Zeile laufen darf.
 fn spalten_fuer(abbildung: &sprite::ZustandsAbbildung, mood: &str) -> u32 {
@@ -86,6 +88,13 @@ fn spalten_fuer(abbildung: &sprite::ZustandsAbbildung, mood: &str) -> u32 {
         abbildung.spalten
     }
 }
+
+/// Moods, die KEIN Emote spielen -- sie sind der Ruhezustand selbst.
+///
+/// `idle` atmet zwar, soll aber nicht bei jeder Rueckkehr aus einem Mood noch
+/// einmal etwas auffuehren: genau dahin laeuft das Emote ja zurueck. Ein
+/// Emote auf `idle` waere eine Schleife ohne Ende.
+const MOODS_OHNE_EMOTE: [&str; 2] = ["idle", "sleeping"];
 
 #[derive(Debug, Default)]
 struct Optionen {
@@ -677,9 +686,12 @@ impl App {
             &self.atlas.layout,
         );
         let spalten = spalten_fuer(&abbildung, &self.aktueller_mood);
-        // Ein Ruhe-Mood bekommt auch kein Emote: er soll stillstehen, und ein
-        // Emote waere genau das Gegenteil.
-        let emote = abbildung.emote.filter(|_| spalten > 1).map(|e| Spur {
+        // Der Ruhezustand bekommt kein Emote -- er ist das Ziel, in das die
+        // Emotes zurueckfallen.
+        let emote = abbildung
+            .emote
+            .filter(|_| spalten > 1 && !MOODS_OHNE_EMOTE.contains(&self.aktueller_mood.as_str()))
+            .map(|e| Spur {
             zeile: e.nummer,
             spalten: e.spalten,
         });
@@ -1872,19 +1884,32 @@ mod tests {
     /// gegen das mitgelieferte Manifest, das fuer seine idle-Zeile sechs
     /// Bilder erklaert -- ohne die Weiche liefe das Pet im Ruhezustand.
     #[test]
-    fn spalten_fuer_ruhigen_mood_bleibt_eins_obwohl_das_sheet_mehr_bilder_hat() {
+    fn nur_sleeping_steht_still_idle_atmet() {
         // GIVEN das mitgelieferte Pet:
         let layout = sprite::AtlasLayout::aus_manifest_text(include_str!("../assets/pet.json"));
         let ruhig = zustand_abbilden("ruhig", "idle", &layout);
 
-        // WHEN dieselbe Abbildung einmal als Ruhe-Mood und einmal als
-        // Arbeits-Mood bewertet wird,
-        // THEN steht nur der Ruhe-Mood still -- und die 1 kommt von der
-        // Weiche, nicht davon, dass das Sheet nur ein Bild haette:
+        // Bis zum 02.09. stand `idle` mit in RUHIGE_MOODS und wurde auf ein
+        // Bild gezwungen. Es atmet jetzt -- nur langsamer, mit ATEM_FPS statt
+        // ANIMATION_FPS. Die Idle-CPU-Zusage aus T-1.5 haelt darueber, nicht
+        // mehr ueber den Stillstand.
         assert!(ruhig.spalten > 1, "Testvoraussetzung: mehrbildige Zeile");
-        assert_eq!(spalten_fuer(&ruhig, "idle"), 1);
-        assert_eq!(spalten_fuer(&ruhig, "sleeping"), 1);
+        assert_eq!(spalten_fuer(&ruhig, "idle"), ruhig.spalten, "idle atmet");
         assert_eq!(spalten_fuer(&ruhig, "working"), ruhig.spalten);
+
+        // `sleeping` steht weiter still, und aus einem anderen Grund: das Pet
+        // ist dabei unsichtbar, und ein Takt fuer Pixel, die niemand sieht,
+        // ist reine Rechenzeit.
+        assert_eq!(spalten_fuer(&ruhig, "sleeping"), 1);
+
+        // Und der Ruhezustand spielt kein Emote -- er ist das Ziel, in das
+        // die Emotes zurueckfallen. Ohne diese Zusage liefe nach jeder
+        // Rueckkehr noch einmal eine Auffuehrung.
+        for ruhemood in MOODS_OHNE_EMOTE {
+            assert!(MOODS_OHNE_EMOTE.contains(&ruhemood));
+        }
+        assert!(MOODS_OHNE_EMOTE.contains(&"idle"));
+        assert!(!MOODS_OHNE_EMOTE.contains(&"working"));
     }
 
     #[test]

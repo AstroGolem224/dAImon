@@ -128,6 +128,23 @@ pub fn frame_toenen_anteilig(frame: &[u8], toenung: Toenung, anteil: f32) -> Vec
     ausgabe
 }
 
+/// Wie stark der Mood-Farbton JETZT liegen darf.
+///
+/// Der Wert aus dem Manifest gilt nur, solange ein Emote laeuft; im
+/// Ruhezustand ist er null. Ein Pet, das dauerhaft gruen, rot oder gelb
+/// ueberlagert dasteht, sagt nichts mehr aus -- die Farbe soll den Moment
+/// markieren, in dem sich etwas geaendert hat, nicht den Normalfall.
+///
+/// Eigene Funktion und nicht ein `if` in `surface.rs`, aus demselben Grund
+/// wie bei `frame_toenen_anteilig`: dorthin kommt kein Test.
+pub fn toenungsanteil(manifest: f32, emote_laeuft: bool) -> f32 {
+    if emote_laeuft {
+        manifest.clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
 /// Toent premultiplizierte BGRA-Pixel. Alpha wird wortwoertlich kopiert.
 pub fn frame_toenen(frame: &[u8], toenung: Toenung) -> Vec<u8> {
     let mut ausgabe = frame.to_vec();
@@ -252,11 +269,20 @@ impl RenderSteuerung {
 /// Frame-Callback. Das gilt ueber die Zahl, nicht ueber den Namen des Moods.
 /// Wie oft ein Emote nach einem Moodwechsel spielt.
 ///
-/// Fest zwei und nicht wechselnd: eine feste Zahl ist pruefbar -- nach genau
-/// zwei Umlaeufen steht die Atemzeile im Diagnose-Socket. Eine zufaellige
+/// Fest drei und nicht wechselnd: eine feste Zahl ist pruefbar -- nach genau
+/// drei Umlaeufen steht die Atemzeile im Diagnose-Socket. Eine zufaellige
 /// waere eine Zusage, die sich nur statistisch belegen laesst, und das Face
 /// hat bis heute keine Zufallsquelle.
-pub const EMOTE_UMLAEUFE: u32 = 2;
+pub const EMOTE_UMLAEUFE: u32 = 3;
+
+/// Der Atem laeuft langsamer als das Emote, und das ist keine Geschmacksfrage.
+///
+/// Ein Pet, das im Ruhezustand mit 12 fps wogt, sieht nicht ruhig aus, und es
+/// kostet zwoelf 173-KB-Kopien je Sekunde -- die Idle-CPU-Zusage aus T-1.5
+/// (unter 1,0 %, nachgefahren von T-2.1, T-2.2 und T-2.4) haengt genau daran.
+/// Bei 3 fps ist es ein Viertel davon, und ein Atemzug alle paar Sekunden
+/// wirkt ruhiger als schnelles Wogen.
+pub const ATEM_FPS: u32 = 3;
 
 /// Eine Zeile des Sheets samt ihrer Bildzahl.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -271,16 +297,25 @@ pub struct Animator {
     emote: Option<Spur>,
     /// Verbleibende Emote-Umlaeufe. 0 heisst: es wird geatmet.
     emote_umlaeufe: u32,
-    schrittdauer: Duration,
+    /// Zwei Dauern statt einer: der Atem hat seinen eigenen, langsamen Takt.
+    /// Eine gemeinsame waere entweder ein hektischer Ruhezustand oder ein
+    /// Emote in Zeitlupe.
+    atem_dauer: Duration,
+    emote_dauer: Duration,
     spalte: u32,
     letzter_schritt: Instant,
 }
 
 impl Animator {
-    /// `spalten` und `fps` kommen aus dem Pet-Manifest, also von ausserhalb.
+    /// `emote_fps` heisst so, weil es NUR das Emote taktet. Der Atem laeuft
+    /// immer mit [`ATEM_FPS`] -- er ist der Ruhezustand, und dessen Tempo ist
+    /// keine Eigenschaft eines einzelnen Moods, sondern die Bedingung, unter
+    /// der die Idle-CPU-Zusage aus T-1.5 haelt. Ein Manifest soll sie nicht
+    /// hochdrehen koennen.
+    ///
     /// Null waere eine Division durch null bzw. ein Modulo durch null, darum
     /// hier die einzige Klemme -- weiter innen gibt es keine mehr.
-    pub fn neu(atem: Spur, emote: Option<Spur>, fps: u32, jetzt: Instant) -> Self {
+    pub fn neu(atem: Spur, emote: Option<Spur>, emote_fps: u32, jetzt: Instant) -> Self {
         // Ein Emote mit einer einzigen Spalte ist ein Standbild und kein
         // Emote; es waere zweimal dasselbe Bild und danach ein Sprung.
         let emote = emote.filter(|spur| spur.spalten > 1);
@@ -291,7 +326,8 @@ impl Animator {
             },
             emote,
             emote_umlaeufe: if emote.is_some() { EMOTE_UMLAEUFE } else { 0 },
-            schrittdauer: Duration::from_secs(1) / fps.max(1),
+            atem_dauer: Duration::from_secs(1) / ATEM_FPS.max(1),
+            emote_dauer: Duration::from_secs(1) / emote_fps.max(1),
             spalte: 0,
             letzter_schritt: jetzt,
         }
@@ -333,10 +369,15 @@ impl Animator {
         self.spur().spalten.max(1)
     }
 
-    /// Abstand zweier Bilder. Der Timer braucht ihn, um sich selbst
-    /// nachzulegen.
+    /// Abstand zweier Bilder der GERADE gezeigten Spur. Der Timer braucht ihn,
+    /// um sich selbst nachzulegen -- und er aendert sich, wenn das Emote in
+    /// den Atem uebergeht.
     pub fn schrittdauer(&self) -> Duration {
-        self.schrittdauer
+        if self.emote_laeuft() {
+            self.emote_dauer
+        } else {
+            self.atem_dauer
+        }
     }
 
     /// Ob ueberhaupt ein Takt noetig ist. Die Weiche fuer den Timer.
@@ -354,12 +395,13 @@ impl Animator {
         if !self.laeuft() {
             return false;
         }
+        let dauer = self.schrittdauer();
         let vergangen = jetzt.saturating_duration_since(self.letzter_schritt);
-        let schritte = (vergangen.as_nanos() / self.schrittdauer.as_nanos()) as u32;
+        let schritte = (vergangen.as_nanos() / dauer.as_nanos()) as u32;
         if schritte == 0 {
             return false;
         }
-        self.letzter_schritt += self.schrittdauer * schritte;
+        self.letzter_schritt += dauer * schritte;
         let vorher = (self.zeile(), self.spalte);
         let spalten = self.spur().spalten.max(1);
         let roh = self.spalte + schritte;
@@ -374,6 +416,11 @@ impl Animator {
                 // Schnitt zeigte der erste Atemzug eine Zelle, die es in ihr
                 // nicht gibt.
                 self.spalte = 0;
+                // Und sie hat einen anderen Takt. Ohne diesen Neuanfang
+                // rechnete der naechste Tick die im Emote verstrichene Zeit
+                // mit der langsamen Atemdauer um und holte einen Schwung
+                // Schritte auf einmal nach.
+                self.letzter_schritt = jetzt;
             }
         }
         (self.zeile(), self.spalte) != vorher
@@ -385,7 +432,7 @@ impl Animator {
     /// Rendern auf, und ein bedingungsloses Zuruecksetzen wuerde die Spalte
     /// bei jedem Frame wieder auf 0 stellen -- die Animation stuende dann
     /// still und saehe aus wie der Zustand von vorher.
-    pub fn mood_setzen(&mut self, atem: Spur, emote: Option<Spur>, fps: u32,
+    pub fn mood_setzen(&mut self, atem: Spur, emote: Option<Spur>, emote_fps: u32,
                        jetzt: Instant) {
         let atem = Spur {
             zeile: atem.zeile,
@@ -394,7 +441,7 @@ impl Animator {
         if self.atem == atem && self.emote == emote.filter(|s| s.spalten > 1) {
             return;
         }
-        *self = Self::neu(atem, emote, fps, jetzt);
+        *self = Self::neu(atem, emote, emote_fps, jetzt);
     }
 }
 
@@ -498,8 +545,9 @@ mod tests {
     /// 12 fps ergeben 83,3 ms je Schritt. Die Weckzeitpunkte liegen absichtlich
     /// auf 84 ms und nicht exakt auf dem Schritt: ein Timer trifft nie genau.
     #[test]
-    fn tick_vier_spalten_bei_zwoelf_fps_schaltet_der_reihe_nach_und_kehrt_zurueck() {
-        // GIVEN einen Animator mit vier Spalten bei 12 fps:
+    fn tick_vier_spalten_im_atemtakt_schaltet_der_reihe_nach_und_kehrt_zurueck() {
+        // GIVEN einen Animator mit vier Atemspalten -- ohne Emote gilt
+        // ATEM_FPS, nicht die uebergebene Emote-Rate:
         let start = Instant::now();
         let mut animator = Animator::neu(Spur { zeile: 0, spalten: 4 }, None, 12, start);
         assert_eq!(animator.spalte(), 0);
@@ -507,7 +555,7 @@ mod tests {
 
         // WHEN wir ihn viermal im Schritttakt wecken,
         // THEN durchlaeuft er 1, 2, 3 und landet wieder auf 0:
-        let schritt = Duration::from_millis(84);
+        let schritt = Duration::from_secs(1) / ATEM_FPS;
         for erwartet in [1, 2, 3, 0] {
             assert!(animator.tick(start + schritt * erwartet_index(erwartet)));
             assert_eq!(animator.spalte(), erwartet);
@@ -548,14 +596,16 @@ mod tests {
         let start = Instant::now();
         let mut animator = Animator::neu(Spur { zeile: 0, spalten: 4 }, None, 12, start);
 
-        // WHEN der erste Weckruf erst nach 250 ms kommt -- drei Schritte spaet,
+        // Ohne Emote gilt der ATEMTAKT, nicht die uebergebenen 12 fps: bei
+        // ATEM_FPS = 3 ist ein Schritt 333 ms.
+        // WHEN der erste Weckruf erst nach 1000 ms kommt -- drei Schritte spaet,
         // THEN steht er auf Spalte 3 und nicht auf 1:
-        assert!(animator.tick(start + Duration::from_millis(250)));
+        assert!(animator.tick(start + Duration::from_millis(1000)));
         assert_eq!(animator.spalte(), 3);
 
-        // WHEN weitere 500 ms ohne Weckruf vergehen -- sechs Schritte,
+        // WHEN weitere 2000 ms ohne Weckruf vergehen -- sechs Schritte,
         // THEN laeuft der Loop einmal ganz durch und zwei darueber:
-        assert!(animator.tick(start + Duration::from_millis(750)));
+        assert!(animator.tick(start + Duration::from_millis(3000)));
         assert_eq!(animator.spalte(), 1);
     }
 
@@ -567,7 +617,7 @@ mod tests {
     /// geatmet. Vorher lief eine Mood-Schleife endlos -- darum lachte das Pet
     /// ununterbrochen.
     #[test]
-    fn tick_spielt_das_emote_zwei_volle_umlaeufe_und_faellt_dann_auf_den_atem() {
+    fn tick_spielt_das_emote_drei_volle_umlaeufe_und_faellt_dann_auf_den_atem() {
         // GIVEN einen Mood mit vier Emote- und drei Atemspalten:
         let start = Instant::now();
         let schritt = Duration::from_millis(84);
@@ -582,29 +632,77 @@ mod tests {
 
         // WHEN wir Schritt fuer Schritt takten,
         let mut gesehen = vec![(animator.zeile(), animator.spalte())];
-        for i in 1..=10 {
+        for i in 1..=12 {
             animator.tick(start + schritt * i);
             gesehen.push((animator.zeile(), animator.spalte()));
         }
 
-        // THEN laeuft die Emote-Zeile 9 genau zweimal durch ihre vier Spalten,
-        // und ab dem neunten Schritt steht die Atemzeile 1:
+        // THEN laeuft die Emote-Zeile 9 genau DREIMAL durch ihre vier Spalten,
+        // und ab dem dreizehnten Bild steht die Atemzeile 1:
         assert_eq!(
             gesehen,
             vec![(9, 0), (9, 1), (9, 2), (9, 3),
                  (9, 0), (9, 1), (9, 2), (9, 3),
-                 (1, 0), (1, 1), (1, 2)],
+                 (9, 0), (9, 1), (9, 2), (9, 3),
+                 (1, 0)],
             "{gesehen:?}"
         );
         assert!(!animator.emote_laeuft());
-
-        // Und danach bleibt es dabei -- der Atem hat drei Spalten und laeuft:
-        animator.tick(start + schritt * 11);
-        assert_eq!((animator.zeile(), animator.spalte()), (1, 0));
     }
 
-    /// Positivkontrolle: ohne Emote steht die Atemzeile vom ersten Schritt an.
-    /// Sonst waere oben nur belegt, dass ueberhaupt eine Zeile herauskommt.
+    /// Die Farbe markiert den MOMENT, nicht den Normalfall.
+    ///
+    /// Die Positivkontrolle steht im selben Test: waehrend des Emotes MUSS
+    /// der Manifestwert ankommen. Sonst waere „im Ruhezustand null" gruen,
+    /// weil die Funktion immer null gibt -- und das Pet bliebe fuer immer
+    /// ungefaerbt, auch wenn etwas passiert.
+    #[test]
+    fn die_toenung_liegt_nur_waehrend_des_emotes() {
+        assert_eq!(toenungsanteil(0.4, true), 0.4, "Emote: der Manifestwert");
+        assert_eq!(toenungsanteil(0.4, false), 0.0, "Ruhe: keine Farbe");
+        assert_eq!(toenungsanteil(1.0, true), 1.0);
+        assert_eq!(toenungsanteil(1.0, false), 0.0);
+        // Ein Pet ohne Toenung bleibt auch im Emote ungefaerbt.
+        assert_eq!(toenungsanteil(0.0, true), 0.0);
+        // Und Unsinn im Manifest wird geklemmt, nicht gerechnet.
+        assert_eq!(toenungsanteil(9.0, true), 1.0);
+        assert_eq!(toenungsanteil(-2.0, true), 0.0);
+    }
+
+    /// Die zwei Takte, und WANN welcher gilt. Ohne diesen Test waere der
+    /// getrennte Takt nur eine Behauptung im Kommentar: die Tests darueber
+    /// fahren je nur einen von beiden.
+    #[test]
+    fn das_emote_laeuft_schnell_der_atem_langsam_und_der_wechsel_schaltet_um() {
+        let start = Instant::now();
+        let schnell = Duration::from_secs(1) / 12;
+        let langsam = Duration::from_secs(1) / ATEM_FPS;
+        assert!(langsam > schnell, "der Atem muss langsamer sein");
+
+        // Mit Emote: der schnelle Takt.
+        let mut mit = Animator::neu(
+            Spur { zeile: 1, spalten: 2 },
+            Some(Spur { zeile: 9, spalten: 2 }),
+            12,
+            start,
+        );
+        assert_eq!(mit.schrittdauer(), schnell);
+
+        // Nach EMOTE_UMLAEUFE vollen Umlaeufen faellt er auf den Atem --
+        // und damit auf den langsamen Takt.
+        for i in 1..=(2 * EMOTE_UMLAEUFE) {
+            mit.tick(start + schnell * i);
+        }
+        assert!(!mit.emote_laeuft(), "Emote muesste durch sein");
+        assert_eq!(mit.schrittdauer(), langsam);
+
+        // Ohne Emote: von Anfang an der langsame Takt, auch wenn die
+        // Emote-Rate hoch angegeben wird. Das Manifest darf den Ruhezustand
+        // nicht hochdrehen.
+        let ohne = Animator::neu(Spur { zeile: 1, spalten: 4 }, None, 60, start);
+        assert_eq!(ohne.schrittdauer(), langsam);
+    }
+
     #[test]
     fn tick_ohne_emote_bleibt_von_anfang_an_auf_der_atemzeile() {
         let start = Instant::now();
@@ -655,7 +753,8 @@ mod tests {
         // GIVEN einen Animator, der schon bei Spalte 2 steht:
         let start = Instant::now();
         let mut animator = Animator::neu(Spur { zeile: 4, spalten: 8 }, None, 12, start);
-        let jetzt = start + Duration::from_millis(168);
+        // Zwei Schritte im ATEMTAKT (ATEM_FPS = 3), nicht bei 12 fps.
+        let jetzt = start + Duration::from_millis(667);
         animator.tick(jetzt);
         assert_eq!(animator.spalte(), 2);
 
@@ -675,7 +774,7 @@ mod tests {
         // GIVEN einen Animator, der schon bei Spalte 2 steht:
         let start = Instant::now();
         let mut animator = Animator::neu(Spur { zeile: 0, spalten: 4 }, None, 12, start);
-        animator.tick(start + Duration::from_millis(168));
+        animator.tick(start + Duration::from_millis(667));   // Atemtakt
         assert_eq!(animator.spalte(), 2);
 
         // WHEN ein Standbild-Mood gesetzt wird,
