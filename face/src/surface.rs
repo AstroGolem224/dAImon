@@ -696,25 +696,50 @@ fn geaendertes_rechteck(vorher: &[u8], nachher: &[u8], breite: u32, hoehe: u32) 
         });
     }
 
+    // Zeilenweise, und zuerst die ganze Zeile als Scheibe: `a != b` auf einem
+    // Slice ist ein Speichervergleich, die Suche nach der Spalte ein
+    // Pixeldurchlauf. Beim Atmen bewegen sich wenige Zeilen, alle uebrigen
+    // fallen damit in einem Zug heraus.
+    //
+    // Gemessen am 02.09.: die alte Fassung lief immer ueber alle 39 936 Pixel
+    // und kostete 1036 us je Bild -- rund 71 % der gesamten Ruhelast des Face
+    // (1,45 % CPU bei zehn Bildern je Sekunde). Der Vergleich, OB sich etwas
+    // geaendert hat, war teurer als alles Zeichnen zusammen.
+    let zeilenbytes = (breite as usize) * 4;
     let mut min_x = breite;
     let mut min_y = hoehe;
     let mut max_x = 0;
     let mut max_y = 0;
     let mut gefunden = false;
-    for (index, (a, b)) in vorher
-        .chunks_exact(4)
-        .zip(nachher.chunks_exact(4))
-        .enumerate()
-    {
+    for y in 0..hoehe {
+        let start = (y as usize) * zeilenbytes;
+        let ende = start + zeilenbytes;
+        if ende > vorher.len() {
+            break;
+        }
+        let a = &vorher[start..ende];
+        let b = &nachher[start..ende];
         if a == b {
             continue;
         }
-        let index = index as u32;
-        let x = index % breite;
-        let y = index / breite;
-        min_x = min_x.min(x);
+        // Nur in einer abweichenden Zeile lohnt die Spaltensuche. Von aussen
+        // nach innen: das erste und das letzte abweichende Pixel genuegen,
+        // alles dazwischen liegt ohnehin in der Box.
+        let erste = a
+            .chunks_exact(4)
+            .zip(b.chunks_exact(4))
+            .position(|(p, q)| p != q);
+        let Some(erste) = erste else {
+            continue;
+        };
+        let letzte = a
+            .chunks_exact(4)
+            .zip(b.chunks_exact(4))
+            .rposition(|(p, q)| p != q)
+            .unwrap_or(erste);
+        min_x = min_x.min(erste as u32);
+        max_x = max_x.max(letzte as u32);
         min_y = min_y.min(y);
-        max_x = max_x.max(x);
         max_y = max_y.max(y);
         gefunden = true;
     }
@@ -892,6 +917,56 @@ mod tests {
                 .sum::<i32>()
         };
         assert!(flaeche(1) < flaeche(6));
+    }
+
+    /// MESSUNG, kein Kriterium -- darum `#[ignore]`. Fahren mit
+    /// `cargo test --bin daimon-face -- --ignored --nocapture messung_`.
+    ///
+    /// Der Atem kostet gemessen 1,45 % eines Kerns bei rund zehn Bildern je
+    /// Sekunde, also etwa 145 us je Bild. Eine 173-KB-Kopie erklaert davon ein
+    /// Zehntel. Diese Messung sagt, wo der Rest liegt, statt ihn zu raten.
+    #[test]
+    #[ignore]
+    fn messung_kosten_je_bild() {
+        use std::time::Instant;
+
+        let atlas = standard_atlas();
+        let farblos = Toenung { r: 255, g: 255, b: 255 };
+        let w = atlas.layout.cell_w;
+        let h = atlas.layout.cell_h;
+        let a = sprite_zelle_bauen(&atlas, 0, 0, farblos, 0.0, true).unwrap();
+        let b = sprite_zelle_bauen(&atlas, 0, 1, farblos, 0.0, true).unwrap();
+        let runden = 500;
+
+        let messen = |name: &str, f: &dyn Fn()| {
+            let t0 = Instant::now();
+            for _ in 0..runden {
+                f();
+            }
+            let je = t0.elapsed().as_secs_f64() * 1e6 / f64::from(runden);
+            println!("  {name:34} {je:8.1} us");
+        };
+
+        println!("Zelle {w}x{h} = {} KB", a.len() / 1024);
+        messen("sprite_zelle_bauen (ganzer Weg)", &|| {
+            std::hint::black_box(
+                sprite_zelle_bauen(&atlas, 0, 1, farblos, 0.0, true).unwrap());
+        });
+        messen("atlas.frame (Zuschnitt)", &|| {
+            std::hint::black_box(atlas.frame(0, 1).unwrap());
+        });
+        messen("frame_toenen_anteilig (Anteil 0)", &|| {
+            std::hint::black_box(frame_toenen_anteilig(&a, farblos, 0.0));
+        });
+        messen("sichtbaren_frame_bauen (Klon)", &|| {
+            std::hint::black_box(sichtbaren_frame_bauen(&a, true));
+        });
+        messen("geaendertes_rechteck (Vergleich)", &|| {
+            std::hint::black_box(geaendertes_rechteck(&a, &b, w, h));
+        });
+        messen("alpha_vereinigen (32 Spalten)", &|| {
+            std::hint::black_box(alpha_vereinigen(&atlas, 0, 32));
+        });
     }
 
     #[test]
