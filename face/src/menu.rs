@@ -1058,16 +1058,46 @@ mod tests {
         );
     }
 
+    /// Die markierten Eintraege, nach den beiden Bloecken getrennt.
+    ///
+    /// Der Punkt `●` steht an ZWEI Stellen -- an der aktiven Persona und am
+    /// aktiven Pet. Ein Test, der einfach alle Punkte zaehlt, kann darum nicht
+    /// sagen, in welchem Block zu viele sind: er faellt, sobald beide Bloecke
+    /// eine Wahl haben, und laesst umgekehrt zwei Punkte in DEMSELBEN Block
+    /// durch, wenn man seine Schranke auf zwei hebt. Genau das ist am
+    /// 01./02.09. passiert -- der Pet-Test wurde auf zwei erhoeht, der
+    /// Persona-Test blieb bei eins, und seit der ersten Pet-Auswahl war er rot.
+    ///
+    /// Getrennt wird an der Ueberschrift des Pet-Blocks; sie steht in
+    /// `eintraege()` zwischen beiden.
+    fn markierte_bloecke() -> (Vec<Eintrag>, Vec<Eintrag>) {
+        let alle = eintraege();
+        let grenze = alle
+            .iter()
+            .position(|e| e.text == "Pet wechseln")
+            .expect("die Ueberschrift des Pet-Blocks trennt die beiden Bloecke");
+        let mut personas = Vec::new();
+        let mut pets = Vec::new();
+        for (index, eintrag) in alle.into_iter().enumerate() {
+            if !eintrag.text.contains('●') {
+                continue;
+            }
+            if index < grenze {
+                personas.push(eintrag);
+            } else {
+                pets.push(eintrag);
+            }
+        }
+        (personas, pets)
+    }
+
     /// Genau eine Persona ist markiert, und genau die traegt keine Aktion:
     /// sie ist schon gewaehlt.
     #[test]
     fn die_aktive_persona_ist_markiert_und_ohne_aktion() {
-        let aktiv: Vec<_> = eintraege()
-            .into_iter()
-            .filter(|e| e.text.contains('●'))
-            .collect();
-        assert!(aktiv.len() <= 1, "mehr als eine Persona markiert");
-        for eintrag in aktiv {
+        let (personas, _) = markierte_bloecke();
+        assert!(personas.len() <= 1, "mehr als eine Persona markiert");
+        for eintrag in personas {
             assert_eq!(eintrag.aktion, None, "{} ist klickbar", eintrag.text);
         }
     }
@@ -1141,13 +1171,14 @@ mod tests {
             aktives_pet().is_none() || !aktives_pet().unwrap().is_empty(),
             "aktives_pet liefert entweder None oder einen echten Namen"
         );
-        let eintraege_mit_punkt = eintraege()
-            .into_iter()
-            .filter(|e| e.text.contains('●'))
-            .count();
-        // Hoechstens einer: die Persona hat immer genau einen, das Pet nur
-        // mit Marke. Zwei Punkte in EINEM der beiden Bloecke waeren der Fehler.
-        assert!(eintraege_mit_punkt <= 2, "{eintraege_mit_punkt} Punkte");
+        // Je Block hoechstens einer. Die alte Fassung zaehlte beide Bloecke
+        // zusammen und liess bis zu zwei zu -- damit waeren zwei markierte
+        // Pets gruen gewesen, und genau die sind der Fehler.
+        let (_, pets) = markierte_bloecke();
+        assert!(pets.len() <= 1, "{} markierte Pets", pets.len());
+        for eintrag in pets {
+            assert_eq!(eintrag.aktion, None, "{} ist klickbar", eintrag.text);
+        }
     }
 
     /// Die Datei unter XDG gewinnt gegen die mitgelieferte -- dieselbe
