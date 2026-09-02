@@ -10,9 +10,19 @@ Eine Momentaufnahme, die aussieht wie ein Verzeichnis, ist die schlechtere
 Haelfte von beidem: wer eine Schuld nachlesen will, landet auf einer
 beliebigen Zeile und haelt den Eintrag fuer erledigt.
 
-Diese Datei macht daraus eine Zusage. Sie prueft nicht den WORTLAUT der
-Eintraege -- das waere Nachschreiben --, sondern dass jeder auf einen echten
-Vermerk zeigt und keiner fehlt.
+Diese Datei macht daraus eine Zusage: jeder Eintrag zeigt auf einen echten
+Vermerk, und keiner fehlt.
+
+**Seit dem 02.09. ueber den TEXT, nicht ueber die Zeile.** Die Zeilennummer
+war die einzige Angabe im Buch, die JEDE Aenderung oberhalb ungueltig macht --
+dreimal rot, ohne dass jemand eine Schuld angefasst haette: am 01.09. drei
+gewanderte Vermerke, am 02.09. vormittags `doppelself_gesichter.py:510 -> 522`
+aus einer Sitzung, die mit dem Ledger nichts zu tun hatte. Da `pytest` in vier
+eingebetteten Pruefstaenden ein Kriterium ist, kostet das rote Punkte in
+Belegen, die von etwas ganz anderem handeln.
+
+Der Text eines Vermerks wandert nicht mit; er aendert sich nur, wenn jemand
+die Schuld selbst umformuliert -- und dann GEHOERT das Buch angefasst.
 """
 from __future__ import annotations
 
@@ -31,9 +41,12 @@ WURZELN = ("daimon", "face/src", "tools", "config")
 ENDUNGEN = (".py", ".rs", ".js", ".toml", ".service")
 
 
-def _vermerke() -> dict[str, list[int]]:
-    """Datei -> Zeilennummern mit `ponytail:` im Quellbaum."""
-    gefunden: dict[str, list[int]] = {}
+def _stellen() -> dict[str, list[tuple[int, str]]]:
+    """Datei -> (Zeilennummer, Text hinter `ponytail:`) im Quellbaum.
+
+    Die Zeilennummer bleibt hier drin, weil die Obergrenzen-Pruefung unten die
+    Folgezeilen braucht. In den Ledger geht sie nicht mehr."""
+    gefunden: dict[str, list[tuple[int, str]]] = {}
     for wurzel in WURZELN:
         for p in sorted((REPO / wurzel).rglob("*")):
             if p.is_dir() or "__pycache__" in str(p) or p.suffix not in ENDUNGEN:
@@ -42,65 +55,73 @@ def _vermerke() -> dict[str, list[int]]:
                 zeilen = p.read_text(encoding="utf-8").splitlines()
             except (OSError, UnicodeDecodeError):      # pragma: no cover
                 continue
-            nummern = [i for i, z in enumerate(zeilen, 1) if "ponytail:" in z]
-            if nummern:
-                gefunden[str(p.relative_to(REPO))] = nummern
+            # Alles vor `ponytail:` faellt weg -- damit auch jede Einrueckung
+            # und jedes Kommentarzeichen, ohne sie einzeln zu kennen.
+            stellen = [(i, z.split("ponytail:", 1)[1].strip())
+                       for i, z in enumerate(zeilen, 1) if "ponytail:" in z]
+            if stellen:
+                gefunden[str(p.relative_to(REPO))] = stellen
     return gefunden
 
 
-def _eintraege() -> dict[str, list[int]]:
-    """Datei -> Zeilennummern, wie der Ledger sie behauptet."""
-    behauptet: dict[str, list[int]] = {}
+def _vermerke() -> dict[str, list[str]]:
+    """Datei -> Vermerktexte im Quellbaum. Der Schluessel des Ledgers."""
+    return {d: [t for _, t in s] for d, s in _stellen().items()}
+
+
+def _eintraege() -> dict[str, list[str]]:
+    """Datei -> Vermerktexte, wie der Ledger sie behauptet.
+
+    Gezaehlt wird erst ab dem ersten Dateiabschnitt; Aufzaehlungen im Kopf
+    sind Prosa und keine Eintraege."""
+    behauptet: dict[str, list[str]] = {}
     datei = None
     for z in LEDGER.read_text(encoding="utf-8").splitlines():
-        if m := re.match(r"^## `([^`]+)`", z):
-            datei = m.group(1)
-            behauptet.setdefault(datei, [])
-        elif (m := re.match(r"^- \*\*Zeile (\d+)\*\*", z)) and datei:
-            behauptet[datei].append(int(m.group(1)))
+        if z.startswith("## "):
+            m = re.match(r"^## `([^`]+)`$", z)
+            datei = m.group(1) if m else None
+            if datei:
+                behauptet.setdefault(datei, [])
+        elif z.startswith("- ") and datei:
+            behauptet[datei].append(z[2:].strip())
     return behauptet
 
 
 def test_es_gibt_ueberhaupt_vermerke():
     """Sonst waeren die Pruefungen unten leer und jede Aussage daraus wertlos."""
     assert len(_vermerke()) >= 10
+    assert len(_eintraege()) >= 10
 
 
-def test_jede_datei_mit_vermerk_steht_im_ledger():
-    fehlt = sorted(set(_vermerke()) - set(_eintraege()))
-    assert not fehlt, f"nicht im Ledger: {fehlt}"
-
-
-def test_der_ledger_nennt_keine_datei_ohne_vermerk():
-    """Die Gegenrichtung. Ein Eintrag, dessen Vermerk entfernt wurde, ist
-    erledigte Schuld -- und die gehoert nicht in ein Verzeichnis offener."""
-    zuviel = sorted(set(_eintraege()) - set(_vermerke()))
-    assert not zuviel, f"im Ledger, aber kein Vermerk mehr im Code: {zuviel}"
-
-
-def test_jede_zeilenangabe_zeigt_auf_einen_vermerk():
-    """DER BEFUND vom 17.08.: vier von 21 zeigten ins Leere, weil der Code
-    sich unter dem Ledger bewegt hat."""
-    daneben = []
-    for datei, nummern in sorted(_eintraege().items()):
-        zeilen = (REPO / datei).read_text(encoding="utf-8").splitlines()
-        for nr in nummern:
-            ist = zeilen[nr - 1] if 0 < nr <= len(zeilen) else ""
-            if "ponytail:" not in ist:
-                daneben.append(f"{datei}:{nr} -> {ist.strip()[:50]!r}")
-    assert not daneben, "Zeilenangaben zeigen ins Leere:\n  " + "\n  ".join(daneben)
+def test_kein_vermerk_ist_mehrdeutig():
+    """Der Preis des Textschluessels: zwei gleich beginnende Vermerke in
+    derselben Datei waeren im Ledger nicht mehr auseinanderzuhalten. Eine
+    stille Kollision waere schlimmer als die alte Zeilennummer -- also faellt
+    sie hier auf, bevor sie irgendwo anders wirkt."""
+    doppelt = [f"{d}: {t!r}" for d, texte in sorted(_vermerke().items())
+               for t in sorted(set(texte)) if texte.count(t) > 1]
+    assert not doppelt, ("zwei Vermerke mit gleichem Text in einer Datei -- "
+                         "einen davon umformulieren:\n  " + "\n  ".join(doppelt))
 
 
 def test_jeder_vermerk_hat_einen_eintrag():
-    """Nicht nur die Datei, sondern JEDE Stelle. Drei Dateien tragen zwei
+    """Nicht nur die Datei, sondern JEDE Stelle. Vier Dateien tragen zwei
     Vermerke -- ein Abschnitt je Datei genuegt also nicht."""
-    fehlend = []
-    behauptet = _eintraege()
-    for datei, nummern in sorted(_vermerke().items()):
-        for nr in nummern:
-            if nr not in behauptet.get(datei, []):
-                fehlend.append(f"{datei}:{nr}")
-    assert not fehlend, f"Vermerk ohne Eintrag: {fehlend}"
+    fehlend = [f"{d}: {t!r}" for d, texte in sorted(_vermerke().items())
+               for t in texte if t not in _eintraege().get(d, [])]
+    assert not fehlend, ("Vermerk ohne Eintrag im Ledger:\n  "
+                         + "\n  ".join(fehlend))
+
+
+def test_der_ledger_nennt_nur_echte_vermerke():
+    """Die Gegenrichtung. Ein Eintrag, dessen Vermerk entfernt oder
+    umformuliert wurde, ist keine offene Schuld mehr -- und die gehoert nicht
+    in ein Verzeichnis offener."""
+    vermerke = _vermerke()
+    erfunden = [f"{d}: {t!r}" for d, texte in sorted(_eintraege().items())
+                for t in texte if t not in vermerke.get(d, [])]
+    assert not erfunden, ("im Ledger, aber so nicht im Code:\n  "
+                          + "\n  ".join(erfunden))
 
 
 def test_die_zahl_im_kopf_stimmt():
@@ -121,9 +142,9 @@ def test_die_zahl_im_kopf_stimmt():
     "der, der still verrottet (Skill `ponytail-debt`: `no-trigger`)."))
 def test_jeder_vermerk_nennt_eine_obergrenze():
     ohne = []
-    for datei, nummern in sorted(_vermerke().items()):
+    for datei, stellen in sorted(_stellen().items()):
         zeilen = (REPO / datei).read_text(encoding="utf-8").splitlines()
-        for nr in nummern:
+        for nr, _ in stellen:
             block = " ".join(zeilen[nr - 1:nr + 4])
             if "Obergrenze" not in block and "sobald" not in block:
                 ohne.append(f"{datei}:{nr}")

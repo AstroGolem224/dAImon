@@ -24,99 +24,90 @@ eine Schuld nachlesen wollte, landete auf einer beliebigen Zeile. Eine
 Momentaufnahme, die aussieht wie ein Verzeichnis, ist die schlechtere Hälfte
 von beidem.
 
-`tests/test_debt_ledger.py` prüft jetzt beide Richtungen — jeder Eintrag zeigt
-auf einen echten Vermerk, jeder Vermerk hat einen Eintrag, und die Zahl im
-Kopf wird nachgerechnet. Nicht geprüft wird der **Wortlaut**: das wäre
-Nachschreiben, und dafür ist der `grep` oben da.
+`tests/test_debt_ledger.py` prüft beide Richtungen — jeder Eintrag zeigt auf
+einen echten Vermerk, jeder Vermerk hat einen Eintrag, und die Zahl im Kopf
+wird nachgerechnet.
+
+**Seit dem 02.09. steht je Eintrag der Vermerktext, keine Zeilennummer mehr.**
+Die Zeilennummer war die einzige Angabe hier, die jede Änderung *oberhalb*
+ungültig macht — dreimal rot, ohne dass jemand eine Schuld angefasst hätte:
+am 01.09. früh drei gewanderte Vermerke (`face/src/main.rs` +85, `menu.rs`
++39, `doppelself_gesichter.py` +51), am 02.09. um 09:0x das Buch neu erzeugt
+und grün, um 11:0x wieder rot, weil eine parallele Sitzung in
+`doppelself_gesichter.py` weitergearbeitet hatte (510 → 522). Da `pytest` in
+vier eingebetteten Prüfständen ein Kriterium ist, kostete das rote Punkte in
+Belegen, die von etwas ganz anderem handeln.
+
+Der Eintrag ist jetzt der **Text hinter `ponytail:`**, wörtlich und
+ungekürzt — er wandert nicht mit und ändert sich nur, wenn jemand die Schuld
+selbst umformuliert. Dann *gehört* dieses Buch angefasst. Zwei gleich
+lautende Vermerke in einer Datei wären nicht auseinanderzuhalten; das macht
+der Test eigens rot, statt es still zu schlucken. Die Stelle im Code findet
+der `grep` oben, und die Begründung steht ohnehin dort, nicht hier.
 
 ## `daimon/brokers/cli/broker.py`
-
-- **Zeile 39** — kein Streaming. Obergrenze: die Antwort kommt am Stueck, TTFA ist
+- kein Streaming. Obergrenze: die Antwort kommt am Stueck, TTFA ist
 
 ## `daimon/brokers/lokal/broker.py`
-
-- **Zeile 27** — HTTP an Ollama, kein Unterprozess je Frage. Obergrenze: kein
+- HTTP an Ollama, kein Unterprozess je Frage. Obergrenze: kein
 
 ## `daimon/common/config.py`
-
-- **Zeile 69** — eine Zahl aus einer Messung, kein adaptives Fenster.
+- eine Zahl aus einer Messung, kein adaptives Fenster.
 
 ## `daimon/ears/capture.py`
-
-- **Zeile 127** — die Parameter sind Konstanten mit Ueberschreibmoeglichkeit,
+- die Parameter sind Konstanten mit Ueberschreibmoeglichkeit,
 
 ## `daimon/ears/daemon.py`
-
-- **Zeile 31** — der Vorlauf sind hier acht Chunks (256 ms) vor dem ersten lauten
+- der Vorlauf sind hier acht Chunks (256 ms) vor dem ersten lauten
 
 ## `daimon/ears/interlock.py`
-
-- **Zeile 282** — eine Zeile numpy statt eines AEC. Obergrenze: sobald der
-
-- **Zeile 376** — `select`-Schleife, kein Dienstgeruest, keine Steuerung. Obergrenze:
+- eine Zeile numpy statt eines AEC. Obergrenze: sobald der
+- `select`-Schleife, kein Dienstgeruest, keine Steuerung. Obergrenze:
 
 ## `daimon/ears/ring.py`
-
-- **Zeile 214** — keine Klasse, kein Iterator-Protokoll, kein Zusammenfuegen.
+- keine Klasse, kein Iterator-Protokoll, kein Zusammenfuegen.
 
 ## `daimon/ears/vad.py`
-
-- **Zeile 72** — ein Segment ist ein Paar von Chunk-Indizes, beide einschliesslich --
-
-- **Zeile 257** — absichtlich duenn und ohne eigenen Zustand. Obergrenze: wer
+- ein Segment ist ein Paar von Chunk-Indizes, beide einschliesslich --
+- absichtlich duenn und ohne eigenen Zustand. Obergrenze: wer
 
 ## `daimon/face/echo.py`
-
-- **Zeile 34** — blockweises Resampling verliert den Bruchteil-Versatz an den
+- blockweises Resampling verliert den Bruchteil-Versatz an den
 
 ## `daimon/gpu/worker.py`
-
-- **Zeile 121** — kein GPU-Index. Obergrenze: sobald eine zweite Karte im
-
-- **Zeile 231** — ein `sleep`. Obergrenze: sobald hier ein echter Ladevorgang
+- kein GPU-Index. Obergrenze: sobald eine zweite Karte im
+- ein `sleep`. Obergrenze: sobald hier ein echter Ladevorgang
 
 ## `daimon/hub/abkuehlung.py`
-
-- **Zeile 44** — eine JSON-Datei, ein Schlüssel je Kanal. Obergrenze: sobald die
+- eine JSON-Datei, ein Schlüssel je Kanal. Obergrenze: sobald die
 
 ## `daimon/hub/daemon.py`
-
-- **Zeile 1258** — der Ersatzsatz hat KEINE eigene Frist. Obergrenze: er ist
+- der Ersatzsatz hat KEINE eigene Frist. Obergrenze: er ist
 
 ## `daimon/hub/sprechtext.py`
-
-- **Zeile 171** — eine Heuristik, keine Grammatik. Obergrenze: sie laesst
+- eine Heuristik, keine Grammatik. Obergrenze: sie laesst
 
 ## `daimon/hub/state.py`
-
-- **Zeile 235** — EIN Platz, der neuere Termin gewinnt. Decke: mehrere
-
-- **Zeile 276** — nur ein Wahrheitswert plus Ablauf. Obergrenze: die Sperre
+- EIN Platz, der neuere Termin gewinnt. Decke: mehrere
+- nur ein Wahrheitswert plus Ablauf. Obergrenze: die Sperre
 
 ## `daimon/mind/daemon.py`
-
-- **Zeile 248** — 20 Zeichen Rand, geraten und einmal nachgemessen. Obergrenze: wer
+- 20 Zeichen Rand, geraten und einmal nachgemessen. Obergrenze: wer
 
 ## `daimon/mind/router.py`
-
-- **Zeile 259** — sauberer waere ein KWin-Script, das `resourceClass` meldet; das
+- sauberer waere ein KWin-Script, das `resourceClass` meldet; das
 
 ## `daimon/plan/__main__.py`
-
-- **Zeile 74** — ein fester Unit-Name, keine Eindeutigkeit. Decke: zwei
+- ein fester Unit-Name, keine Eindeutigkeit. Decke: zwei
 
 ## `face/src/main.rs`
-
-- **Zeile 1429** — kein Grund-Unterscheiden. Der Compositor sagt nicht, warum
+- kein Grund-Unterscheiden. Der Compositor sagt nicht, warum
 
 ## `face/src/menu.rs`
-
-- **Zeile 332** — relative Pfade. Ein absoluter gehoert in die Konfiguration,
+- relative Pfade. Ein absoluter gehoert in die Konfiguration,
 
 ## `tools/doppelself_gesichter.py`
-
-- **Zeile 522** — die Decke des Verfahrens, ausdruecklich festgehalten statt
+- die Decke des Verfahrens, ausdruecklich festgehalten statt
 
 ## `tools/generate-action-candidates.py`
-
-- **Zeile 106** — eigener Serialisierer. Obergrenze: sobald verschachtelte oder
+- eigener Serialisierer. Obergrenze: sobald verschachtelte oder
