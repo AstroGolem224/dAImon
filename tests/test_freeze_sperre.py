@@ -122,24 +122,40 @@ def test_nach_dem_ende_ist_wieder_frei(attrappe):
     assert r.returncode == 0, r.stderr
 
 
+# Wie ein blanker Verifiziererlauf aussieht. Die Namen sind dem Bestand
+# entnommen (`ls tests/verify/*_pruefstand.py`), nicht der Vorstellung: neben
+# `t311` gibt es `t313b` und `t316b` -- Ziffern UND ein Buchstabe. Ein Muster
+# mit `t[0-9]+` sieht die zweite Bauform nicht, und genau die lief diese Woche
+# am haeufigsten.
+BLANKE_LAEUFE = [
+    ("T-9.9.sh", "bash"),
+    ("t311_pruefstand.py", "python3"),
+    ("t313b_pruefstand.py", "python3"),
+]
+
+
 @pytest.mark.skipif(shutil.which("pgrep") is None, reason="pgrep fehlt")
-def test_blanker_verifiziererlauf_wird_gesehen(attrappe):
+@pytest.mark.parametrize("name,interpreter", BLANKE_LAEUFE)
+def test_blanker_verifiziererlauf_wird_gesehen(attrappe, name, interpreter):
     """Der Fall vom 30.08.: kein zweites freeze.sh, sondern ein direkter
     Verifiziererlauf. Er haelt die Sperre nicht -- die Vorpruefung sieht ihn."""
     verify = attrappe.baum / "tests" / "verify"
-    verify.mkdir(parents=True)
-    blank = verify / "T-9.9.sh"
-    blank.write_text("#!/usr/bin/env bash\nsleep 10\n", encoding="utf-8")
+    verify.mkdir(parents=True, exist_ok=True)
+    blank = verify / name
+    blank.write_text(
+        "#!/usr/bin/env bash\nsleep 10\n" if name.endswith(".sh")
+        else "import time; time.sleep(10)\n",
+        encoding="utf-8")
     blank.chmod(0o755)
     laeuft = subprocess.Popen(
-        ["bash", "tests/verify/T-9.9.sh"], cwd=attrappe.baum,
+        [interpreter, f"tests/verify/{name}"], cwd=attrappe.baum,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     try:
         time.sleep(1)
         r = attrappe("T-c", "0")
         assert r.returncode == 1, f"blanker Lauf blieb unbemerkt: {r.stdout}"
-        assert "T-9.9.sh" in r.stderr, r.stderr
+        assert name in r.stderr, r.stderr
     finally:
         laeuft.kill()
         laeuft.wait(timeout=10)

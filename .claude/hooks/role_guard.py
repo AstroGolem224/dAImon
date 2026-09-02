@@ -242,8 +242,14 @@ def _schreibziele(kommando: str, tiefe: int = 0) -> list[str]:
 # Ablehnung ist eine verschmutzte Messung, aergerlich und nachtraeglich
 # erkennbar. Der Schaden einer falschen Ablehnung waere ein Repo, in dem
 # niemand mehr etwas ausfuehren kann.
+#
+# Der Pruefstand-Zweig nimmt JEDEN Dateinamen auf `_pruefstand.py`, nicht bloss
+# `t<Ziffern>`: der Bestand kennt `t313b` und `t316b`, und ein Muster, das die
+# heutige Namensform abschreibt, ist beim naechsten Buchstaben wieder blind.
+# Gemessen am 02.09.: `t[0-9]+` sah `tests/verify/t313b_pruefstand.py` nicht --
+# den Pruefstand, der diese Woche am haeufigsten lief.
 VERIFIZIERER = re.compile(
-    r"^tests/verify/(?:T-[0-9][^/]*\.sh|t[0-9]+_pruefstand\.py|meta\.sh|freeze\.sh)$"
+    r"^tests/verify/(?:T-[0-9][^/]*\.sh|[^/]+_pruefstand\.py|meta\.sh|freeze\.sh)$"
 )
 INTERPRETER = SHELLS | {"python", "python3", "env"}
 SPERRDATEI = "daimon-verify.lock"

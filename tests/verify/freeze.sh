@@ -65,8 +65,14 @@ printf 'PID %s seit %s -- freeze.sh %s (%s)\n' \
 # weil `pgrep -af` die GANZE Kommandozeile prueft: ohne ihn meldet jeder Prozess
 # einen Fremdlauf, der den Befehl bloss als Text mitfuehrt -- etwa ein
 # `claude -p`, dessen Auftrag ihn zitiert.
+#
+# Der Pruefstand-Zweig nimmt JEDEN Dateinamen auf `_pruefstand.py`, nicht bloss
+# `t<Ziffern>`: der Bestand kennt `t313b` und `t316b`, und ein Muster, das die
+# heutige Namensform abschreibt, ist beim naechsten Buchstaben wieder blind.
+# Gemessen am 02.09.: `t[0-9]+` sah `t313b_pruefstand.py` nicht -- den
+# Pruefstand, der diese Woche am haeufigsten lief.
 fremde="$(pgrep -af \
-    '^([^ ]*/)?(bash|sh|python3?)[^|]* tests/verify/(T-[0-9][^ ]*\.sh|t[0-9]+_pruefstand\.py|meta\.sh)' \
+    '^([^ ]*/)?(bash|sh|python3?)[^|]* tests/verify/(T-[0-9][^ ]*\.sh|[^ /]+_pruefstand\.py|meta\.sh)' \
     2>/dev/null | grep -v "^$$ " || true)"
 if [[ -n "$fremde" ]]; then
     echo "freeze: ABGELEHNT — es laufen bereits Verifiziererprozesse:" >&2

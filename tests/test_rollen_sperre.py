@@ -85,6 +85,13 @@ LAEUFE = [
     "./tests/verify/T-3.14.sh",
     "bash tests/verify/meta.sh T-3.14",
     f"bash {REPO}/tests/verify/T-3.14.sh",
+    # Die Pruefstaende, direkt gefahren. Die Namen sind dem Bestand entnommen
+    # (`ls tests/verify/*_pruefstand.py`), nicht der Vorstellung: neben `t311`
+    # gibt es `t313b` und `t316b` -- Ziffern UND ein Buchstabe. Ein Muster mit
+    # `t[0-9]+` sieht die zweite Bauform nicht, und genau die lief diese Woche
+    # am haeufigsten.
+    "python3 tests/verify/t311_pruefstand.py",
+    "python3 tests/verify/t313b_pruefstand.py",
 ]
 
 # Alles, was KEIN Lauf ist und waehrend eines Freeze weiter gehen muss.
@@ -96,6 +103,10 @@ KEINE_LAEUFE = [
     "cat tests/verify/T-3.14.sh",
     "grep -n foo tests/verify/T-3.14.sh",
     "git commit -m 'bash tests/verify/T-3.14.sh lief gruen'",
+    # Dieselbe Bauform fuer den weiteren Pruefstand-Zweig. `[^/]+` ist breiter
+    # als `t[0-9]+`; die Gegenprobe muss mitwachsen, sonst waere ein Muster,
+    # das im Fliesstext sucht, oben genauso gruen.
+    "git commit -m 'python3 tests/verify/t313b_pruefstand.py lief gruen'",
     "python3 -m pytest tests/test_rollen.py",
     "git status --short",
 ]
