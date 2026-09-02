@@ -32,14 +32,28 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any, Protocol
 
 # Die Werte sind Vertrag, keine Vorlieben.
 TYPES_MONITOR = 1
 PERSIST_EXPLICITLY_REVOKED = 2
-CURSOR_METADATA = 4
+CURSOR_HIDDEN = 1
 CURSOR_EMBEDDED = 2
+CURSOR_METADATA = 4
+
+# In welcher Reihenfolge gewaehlt wird, und warum -- nicht nach Bitwert:
+#
+# 1. METADATA. Der Zeiger kommt als Position NEBEN dem Bild. Die Augen
+#    erfahren, wo er steht, ohne dass ein einziges Pixel anders wird.
+# 2. HIDDEN. Kein Zeiger. Das Bild bleibt unveraendert, nur die Position
+#    fehlt -- der Zweck (den Bildschirm lesen) bleibt vollstaendig da.
+#    Deshalb die saubere Rueckfalllinie und nicht das letzte Mittel.
+# 3. EMBEDDED. Der Zeiger wird ins Bild gebrannt und damit in die OCR; ein
+#    Pfeil ueber einem Buchstaben macht aus dem Buchstaben Rauschen. Besser
+#    als nichts, aber schlechter als gar kein Zeiger.
+CURSOR_REIHENFOLGE = (CURSOR_METADATA, CURSOR_HIDDEN, CURSOR_EMBEDDED)
 
 # Was das Portal an Datentypen liefern darf. `DmaBuf` steht bewusst NICHT
 # drin: ohne GPU-Kontext im Face (T-1.4) waere er nicht abbildbar, und der
@@ -56,6 +70,23 @@ class Portal(Protocol):
 
     def anfrage(self, methode: str, optionen: dict) -> dict: ...
     def schliessen(self) -> None: ...
+    def cursor_modi(self) -> int: ...
+
+
+def cursor_mode_waehlen(verfuegbar: int) -> int | None:
+    """Der beste angebotene Modus, oder `None`, wenn das Portal keinen kann.
+
+    `None` heisst ausdruecklich: die Anfrage traegt gar kein `cursor_mode`.
+    Genau daran ist der Augendienst am 02.09. in einer Neustartschleife
+    gestorben -- er schickte 4 an ein Portal, dessen `AvailableCursorModes`
+    0 meldete, und bekam `Unavailable cursor mode 4`. Der Bildschirminhalt
+    ist der Zweck, der Zeiger die Zugabe: ein Portal ohne Cursor-Faehigkeit
+    ist ein Grund, OHNE Zeiger zu arbeiten, kein Grund, blind zu werden.
+    """
+    for modus in CURSOR_REIHENFOLGE:
+        if verfuegbar & modus:
+            return modus
+    return None
 
 
 def datentyp_pruefen(typ: str) -> bool:
@@ -108,12 +139,15 @@ class PortalSitzung:
 
     def __init__(self, *, token_datei: Path | None = None,
                  portal: Portal | None = None,
-                 widerruf_marke: Path | None = None,
-                 cursor_mode: int = CURSOR_METADATA) -> None:
+                 widerruf_marke: Path | None = None) -> None:
         self.token_datei = Path(token_datei or _token_datei_vorgabe())
         self.widerruf_marke = Path(widerruf_marke or _widerruf_marke_vorgabe())
         self._portal = portal
-        self._cursor_mode = cursor_mode
+        # Kein Vorgabewert mehr. Hier stand `cursor_mode=CURSOR_METADATA`,
+        # und das war die Voraussetzung, die den Dienst umgebracht hat: der
+        # Modus ist nichts, was der Dienst mitbringt, sondern etwas, das das
+        # Portal anbietet. Gesetzt wird er in `oeffnen`, nach dem Fragen.
+        self._cursor_mode: int | None = None
         self.session_handle: str = ""
 
     # -- Token -------------------------------------------------------------
@@ -158,13 +192,43 @@ class PortalSitzung:
 
     # -- Die Folge ---------------------------------------------------------
 
+    def _cursor_mode_aushandeln(self) -> int | None:
+        """Fragen, waehlen, und die Antwort ins Journal schreiben.
+
+        Die Zeile nennt IMMER den gemessenen Wert. Ein stiller Rueckfall
+        waere hier das Schlimmste: wer spaeter fragt, warum kein Zeiger im
+        Bild ist, muss die Antwort im Protokoll finden und nicht raten.
+        """
+        try:
+            verfuegbar = int(self._portal.cursor_modi())
+        except Exception as exc:
+            # Das Portal sagt nicht, was es kann. Dann wird nicht geraten --
+            # geraten hat den Dienst umgebracht.
+            print(f"AvailableCursorModes nicht lesbar ({exc}) -- "
+                  "Anfrage ohne cursor_mode", file=sys.stderr, flush=True)
+            return None
+
+        gewaehlt = cursor_mode_waehlen(verfuegbar)
+        if gewaehlt is None:
+            print(f"Portal meldet AvailableCursorModes={verfuegbar} -- kein "
+                  "Cursor-Modus verfuegbar, Anfrage geht ohne cursor_mode "
+                  "(Bild ja, Zeiger nein)", file=sys.stderr, flush=True)
+        else:
+            print(f"Portal meldet AvailableCursorModes={verfuegbar}, "
+                  f"gewaehlt: cursor_mode={gewaehlt}",
+                  file=sys.stderr, flush=True)
+        return gewaehlt
+
     def _select_sources(self, restore_token: str | None) -> None:
         optionen: dict[str, Any] = {
             "types": TYPES_MONITOR,
             "multiple": False,
             "persist_mode": PERSIST_EXPLICITLY_REVOKED,
-            "cursor_mode": self._cursor_mode,
         }
+        # Kein Schluessel statt eines Vorgabewerts: das Portal lehnt einen
+        # Modus ab, den es nicht kann, und `SelectSources` wirft dann.
+        if self._cursor_mode is not None:
+            optionen["cursor_mode"] = self._cursor_mode
         if restore_token:
             optionen["restore_token"] = restore_token
         self._portal.anfrage("SelectSources", optionen)
@@ -182,6 +246,9 @@ class PortalSitzung:
 
         create = self._portal.anfrage("CreateSession", {})
         self.session_handle = str(create.get("session_handle") or "")
+
+        # VOR `SelectSources`, weil genau dieser Aufruf den Modus abnimmt.
+        self._cursor_mode = self._cursor_mode_aushandeln()
 
         token = self._token_lesen()
         rueckfall = False

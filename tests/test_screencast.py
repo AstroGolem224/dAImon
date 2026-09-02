@@ -24,11 +24,24 @@ class PortalAttrappe:
     """So viel Portal, wie `PortalSitzung` anfasst. Merkt sich jeden Aufruf."""
 
     def __init__(self, *, token_zurueck: str = "T-neu",
-                 scheitert_bei_restore: bool = False) -> None:
+                 scheitert_bei_restore: bool = False,
+                 verfuegbare_modi: int = 7,
+                 modi_unlesbar: bool = False) -> None:
         self.aufrufe: list[tuple[str, dict]] = []
         self.token_zurueck = token_zurueck
         self.scheitert_bei_restore = scheitert_bei_restore
+        # 7 ist der Wert des gesunden Portals, gemessen am 02.09.; die
+        # Attrappe stellt damit als Vorgabe die Wirklichkeit nach und nicht
+        # den Wunsch. `Unavailable cursor mode` kommt genau dann, wenn ein
+        # Modus verlangt wird, der hier nicht in der Maske steht.
+        self.verfuegbare_modi = verfuegbare_modi
+        self.modi_unlesbar = modi_unlesbar
         self.geschlossen = 0
+
+    def cursor_modi(self) -> int:
+        if self.modi_unlesbar:
+            raise sc.PortalFehler("AvailableCursorModes nicht abrufbar")
+        return self.verfuegbare_modi
 
     def anfrage(self, methode: str, optionen: dict) -> dict:
         self.aufrufe.append((methode, dict(optionen)))
@@ -37,6 +50,15 @@ class PortalAttrappe:
         if methode == "SelectSources":
             if self.scheitert_bei_restore and "restore_token" in optionen:
                 raise sc.PortalFehler("restore_token abgelehnt")
+            # Das echte Portal wirft genau hier, wenn der verlangte Modus
+            # nicht in `AvailableCursorModes` steht. Ohne diese Zeile waere
+            # die Attrappe gutmuetiger als die Wirklichkeit und der Test
+            # koennte den Befund vom 02.09. nicht sehen.
+            gewuenscht = optionen.get("cursor_mode")
+            if gewuenscht is not None and not (gewuenscht
+                                               & self.verfuegbare_modi):
+                raise sc.PortalFehler(
+                    f"Unavailable cursor mode {gewuenscht}")
             return {}
         if methode == "Start":
             return {"restore_token": self.token_zurueck,
@@ -65,9 +87,76 @@ def test_persist_mode_und_cursor_mode_stehen_fest(tmp_path):
     sitzung(tmp_path, p).oeffnen()
     o = p.optionen("SelectSources")
     assert o["persist_mode"] == 2          # EXPLICITLY_REVOKED
-    assert o["cursor_mode"] == 4           # METADATA
+    assert o["cursor_mode"] == 4           # METADATA, weil das Portal ihn kann
     assert o["types"] == 1                 # MONITOR
     assert o["multiple"] is False
+
+
+# -- Der Cursor-Modus wird ERFRAGT, nicht vorausgesetzt --------------------
+#
+# Der Befund vom 02.09.: `daimon-eyes.service` starb in einer
+# Neustartschleife an `Unavailable cursor mode 4`, weil `SelectSources` die
+# 4 fest mitschickte. Gemessen am laufenden Portal: `AvailableCursorModes`
+# war 0 (kaputter Zustand), nach dem Neustart des Portals 7. Die drei Tests
+# hier stellen die drei Zustaende nach, die es real gibt.
+
+def test_ohne_cursor_faehigkeit_startet_der_dienst_trotzdem(tmp_path, capsys):
+    """`AvailableCursorModes = 0`: kein Zeiger, aber Augen.
+
+    Der Bildschirminhalt ist der Zweck. Die Anfrage darf dann gar kein
+    `cursor_mode` tragen -- ein `0` waere selbst wieder ein verlangter Modus.
+    """
+    p = PortalAttrappe(verfuegbare_modi=0)
+    befund = sitzung(tmp_path, p).oeffnen()
+
+    assert "cursor_mode" not in p.optionen("SelectSources")
+    assert befund["cursor_mode"] is None
+    # Kein stiller Rueckfall: der gemessene Wert steht im Journal.
+    assert "AvailableCursorModes=0" in capsys.readouterr().err
+
+
+def test_mit_voller_faehigkeit_waehlt_er_metadata(tmp_path, capsys):
+    """Positivkontrolle. Ohne sie misst der Test oben nur, dass nichts knallt."""
+    p = PortalAttrappe(verfuegbare_modi=7)
+    befund = sitzung(tmp_path, p).oeffnen()
+
+    assert p.optionen("SelectSources")["cursor_mode"] == sc.CURSOR_METADATA
+    assert befund["cursor_mode"] == sc.CURSOR_METADATA
+    assert "AvailableCursorModes=7" in capsys.readouterr().err
+
+
+def test_nur_hidden_wird_genommen_statt_abgelehnt(tmp_path):
+    """Das Portal kann nur, was es kann -- der Dienst nimmt es und lebt."""
+    p = PortalAttrappe(verfuegbare_modi=sc.CURSOR_HIDDEN)
+    befund = sitzung(tmp_path, p).oeffnen()
+
+    assert p.optionen("SelectSources")["cursor_mode"] == sc.CURSOR_HIDDEN
+    assert befund["cursor_mode"] == sc.CURSOR_HIDDEN
+
+
+def test_embedded_ist_die_letzte_wahl_nicht_die_zweite(tmp_path):
+    """EMBEDDED brennt den Zeiger ins Bild und damit in die OCR.
+
+    Bietet das Portal `hidden | embedded`, faellt die Wahl auf `hidden`:
+    kein Zeiger ist besser als ein Zeiger ueber einem Buchstaben.
+    """
+    p = PortalAttrappe(verfuegbare_modi=sc.CURSOR_HIDDEN | sc.CURSOR_EMBEDDED)
+    sitzung(tmp_path, p).oeffnen()
+    assert p.optionen("SelectSources")["cursor_mode"] == sc.CURSOR_HIDDEN
+
+    q = PortalAttrappe(verfuegbare_modi=sc.CURSOR_EMBEDDED)
+    sitzung(tmp_path, q).oeffnen()
+    assert q.optionen("SelectSources")["cursor_mode"] == sc.CURSOR_EMBEDDED
+
+
+def test_unlesbare_modi_kosten_den_zeiger_nicht_die_augen(tmp_path, capsys):
+    """Antwortet das Portal auf die Eigenschaft nicht, wird nicht geraten."""
+    p = PortalAttrappe(modi_unlesbar=True)
+    befund = sitzung(tmp_path, p).oeffnen()
+
+    assert "cursor_mode" not in p.optionen("SelectSources")
+    assert befund["cursor_mode"] is None
+    assert "nicht lesbar" in capsys.readouterr().err
 
 
 def test_ohne_token_wird_keiner_mitgeschickt(tmp_path):

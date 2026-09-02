@@ -35,6 +35,7 @@ PORTAL_PATH = "/org/freedesktop/portal/desktop"
 SCREENCAST_IFACE = "org.freedesktop.portal.ScreenCast"
 REQUEST_IFACE = "org.freedesktop.portal.Request"
 SESSION_IFACE = "org.freedesktop.portal.Session"
+PROPERTIES_IFACE = "org.freedesktop.DBus.Properties"
 
 # Der erste Lauf braucht einen Menschen, der klickt -- 30 s waeren zu knapp
 # fuer jemanden, der gerade woanders hinsieht. Jeder spaetere Lauf traegt den
@@ -182,6 +183,20 @@ class DbusPortal:
             return self._warten("Start", [sitzung, ""], {}, FRIST_MIT_KLICK)
 
         raise PortalFehler(f"unbekannte Portal-Methode {methode!r}")
+
+    def cursor_modi(self) -> int:
+        """`AvailableCursorModes` als Bitmaske. 1 hidden, 2 embedded, 4 metadata.
+
+        Eine Eigenschaft, kein Request: sie kommt unmittelbar zurueck, ohne
+        Signal und ohne Schleife. Gemessen am 02.09. an derselben Maschine:
+        ein Portal in kaputtem Zustand meldet hier `0` und lehnt danach JEDEN
+        Modus ab -- nach `systemctl --user restart xdg-desktop-portal` stand
+        dort `7`. Wer nicht fragt, schickt 4 und stirbt.
+        """
+        dbus, _, _ = _dbus()
+        objekt = self.bus.get_object(PORTAL_NAME, PORTAL_PATH)
+        eigenschaften = dbus.Interface(objekt, PROPERTIES_IFACE)
+        return int(eigenschaften.Get(SCREENCAST_IFACE, "AvailableCursorModes"))
 
     def pipewire_fd(self) -> int:
         """Der Deskriptor, auf dem die Frames liegen (T-5.3).

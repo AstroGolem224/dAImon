@@ -45,23 +45,25 @@ Nachschreiben, und dafür ist der `grep` oben da.
 
 - **Zeile 127** — die Parameter sind Konstanten mit Ueberschreibmoeglichkeit,
 
-## `daimon/ears/vad.py`
+## `daimon/ears/daemon.py`
 
-- **Zeile 72** — ein Segment ist ein Paar von Chunk-Indizes, beide einschliesslich --
-- **Zeile 257** — absichtlich duenn und ohne eigenen Zustand. Obergrenze: wer
+- **Zeile 31** — der Vorlauf sind hier acht Chunks (256 ms) vor dem ersten lauten
+
+## `daimon/ears/interlock.py`
+
+- **Zeile 282** — eine Zeile numpy statt eines AEC. Obergrenze: sobald der
+
+- **Zeile 376** — `select`-Schleife, kein Dienstgeruest, keine Steuerung. Obergrenze:
 
 ## `daimon/ears/ring.py`
 
 - **Zeile 214** — keine Klasse, kein Iterator-Protokoll, kein Zusammenfuegen.
 
-## `daimon/ears/interlock.py`
+## `daimon/ears/vad.py`
 
-- **Zeile 282** — eine Zeile numpy statt eines AEC. Obergrenze: sobald der
-- **Zeile 376** — `select`-Schleife, kein Dienstgeruest, keine Steuerung. Obergrenze:
+- **Zeile 72** — ein Segment ist ein Paar von Chunk-Indizes, beide einschliesslich --
 
-## `daimon/ears/daemon.py`
-
-- **Zeile 31** — der Vorlauf sind hier acht Chunks (256 ms) vor dem ersten lauten
+- **Zeile 257** — absichtlich duenn und ohne eigenen Zustand. Obergrenze: wer
 
 ## `daimon/face/echo.py`
 
@@ -70,11 +72,8 @@ Nachschreiben, und dafür ist der `grep` oben da.
 ## `daimon/gpu/worker.py`
 
 - **Zeile 121** — kein GPU-Index. Obergrenze: sobald eine zweite Karte im
+
 - **Zeile 231** — ein `sleep`. Obergrenze: sobald hier ein echter Ladevorgang
-
-## `daimon/hub/sprechtext.py`
-
-- **Zeile 171** — eine Heuristik, keine Grammatik. Obergrenze: sie laesst
 
 ## `daimon/hub/abkuehlung.py`
 
@@ -84,14 +83,15 @@ Nachschreiben, und dafür ist der `grep` oben da.
 
 - **Zeile 1258** — der Ersatzsatz hat KEINE eigene Frist. Obergrenze: er ist
 
+## `daimon/hub/sprechtext.py`
+
+- **Zeile 171** — eine Heuristik, keine Grammatik. Obergrenze: sie laesst
+
 ## `daimon/hub/state.py`
 
 - **Zeile 235** — EIN Platz, der neuere Termin gewinnt. Decke: mehrere
+
 - **Zeile 276** — nur ein Wahrheitswert plus Ablauf. Obergrenze: die Sperre
-
-## `daimon/plan/__main__.py`
-
-- **Zeile 74** — ein fester Unit-Name, keine Eindeutigkeit. Decke: zwei
 
 ## `daimon/mind/daemon.py`
 
@@ -101,20 +101,22 @@ Nachschreiben, und dafür ist der `grep` oben da.
 
 - **Zeile 259** — sauberer waere ein KWin-Script, das `resourceClass` meldet; das
 
+## `daimon/plan/__main__.py`
+
+- **Zeile 74** — ein fester Unit-Name, keine Eindeutigkeit. Decke: zwei
+
 ## `face/src/main.rs`
 
-- **Zeile 1244** — // ponytail: kein Grund-Unterscheiden. Der Compositor sagt nicht, warum
+- **Zeile 1429** — kein Grund-Unterscheiden. Der Compositor sagt nicht, warum
 
 ## `face/src/menu.rs`
 
-- **Zeile 293** — /// ponytail: relative Pfade. Ein absoluter gehoert in die Konfiguration,
+- **Zeile 332** — relative Pfade. Ein absoluter gehoert in die Konfiguration,
 
 ## `tools/doppelself_gesichter.py`
 
-- **Zeile 459** — die Decke des Verfahrens, ausdruecklich festgehalten statt
-  weggewuenscht: gesaettigtes Gruen IM Motiv faellt beim Chroma-Key mit heraus.
+- **Zeile 522** — die Decke des Verfahrens, ausdruecklich festgehalten statt
 
 ## `tools/generate-action-candidates.py`
 
 - **Zeile 106** — eigener Serialisierer. Obergrenze: sobald verschachtelte oder
-
