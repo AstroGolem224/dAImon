@@ -23,7 +23,7 @@ use crate::{
     bubble::{position_klemmen, zipfel_fuer, Raster as BubbleRaster, Zipfel},
     input::{sichtbare_laeufe, Box2D, InputRegion},
     render::{frame_toenen_anteilig, Animator, Toenung},
-    sprite::{indikator_malen, mitschnitt_malen, zustand_abbilden, SpriteAtlas, ZustandsAbbildung},
+    sprite::{indikator_malen, mitschnitt_malen, SpriteAtlas},
 };
 
 struct SpriteSurface {
@@ -236,8 +236,6 @@ impl OverlaySurface {
         compositor: &CompositorState,
         pool: &mut SlotPool,
         atlas: &SpriteAtlas,
-        zustand: &str,
-        mood: &str,
         voice: &str,
         mitschnitt: bool,
         animator: &Animator,
@@ -246,8 +244,9 @@ impl OverlaySurface {
         qh: &QueueHandle<crate::App>,
         callback_armieren: bool,
     ) -> Result<(u64, bool, bool), String> {
-        let (abbildung, mut frame) =
-            sprite_zelle_bauen(atlas, zustand, mood, animator.spalte(), toenung, sichtbar)?;
+        let zeile = animator.zeile();
+        let mut frame = sprite_zelle_bauen(atlas, zeile, animator.spalte(),
+                                           toenung, sichtbar)?;
         // T-3.14: der Indikator gehoert in das BILD, nicht in die
         // Eingabemaske. Waere er in beidem, waechse die Klickflaeche des Pets
         // mit dem Sprachzustand -- und das Ziehen aus T-2.4 haette je nach
@@ -324,8 +323,8 @@ impl OverlaySurface {
             self.sprite
                 .input_laeufe
                 .fuer_zeile(
-                    (abbildung.zeile, spalten),
-                    || alpha_vereinigen(atlas, abbildung.zeile, spalten),
+                    (zeile, spalten),
+                    || alpha_vereinigen(atlas, zeile, spalten),
                     atlas.layout.cell_w,
                     atlas.layout.cell_h,
                 )
@@ -610,9 +609,11 @@ fn laeufe_versetzen(laeufe: &[Box2D], position: (i32, i32)) -> Vec<Box2D> {
         .collect()
 }
 
-/// Waehlt die Zelle und baut die Pixel, die committet werden. Gibt die
-/// Abbildung mit zurueck, weil der Eingaberegion-Cache dieselbe Zeile braucht
-/// -- zwei Fassungen derselben Wahl waeren eine Wahl und eine Attrappe.
+/// Baut die Pixel, die committet werden.
+///
+/// Zeile und Spalte kommen seit T-9.3 beide vom `Animator`: er entscheidet, ob
+/// gerade die Atem- oder die Emote-Zeile eines Moods gilt. Diese Funktion
+/// bildet nichts mehr ab, sie malt nur noch.
 ///
 /// Eigene Funktion und nicht ein Block in `sprite_committen`, weil dorthin
 /// kein Test kommt: der Aufrufer braucht eine Wayland-Verbindung. Genau hier
@@ -624,26 +625,24 @@ fn laeufe_versetzen(laeufe: &[Box2D], position: (i32, i32)) -> Vec<Box2D> {
 /// Ein Fehler waere hier ein schwarzes Pet.
 pub fn sprite_zelle_bauen(
     atlas: &SpriteAtlas,
-    zustand: &str,
-    mood: &str,
+    zeile: u32,
     spalte: u32,
     toenung: Toenung,
     sichtbar: bool,
-) -> Result<(ZustandsAbbildung, Vec<u8>), String> {
-    let abbildung = zustand_abbilden(zustand, mood, &atlas.layout);
+) -> Result<Vec<u8>, String> {
     let spalte = spalte % atlas.layout.cols.max(1);
     // Ein Pet mit eigener Zeile je Mood traegt den Mood im Bild. Die
     // Toenung darueberzulegen zerstoert genau die Information, fuer die
     // die Zeile da ist.
     let frame = sichtbaren_frame_bauen(
         &frame_toenen_anteilig(
-            &atlas.frame(abbildung.zeile, spalte)?,
+            &atlas.frame(zeile, spalte)?,
             toenung,
             atlas.layout.toenung,
         ),
         sichtbar,
     );
-    Ok((abbildung, frame))
+    Ok(frame)
 }
 
 /// Vereinigt die Alphamasken aller Bilder einer Zeile zu einer Silhouette.
@@ -813,13 +812,10 @@ mod tests {
         };
 
         // WHEN dieselbe Zeile einmal mit Spalte 0 und einmal mit Spalte 1 gebaut wird,
-        let (abbildung_null, erste) =
-            sprite_zelle_bauen(&atlas, "ruhig", "idle", 0, farblos, true).unwrap();
-        let (abbildung_eins, zweite) =
-            sprite_zelle_bauen(&atlas, "ruhig", "idle", 1, farblos, true).unwrap();
+        let erste = sprite_zelle_bauen(&atlas, 0, 0, farblos, true).unwrap();
+        let zweite = sprite_zelle_bauen(&atlas, 0, 1, farblos, true).unwrap();
 
-        // THEN unterscheiden sich die Pixel, und die Zeile bleibt dieselbe:
-        assert_eq!(abbildung_null.zeile, abbildung_eins.zeile);
+        // THEN unterscheiden sich die Pixel derselben Zeile:
         assert_ne!(erste, zweite);
     }
 
@@ -836,7 +832,7 @@ mod tests {
             g: 255,
             b: 255,
         };
-        let bauen = |spalte| sprite_zelle_bauen(&atlas, "ruhig", "idle", spalte, farblos, true);
+        let bauen = |spalte| sprite_zelle_bauen(&atlas, 0, spalte, farblos, true);
 
         // WHEN eine Spalte jenseits der Spaltenzahl verlangt wird,
         // THEN kommt genau die zurueckgefaltete Zelle, kein Fehler:

@@ -37,13 +37,13 @@ pub struct AtlasLayout {
     pub cell_h: u32,
     pub cols: u32,
     pub rows: u32,
-    pub states: HashMap<String, Zeileneintrag>,
+    pub states: HashMap<String, Moodeintrag>,
     /// Optionaler zweiter Block: eine Zeile je MOOD statt je Pose. Leer heisst
     /// „dieses Pet hat keine Mood-Zeilen" -- dann gilt der Weg ueber
     /// `mood_zu_sprite` unveraendert. Ein eigener Block und nicht `states`,
     /// weil die Namen kollidieren: das Ember-Sheet hat eine Pose `failed`,
     /// die etwas anderes meint als der Mood `failed`.
-    pub moods: HashMap<String, Zeileneintrag>,
+    pub moods: HashMap<String, Moodeintrag>,
     /// ANTEIL, nicht Schalter: 0.0 laesst das Sprite in Ruhe, 1.0 faerbt es
     /// voll, alles dazwischen mischt.
     ///
@@ -66,7 +66,10 @@ impl Default for AtlasLayout {
             rows: STANDARD_ROWS,
             states: STANDARD_STATES
                 .into_iter()
-                .map(|(name, row)| (name.to_owned(), Zeileneintrag::standbild(row)))
+                .map(|(name, row)| {
+                    (name.to_owned(),
+                     Moodeintrag::nur_atem(Zeileneintrag::standbild(row)))
+                })
                 .collect(),
             moods: HashMap::new(),
             toenung: 1.0,
@@ -101,7 +104,7 @@ impl AtlasLayout {
         if let Some(states) = root.get("states").and_then(Value::as_object) {
             layout.states.clear();
             for (name, state) in states {
-                if let Some(eintrag) = eintrag_lesen(state, layout.rows, layout.cols) {
+                if let Some(eintrag) = mood_lesen(state, layout.rows, layout.cols) {
                     layout.states.insert(name.clone(), eintrag);
                 }
             }
@@ -111,7 +114,7 @@ impl AtlasLayout {
         // die Karte leer und nichts am bisherigen Weg aendert sich.
         if let Some(moods) = root.get("moods").and_then(Value::as_object) {
             for (name, mood) in moods {
-                if let Some(eintrag) = eintrag_lesen(mood, layout.rows, layout.cols) {
+                if let Some(eintrag) = mood_lesen(mood, layout.rows, layout.cols) {
                     layout.moods.insert(name.clone(), eintrag);
                 }
             }
@@ -143,11 +146,11 @@ impl AtlasLayout {
             .join(&self.spritesheet_path)
     }
 
-    fn idle_eintrag(&self) -> Zeileneintrag {
+    fn idle_eintrag(&self) -> Moodeintrag {
         self.states
             .get("idle")
             .copied()
-            .unwrap_or_else(|| Zeileneintrag::standbild(0))
+            .unwrap_or_else(|| Moodeintrag::nur_atem(Zeileneintrag::standbild(0)))
     }
 }
 
@@ -170,12 +173,39 @@ impl Zeileneintrag {
     }
 }
 
+/// Ein Mood: die Atemzeile, und optional eine Emote-Zeile daneben.
+///
+/// T-9.3: die Atemzeile laeuft endlos, das Emote genau zweimal nach einem
+/// Moodwechsel. Bis T-9.2 gab es nur die eine Zeile, und die lief ewig --
+/// darum lachte das Pet ununterbrochen. Fehlt `emote`, gilt genau der alte
+/// Zustand; nichts an bestehenden Manifesten wird strenger.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Moodeintrag {
+    pub atem: Zeileneintrag,
+    pub emote: Option<Zeileneintrag>,
+}
+
+impl Moodeintrag {
+    pub fn nur_atem(atem: Zeileneintrag) -> Self {
+        Self { atem, emote: None }
+    }
+}
+
 /// `{"row": n}` mit n innerhalb des Sheets. Alles andere ist kein Eintrag.
 ///
 /// `frames` ist optional; fehlt es, ist die Zeile ein Standbild. Das ist
 /// bewusst die Vorgabe und nicht `cols`: sonst faengt jedes bestehende Pet mit
 /// mehrspaltigem Sheet -- das mitgelieferte hat acht -- ungefragt an zu laufen,
 /// auch im Ruhezustand. Mehr Bilder als das Sheet hat, gibt es nicht.
+fn mood_lesen(eintrag: &Value, rows: u32, cols: u32) -> Option<Moodeintrag> {
+    Some(Moodeintrag {
+        atem: eintrag_lesen(eintrag, rows, cols)?,
+        // Ein `emote` mit unbrauchbarer Zeile ist kein Emote, kein Fehler:
+        // dieselbe Nachsicht, die eine zu grosse Mood-Zeile bekommt.
+        emote: eintrag.get("emote").and_then(|e| eintrag_lesen(e, rows, cols)),
+    })
+}
+
 fn eintrag_lesen(eintrag: &Value, rows: u32, cols: u32) -> Option<Zeileneintrag> {
     let nummer = eintrag
         .get("row")
@@ -200,15 +230,18 @@ pub struct ZustandsAbbildung {
     pub zeile: u32,
     /// Animationsbilder dieser Zeile, mindestens 1.
     pub spalten: u32,
+    /// T-9.3: die Zeile, die nach einem Moodwechsel zweimal spielt.
+    pub emote: Option<Zeileneintrag>,
     pub zurueckgefallen: bool,
 }
 
 impl ZustandsAbbildung {
-    fn zurueckgefallen(eintrag: Zeileneintrag) -> Self {
+    fn aus(eintrag: Moodeintrag, zurueckgefallen: bool) -> Self {
         Self {
-            zeile: eintrag.nummer,
-            spalten: eintrag.spalten,
-            zurueckgefallen: true,
+            zeile: eintrag.atem.nummer,
+            spalten: eintrag.atem.spalten,
+            emote: eintrag.emote,
+            zurueckgefallen,
         }
     }
 }
@@ -221,26 +254,18 @@ impl ZustandsAbbildung {
 /// Gesichts-Pet unterscheiden will.
 pub fn zustand_abbilden(name: &str, mood: &str, layout: &AtlasLayout) -> ZustandsAbbildung {
     if let Some(eintrag) = layout.moods.get(mood).copied() {
-        return ZustandsAbbildung {
-            zeile: eintrag.nummer,
-            spalten: eintrag.spalten,
-            zurueckgefallen: false,
-        };
+        return ZustandsAbbildung::aus(eintrag, false);
     }
     let manifest_name = match name {
         "ruhig" => "idle",
         "dringend" => "waiting",
         _ => {
-            return ZustandsAbbildung::zurueckgefallen(layout.idle_eintrag());
+            return ZustandsAbbildung::aus(layout.idle_eintrag(), true);
         }
     };
     match layout.states.get(manifest_name).copied() {
-        Some(eintrag) => ZustandsAbbildung {
-            zeile: eintrag.nummer,
-            spalten: eintrag.spalten,
-            zurueckgefallen: false,
-        },
-        None => ZustandsAbbildung::zurueckgefallen(layout.idle_eintrag()),
+        Some(eintrag) => ZustandsAbbildung::aus(eintrag, false),
+        None => ZustandsAbbildung::aus(layout.idle_eintrag(), true),
     }
 }
 
@@ -482,14 +507,14 @@ mod tests {
         // Das mitgelieferte Sheet traegt seine Bildzahlen seit jeher im
         // hatch-pet-Format. Bis T-9.2 hat sie nur niemand gelesen.
         assert_eq!(
-            layout.states["idle"],
+            layout.states["idle"].atem,
             Zeileneintrag {
                 nummer: 0,
                 spalten: 6
             }
         );
         assert_eq!(
-            layout.states["waiting"],
+            layout.states["waiting"].atem,
             Zeileneintrag {
                 nummer: 6,
                 spalten: 6
@@ -500,6 +525,53 @@ mod tests {
     /// Ohne `frames` ein Standbild -- und zwar auch dann, wenn das Sheet acht
     /// Spalten hat. Die Vorgabe `cols` waere bequem und wuerde jedes
     /// bestehende Pet ungefragt in Bewegung setzen.
+    /// T-9.3: die Emote-Zeile. Ohne `emote` bleibt es bei genau dem Zustand
+    /// aus T-9.2 -- eine Zeile, die endlos laeuft.
+    #[test]
+    fn mood_ohne_emote_traegt_keines_und_mit_emote_zeile_und_bildzahl() {
+        // GIVEN zwei Moods, einer mit Emote und einer ohne:
+        let layout = AtlasLayout::aus_manifest_text(
+            r#"{"atlas":{"cols":32,"rows":14},
+                "moods":{"working":{"row":4,"frames":32,
+                                    "emote":{"row":10,"frames":16}},
+                         "done":{"row":5,"frames":32}}}"#,
+        );
+
+        // WHEN beide gelesen werden,
+        // THEN traegt nur der erste ein Emote, und zwar mit eigener Zeile:
+        assert_eq!(
+            layout.moods["working"].emote,
+            Some(Zeileneintrag {
+                nummer: 10,
+                spalten: 16
+            })
+        );
+        assert_eq!(layout.moods["working"].atem.nummer, 4);
+        assert_eq!(layout.moods["done"].emote, None);
+        // Positivkontrolle: die Atemzeile des zweiten ist trotzdem gelesen --
+        // sonst waere „kein Emote" auch gruen, weil der Eintrag ganz fehlt.
+        assert_eq!(layout.moods["done"].atem.spalten, 32);
+
+        // Und die Abbildung reicht es durch, sonst kaeme es nie beim Animator an.
+        let ab = zustand_abbilden("ruhig", "working", &layout);
+        assert_eq!(ab.emote.map(|e| e.nummer), Some(10));
+        assert_eq!(zustand_abbilden("ruhig", "done", &layout).emote, None);
+    }
+
+    /// Ein Emote ausserhalb des Sheets ist kein Emote, kein Absturz -- dieselbe
+    /// Nachsicht, die eine zu grosse Mood-Zeile bekommt. Ein `Err` waere hier
+    /// ein Pet ohne Anzeige, weil jemand eine Zahl vertippt hat.
+    #[test]
+    fn emote_mit_zeile_ausserhalb_des_sheets_faellt_still_weg() {
+        let layout = AtlasLayout::aus_manifest_text(
+            r#"{"atlas":{"cols":32,"rows":14},
+                "moods":{"working":{"row":4,"frames":32,
+                                    "emote":{"row":99,"frames":16}}}}"#,
+        );
+        assert_eq!(layout.moods["working"].emote, None);
+        assert_eq!(layout.moods["working"].atem.nummer, 4);
+    }
+
     #[test]
     fn eintrag_ohne_frames_ist_ein_standbild_trotz_mehrspaltigem_sheet() {
         // GIVEN ein achtspaltiges Sheet, dessen Moods nichts ueber Bilder sagen:
@@ -510,7 +582,7 @@ mod tests {
         // WHEN der Eintrag gelesen wird,
         // THEN steht er auf einem Bild:
         assert_eq!(
-            layout.moods["working"],
+            layout.moods["working"].atem,
             Zeileneintrag {
                 nummer: 4,
                 spalten: 1
@@ -534,8 +606,8 @@ mod tests {
         // WHEN beide gelesen werden,
         // THEN gilt die ehrliche Zahl, und die uebertriebene endet bei der
         // Spaltenzahl -- sonst liefe der Loop in Zellen, die es nicht gibt:
-        assert_eq!(layout.moods["working"].spalten, 6);
-        assert_eq!(layout.moods["failed"].spalten, 8);
+        assert_eq!(layout.moods["working"].atem.spalten, 6);
+        assert_eq!(layout.moods["failed"].atem.spalten, 8);
     }
 
     #[test]
@@ -592,6 +664,7 @@ mod tests {
             ZustandsAbbildung {
                 zeile: 0,
                 spalten: 1,
+                emote: None,
                 zurueckgefallen: false
             }
         );
@@ -600,6 +673,7 @@ mod tests {
             ZustandsAbbildung {
                 zeile: 6,
                 spalten: 1,
+                emote: None,
                 zurueckgefallen: false
             }
         );
@@ -608,6 +682,7 @@ mod tests {
             ZustandsAbbildung {
                 zeile: 0,
                 spalten: 1,
+                emote: None,
                 zurueckgefallen: true
             }
         );
@@ -625,6 +700,7 @@ mod tests {
             ZustandsAbbildung {
                 zeile: 6,
                 spalten: 1,
+                emote: None,
                 zurueckgefallen: false
             }
         );
@@ -644,6 +720,7 @@ mod tests {
             ZustandsAbbildung {
                 zeile: 5,
                 spalten: 1,
+                emote: None,
                 zurueckgefallen: false
             }
         );
@@ -652,13 +729,14 @@ mod tests {
             ZustandsAbbildung {
                 zeile: 3,
                 spalten: 1,
+                emote: None,
                 zurueckgefallen: false
             }
         );
         // Ein Mood ohne eigene Zeile faellt auf den alten Weg zurueck.
         assert_eq!(
             zustand_abbilden("ruhig", "working", &layout).zeile,
-            layout.idle_eintrag().nummer
+            layout.idle_eintrag().atem.nummer
         );
     }
 
@@ -736,7 +814,7 @@ mod tests {
         // Acht Moods, acht verschiedene Zeilen -- sonst zeigt das Pet
         // zwei Zustaende mit demselben Gesicht an.
         let zeilen: std::collections::HashSet<u32> =
-            layout.moods.values().map(|e| e.nummer).collect();
+            layout.moods.values().map(|e| e.atem.nummer).collect();
         assert_eq!(zeilen.len(), 8);
     }
 
@@ -750,6 +828,7 @@ mod tests {
             ZustandsAbbildung {
                 zeile: 3,
                 spalten: 1,
+                emote: None,
                 zurueckgefallen: true
             }
         );

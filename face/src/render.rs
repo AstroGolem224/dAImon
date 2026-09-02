@@ -250,9 +250,27 @@ impl RenderSteuerung {
 /// `spalten == 1` ist der Vertrag mit der Idle-CPU-Zusage aus T-1.5: ein Mood
 /// mit einer Spalte hat keinen Takt, also auch keinen Timer und keinen
 /// Frame-Callback. Das gilt ueber die Zahl, nicht ueber den Namen des Moods.
+/// Wie oft ein Emote nach einem Moodwechsel spielt.
+///
+/// Fest zwei und nicht wechselnd: eine feste Zahl ist pruefbar -- nach genau
+/// zwei Umlaeufen steht die Atemzeile im Diagnose-Socket. Eine zufaellige
+/// waere eine Zusage, die sich nur statistisch belegen laesst, und das Face
+/// hat bis heute keine Zufallsquelle.
+pub const EMOTE_UMLAEUFE: u32 = 2;
+
+/// Eine Zeile des Sheets samt ihrer Bildzahl.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Spur {
+    pub zeile: u32,
+    pub spalten: u32,
+}
+
 pub struct Animator {
-    zeile: u32,
-    spalten: u32,
+    atem: Spur,
+    /// Die Zeile, die nach einem Moodwechsel spielt. `None` heisst: nur Atem.
+    emote: Option<Spur>,
+    /// Verbleibende Emote-Umlaeufe. 0 heisst: es wird geatmet.
+    emote_umlaeufe: u32,
     schrittdauer: Duration,
     spalte: u32,
     letzter_schritt: Instant,
@@ -262,13 +280,29 @@ impl Animator {
     /// `spalten` und `fps` kommen aus dem Pet-Manifest, also von ausserhalb.
     /// Null waere eine Division durch null bzw. ein Modulo durch null, darum
     /// hier die einzige Klemme -- weiter innen gibt es keine mehr.
-    pub fn neu(zeile: u32, spalten: u32, fps: u32, jetzt: Instant) -> Self {
+    pub fn neu(atem: Spur, emote: Option<Spur>, fps: u32, jetzt: Instant) -> Self {
+        // Ein Emote mit einer einzigen Spalte ist ein Standbild und kein
+        // Emote; es waere zweimal dasselbe Bild und danach ein Sprung.
+        let emote = emote.filter(|spur| spur.spalten > 1);
         Self {
-            zeile,
-            spalten: spalten.max(1),
+            atem: Spur {
+                zeile: atem.zeile,
+                spalten: atem.spalten.max(1),
+            },
+            emote,
+            emote_umlaeufe: if emote.is_some() { EMOTE_UMLAEUFE } else { 0 },
             schrittdauer: Duration::from_secs(1) / fps.max(1),
             spalte: 0,
             letzter_schritt: jetzt,
+        }
+    }
+
+    /// Die gerade gueltige Spur: das Emote, solange Umlaeufe offen sind,
+    /// sonst der Atem.
+    fn spur(&self) -> Spur {
+        match self.emote {
+            Some(spur) if self.emote_umlaeufe > 0 => spur,
+            _ => self.atem,
         }
     }
 
@@ -276,11 +310,27 @@ impl Animator {
         self.spalte
     }
 
+    /// Die Zeile des Sheets, aus der gerade gezeichnet wird.
+    ///
+    /// Seit T-9.3 kommt sie vom Animator und nicht mehr allein aus
+    /// `zustand_abbilden`: welche der beiden Zeilen eines Moods gilt, weiss
+    /// nur er. Zwei Stellen mit derselben Auskunft waeren eine Auskunft und
+    /// eine Attrappe.
+    pub fn zeile(&self) -> u32 {
+        self.spur().zeile
+    }
+
+    /// Laeuft gerade ein Emote? Die Diagnose meldet es, damit ein Verifizierer
+    /// die zwei Umlaeufe von aussen zaehlen kann.
+    pub fn emote_laeuft(&self) -> bool {
+        self.emote.is_some() && self.emote_umlaeufe > 0
+    }
+
     /// Wie viele Bilder die gezeigte Zeile hat. Der Eingaberegion-Cache
     /// braucht die Zahl, weil dieselbe Zeile als Standbild eine andere
     /// Silhouette hat als im Lauf.
     pub fn spalten(&self) -> u32 {
-        self.spalten
+        self.spur().spalten.max(1)
     }
 
     /// Abstand zweier Bilder. Der Timer braucht ihn, um sich selbst
@@ -291,7 +341,7 @@ impl Animator {
 
     /// Ob ueberhaupt ein Takt noetig ist. Die Weiche fuer den Timer.
     pub fn laeuft(&self) -> bool {
-        self.spalten > 1
+        self.spur().spalten > 1
     }
 
     /// Schaltet auf den Stand von `jetzt` und meldet, ob sich die Spalte
@@ -310,10 +360,23 @@ impl Animator {
             return false;
         }
         self.letzter_schritt += self.schrittdauer * schritte;
-        let neue_spalte = (self.spalte + schritte) % self.spalten;
-        let geaendert = neue_spalte != self.spalte;
-        self.spalte = neue_spalte;
-        geaendert
+        let vorher = (self.zeile(), self.spalte);
+        let spalten = self.spur().spalten.max(1);
+        let roh = self.spalte + schritte;
+        self.spalte = roh % spalten;
+        // Ein Umlauf zaehlt erst, wenn er VOLL ist. Mitten im Umlauf auf die
+        // Atemzeile zu springen ruckt -- und genau diesen Ruck soll das Ganze
+        // vermeiden.
+        if self.emote_umlaeufe > 0 {
+            self.emote_umlaeufe = self.emote_umlaeufe.saturating_sub(roh / spalten);
+            if self.emote_umlaeufe == 0 {
+                // Die Atemzeile hat eine andere Spaltenzahl; ohne diesen
+                // Schnitt zeigte der erste Atemzug eine Zelle, die es in ihr
+                // nicht gibt.
+                self.spalte = 0;
+            }
+        }
+        (self.zeile(), self.spalte) != vorher
     }
 
     /// Beim Wechsel der Zeile oder der Bildzahl: Loop faengt vorn an.
@@ -322,11 +385,16 @@ impl Animator {
     /// Rendern auf, und ein bedingungsloses Zuruecksetzen wuerde die Spalte
     /// bei jedem Frame wieder auf 0 stellen -- die Animation stuende dann
     /// still und saehe aus wie der Zustand von vorher.
-    pub fn mood_setzen(&mut self, zeile: u32, spalten: u32, fps: u32, jetzt: Instant) {
-        if self.zeile == zeile && self.spalten == spalten.max(1) {
+    pub fn mood_setzen(&mut self, atem: Spur, emote: Option<Spur>, fps: u32,
+                       jetzt: Instant) {
+        let atem = Spur {
+            zeile: atem.zeile,
+            spalten: atem.spalten.max(1),
+        };
+        if self.atem == atem && self.emote == emote.filter(|s| s.spalten > 1) {
             return;
         }
-        *self = Self::neu(zeile, spalten, fps, jetzt);
+        *self = Self::neu(atem, emote, fps, jetzt);
     }
 }
 
@@ -433,7 +501,7 @@ mod tests {
     fn tick_vier_spalten_bei_zwoelf_fps_schaltet_der_reihe_nach_und_kehrt_zurueck() {
         // GIVEN einen Animator mit vier Spalten bei 12 fps:
         let start = Instant::now();
-        let mut animator = Animator::neu(0, 4, 12, start);
+        let mut animator = Animator::neu(Spur { zeile: 0, spalten: 4 }, None, 12, start);
         assert_eq!(animator.spalte(), 0);
         assert!(animator.laeuft());
 
@@ -463,7 +531,7 @@ mod tests {
     fn tick_eine_spalte_bleibt_auf_null_und_meldet_nie_eine_aenderung() {
         // GIVEN einen Animator mit genau einer Spalte:
         let start = Instant::now();
-        let mut animator = Animator::neu(0, 1, 12, start);
+        let mut animator = Animator::neu(Spur { zeile: 0, spalten: 1 }, None, 12, start);
 
         // WHEN wir ihn ueber eine volle Sekunde immer wieder wecken,
         // THEN meldet er nie eine Aenderung und laeuft nach eigener Auskunft nicht:
@@ -478,7 +546,7 @@ mod tests {
     fn tick_verspaeteter_weckruf_holt_alle_faelligen_schritte_auf_einmal_nach() {
         // GIVEN einen Animator mit vier Spalten bei 12 fps:
         let start = Instant::now();
-        let mut animator = Animator::neu(0, 4, 12, start);
+        let mut animator = Animator::neu(Spur { zeile: 0, spalten: 4 }, None, 12, start);
 
         // WHEN der erste Weckruf erst nach 250 ms kommt -- drei Schritte spaet,
         // THEN steht er auf Spalte 3 und nicht auf 1:
@@ -495,23 +563,110 @@ mod tests {
     /// `mood_setzen` bedingungslos zurueck, stuende die Spalte dauerhaft auf 0
     /// -- die Animation saehe aus wie das Standbild von vorher, und zwar ohne
     /// dass irgendein anderer Test es merkt.
+    /// Die Zusage aus T-9.3: das Emote spielt genau zweimal, dann wird
+    /// geatmet. Vorher lief eine Mood-Schleife endlos -- darum lachte das Pet
+    /// ununterbrochen.
+    #[test]
+    fn tick_spielt_das_emote_zwei_volle_umlaeufe_und_faellt_dann_auf_den_atem() {
+        // GIVEN einen Mood mit vier Emote- und drei Atemspalten:
+        let start = Instant::now();
+        let schritt = Duration::from_millis(84);
+        let mut animator = Animator::neu(
+            Spur { zeile: 1, spalten: 3 },
+            Some(Spur { zeile: 9, spalten: 4 }),
+            12,
+            start,
+        );
+        assert!(animator.emote_laeuft());
+        assert_eq!(animator.zeile(), 9);
+
+        // WHEN wir Schritt fuer Schritt takten,
+        let mut gesehen = vec![(animator.zeile(), animator.spalte())];
+        for i in 1..=10 {
+            animator.tick(start + schritt * i);
+            gesehen.push((animator.zeile(), animator.spalte()));
+        }
+
+        // THEN laeuft die Emote-Zeile 9 genau zweimal durch ihre vier Spalten,
+        // und ab dem neunten Schritt steht die Atemzeile 1:
+        assert_eq!(
+            gesehen,
+            vec![(9, 0), (9, 1), (9, 2), (9, 3),
+                 (9, 0), (9, 1), (9, 2), (9, 3),
+                 (1, 0), (1, 1), (1, 2)],
+            "{gesehen:?}"
+        );
+        assert!(!animator.emote_laeuft());
+
+        // Und danach bleibt es dabei -- der Atem hat drei Spalten und laeuft:
+        animator.tick(start + schritt * 11);
+        assert_eq!((animator.zeile(), animator.spalte()), (1, 0));
+    }
+
+    /// Positivkontrolle: ohne Emote steht die Atemzeile vom ersten Schritt an.
+    /// Sonst waere oben nur belegt, dass ueberhaupt eine Zeile herauskommt.
+    #[test]
+    fn tick_ohne_emote_bleibt_von_anfang_an_auf_der_atemzeile() {
+        let start = Instant::now();
+        let mut animator = Animator::neu(Spur { zeile: 1, spalten: 3 }, None, 12, start);
+        assert!(!animator.emote_laeuft());
+        for i in 0..=6 {
+            assert_eq!(animator.zeile(), 1, "Schritt {i}");
+            animator.tick(start + Duration::from_millis(84) * i);
+        }
+    }
+
+    /// Ein verspaeteter Weckruf darf keine Umlaeufe verschlucken. Springt der
+    /// Timer ueber beide Emote-Umlaeufe hinweg, steht danach der Atem -- und
+    /// nicht ein halb abgelaufenes Emote.
+    #[test]
+    fn tick_ueberspringt_beide_emote_umlaeufe_auf_einmal_und_atmet_danach() {
+        let start = Instant::now();
+        let mut animator = Animator::neu(
+            Spur { zeile: 1, spalten: 3 },
+            Some(Spur { zeile: 9, spalten: 4 }),
+            12,
+            start,
+        );
+        // Ein einziger Weckruf nach zwoelf Schritten -- drei Emote-Umlaeufe weit.
+        animator.tick(start + Duration::from_millis(84) * 12);
+        assert!(!animator.emote_laeuft());
+        assert_eq!(animator.zeile(), 1);
+        assert_eq!(animator.spalte(), 0);
+    }
+
+    /// Ein Emote mit einer einzigen Spalte ist keines: es waere zweimal
+    /// dasselbe Bild und danach ein Sprung.
+    #[test]
+    fn emote_mit_einer_spalte_wird_verworfen() {
+        let start = Instant::now();
+        let animator = Animator::neu(
+            Spur { zeile: 1, spalten: 3 },
+            Some(Spur { zeile: 9, spalten: 1 }),
+            12,
+            start,
+        );
+        assert!(!animator.emote_laeuft());
+        assert_eq!(animator.zeile(), 1);
+    }
+
     #[test]
     fn mood_setzen_mit_unveraenderter_zeile_laesst_den_laufenden_loop_stehen() {
         // GIVEN einen Animator, der schon bei Spalte 2 steht:
         let start = Instant::now();
-        let mut animator = Animator::neu(4, 8, 12, start);
+        let mut animator = Animator::neu(Spur { zeile: 4, spalten: 8 }, None, 12, start);
         let jetzt = start + Duration::from_millis(168);
         animator.tick(jetzt);
         assert_eq!(animator.spalte(), 2);
 
         // WHEN dieselbe Zeile mit derselben Bildzahl erneut gesetzt wird,
         // THEN bleibt die Spalte stehen:
-        animator.mood_setzen(4, 8, 12, jetzt);
+        animator.mood_setzen(Spur { zeile: 4, spalten: 8 }, None, 12, jetzt);
         assert_eq!(animator.spalte(), 2);
 
         // WHEN dagegen die Bildzahl derselben Zeile wechselt,
         // THEN faengt der Loop vorn an:
-        animator.mood_setzen(4, 6, 12, jetzt);
+        animator.mood_setzen(Spur { zeile: 4, spalten: 6 }, None, 12, jetzt);
         assert_eq!(animator.spalte(), 0);
     }
 
@@ -519,13 +674,14 @@ mod tests {
     fn mood_setzen_nach_halbem_loop_faengt_mit_neuer_spaltenzahl_wieder_vorn_an() {
         // GIVEN einen Animator, der schon bei Spalte 2 steht:
         let start = Instant::now();
-        let mut animator = Animator::neu(0, 4, 12, start);
+        let mut animator = Animator::neu(Spur { zeile: 0, spalten: 4 }, None, 12, start);
         animator.tick(start + Duration::from_millis(168));
         assert_eq!(animator.spalte(), 2);
 
         // WHEN ein Standbild-Mood gesetzt wird,
         // THEN steht die Spalte wieder auf 0 und der Takt ist aus:
-        animator.mood_setzen(7, 1, 12, start + Duration::from_millis(168));
+        animator.mood_setzen(Spur { zeile: 7, spalten: 1 }, None, 12,
+                             start + Duration::from_millis(168));
         assert_eq!(animator.spalte(), 0);
         assert!(!animator.laeuft());
     }

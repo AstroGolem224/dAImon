@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
 """Baut aus einem Portraitfoto ein Pet mit einem Gesicht je Mood.
 
-Warum Standbilder und kein Video
+Warum hier Standbilder stehen bleiben
 ----------------------------------------------------------------------------
-Das Face zeichnet je Zustand genau EINE Zelle -- `atlas.frame(zeile, 0)` in
-`face/src/surface.rs`. Spalte 0, immer. Ein animiertes Sheet waere also
-Rechenzeit fuer Pixel, die niemand sieht. Und ein sprechender Avatar in
-Echtzeit ist ohnehin ausgeschlossen: Wan 2.2-S2V braucht rund 40 s je
-4,81 s Video (gemessen, `DoppelSelf/PLAN.md`) und dabei 29 GB VRAM -- die
-Karte, auf der zur selben Zeit Mimic die Stimme rechnet.
+Bis zum 01.09. zeichnete das Face je Zustand genau eine Zelle --
+`atlas.frame(zeile, 0)`, Spalte 0, immer. Das war der Grund fuer acht
+Standbilder, und er gilt nicht mehr: seit T-9.2 liest `sprite.rs` das Feld
+`frames`, und `surface.rs` nimmt die Spalte vom Animator.
 
-Also acht Bilder, einmal erzeugt, danach kostenlos.
+Dieses Werkzeug bleibt trotzdem der erste Schritt. Es erzeugt die
+Gruenschirm-Standbilder, und `tools/pet_animieren.py` macht daraus die
+Bewegung -- ein Clip je Mood, in Spalten zerlegt. Fuer `idle` und `sleeping`
+ist das Standbild dabei nicht der Sparweg, sondern die Zusage: sie stehen im
+Face still, damit die Idle-CPU-Zusage aus T-1.5 haelt.
+
+Ein sprechender Avatar in Echtzeit bleibt ausgeschlossen: Wan 2.2-S2V braucht
+rund 40 s je 4,81 s Video (gemessen, `DoppelSelf/PLAN.md`) und dabei 29 GB
+VRAM -- die Karte, auf der zur selben Zeit Mimic die Stimme rechnet. Auch die
+Bewegungsloops entstehen darum offline und einmal.
 
 Was hier NICHT entschieden wird
 ----------------------------------------------------------------------------

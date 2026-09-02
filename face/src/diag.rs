@@ -34,6 +34,20 @@ pub struct FaceState {
     pub frames_rendered: u64,
     /// T-2.2: gezeichnete Buffer der eigenen Blasen-Subsurface.
     pub bubble_frames_rendered: u64,
+    /// T-9.3: die Sheet-Zeile, aus der zuletzt gezeichnet wurde.
+    ///
+    /// Ein Mood hat seit T-9.3 zwei Zeilen -- Atem und Emote -- und von aussen
+    /// waren sie ununterscheidbar: `mood` und `sprite` sind waehrend beider
+    /// dieselben. Ein Mutant, der das Emote endlos laufen laesst, bliebe damit
+    /// gruen. Dieselbe fehlende Selbstauskunft wie bei `takt_schlaege`, nur
+    /// ohne Umweg: die Sprite-Zeile sieht kein `/proc`.
+    pub zeile: u32,
+    /// T-9.3: `true`, solange das Emote nach einem Moodwechsel spielt.
+    ///
+    /// Getrennt von `zeile`, weil die Zahl allein nicht reicht: welche Zeile
+    /// zu welchem Mood gehoert, steht im Manifest, und ein Verifizierer soll
+    /// die Zusage pruefen koennen, ohne das Manifest zu lesen.
+    pub emote_laeuft: bool,
     /// T-9.2: jeder Schlag der Animationsuhr -- auch einer, der nichts
     /// zeichnet.
     ///
@@ -96,6 +110,8 @@ impl Default for FaceState {
             last_render_ts: 0.0,
             frames_rendered: 0,
             bubble_frames_rendered: 0,
+            zeile: 0,
+            emote_laeuft: false,
             takt_schlaege: 0,
             toene_gespielt: 0,
             configure_empfangen: 0,
@@ -120,7 +136,7 @@ impl FaceState {
                 "{{\"v\":1,\"rev\":{},\"mood\":\"{}\",\"sprite\":\"{}\",",
                 "\"bubble_visible\":{},\"sichtbar\":{},\"last_render_ts\":{:.6},",
                 "\"frames_rendered\":{},\"bubble_frames_rendered\":{},",
-                "\"takt_schlaege\":{},",
+                "\"takt_schlaege\":{},\"zeile\":{},\"emote_laeuft\":{},",
                 "\"toene_gespielt\":{},\"configure_empfangen\":{},",
                 "\"sprite_x\":{},\"sprite_y\":{},",
                 "\"output\":\"{}\",\"output_wechsel\":{},",
@@ -138,6 +154,8 @@ impl FaceState {
             self.frames_rendered,
             self.bubble_frames_rendered,
             self.takt_schlaege,
+            self.zeile,
+            self.emote_laeuft,
             self.toene_gespielt,
             self.configure_empfangen,
             self.sprite_x,
@@ -182,6 +200,14 @@ impl FaceState {
     /// `frames_rendered` -- hier wird nur das Wecken gezaehlt.
     pub fn takt_schlag_gezaehlt(&mut self) {
         self.takt_schlaege += 1;
+    }
+
+    /// T-9.3: welche Zeile gerade gilt. Wird bei jedem Rendern gesetzt, nicht
+    /// nur beim Moodwechsel -- sonst stuende hier nach einem Emote-Ende der
+    /// Stand von vorher.
+    pub fn spur_setzen(&mut self, zeile: u32, emote_laeuft: bool) {
+        self.zeile = zeile;
+        self.emote_laeuft = emote_laeuft;
     }
 }
 
@@ -253,6 +279,8 @@ mod tests {
             last_render_ts: 1.5,
             frames_rendered: 7,
             bubble_frames_rendered: 2,
+            zeile: 9,
+            emote_laeuft: true,
             takt_schlaege: 12,
             toene_gespielt: 3,
             configure_empfangen: 4,
@@ -279,6 +307,8 @@ mod tests {
             "frames_rendered",
             "bubble_frames_rendered",
             "takt_schlaege",
+            "zeile",
+            "emote_laeuft",
             "configure_empfangen",
             "sprite_x",
             "sprite_y",
@@ -408,6 +438,32 @@ mod tests {
         s.commit_gezaehlt(true);
         assert_eq!(s.frames_rendered, 4);
         assert_eq!(s.takt_schlaege, 1);
+    }
+
+    /// T-9.3: die Zeile ist von aussen sichtbar, und Emote und Atem sind
+    /// unterscheidbar. Ohne das koennte kein Verifizierer die zwei Umlaeufe
+    /// zaehlen -- `mood` und `sprite` sind waehrend beider dieselben.
+    #[test]
+    fn spur_setzen_macht_emote_und_atem_von_aussen_unterscheidbar() {
+        // GIVEN einen frischen Zustand:
+        let mut s = FaceState::default();
+        assert_eq!(s.zeile, 0);
+        assert!(!s.emote_laeuft);
+
+        // WHEN das Emote spielt,
+        s.spur_setzen(9, true);
+        // THEN steht seine Zeile da und die Marke ist gesetzt:
+        assert_eq!(s.zeile, 9);
+        assert!(s.emote_laeuft);
+        assert!(s.als_json().contains("\"zeile\":9"));
+        assert!(s.als_json().contains("\"emote_laeuft\":true"));
+
+        // WHEN danach geatmet wird,
+        s.spur_setzen(3, false);
+        // THEN wechselt beides -- ein Emote, das haengenbliebe, faellt hier auf:
+        assert_eq!(s.zeile, 3);
+        assert!(!s.emote_laeuft);
+        assert!(s.als_json().contains("\"emote_laeuft\":false"));
     }
 
     #[test]

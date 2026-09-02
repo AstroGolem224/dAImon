@@ -67,23 +67,67 @@ I2V = {
 BREITE = HOEHE = 512
 # Wan verlangt 4n+1. 33 Frames sind 2,06 s bei 16 fps.
 LAENGE = 33
-# Jeder vierte Frame: 9 Bilder vorwaerts, mit dem Rueckweg 16 Spalten. Bei
-# den 12 fps aus `face/src/main.rs` ist ein Umlauf damit 1,33 s.
-SCHRITT = 4
+# Jeder n-te Frame. Der Atem laeuft langsamer als das Emote: 17 Bilder
+# vorwaerts ergeben mit dem Rueckweg 32 Spalten und einen Umlauf von 2,67 s
+# bei den 12 fps aus `face/src/main.rs` -- ruhiger Atemtakt. Eine Geste in
+# derselben Dehnung liest sich dagegen nicht mehr als Geste, darum bleibt das
+# Emote bei jedem vierten Frame und 1,33 s.
+SCHRITT_ATEM = 2
+SCHRITT_EMOTE = 4
 STEPS, CFG, SHIFT = 4, 1.0, 5.0
 
 # Die Bewegung soll TRAGEN, nicht erzaehlen: das Pet sitzt in einer
 # 208-Pixel-Zelle am Bildschirmrand. Was dort ankommt, ist Atmen, ein Wiegen,
 # ein Lidschlag. Der Hintergrund muss ausdruecklich flach bleiben, sonst
 # faengt der Gruenschirm an zu wabern und die Freistellung franst.
-BEWEGUNG = ("subtle idle animation, gentle breathing, slight natural head "
-            "movement, occasional blink, keeping the same facial expression, "
-            "the flat uniform green background stays perfectly still and "
-            "uniform, no camera movement, no zoom")
+#
+# Der Ausdruck steht im STANDBILD und darf sich im Clip nicht aendern. Der
+# erste Durchgang am 02.09. liess ihn mitlaufen -- das Ergebnis lachte
+# ununterbrochen, weil `done` schon laechelnd anfaengt und der Clip das Laecheln
+# weiter vertiefte. Was hier steht, ist darum Atmung und Lidschlag, sonst
+# nichts.
+BEWEGUNG_GLEICH = ("keeping the same facial expression, the same smile, the "
+                   "same eyes, the flat uniform green background stays "
+                   "perfectly still and uniform, no camera movement, no zoom")
+
+# T-9.3: der Ruhepuls. EIN Text fuer alle Moods und alle Pets -- Atmen sieht
+# in jedem Mood gleich aus, und der Mood steht im Gesicht des Standbilds.
+# Diese Zeile laeuft endlos, sie muss darum das Ruhigste sein, was das Modell
+# hergibt.
+ATMEN = "subtle idle animation, gentle breathing, occasional blink"
+# Je Mood ein eigener Text. Ein gemeinsamer waere kuerzer und falsch: `failed`
+# soll anders atmen als `needs_input`, und der Unterschied ist genau das, was
+# eine Zelle von 208 Pixeln noch transportiert.
+# T-9.3: die Reaktion. Spielt nach einem Moodwechsel genau zweimal
+# (`EMOTE_UMLAEUFE` in `face/src/render.rs`) und faellt dann auf den Atem
+# zurueck. Weil es endlich ist, darf es hier eine echte Geste sein -- genau
+# das, was als Dauerschleife am 02.09. „ununterbrochen gelacht" hat.
+EMOTE = {
+    "observing": "the person looks up and around attentively",
+    "thinking": "the person tilts the head slightly in thought",
+    "working": "the person nods once, concentrating",
+    "done": "the person smiles and nods once, satisfied",
+    "failed": "the person shakes the head slowly once",
+    "needs_input": "the person raises the eyebrows questioningly",
+}
+# Der chinesische Block ist die Vorgabe aus der Wan-Vorlage.
+#
+# ACHTUNG: bei `CFG = 1.0` wird dieser Text NICHT ausgewertet. Die
+# Lightning-LoRA ist auf CFG 1 destilliert, und dort hat der Negativzweig das
+# Gewicht null. Am 02.09. wurden hier Gestenverbote ergaenzt und blieben
+# folgerichtig wirkungslos -- gemessen: der Schritt stieg von 5,36 auf 7,26
+# und dann auf 9,41, weil sich in Wahrheit nur der POSITIVE Text geaendert
+# hatte. Wer eine Bewegung ausschliessen will, formuliert sie dort positiv um
+# ("keeping the same facial expression"), nicht hier als Verbot.
 NEGATIV = ("色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，"
            "整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，"
            "画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，"
-           "静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走")
+           "静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走"
+           ", large movement, fast motion, sudden motion, gesturing, waving, "
+           "head turning, nodding, shaking head, camera movement, zoom, pan, "
+           "jump cut, walking, changing pose, changing framing, "
+           "changing facial expression, smiling, laughing, grinning, "
+           "opening the mouth, talking")
 
 # `idle` und `sleeping` fehlen absichtlich -- siehe Modulkopf.
 ANIMIERTE_MOODS = ["observing", "thinking", "working", "done", "failed",
@@ -101,7 +145,7 @@ def pingpong(anzahl: int) -> list:
     return list(range(anzahl)) + list(range(anzahl - 2, 0, -1))
 
 
-def graph_bauen(bild_name: str, seed: int, prefix: str) -> dict:
+def graph_bauen(bild_name: str, bewegung: str, seed: int, prefix: str) -> dict:
     """Die API-Fassung von `DoppelSelf/messung_i2v_api.json`, mit zwei
     Abweichungen: kleinere Flaeche, und `SaveImage` statt `CreateVideo` --
     gebraucht werden Einzelbilder, ein MP4 waere ein Umweg ueber ffmpeg."""
@@ -124,7 +168,8 @@ def graph_bauen(bild_name: str, seed: int, prefix: str) -> dict:
               "inputs": {"clip_name": I2V["clip"], "type": "wan",
                          "device": "default"}},
         "8": {"class_type": "CLIPTextEncode",
-              "inputs": {"clip": ["7", 0], "text": BEWEGUNG}},
+              "inputs": {"clip": ["7", 0],
+                         "text": f"{BEWEGUNG_GLEICH} {bewegung}"}},
         "9": {"class_type": "CLIPTextEncode",
               "inputs": {"clip": ["7", 0], "text": NEGATIV}},
         "10": {"class_type": "VAELoader", "inputs": {"vae_name": I2V["vae"]}},
@@ -192,16 +237,16 @@ def frames_abholen(prompt_id: str, log: str, deckel_s: float) -> list:
     return sorted(bilder)
 
 
-def spalten_bauen(frames: list, zelle: tuple) -> list:
+def spalten_bauen(frames: list, zelle: tuple, schritt: int) -> list:
     """Aus den Videoframes die Spalten einer Sheet-Zeile.
 
-    Erst jeden SCHRITT-ten nehmen, dann freistellen und zuschneiden, dann
+    Erst jeden `schritt`-ten nehmen, dann freistellen und zuschneiden, dann
     Ping-Pong. Freigestellt wird bei voller Aufloesung, aus demselben Grund
     wie beim Standbild: die Kante wird glatter als eine bei 208 Pixeln.
     """
     from PIL import Image
 
-    gewaehlt = frames[::SCHRITT]
+    gewaehlt = frames[::schritt]
     zellen = []
     for pfad in gewaehlt:
         with Image.open(pfad) as bild:
@@ -210,32 +255,52 @@ def spalten_bauen(frames: list, zelle: tuple) -> list:
     return [zellen[i] for i in pingpong(len(zellen))]
 
 
-def manifest_aktualisieren(pfad: str, spalten: int, moods: list) -> dict:
-    """Traegt `cols` und je Mood `frames` nach. Ruhige Moods bleiben ohne --
-    `RUHIGE_MOODS` in `face/src/main.rs` zwingt sie ohnehin auf eine Spalte,
-    und ein `frames`, das nie gilt, waere eine Zusage ohne Wirkung."""
+def manifest_aktualisieren(pfad: str, spalten: int, moods: list,
+                           reihenfolge: list, laengen: dict) -> dict:
+    """Traegt `cols`, `rows`, je Mood `frames` und die Emote-Zeile nach.
+
+    Ruhige Moods bleiben ohne beides -- `RUHIGE_MOODS` in `face/src/main.rs`
+    zwingt sie ohnehin auf eine Spalte, und ein `frames`, das nie gilt, waere
+    eine Zusage ohne Wirkung. Die Emote-Zeilen liegen hinter allen Atemzeilen,
+    in der Reihenfolge von `moods`.
+
+    `laengen` gibt je Zeile die ECHTE Bildzahl. Sie ist nicht `spalten`: der
+    Atem laeuft mit `SCHRITT_ATEM`, das Emote mit `SCHRITT_EMOTE`, und das
+    Sheet ist nur deshalb rechteckig, weil `sheet_bauen` kuerzere Zeilen mit
+    Kopien von Spalte 0 auffuellt. Stuende `spalten` in beiden, stuende das
+    Emote die halbe Schleife lang auf seinem ersten Bild -- am 02.09. genau so
+    erzeugt und im Manifest aufgefallen.
+    """
     with open(pfad, encoding="utf-8") as f:
         manifest = json.load(f)
     manifest["atlas"]["cols"] = spalten
+    manifest["atlas"]["rows"] = len(reihenfolge) + len(moods)
+    for i, name in enumerate(moods):
+        manifest["moods"][name]["emote"] = {
+            "row": len(reihenfolge) + i,
+            "frames": laengen[f"{name}:emote"],
+        }
     for name, eintrag in manifest["moods"].items():
         if name in moods:
-            eintrag["frames"] = spalten
+            eintrag["frames"] = laengen[f"{name}:atem"]
         else:
             eintrag.pop("frames", None)
+            eintrag.pop("emote", None)
     return manifest
 
 
 def sheet_bauen(zeilen: dict, reihenfolge: list, spalten: int, zelle: tuple,
                 ziel: str) -> None:
-    """`zeilen`: Mood -> Liste von Zellen. Wer weniger Zellen hat als
-    `spalten`, bekommt seine erste wiederholt -- das Sheet muss rechteckig
-    sein, und ein ruhiger Mood liest ohnehin nur Spalte 0."""
+    """`zeilen`: Schluessel -> Liste von Zellen, `reihenfolge` gibt die
+    Zeilennummern. Wer weniger Zellen hat als `spalten`, bekommt seine erste
+    wiederholt -- das Sheet muss rechteckig sein, und das Face liest je Zeile
+    nur so viele Spalten, wie `frames` angibt."""
     from PIL import Image
 
     b, h = zelle
     sheet = Image.new("RGBA", (b * spalten, h * len(reihenfolge)), (0, 0, 0, 0))
-    for zeile, mood in enumerate(reihenfolge):
-        zellen = zeilen[mood]
+    for zeile, schluessel in enumerate(reihenfolge):
+        zellen = zeilen[schluessel]
         for spalte in range(spalten):
             quelle = zellen[spalte] if spalte < len(zellen) else zellen[0]
             sheet.paste(quelle, (spalte * b, zeile * h))
@@ -281,10 +346,14 @@ def lauf(args) -> None:
             shutil.copy2(quelle, os.path.join(eingang, bild_name))
             kopien.append(os.path.join(eingang, bild_name))
 
-            print(f"[2/3] {i}/{len(ANIMIERTE_MOODS)} {mood} …", flush=True)
-            g = graph_bauen(bild_name, args.seed, f"{marke}/{mood}")
-            frames = frames_abholen(ds.absenden(g), log, deckel_s=900)
-            zeilen[mood] = spalten_bauen(frames, zelle)
+            for art, text, schritt in (("atem", ATMEN, SCHRITT_ATEM),
+                                       ("emote", EMOTE[mood], SCHRITT_EMOTE)):
+                print(f"[2/3] {i}/{len(ANIMIERTE_MOODS)} {mood} ({art}) …",
+                      flush=True)
+                g = graph_bauen(bild_name, text, args.seed,
+                                f"{marke}/{mood}_{art}")
+                frames = frames_abholen(ds.absenden(g), log, deckel_s=900)
+                zeilen[f"{mood}:{art}"] = spalten_bauen(frames, zelle, schritt)
     finally:
         ds.comfy_beenden(server)
         for rest in kopien:
@@ -295,16 +364,26 @@ def lauf(args) -> None:
     # Ruhige Moods: die vorhandene Zelle aus dem alten Sheet, unveraendert.
     altes = Image.open(os.path.join(ziel_dir, "spritesheet.png")).convert("RGBA")
     for mood in reihenfolge:
-        if mood in zeilen:
+        if f"{mood}:atem" in zeilen:
             continue
         r = manifest["moods"][mood]["row"]
-        zeilen[mood] = [altes.crop((0, r * zelle[1], zelle[0], (r + 1) * zelle[1]))]
+        zeilen[f"{mood}:atem"] = [
+            altes.crop((0, r * zelle[1], zelle[0], (r + 1) * zelle[1]))]
     altes.close()
 
-    print(f"[3/3] Sheet mit {spalten} Spalten und Manifest …", flush=True)
-    sheet_bauen(zeilen, reihenfolge, spalten, zelle,
+    # Die Atemzeilen behalten ihre alten Zeilennummern -- ein bestehendes
+    # Manifest soll nicht durcheinandergeraten. Die Emote-Zeilen kommen
+    # dahinter, in der Reihenfolge der Moods.
+    schluessel = [f"{m}:atem" for m in reihenfolge]
+    schluessel += [f"{m}:emote" for m in ANIMIERTE_MOODS]
+
+    print(f"[3/3] Sheet mit {spalten} Spalten, {len(schluessel)} Zeilen …",
+          flush=True)
+    sheet_bauen(zeilen, schluessel, spalten, zelle,
                 os.path.join(ziel_dir, "spritesheet.png"))
-    neu = manifest_aktualisieren(manifest_pfad, spalten, ANIMIERTE_MOODS)
+    neu = manifest_aktualisieren(manifest_pfad, spalten, ANIMIERTE_MOODS,
+                                 reihenfolge,
+                                 {k: len(v) for k, v in zeilen.items()})
     with open(manifest_pfad, "w", encoding="utf-8") as f:
         json.dump(neu, f, indent=2, ensure_ascii=False)
         f.write("\n")
@@ -331,7 +410,7 @@ def demo() -> None:
         assert schritte == {1}, (n, schritte)
 
     # Der Graph: jede Referenz zeigt auf einen Knoten, den es gibt.
-    g = graph_bauen("x.png", 42, "p")
+    g = graph_bauen("x.png", EMOTE["working"], 42, "p")
     for kid, k in g.items():
         for wert in k["inputs"].values():
             if isinstance(wert, list):
@@ -347,12 +426,64 @@ def demo() -> None:
             json.dump({"atlas": {"cellW": 208, "cellH": 208, "cols": 1, "rows": 8},
                        "moods": {m: {"row": i} for i, m in enumerate(
                            ["sleeping", "idle"] + ANIMIERTE_MOODS)}}, f)
-        neu = manifest_aktualisieren(p, 16, ANIMIERTE_MOODS)
-    assert neu["atlas"]["cols"] == 16
+        reihenfolge = ["sleeping", "idle"] + ANIMIERTE_MOODS
+        # Der Atem hat 32 Spalten, das Emote nur 16 -- verschiedene Schritte.
+        laengen = {f"{m}:atem": 32 for m in ANIMIERTE_MOODS}
+        laengen.update({f"{m}:emote": 16 for m in ANIMIERTE_MOODS})
+        laengen.update({f"{m}:atem": 1 for m in ("sleeping", "idle")})
+        neu = manifest_aktualisieren(p, 32, ANIMIERTE_MOODS, reihenfolge, laengen)
+    assert neu["atlas"]["cols"] == 32
+    # Acht Atemzeilen plus sechs Emote-Zeilen.
+    assert neu["atlas"]["rows"] == 14, neu["atlas"]
     for m in ANIMIERTE_MOODS:
-        assert neu["moods"][m]["frames"] == 16, m
+        assert neu["moods"][m]["frames"] == 32, m
+        # Die ECHTE Laenge, nicht die Sheet-Breite. Stuende hier 32, stuende
+        # das Emote die halbe Schleife auf seinem ersten Bild.
+        assert neu["moods"][m]["emote"]["frames"] == 16, neu["moods"][m]
+        # Die Emote-Zeile liegt HINTER allen Atemzeilen -- sonst ueberschriebe
+        # sie einen Mood.
+        assert neu["moods"][m]["emote"]["row"] >= len(reihenfolge), m
+    emote_zeilen = [neu["moods"][m]["emote"]["row"] for m in ANIMIERTE_MOODS]
+    assert len(set(emote_zeilen)) == len(emote_zeilen), \
+        f"zwei Moods teilen sich eine Emote-Zeile: {emote_zeilen}"
     for ruhig in ("idle", "sleeping"):
         assert "frames" not in neu["moods"][ruhig], ruhig
+        assert "emote" not in neu["moods"][ruhig], ruhig
+    # Die Zusage "subtil": am 02.09. lachte das erste bewegte Pet
+    # ununterbrochen, weil der Bewegungstext den Ausdruck mitlaufen liess.
+    # Ohne diese Pruefung waere ein "nods slowly" beim naechsten Anfassen
+    # wieder drin, ohne dass es jemandem auffaellt.
+    # Zwei Sorten: Gesten, und Verben, die den AUSDRUCK veraendern. Die zweite
+    # Sorte ist die tueckischere -- "the smile deepens" liest sich subtil und
+    # war genau der Text, der ununterbrochen lachte.
+    # Der Atem ist EINE Bewegung fuer alle Moods und darf keine Geste sein --
+    # er laeuft endlos, und genau das hat am 02.09. ununterbrochen gelacht.
+    gesten = ("nod", "shake", "turn", "wave", "gestur", "walk", "smile",
+              "laugh", "grin", "deepen", "brighten", "widen", "becomes",
+              "grows", "raise", "tilt")
+    for geste in gesten:
+        assert geste not in ATMEN.lower(), f"der Atem hat eine Geste: {geste!r}"
+    assert "breath" in ATMEN.lower(), "der Atem nennt kein Atmen"
+
+    # Das Emote ist endlich und DARF eine Geste sein. Es muss aber je Mood
+    # eine eigene sein, sonst traegt es den Mood nicht.
+    for mood in ANIMIERTE_MOODS:
+        assert mood in EMOTE, f"{mood} hat kein Emote"
+    assert len(set(EMOTE.values())) == len(EMOTE), \
+        "zwei Moods teilen sich ein Emote -- dann traegt es den Mood nicht"
+    assert not (set(EMOTE) & {"idle", "sleeping"}), \
+        "ein Ruhe-Mood mit Emote -- RUHIGE_MOODS wuerde es nie zeigen"
+    # Der Ausdruck gehoert dem Standbild. Steht das nicht im POSITIVEN Text,
+    # vertieft der Clip das Laecheln von `done` bei jedem Umlauf weiter -- und
+    # im Negativtext stuende es wirkungslos, solange CFG 1 gilt.
+    assert "keeping the same facial expression" in BEWEGUNG_GLEICH
+    assert CFG == 1.0, "steht CFG ueber 1, wird der Negativtext wieder wirksam"
+    assert g["8"]["inputs"]["text"].startswith(BEWEGUNG_GLEICH), \
+        "der Subtilitaets-Text muss vorne stehen, nicht hinten"
+    assert EMOTE["working"] in g["8"]["inputs"]["text"]
+    assert SCHRITT_ATEM < SCHRITT_EMOTE, "der Atem muss langsamer laufen"
+    assert NEGATIV == g["9"]["inputs"]["text"], "Negativtext haengt am falschen Knoten"
+
     print("Selbsttest ok.")
 
 

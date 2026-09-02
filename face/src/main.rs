@@ -30,7 +30,7 @@ use control::ControlSocket;
 use diag::{DiagSocket, FaceState};
 use hub::{HubVerbindung, HubZustand};
 use position::{Loslassen, Ziehen};
-use render::{Animator, RenderSteuerung};
+use render::{Animator, RenderSteuerung, Spur};
 use smithay_client_toolkit::reexports::calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
@@ -359,6 +359,18 @@ impl App {
         }
     }
 
+    /// T-9.3: die gerade gezeigte Zeile in die Diagnose. Bei JEDEM Rendern,
+    /// nicht nur beim Moodwechsel -- das Emote endet mitten in einem Mood, und
+    /// genau dieser Uebergang soll von aussen sichtbar sein.
+    fn diagnose_spur_setzen(&self) {
+        let zeile = self.animator.zeile();
+        let emote = self.animator.emote_laeuft();
+        match self.diagnose.lock() {
+            Ok(mut zustand) => zustand.spur_setzen(zeile, emote),
+            Err(vergiftet) => vergiftet.into_inner().spur_setzen(zeile, emote),
+        }
+    }
+
     fn takt_schlag_zaehlen(&self) {
         match self.diagnose.lock() {
             Ok(mut zustand) => zustand.takt_schlag_gezaehlt(),
@@ -665,8 +677,14 @@ impl App {
             &self.atlas.layout,
         );
         let spalten = spalten_fuer(&abbildung, &self.aktueller_mood);
-        self.animator
-            .mood_setzen(abbildung.zeile, spalten, ANIMATION_FPS, Instant::now());
+        // Ein Ruhe-Mood bekommt auch kein Emote: er soll stillstehen, und ein
+        // Emote waere genau das Gegenteil.
+        let emote = abbildung.emote.filter(|_| spalten > 1).map(|e| Spur {
+            zeile: e.nummer,
+            spalten: e.spalten,
+        });
+        self.animator.mood_setzen(Spur { zeile: abbildung.zeile, spalten },
+                                  emote, ANIMATION_FPS, Instant::now());
         self.takt_einhaengen_wenn_noetig();
     }
 
@@ -723,7 +741,6 @@ impl App {
         let sichtbar = self.sichtbarkeit.0;
         let qh = self.qh.clone();
         let name = self.aktueller_zustand.clone();
-        let mood = self.aktueller_mood.clone();
         let voice = self.aktueller_voice.clone();
         let mitschnitt = self.aktueller_mitschnitt;
         let ergebnis = {
@@ -742,8 +759,6 @@ impl App {
                     compositor,
                     pool,
                     atlas,
-                    &name,
-                    &mood,
                     &voice,
                     mitschnitt,
                     animator,
@@ -757,6 +772,7 @@ impl App {
             Ok((commits, indikator, mitschnitt_indikator)) => {
                 self.commits_zaehlen(commits);
                 self.diagnose_sprite_setzen(&name);
+                self.diagnose_spur_setzen();
                 self.indikator_zaehlen(indikator);
                 self.mitschnitt_indikator_zaehlen(mitschnitt_indikator);
             }
@@ -1472,8 +1488,6 @@ impl LayerShellHandler for App {
                     compositor,
                     pool,
                     atlas,
-                    aktueller_zustand,
-                    aktueller_mood,
                     aktueller_voice,
                     aktueller_mitschnitt,
                     render,
@@ -1490,8 +1504,6 @@ impl LayerShellHandler for App {
                         compositor,
                         pool,
                         atlas,
-                        aktueller_zustand,
-                        aktueller_mood,
                         aktueller_voice,
                         *aktueller_mitschnitt,
                         animator,
@@ -1507,6 +1519,7 @@ impl LayerShellHandler for App {
                     self.indikator_zaehlen(indikator);
                     self.mitschnitt_indikator_zaehlen(mitschnitt_indikator);
                     self.diagnose_sprite_setzen(&self.aktueller_zustand);
+                    self.diagnose_spur_setzen();
                     self.bubble_aktualisieren();
                     println!("READY pid={}", std::process::id());
                 }
@@ -1680,7 +1693,8 @@ fn main() {
         letzter_zipfel: None,
         hub: None,
         render: RenderSteuerung::neu("idle", Instant::now()),
-        animator: Animator::neu(0, 1, ANIMATION_FPS, Instant::now()),
+        animator: Animator::neu(Spur { zeile: 0, spalten: 1 }, None,
+                                ANIMATION_FPS, Instant::now()),
         schleife: None,
         takt: None,
         ton: Tonspieler::neu(ton_an),
