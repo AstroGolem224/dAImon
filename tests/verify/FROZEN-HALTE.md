@@ -691,6 +691,74 @@ grün, `T-3.13b` steht bei 2 rot. Der `.v`-Task bleibt für beide offen.
 
 ---
 
+## Nachzug vom 02.09. — T-0.11, VORLAEUFIG
+
+**Betroffen:** `tests/verify/T-0.11.sh`
+
+| Datei | vorher | nachgezogen am 02.09. |
+|---|---|---|
+| `T-0.11.sh` | `8e2bbe84…` | `6c12138e…` |
+
+Vorher vollstaendig:
+`8e2bbe84529eb962994a9db6f7f24dc711fffc2cc558dcbecd4cbae570ae5db9`
+Nachher vollstaendig:
+`6c12138e6a9961c8a150c2c897d7fc30e073990a8a88c435c513965f3a1fc36e`
+
+### Der Befund
+
+`T-0.11.sh` war einzeln rot an drei Kriterien: „Positiv-Kanarienvogel erhoeht
+Hub-rev", „Stop meldet nach beiden SubagentStop-Ereignissen done",
+„Claude-Code-PID kommt lebend beim Hub an".
+
+Ursache gemessen, nicht vermutet: der Prüfstand startete die Bridge unter der
+Scope der aufrufenden Sitzung. Seit `bd0bb8e` prüft der Hub an
+`hookbridge.sock` die Unit der Gegenstelle gegen `PRODUZENT_UNITS`
+(`daimon/hub/daemon.py:217-220`) und weist sie ab. `Bridge.an_hub`
+(`daimon/hookbridge/bridge.py:248-260`) feuert und vergisst, also antwortete
+der Hook trotzdem mit HTTP 200 — deshalb war „bekommt HTTP 200" grün und
+„erhöht Hub-rev" rot. Von Hand nachgestellt, außerhalb des Prüfstands: Bridge
+im Sitzungs-Scope `rev` 0 → 0; Bridge in `daimon-verify.scope` `rev` 0 → 1,
+`sessions` 0 → 1, `mood` `observing`.
+
+`T-0.9.sh` wurde bei `bd0bb8e` nachgezogen, `T-0.11.sh` nicht — ein halbes
+Jahr unbemerkt, weil der Prüfstand die Quittung maß und nicht die Wirkung.
+
+### Was die Kriterien jetzt prüfen
+
+- Die Bridge läuft in `daimon-verify.scope`, nach dem Vorbild
+  `T-0.9.sh:170-211`. Marke ist die cgroup des laufenden Prozesses, nicht der
+  Exit-Code von `systemd-run`.
+- Kommt die Scope nicht zustande, läuft die Bridge ohne sie weiter und die
+  fünf hub-abhängigen Kriterien werden `????` — **nicht gemessen** statt rot.
+- Neu, gab es vorher nicht: „Die neun akzeptierten Hooks bewegen den
+  Hub-Zustand (HTTP 200 allein belegt nichts)" — `rev` und `sessions` müssen
+  beide steigen.
+
+### Belegt
+
+| Teil | Ergebnis |
+|---|---|
+| `bash -n` | still |
+| Lauf 1 | exit 0, kein FAIL, kein `????` |
+| `systemctl --user list-units 'daimon-verify*'` danach | `0 loaded units listed` |
+| Lauf 2 hintereinander | exit 0, kein FAIL |
+| Gegenprobe ohne Nutzerbus | exit 3, fünf `????`, kein `ok` |
+
+### Nicht belegt, ausdrücklich
+
+Dass das neue Kriterium **innerhalb** des Prüfstands rot werden kann. Eine
+fehlende Scope gilt dort jetzt grundsätzlich als nicht gemessen — richtig
+gebaut, kostet aber diesen Weg. Die andere Hälfte der Positivkontrolle steht
+außerhalb, in der Handmessung oben.
+
+### Warum von Hand nachgezogen
+
+Derselbe Grund wie in den Abschnitten darüber: `freeze.sh` verlangt die Spur
+`echt` grün, `T-3.13b` ist noch nicht sauber. Der Hash bleibt darum
+**VORLAEUFIG**; der `.v`-Task bleibt offen.
+
+---
+
 ## Nicht zuordenbar
 
 Keine. Die Buchführung geht auf: `tests/verify/FROZEN` trug vor dem Aufräumen

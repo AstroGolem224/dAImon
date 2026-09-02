@@ -68,6 +68,15 @@ geändert hatte. Jedes Mal sah es zuerst wie ein Fehler am Prüfling aus.
 | `%t` im `ExecStart` bleibt wörtlich | 26.08., Modellweg-Weiche wurde Argument | Mind bekam einen Pfad, den es nicht gibt → 16 rote Kriterien |
 | Aktionswunsch wird `abgelehnt` | T-4.16, werkzeugfähiger Weg gebaut | 7 rote Kriterien, dazu „kostet kein Kontingent" |
 | `ProtectProc=invisible` steht in der Unit | `7b7deb9`, als wirkungslos entfernt | rot in vier eingebetteten Läufen |
+| Bridge erreicht den Hub aus jeder Scope | `bd0bb8e`, Peer-Prüfung je Produzent | 3 rote Kriterien in `T-0.11`, ein halbes Jahr unbemerkt |
+
+Der vierte Fall ist der lehrreichste, weil er zeigt, wie lange so etwas
+liegen bleibt. `bd0bb8e` gab dem Hub die Peer-Prüfung; `T-0.9.sh` wurde
+nachgezogen und hängt seinen Sender seither selbst in `daimon-verify.scope`,
+`T-0.11.sh` blieb stehen. Der Hub wies dessen Bridge ab — aber `an_hub` feuert
+und vergisst, also antwortete der Hook weiter mit **HTTP 200**. Der Prüfstand
+maß genau das und war zufrieden. Ein Kriterium, das den Zustand danach liest,
+gab es nicht.
 
 ### Was daraus folgt
 
@@ -91,3 +100,8 @@ geändert hatte. Jedes Mal sah es zuerst wie ein Fehler am Prüfling aus.
    umgebenden Laufs erscheint er als ein roter Punkt wie jeder andere. Ob
    dahinter ein Befund oder ein Absturz steckt, sieht nur, wer ihn einzeln
    fährt.
+6. **Eine angenommene Anfrage ist kein angekommener Auftrag.** `HTTP 200`,
+   ein geschriebener Socket, ein Exit 0 — alle drei sagen nur, dass der
+   Absender fertig ist. Wer eine Wirkung zusagt, prüft die Wirkung: den
+   Zustand danach, nicht die Quittung davor. `T-0.11` hat ein halbes Jahr
+   die Quittung geprüft.

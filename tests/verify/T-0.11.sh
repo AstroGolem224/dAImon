@@ -17,7 +17,18 @@ PY="$REPO/.venv/bin/python"
 [[ -x "$PY" ]] || PY=python3
 
 fail=0
+ungemessen=0
 chk() { if [[ "$2" == "$3" ]]; then echo "  ok   $1"; else echo "  FAIL $1 (erwartet $3, war $2)"; fail=1; fi; }
+info() { echo "  INFO $*"; }
+# Regel uebernommen aus tests/verify/T-0.9.sh:32-37 -- dort steht sie
+# ausgeschrieben. Kurz: "nichts gefunden" und "nicht gemessen" sind zwei
+# Aussagen; ein ungemessenes Kriterium wird weder gruen noch rot, und der
+# Lauf endet mit Exit 3.
+nicht_gemessen() { echo "  ????  $1 -- NICHT GEMESSEN: $2"; ungemessen=1; }
+# Kriterien, die eine Wirkung IM HUB messen. Kam die Scope nicht zustande,
+# weist der Hub die Bridge ab (Begruendung an der Scope, unten) -- dann hat
+# der Lauf ueber den Hub nichts ausgesagt, und das ist nicht rot.
+chk_hub() { if [[ -n "${scope_grund:-}" ]]; then nicht_gemessen "$1" "$scope_grund"; else chk "$@"; fi; }
 
 echo "T-0.11 — Hook-Bridge"
 bridge_source=nein
@@ -47,6 +58,10 @@ mkdir -m 700 -p "$runtime"
 : >"$audit"
 pids=()
 declare -A pid_start=()
+# 1, sobald DIESER Lauf `daimon-verify.scope` angelegt hat -- nur dann raeumt
+# er sie auch ab. Eine fremde Scope gleichen Namens gehoert ihm nicht.
+scope_eigen=0
+scope_grund=""
 track_pid() {
   local pid="$1"
   pids+=("$pid")
@@ -64,6 +79,11 @@ cleanup() {
     fi
   done
   for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+  # Die Scope ueberlebt den Elternprozess: `track_pid` allein raeumt sie
+  # nicht ab. `stop` toetet, was noch in ihr laeuft, und entfernt sie.
+  if (( scope_eigen )); then
+    systemctl --user stop daimon-verify.scope >/dev/null 2>&1 || true
+  fi
   if [[ "${DAIMON_KEEP_TMP:-0}" == 1 ]]; then
     echo "  Diagnoseverzeichnis bleibt: $tmp" >&2
   else
@@ -112,21 +132,84 @@ for _ in $(seq 1 50); do
   sleep 0.05
 done
 
-if [[ "$bridge_source" == ja ]]; then
-  setsid timeout --signal=TERM 45s env PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH="$python_path" XDG_RUNTIME_DIR="$runtime_root" \
-    DAIMON_T011_MUTATION="$mutation" \
-    "$PY" -m daimon.hookbridge.daemon --runtime-dir "$runtime" \
-    --port "$port" --audit-log "$audit" >"$tmp/bridge.log" 2>&1 &
+# WARUM EINE SCOPE: seit `bd0bb8e` prueft der Hub an `hookbridge.sock` die
+# Unit der Gegenstelle gegen `PRODUZENT_UNITS["hookbridge"]` --
+# `daimon-hookbridge.service` oder `daimon-verify.scope`
+# (daimon/hub/daemon.py:215-220). Die Bridge dieses Pruefstands lief unter der
+# Unit der aufrufenden Sitzung, wurde abgewiesen, und die Nutzlast fiel weg.
+# Sichtbar wurde das an drei Kriterien; NICHT sichtbar an "bekommt HTTP 200",
+# denn `Bridge.an_hub` (daimon/hookbridge/bridge.py:248-260) feuert und
+# vergisst. Vorbild dieser Bauform samt Begruendung: `tests/verify/T-0.9.sh:
+# 170-211`. Unterschied dort: ein kurzlebiger Sender. Hier haengt ein
+# LANGLEBIGER Dienst in der Scope, den der Lauf danach ueber HTTP anspricht.
+#
+# ponytail: fester Unit-Name, keine Eindeutigkeit -- erzwungen, nicht bequem;
+# `ipc.unit_erlaubt` vergleicht exakt und traegt fuer `.scope` kein Template,
+# ein Zufallssuffix stuende also auf keiner Liste. DECKE: T-0.9 benutzt
+# denselben Namen. Nacheinander harmlos, GLEICHZEITIG nicht -- der zweite
+# Lauf bekaeme "unit already exists". Das wird unten als NICHT GEMESSEN
+# ausgewiesen und NICHT als roter Befund, und eine fremde Scope wird nicht
+# angeruehrt (`scope_eigen`). Ausbaupfad wie in T-0.9.sh:187 beschrieben.
+#
+# ABRAEUMEN, zwei Wege, weil `--collect` nur aufraeumt und nicht toetet:
+#   regulaer -- `systemctl --user stop` im `cleanup`-Trap;
+#   bei SIGKILL des Laufs -- das `timeout 45s` IN der Scope beendet die
+#   Bridge, und eine leere Scope entfernt systemd von selbst.
+bridge_cmd=(timeout --signal=TERM 45s env PYTHONDONTWRITEBYTECODE=1
+  PYTHONPATH="$python_path" XDG_RUNTIME_DIR="$runtime_root"
+  DAIMON_T011_MUTATION="$mutation"
+  "$PY" -m daimon.hookbridge.daemon --runtime-dir "$runtime"
+  --port "$port" --audit-log "$audit")
+starte_bridge() {
+  if [[ "$1" == scope ]]; then
+    scope_eigen=1
+    # `--scope` exec-t das Kommando im eigenen Prozess, `$!` ist also der
+    # timeout-Waechter IN der Scope -- dieselbe Bauform, die `cleanup`
+    # ohnehin annimmt.
+    systemd-run --user --quiet --collect --scope --unit=daimon-verify.scope \
+      -- "${bridge_cmd[@]}" >"$tmp/bridge.log" 2>&1 &
+  else
+    setsid "${bridge_cmd[@]}" >"$tmp/bridge.log" 2>&1 &
+  fi
   bridge=$!
   track_pid "$bridge"
+  for _ in $(seq 1 50); do
+    ready="$(curl -sS -X POST -o /dev/null -w '%{http_code}' --max-time 0.1 \
+      "http://127.0.0.1:$port/unbekannt" 2>/dev/null || true)"
+    [[ -f "$runtime/hook-token" && "$ready" == 404 ]] && break
+    sleep 0.05
+  done
+}
+
+if [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" && ! -S "${XDG_RUNTIME_DIR:-/nichts}/bus" ]]; then
+  scope_grund="kein Nutzerbus (DBUS_SESSION_BUS_ADDRESS leer, kein \$XDG_RUNTIME_DIR/bus)"
+elif ! command -v systemd-run >/dev/null 2>&1; then
+  scope_grund="systemd-run fehlt"
+elif systemctl --user is-active --quiet daimon-verify.scope 2>/dev/null; then
+  scope_grund="Unit-Name daimon-verify.scope ist belegt (zweiter Lauf, oder T-0.9 laeuft)"
 fi
-for _ in $(seq 1 50); do
-  ready="$(curl -sS -X POST -o /dev/null -w '%{http_code}' --max-time 0.1 \
-    "http://127.0.0.1:$port/unbekannt" 2>/dev/null || true)"
-  [[ -f "$runtime/hook-token" && "$ready" == 404 ]] && break
-  sleep 0.05
-done
+
+if [[ "$bridge_source" == ja ]]; then
+  if [[ -z "$scope_grund" ]]; then
+    starte_bridge scope
+    # DIE MARKE, und zwar nicht der Exit-Code: `systemd-run --scope` reicht
+    # den des Kindes durch, eine nie entstandene Scope saehe also aus wie
+    # eine abgewiesene Bridge. Gemessen wird darum die cgroup des laufenden
+    # Prozesses. Fehlt sie, wird ohne Scope weitergefahren -- die
+    # bridge-eigenen Kriterien (401, 404, Groessengrenze, Egress, Frist)
+    # bleiben so messbar, nur die Hub-Kriterien nicht.
+    if ! grep -q 'daimon-verify\.scope' "/proc/$bridge/cgroup" 2>/dev/null; then
+      scope_grund="Bridge kam nicht in daimon-verify.scope: $(tr '\n' ' ' <"$tmp/bridge.log" | cut -c1-200)"
+      scope_eigen=0
+      kill -TERM "$bridge" 2>/dev/null || true
+      wait "$bridge" 2>/dev/null || true
+      starte_bridge direkt
+    fi
+  else
+    starte_bridge direkt
+  fi
+fi
+[[ -n "$scope_grund" ]] && info "ohne daimon-verify.scope: $scope_grund"
 
 chk "Hub laeuft" \
   "$([[ "$hub" -gt 0 ]] && kill -0 "$hub" 2>/dev/null && echo ja || echo nein)" ja
@@ -169,7 +252,7 @@ positive_status="$(post /hook ja "$positive_body")"
 sleep 0.15
 after="$(state 2>/dev/null | jq -r '.rev' 2>/dev/null || echo -1)"
 chk "Positiv-Kanarienvogel bekommt HTTP 200" "$positive_status" 200
-chk "Positiv-Kanarienvogel erhoeht Hub-rev" \
+chk_hub "Positiv-Kanarienvogel erhoeht Hub-rev" \
   "$([[ "$after" =~ ^[0-9]+$ && "$before" =~ ^-?[0-9]+$ && "$after" -gt "$before" ]] && echo ja || echo nein)" ja
 
 unauth_status="$(post /hook nein '{"hook_event_name":"Stop","session_id":"ohne-token"}')"
@@ -198,6 +281,16 @@ chk "Praefix-Falle /hoo bekommt HTTP 404" "$prefix_status" 404
 
 events=(SessionStart UserPromptSubmit PreToolUse Notification Stop StopFailure SubagentStop PreCompact SessionEnd)
 configured=0
+# HTTP 200 ist die Quittung der BRIDGE, nicht die des Hubs: `Bridge.an_hub`
+# feuert und vergisst (daimon/hookbridge/bridge.py:248-260). Weist der Hub die
+# Bridge ab -- wie bis zum 02.09., als sie unter der Unit der aufrufenden
+# Sitzung lief -- bleiben alle neun "wird akzeptiert" gruen, waehrend beim Hub
+# nichts ankommt. Genau diese Luecke schliesst das Kriterium unten: angekommen
+# ist ein Hook erst, wenn sich der Zustand bewegt hat. `rev` steigt nur bei
+# echten Aenderungen (daimon/hub/state.py:22), und jede der neun Proben traegt
+# eine eigene `session_id`, muss also auch die Sitzungszahl heben.
+hub_vor="$(state 2>/dev/null | jq -r '"\(.rev) \(.sessions)"' 2>/dev/null || true)"
+read -r rev_vor sess_vor <<<"${hub_vor:--1 -1}"
 for event in "${events[@]}"; do
   exists="$(jq -r --arg e "$event" 'has("hooks") and (.hooks | has($e))' "$config" 2>/dev/null)"
   chk "Hook $event ist konfiguriert" "$exists" true
@@ -207,6 +300,11 @@ for event in "${events[@]}"; do
   status="$(post /hook ja "$body")"
   chk "Hook $event wird akzeptiert" "$status" 200
 done
+sleep 0.2
+hub_nach="$(state 2>/dev/null | jq -r '"\(.rev) \(.sessions)"' 2>/dev/null || true)"
+read -r rev_nach sess_nach <<<"${hub_nach:--1 -1}"
+chk_hub "Die neun akzeptierten Hooks bewegen den Hub-Zustand (HTTP 200 allein belegt nichts)" \
+  "$([[ "$rev_nach" -gt "$rev_vor" && "$sess_nach" -gt "$sess_vor" ]] 2>/dev/null && echo ja || echo nein)" ja
 # Die neun Proben oben haben je eine eigene Sitzung angelegt, darunter eine
 # mit StopFailure -> mood "failed". "failed" schlaegt "done" in der Prioritaet,
 # und die Sitzungen haben keine PID, verfallen also erst nach der TTL. Ohne
@@ -228,14 +326,17 @@ post /hook ja "{\"hook_event_name\":\"PreToolUse\",\"session_id\":\"$sid\",\"too
 post /hook ja "{\"hook_event_name\":\"Stop\",\"session_id\":\"$sid\"}" >/dev/null
 sleep 0.1
 early_mood="$(state 2>/dev/null | jq -r '.mood' 2>/dev/null || echo fehlt)"
-chk "Stop meldet bei zwei laufenden Subagenten noch nicht done" \
+# Auch dieses Kriterium ist hub-abhaengig, obwohl es heute ohne Scope gruen
+# waere: ohne Zulauf bleibt die Stimmung "sleeping", und "sleeping != done"
+# liest sich wie ein Beleg. Das ist gruen aus dem falschen Grund.
+chk_hub "Stop meldet bei zwei laufenden Subagenten noch nicht done" \
   "$([[ "$early_mood" != done ]] && echo ja || echo nein)" ja
 post /hook ja "{\"hook_event_name\":\"SubagentStop\",\"session_id\":\"$sid\"}" >/dev/null
 post /hook ja "{\"hook_event_name\":\"SubagentStop\",\"session_id\":\"$sid\"}" >/dev/null
 post /hook ja "{\"hook_event_name\":\"Stop\",\"session_id\":\"$sid\"}" >/dev/null
 sleep 0.1
 final_mood="$(state 2>/dev/null | jq -r '.mood' 2>/dev/null || echo fehlt)"
-chk "Stop meldet nach beiden SubagentStop-Ereignissen done" "$final_mood" done
+chk_hub "Stop meldet nach beiden SubagentStop-Ereignissen done" "$final_mood" done
 
 # Das echte Hook-Kommando muss den absichtlich falschen Payload-PID ersetzen.
 hook_command="$(jq -r '.hooks.PreToolUse[0].hooks[0].command // empty' "$config" 2>/dev/null)"
@@ -267,7 +368,7 @@ pid_wait=2.7
 if [[ "$TARGET" != "$REPO" ]]; then pid_wait=0.65; fi
 sleep "$pid_wait"
 pid_sessions="$(state 2>/dev/null | jq -r '.sessions' 2>/dev/null || echo -1)"
-chk "Claude-Code-PID kommt lebend beim Hub an" \
+chk_hub "Claude-Code-PID kommt lebend beim Hub an" \
   "$([[ "$pid_sessions" -gt "$pid_before" ]] 2>/dev/null && echo ja || echo nein)" ja
 kill -TERM "$pid_keeper" 2>/dev/null || true
 wait "$pid_keeper" 2>/dev/null || true
@@ -356,4 +457,11 @@ PYEOF
 fast="$(awk -v m="$median_ms" 'BEGIN { print (m < 200) ? "ja" : "nein" }')"
 chk "Median des echten Hooks bei haengender Bridge bleibt unter 200 ms (${median_ms} ms)" "$fast" ja
 
+if (( ungemessen )); then
+  echo
+  echo "T-0.11: NICHT VOLLSTAENDIG GEMESSEN. Mindestens ein Kriterium konnte"
+  echo "        nicht erhoben werden (Gruende oben, Zeilen mit '????'). Das ist"
+  echo "        kein gruener und kein roter Befund; Exit 3."
+  exit 3
+fi
 exit $fail
