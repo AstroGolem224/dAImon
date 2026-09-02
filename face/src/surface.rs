@@ -22,7 +22,7 @@ use wayland_client::{
 use crate::{
     bubble::{position_klemmen, zipfel_fuer, Raster as BubbleRaster, Zipfel},
     input::{sichtbare_laeufe, Box2D, InputRegion},
-    render::{frame_toenen_wenn, Animator, Toenung},
+    render::{frame_toenen_anteilig, Animator, Toenung},
     sprite::{indikator_malen, mitschnitt_malen, zustand_abbilden, SpriteAtlas, ZustandsAbbildung},
 };
 
@@ -636,7 +636,7 @@ pub fn sprite_zelle_bauen(
     // Toenung darueberzulegen zerstoert genau die Information, fuer die
     // die Zeile da ist.
     let frame = sichtbaren_frame_bauen(
-        &frame_toenen_wenn(
+        &frame_toenen_anteilig(
             &atlas.frame(abbildung.zeile, spalte)?,
             toenung,
             atlas.layout.toenung,

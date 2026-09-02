@@ -331,7 +331,7 @@ def zelle_lesen(text: str) -> tuple:
 def manifest_bauen(moods: list, zelle: tuple = (ZELLE_B, ZELLE_H),
                    pet_id: str = "doppelself", anzeige: str = "Doppel-Self",
                    beschreibung: str = "Das eigene Gesicht, ein Ausdruck je Mood.",
-                   toenung: bool = False) -> dict:
+                   toenung: float = 0.0) -> dict:
     """Die Vorgaben sind NICHT beliebig: sie erzeugen woertlich
     `face/tests/doppelself-pet.json`, und daran haengt die Naht zum
     Rust-Parser (`erzeugtes_doppelself_manifest_wird_verstanden`). Wer sie
@@ -353,7 +353,10 @@ def manifest_bauen(moods: list, zelle: tuple = (ZELLE_B, ZELLE_H),
         # bis 2,7: das Gesicht ist zu klein, der Ausdruck traegt kaum. Solche
         # Pets brauchen die Farbtabelle als zweiten Kanal, und darum ist das
         # hier ein Schalter und keine Konstante.
-        "toenung": toenung,
+        # 0 und 1 bleiben `false`/`true`: so schreibt das Werkzeug weiter
+        # genau `face/tests/doppelself-pet.json`, und die Naht zum
+        # Rust-Parser haelt. Alles dazwischen ist eine Zahl.
+        "toenung": {0.0: False, 1.0: True}.get(float(toenung), float(toenung)),
         "moods": {name: {"row": zeile} for zeile, name in enumerate(moods)},
         # Der Rueckfallweg fuer alles, was der `moods`-Block nicht kennt.
         "states": {"idle": {"row": moods.index("idle")},
@@ -421,7 +424,7 @@ def lauf(args) -> None:
         [name for name, _ in MOODS], zelle, pet_id,
         args.anzeige or pet_id.replace("_", " ").replace("-", " ").title(),
         args.beschreibung or f"Ein Ausdruck je Mood ({pet_id}).",
-        args.toenung == "ein")
+        max(0.0, min(1.0, args.toenung)))
     with open(os.path.join(args.ziel, "pet.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2, ensure_ascii=False)
         f.write("\n")
@@ -478,9 +481,13 @@ def demo() -> None:
     assert zweites["atlas"]["cellW"] == 208 and zweites["atlas"]["cellH"] == 208
     assert zweites["moods"] == m["moods"], "Mood-Zuordnung darf nicht mitwandern"
     assert zweites["toenung"] is False, "Vorgabe bleibt aus"
-    # Der Schalter muss ankommen -- sonst waere die Zeile darueber gruen,
-    # weil das Feld gar nicht mehr gelesen wird.
-    assert manifest_bauen(namen, (208, 208), "held", "Held", "x", True)["toenung"] is True
+    # Der Anteil muss ankommen -- sonst waere die Zeile darueber gruen, weil
+    # das Feld gar nicht mehr gelesen wird. Und 0/1 bleiben Wahrheitswerte,
+    # damit die Fixture-Naht haelt.
+    bau = lambda t: manifest_bauen(namen, (208, 208), "held", "Held", "x", t)["toenung"]
+    assert bau(1.0) is True, bau(1.0)
+    assert bau(0.0) is False, bau(0.0)
+    assert bau(0.4) == 0.4, bau(0.4)
 
     # Quadratische Vorlage auf quadratische Zelle: nichts wird beschnitten.
     quadrat_gross = Image.new("RGBA", (1254, 1254))
@@ -551,10 +558,11 @@ def main() -> None:
                    help="Zellgroesse BREITExHOEHE. Quadratisch, wenn die "
                         "Vorlage quadratisch ist und ihr Format bleiben soll")
     p.add_argument("--anzeige", help="Name im Menue (Vorgabe: aus --ziel)")
-    p.add_argument("--toenung", choices=["ein", "aus"], default="aus",
-                   help="Mood-Farbton ueber das Sprite legen. 'aus' fuer "
-                        "Kopfausschnitte (das Gesicht traegt den Mood), "
-                        "'ein' fuer Halbfiguren (tut es nicht)")
+    p.add_argument("--toenung", type=float, default=0.0, metavar="ANTEIL",
+                   help="Anteil des Mood-Farbtons, 0 bis 1. 0 fuer "
+                        "Kopfausschnitte (das Gesicht traegt den Mood). Fuer "
+                        "Halbfiguren 0.4: dort wird die Mood-Trennung erstmals "
+                        "groesser als die Bewegung im Clip (gemessen 01.09.)")
     p.add_argument("--beschreibung")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--force", action="store_true")

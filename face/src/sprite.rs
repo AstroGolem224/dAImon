@@ -30,7 +30,8 @@ const STANDARD_STATES: [(&str, u32); 9] = [
     ("review", 8),
 ];
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+// Kein `Eq`: `toenung` ist ein f32, und f32 hat keine totale Gleichheit.
+#[derive(Clone, Debug, PartialEq)]
 pub struct AtlasLayout {
     pub cell_w: u32,
     pub cell_h: u32,
@@ -43,11 +44,16 @@ pub struct AtlasLayout {
     /// weil die Namen kollidieren: das Ember-Sheet hat eine Pose `failed`,
     /// die etwas anderes meint als der Mood `failed`.
     pub moods: HashMap<String, Zeileneintrag>,
-    /// Darf der Mood-Farbton auf die Zellen gelegt werden? Fuer das
-    /// Ember-Sheet ja -- dort IST die Toenung der Mood. Fuer ein Pet mit
-    /// einem echten Gesicht je Mood nein: violette Haut sagt nichts, was das
-    /// Gesicht nicht schon sagt.
-    pub toenung: bool,
+    /// ANTEIL, nicht Schalter: 0.0 laesst das Sprite in Ruhe, 1.0 faerbt es
+    /// voll, alles dazwischen mischt.
+    ///
+    /// Ein Schalter reichte, solange es zwei Faelle gab -- Ember, dessen
+    /// Sheet gar keine Mood-Zeilen hat und wo die Farbe die ganze Information
+    /// ist, und ein Gesichts-Pet, wo sie die Information zerstoert. Eine
+    /// Halbfigur liegt dazwischen: gemessen am 01.09. unterscheiden sich dort
+    /// zwei Moods im Bild nur um 1,3 bis 2,7 (beim Kopfausschnitt um 6,0), der
+    /// Ausdruck traegt also kaum -- aber das Kostuem soll nicht verschwinden.
+    pub toenung: f32,
     pub spritesheet_path: PathBuf,
 }
 
@@ -63,7 +69,7 @@ impl Default for AtlasLayout {
                 .map(|(name, row)| (name.to_owned(), Zeileneintrag::standbild(row)))
                 .collect(),
             moods: HashMap::new(),
-            toenung: true,
+            toenung: 1.0,
             spritesheet_path: PathBuf::from("spritesheet.png"),
         }
     }
@@ -111,8 +117,15 @@ impl AtlasLayout {
             }
         }
 
-        if let Some(an) = root.get("toenung").and_then(Value::as_bool) {
-            layout.toenung = an;
+        // `true`/`false` bleiben gueltig -- die bestehenden Manifeste tragen
+        // sie, und ein Feld, das nach einer Erweiterung anders gelesen wird
+        // als vorher, ist eine stille Verhaltensaenderung.
+        if let Some(wert) = root.get("toenung") {
+            if let Some(an) = wert.as_bool() {
+                layout.toenung = if an { 1.0 } else { 0.0 };
+            } else if let Some(anteil) = wert.as_f64() {
+                layout.toenung = (anteil as f32).clamp(0.0, 1.0);
+            }
         }
         layout
     }
@@ -659,11 +672,24 @@ mod tests {
         assert!(layout.moods.is_empty());
     }
 
+    /// Der Anteil kommt aus dem Manifest -- als Wahrheitswert wie bisher ODER
+    /// als Zahl. Die alte Schreibweise muss weiter gelten: die vorhandenen
+    /// Manifeste tragen sie, und ein Feld, das nach einer Erweiterung anders
+    /// gelesen wird als vorher, ist eine stille Verhaltensaenderung.
     #[test]
-    fn toenung_ist_an_ausser_das_manifest_schaltet_sie_ab() {
-        assert!(AtlasLayout::default().toenung);
-        assert!(AtlasLayout::aus_manifest_text(r#"{"toenung":false}"#).toenung == false);
-        assert!(AtlasLayout::aus_manifest_text(r#"{"toenung":true}"#).toenung);
+    fn toenung_liest_wahrheitswert_und_anteil() {
+        let anteil = |text: &str| AtlasLayout::aus_manifest_text(text).toenung;
+        assert_eq!(AtlasLayout::default().toenung, 1.0);
+        assert_eq!(anteil(r#"{"toenung":true}"#), 1.0);
+        assert_eq!(anteil(r#"{"toenung":false}"#), 0.0);
+        assert_eq!(anteil(r#"{"toenung":0.4}"#), 0.4);
+        assert_eq!(anteil(r#"{"toenung":0}"#), 0.0);
+        assert_eq!(anteil(r#"{"toenung":1}"#), 1.0);
+        // Geklemmt statt gerechnet, und Unsinn laesst die Vorgabe stehen.
+        assert_eq!(anteil(r#"{"toenung":9}"#), 1.0);
+        assert_eq!(anteil(r#"{"toenung":-3}"#), 0.0);
+        assert_eq!(anteil(r#"{"toenung":"halb"}"#), 1.0);
+        assert_eq!(anteil(r#"{}"#), 1.0);
     }
 
     /// Die NAHT: Hub-Snapshot -> Mood -> Zeile. Ohne diesen Test belegen die
@@ -691,7 +717,7 @@ mod tests {
         let layout =
             AtlasLayout::aus_manifest_text(include_str!("../tests/doppelself-pet.json"));
         assert_eq!(layout.moods.len(), 8, "{:?}", layout.moods);
-        assert!(!layout.toenung);
+        assert_eq!(layout.toenung, 0.0, "das Kopf-Pet toent nicht");
         assert_eq!(layout.cols, 1);
         for mood in [
             "sleeping",

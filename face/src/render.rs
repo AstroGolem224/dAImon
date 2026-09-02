@@ -96,17 +96,36 @@ fn kanal_toenen(intensitaet: u8, faktor: u8) -> u8 {
     ((u16::from(intensitaet) * u16::from(faktor) + 127) / 255) as u8
 }
 
-/// Die Weiche: toent nur, wenn das Pet-Manifest es erlaubt.
+/// Toent zu dem Anteil, den das Pet-Manifest angibt.
 ///
 /// Eigene Funktion und nicht ein `if` in `surface.rs`, weil dort kein Test
 /// hinkommt -- der Aufrufer braucht eine Wayland-Verbindung. Ein `if`, das
 /// niemand pruefen kann, ist ein `if`, das niemand prueft.
-pub fn frame_toenen_wenn(frame: &[u8], toenung: Toenung, erlaubt: bool) -> Vec<u8> {
-    if erlaubt {
-        frame_toenen(frame, toenung)
-    } else {
-        frame.to_vec()
+pub fn frame_toenen_anteilig(frame: &[u8], toenung: Toenung, anteil: f32) -> Vec<u8> {
+    let anteil = anteil.clamp(0.0, 1.0);
+    if anteil <= 0.0 {
+        return frame.to_vec();
     }
+    if anteil >= 1.0 {
+        return frame_toenen(frame, toenung);
+    }
+    // Zwischen Original und Vollton linear mischen. Beide Seiten sind mit
+    // DEMSELBEN Alpha vormultipliziert, und Vormultiplikation ist linear in
+    // der Farbe -- die Mischung ist deshalb wieder ein gueltiges
+    // vormultipliziertes Pixel. Ohne diese Eigenschaft muesste hier erst
+    // dividiert, gemischt und wieder multipliziert werden.
+    let voll = frame_toenen(frame, toenung);
+    let mut ausgabe = frame.to_vec();
+    for (ziel, getoent) in ausgabe.chunks_exact_mut(4).zip(voll.chunks_exact(4)) {
+        for kanal in 0..3 {
+            let a = f32::from(ziel[kanal]);
+            let b = f32::from(getoent[kanal]);
+            ziel[kanal] = (a + (b - a) * anteil).round().clamp(0.0, 255.0) as u8;
+        }
+        // Alpha bleibt woertlich: die Toenung aendert die Deckung nicht, und
+        // ein gemischtes Alpha wuerde die Silhouette ausfransen.
+    }
+    ausgabe
 }
 
 /// Toent premultiplizierte BGRA-Pixel. Alpha wird wortwoertlich kopiert.
@@ -511,19 +530,67 @@ mod tests {
         assert!(!animator.laeuft());
     }
 
-    /// Positivkontrolle im selben Test: `true` MUSS die Pixel veraendern.
-    /// Sonst waere „`false` laesst sie unveraendert" gruen, weil die Toenung
-    /// gar nichts tut -- und nicht, weil der Schalter greift.
+    /// Die beiden Enden des Anteils. Die Positivkontrolle steht im selben
+    /// Test: 1.0 MUSS die Pixel veraendern -- sonst waere „0.0 laesst sie in
+    /// Ruhe" gruen, weil die Toenung gar nichts tut, und nicht weil der
+    /// Anteil greift.
     #[test]
-    fn toenung_aus_laesst_die_pixel_unveraendert() {
+    fn anteil_null_laesst_in_ruhe_und_eins_toent_voll() {
         let zelle: Vec<u8> = vec![40, 80, 120, 200, 10, 20, 30, 255];
         let violett = mood_toenung("thinking");
 
-        let aus = frame_toenen_wenn(&zelle, violett, false);
-        assert_eq!(aus, zelle);
+        assert_eq!(frame_toenen_anteilig(&zelle, violett, 0.0), zelle);
+        let voll = frame_toenen_anteilig(&zelle, violett, 1.0);
+        assert_ne!(voll, zelle);
+        assert_eq!(voll, frame_toenen(&zelle, violett));
 
-        let an = frame_toenen_wenn(&zelle, violett, true);
-        assert_ne!(an, zelle);
-        assert_eq!(an, frame_toenen(&zelle, violett));
+        // Ausserhalb von 0..1 wird geklemmt, nicht gerechnet: ein Manifest
+        // mit `"toenung": 5` soll nicht heller faerben als voll.
+        assert_eq!(frame_toenen_anteilig(&zelle, violett, 5.0), voll);
+        assert_eq!(frame_toenen_anteilig(&zelle, violett, -1.0), zelle);
+
+        // Die Voraussetzung, auf der die Mischung ruht: `frame_toenen` laesst
+        // Alpha in Ruhe. Nur deshalb darf `frame_toenen_anteilig` die
+        // Alpha-Stelle ueberspringen. Faellt diese Zusage, faellt sie hier
+        // auf -- und nicht erst an einer ausgefransten Silhouette.
+        for i in (3..zelle.len()).step_by(4) {
+            assert_eq!(voll[i], zelle[i], "frame_toenen hat Alpha an {i} veraendert");
+        }
+    }
+
+    /// Der Mischweg selbst: die halbe Toenung muss ZWISCHEN beiden Enden
+    /// liegen, und zwar je Kanal. Ein Test, der nur „ungleich beiden" prueft,
+    /// waere auch fuer eine Zufallszahl gruen.
+    #[test]
+    fn ein_anteil_dazwischen_liegt_zwischen_den_enden() {
+        let zelle: Vec<u8> = vec![40, 80, 120, 200, 10, 20, 30, 255];
+        let violett = mood_toenung("thinking");
+        let voll = frame_toenen(&zelle, violett);
+        let halb = frame_toenen_anteilig(&zelle, violett, 0.5);
+
+        assert_ne!(halb, zelle, "0.5 darf nicht das Original sein");
+        assert_ne!(halb, voll, "0.5 darf nicht der Vollton sein");
+        for i in 0..zelle.len() {
+            if i % 4 == 3 {
+                // Alpha bleibt woertlich -- eine gemischte Deckung wuerde die
+                // Silhouette ausfransen.
+                assert_eq!(halb[i], zelle[i], "Alpha an {i} veraendert");
+                continue;
+            }
+            let (lo, hi) = (zelle[i].min(voll[i]), zelle[i].max(voll[i]));
+            assert!(
+                (lo..=hi).contains(&halb[i]),
+                "Kanal {i}: {} liegt nicht zwischen {lo} und {hi}",
+                halb[i]
+            );
+        }
+        // Und er waechst mit dem Anteil, statt irgendwo zu springen.
+        let werte: Vec<u8> = [0.0f32, 0.25, 0.5, 0.75, 1.0]
+            .iter()
+            .map(|a| frame_toenen_anteilig(&zelle, violett, *a)[0])
+            .collect();
+        let steigend = werte.windows(2).all(|p| p[0] <= p[1]);
+        let fallend = werte.windows(2).all(|p| p[0] >= p[1]);
+        assert!(steigend || fallend, "Kanal 0 springt: {werte:?}");
     }
 }
