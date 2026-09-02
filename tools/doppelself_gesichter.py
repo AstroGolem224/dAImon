@@ -97,6 +97,28 @@ MOODS = [
 NEGATIV = "blurry, distorted face, extra limbs, text, watermark"
 
 
+def moodsatz_laden(pfad: str | None) -> tuple[list, str]:
+    """Die acht Mood-Texte, wahlweise aus einer Datei.
+
+    Die Texte oben beschreiben ein menschliches Gesicht -- Augenbrauen, Haare,
+    Kleidung. Ein Modron mit Bildschirmgesicht hat davon nichts; wer ihm
+    trotzdem "eyebrows slightly raised" vorsetzt, bekommt Augenbrauen
+    angebaut. Die NAMEN bleiben in jedem Fall die acht des Hubs und in dieser
+    Reihenfolge -- sie sind die Naht zu `zustand_abbilden`, nicht Geschmack.
+    """
+    if pfad is None:
+        return MOODS, GLEICHBLEIBEND
+    with open(pfad, encoding="utf-8") as f:
+        daten = json.load(f)
+    moods = [(n, t) for n, t in daten["moods"]]
+    erwartet = [name for name, _ in MOODS]
+    if [n for n, _ in moods] != erwartet:
+        raise SystemExit(
+            f"Abbruch: {pfad} nennt {[n for n, _ in moods]}, "
+            f"das Face erwartet {erwartet}")
+    return moods, daten["gleichbleibend"]
+
+
 # --- Der Graph ---------------------------------------------------------------
 
 def graph_bauen(bild_name: str, prompt: str, seed: int, prefix: str) -> dict:
@@ -395,6 +417,7 @@ def preflight(args) -> None:
 
 
 def lauf(args) -> None:
+    moods, gleich = moodsatz_laden(getattr(args, "moods_datei", None))
     preflight(args)
     os.makedirs(args.ziel, exist_ok=True)
 
@@ -409,9 +432,9 @@ def lauf(args) -> None:
         server = comfy_starten(log)
         bilder = []
         try:
-            for i, (name, ausdruck) in enumerate(MOODS, 1):
-                prompt = f"{ausdruck} {GLEICHBLEIBEND}"
-                print(f"[2/3] {i}/{len(MOODS)} {name} …", flush=True)
+            for i, (name, ausdruck) in enumerate(moods, 1):
+                prompt = f"{ausdruck} {gleich}"
+                print(f"[2/3] {i}/{len(moods)} {name} …", flush=True)
                 # Derselbe Seed fuer alle acht: was sich unterscheiden soll,
                 # ist der Ausdruck, nicht das Rauschen.
                 g = graph_bauen(bild_name, prompt, args.seed,
@@ -428,7 +451,7 @@ def lauf(args) -> None:
     sheet_bauen(bilder, os.path.join(args.ziel, "spritesheet.png"), zelle)
     pet_id = os.path.basename(os.path.normpath(args.ziel))
     manifest = manifest_bauen(
-        [name for name, _ in MOODS], zelle, pet_id,
+        [name for name, _ in moods], zelle, pet_id,
         args.anzeige or pet_id.replace("_", " ").replace("-", " ").title(),
         args.beschreibung or f"Ein Ausdruck je Mood ({pet_id}).",
         max(0.0, min(1.0, args.toenung)))
@@ -571,6 +594,10 @@ def main() -> None:
                         "Halbfiguren 0.4: dort wird die Mood-Trennung erstmals "
                         "groesser als die Bewegung im Clip (gemessen 01.09.)")
     p.add_argument("--beschreibung")
+    p.add_argument("--moods-datei", metavar="JSON",
+                   help="eigene Mood-Texte: {\"gleichbleibend\": ..., "
+                        "\"moods\": [[name, text], ...]}. Die acht Namen und "
+                        "ihre Reihenfolge sind fest")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--force", action="store_true")
     p.add_argument("--selbsttest", action="store_true")
