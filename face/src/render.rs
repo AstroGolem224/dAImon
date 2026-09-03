@@ -275,14 +275,25 @@ impl RenderSteuerung {
 /// hat bis heute keine Zufallsquelle.
 pub const EMOTE_UMLAEUFE: u32 = 3;
 
-/// Der Atem laeuft langsamer als das Emote, und das ist keine Geschmacksfrage.
+/// Der Takt des Atems. Er ist so hoch wie der der Geste, und das ist die
+/// Korrektur eines Denkfehlers vom 02.09.
 ///
-/// Ein Pet, das im Ruhezustand mit 12 fps wogt, sieht nicht ruhig aus, und es
-/// kostet zwoelf 173-KB-Kopien je Sekunde -- die Idle-CPU-Zusage aus T-1.5
-/// (unter 1,0 %, nachgefahren von T-2.1, T-2.2 und T-2.4) haengt genau daran.
-/// Bei 3 fps ist es ein Viertel davon, und ein Atemzug alle paar Sekunden
-/// wirkt ruhiger als schnelles Wogen.
-pub const ATEM_FPS: u32 = 3;
+/// Damals stand hier 3. Die Ueberlegung war: ein ruhiger Atem braucht wenige
+/// Bilder. Sie ist falsch. Ruhe ist eine Frage der AMPLITUDE, nicht der
+/// Bildrate -- wer dieselbe Bewegung viermal seltener zeigt, bekommt keinen
+/// ruhigen Atem, sondern dieselben Spruenge mit sichtbaren Luecken dazwischen.
+/// Genau so kam es an: „die ruckeln jetzt alle". Die Atemzeile war ohnehin
+/// fuer zwoelf Bilder gebaut (`SCHRITT_ATEM` in `tools/pet_animieren.py`).
+///
+/// Langsam wird der Atem jetzt dort, wo er entsteht: der Clip nimmt JEDEN
+/// Frame statt jeden zweiten, das sind 41 Spalten und bei 12 fps ein Atemzug
+/// von 3,4 s, also rund achtzehn pro Minute.
+///
+/// Die Idle-CPU-Zusage aus T-1.5 (unter 1,0 %, nachgefahren von T-2.1, T-2.2
+/// und T-2.4) haengt an dieser Zahl. Sie hielt vor dem 02.09. schon einmal
+/// bei zwoelf Bildern; die Konstante bleibt trotzdem eigenstaendig, damit
+/// jemand sie senken kann, ohne die Geste mitzunehmen.
+pub const ATEM_FPS: u32 = 12;
 
 /// Eine Zeile des Sheets samt ihrer Bildzahl.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -596,16 +607,22 @@ mod tests {
         let start = Instant::now();
         let mut animator = Animator::neu(Spur { zeile: 0, spalten: 4 }, None, 12, start);
 
-        // Ohne Emote gilt der ATEMTAKT, nicht die uebergebenen 12 fps: bei
-        // ATEM_FPS = 3 ist ein Schritt 333 ms.
-        // WHEN der erste Weckruf erst nach 1000 ms kommt -- drei Schritte spaet,
+        // Ohne Emote gilt der ATEMTAKT, nicht die uebergebenen 12 fps. Der
+        // Schritt wird aus der Konstante gerechnet und nicht als Millisekunde
+        // hingeschrieben: bis zum 02.09. stand hier 1000 ms fuer drei
+        // Schritte, was nur bei ATEM_FPS = 3 stimmte und den Test rot machte,
+        // als die Konstante stieg -- ohne dass die Zusage sich geaendert
+        // haette.
+        let schritt = Duration::from_secs(1) / ATEM_FPS;
+
+        // WHEN der erste Weckruf erst drei Schritte spaet kommt,
         // THEN steht er auf Spalte 3 und nicht auf 1:
-        assert!(animator.tick(start + Duration::from_millis(1000)));
+        assert!(animator.tick(start + schritt * 3));
         assert_eq!(animator.spalte(), 3);
 
-        // WHEN weitere 2000 ms ohne Weckruf vergehen -- sechs Schritte,
-        // THEN laeuft der Loop einmal ganz durch und zwei darueber:
-        assert!(animator.tick(start + Duration::from_millis(3000)));
+        // WHEN weitere sechs Schritte ohne Weckruf vergehen,
+        // THEN laeuft der Loop einmal ganz durch und einen darueber:
+        assert!(animator.tick(start + schritt * 9));
         assert_eq!(animator.spalte(), 1);
     }
 
@@ -672,35 +689,45 @@ mod tests {
     /// Die zwei Takte, und WANN welcher gilt. Ohne diesen Test waere der
     /// getrennte Takt nur eine Behauptung im Kommentar: die Tests darueber
     /// fahren je nur einen von beiden.
+    ///
+    /// Gemessen wird die HERKUNFT der Rate, nicht ihre Groesse: die Geste
+    /// nimmt das Argument, der Atem die Konstante. Bis zum 02.09. stand hier
+    /// `langsam > schnell` -- das ging nur gut, solange die beiden Zahlen
+    /// zufaellig verschieden waren, und wurde in dem Moment rot, in dem
+    /// `ATEM_FPS` auf 12 stieg, obwohl die eigentliche Zusage unberuehrt war.
+    /// Die Emote-Rate ist darum hier absichtlich eine dritte Zahl.
     #[test]
-    fn das_emote_laeuft_schnell_der_atem_langsam_und_der_wechsel_schaltet_um() {
+    fn das_emote_nimmt_die_uebergebene_rate_der_atem_die_konstante() {
         let start = Instant::now();
-        let schnell = Duration::from_secs(1) / 12;
-        let langsam = Duration::from_secs(1) / ATEM_FPS;
-        assert!(langsam > schnell, "der Atem muss langsamer sein");
+        // Weder 12 noch der Wert von ATEM_FPS -- eine Verwechslung der beiden
+        // Quellen faellt so auf, egal wie die Konstante gerade steht.
+        let emote_fps = 40;
+        let geste = Duration::from_secs(1) / emote_fps;
+        let atem = Duration::from_secs(1) / ATEM_FPS;
+        assert_ne!(geste, atem, "die Messung braucht zwei unterscheidbare Takte");
 
-        // Mit Emote: der schnelle Takt.
         let mut mit = Animator::neu(
             Spur { zeile: 1, spalten: 2 },
             Some(Spur { zeile: 9, spalten: 2 }),
-            12,
+            emote_fps,
             start,
         );
-        assert_eq!(mit.schrittdauer(), schnell);
+        assert_eq!(mit.schrittdauer(), geste, "die Geste nimmt das Argument");
 
-        // Nach EMOTE_UMLAEUFE vollen Umlaeufen faellt er auf den Atem --
-        // und damit auf den langsamen Takt.
+        // Nach EMOTE_UMLAEUFE vollen Umlaeufen faellt er auf den Atem.
         for i in 1..=(2 * EMOTE_UMLAEUFE) {
-            mit.tick(start + schnell * i);
+            mit.tick(start + geste * i);
         }
         assert!(!mit.emote_laeuft(), "Emote muesste durch sein");
-        assert_eq!(mit.schrittdauer(), langsam);
+        assert_eq!(mit.schrittdauer(), atem, "der Atem nimmt die Konstante");
 
-        // Ohne Emote: von Anfang an der langsame Takt, auch wenn die
-        // Emote-Rate hoch angegeben wird. Das Manifest darf den Ruhezustand
-        // nicht hochdrehen.
+        // Ohne Emote: von Anfang an die Konstante, auch wenn die Emote-Rate
+        // hoch angegeben wird. Das Manifest darf den Ruhezustand nicht
+        // hochdrehen -- das ist der Grund, warum ATEM_FPS eine Konstante ist
+        // und kein Manifestfeld.
         let ohne = Animator::neu(Spur { zeile: 1, spalten: 4 }, None, 60, start);
-        assert_eq!(ohne.schrittdauer(), langsam);
+        assert_eq!(ohne.schrittdauer(), atem);
+        assert_ne!(ohne.schrittdauer(), Duration::from_secs(1) / 60);
     }
 
     #[test]
@@ -753,8 +780,8 @@ mod tests {
         // GIVEN einen Animator, der schon bei Spalte 2 steht:
         let start = Instant::now();
         let mut animator = Animator::neu(Spur { zeile: 4, spalten: 8 }, None, 12, start);
-        // Zwei Schritte im ATEMTAKT (ATEM_FPS = 3), nicht bei 12 fps.
-        let jetzt = start + Duration::from_millis(667);
+        // Zwei Schritte im ATEMTAKT, nicht bei den uebergebenen 12 fps.
+        let jetzt = start + (Duration::from_secs(1) / ATEM_FPS) * 2;
         animator.tick(jetzt);
         assert_eq!(animator.spalte(), 2);
 
@@ -774,7 +801,7 @@ mod tests {
         // GIVEN einen Animator, der schon bei Spalte 2 steht:
         let start = Instant::now();
         let mut animator = Animator::neu(Spur { zeile: 0, spalten: 4 }, None, 12, start);
-        animator.tick(start + Duration::from_millis(667));   // Atemtakt
+        animator.tick(start + (Duration::from_secs(1) / ATEM_FPS) * 2);
         assert_eq!(animator.spalte(), 2);
 
         // WHEN ein Standbild-Mood gesetzt wird,
