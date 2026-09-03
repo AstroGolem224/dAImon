@@ -82,16 +82,30 @@ GLEICHBLEIBEND = ("Keep the same person, same face, same hair, same clothing, "
                   "no stars, no glow, no shadow on the background.")
 MOODS = [
     ("sleeping", "The eyes are closed, the face relaxed and asleep."),
-    ("idle", "A calm, neutral, relaxed expression, eyes open, looking ahead."),
+    # DER wichtigste Text der ganzen Kette. Seit dem 03.09. entsteht jede
+    # Zeile jedes Pets aus diesem einen Standbild -- die Atemzeile und
+    # jede Geste. Was hier an Ausdruck drinsteht, animiert Wan weiter:
+    # `anzug` bekam ein leichtes Laecheln, und in allen sechs Seeds
+    # oeffnete sich daraus ein Mund, bei einer Brustbewegung von 0,00.
+    # Der Mund gehoert darum ausdruecklich zu, nicht nur die Augen.
+    ("idle", "A calm, neutral, relaxed expression, the eyes open and looking straight ahead, the mouth closed with the lips together and the corners of the mouth level, neither raised nor lowered. No smile."),
     ("observing", "Attentive and alert, eyes wide open and watching closely, "
                   "eyebrows slightly raised."),
     ("thinking", "Concentrated and pensive, eyes looking slightly upward, "
                  "brow furrowed in thought."),
     ("working", "Focused and determined, eyes narrowed in concentration, "
                 "mouth closed and firm."),
-    ("done", "A warm, satisfied smile, eyes friendly and bright."),
-    ("failed", "A worried, dismayed expression, eyebrows drawn together, "
-               "mouth turned down."),
+    # Ein Laecheln, kein Grinsen -- auf Ansage vom 02.09. Der Mund bleibt
+    # zu. Bis dahin stand hier nur "a warm, satisfied smile", und das
+    # Modell verstand darunter ein breites Zaehnegrinsen. Der Emote kann
+    # das nicht mehr zuruecknehmen: er bewegt, was im Standbild steht.
+    ("done", "A warm, satisfied, closed-mouth smile, the lips together and no teeth showing, the corners of the mouth lifted a little, the lower eyelids raised slightly so the eyes narrow a little."),
+    # Bedauern, nicht Wut. Bis zum 02.09. stand hier "eyebrows drawn
+    # together" -- und das ist der Muskel der WUT. Der Emote in
+    # `tools/pet_animieren.py` schliesst ihn seither ausdruecklich aus
+    # ("the brows are not drawn together"). Zwei Fassungen einer Regel
+    # sind eine Regel und eine Attrappe; hier gilt dieselbe wie dort.
+    ("failed", "A regretful, downcast expression: the gaze lowered, the upper eyelids drooping, the inner ends of the eyebrows lifted while the outer ends stay low, the corners of the mouth turned down a little with the lips together. The eyebrows are not drawn together."),
     ("needs_input", "An enquiring expression, one eyebrow raised, "
                     "mouth slightly open as if about to ask a question."),
 ]
@@ -117,6 +131,13 @@ def moodsatz_laden(pfad: str | None) -> tuple[list, str]:
         raise SystemExit(
             f"Abbruch: {pfad} nennt {[n for n, _ in moods]}, "
             f"das Face erwartet {erwartet}")
+    idle = dict(moods)["idle"].lower()
+    if not (("mouth" in idle and "clos" in idle) or "lips together" in idle):
+        raise SystemExit(
+            f"Abbruch: {pfad} -- der idle-Text legt den Mund nicht fest. Aus "
+            f"diesem einen Standbild erzeugt tools/pet_animieren.py JEDE "
+            f"Zeile, den Atem und jede Geste; ein Laecheln darin wird von Wan "
+            f"weiteranimiert, bis der Mund aufgeht.")
     return moods, daten["gleichbleibend"]
 
 
@@ -575,6 +596,31 @@ def demo() -> None:
     assert zellen_zuschnitt(quadrat).size == (ZELLE_B, ZELLE_H)
     breit = Image.new("RGBA", (1000, 200))
     assert zellen_zuschnitt(breit).size == (ZELLE_B, ZELLE_H)
+
+    # Der idle-Text traegt die ganze Kette: `tools/pet_animieren.py` erzeugt
+    # aus diesem einen Standbild die Atemzeile UND jede Geste. Ein Ausdruck
+    # darin wird von Wan weiteranimiert.
+    moods = dict(MOODS)
+    # Und dieselbe Zusage fuer einen eigenen Satz von der Kommandozeile.
+    import tempfile as _tmp
+    def _satz(idle_text):
+        f = _tmp.NamedTemporaryFile("w", suffix=".json", delete=False)
+        json.dump({"gleichbleibend": GLEICHBLEIBEND,
+                   "moods": [[n, idle_text if n == "idle" else t]
+                             for n, t in MOODS]}, f)
+        f.close()
+        return f.name
+    assert moodsatz_laden(_satz("calm, the mouth closed, lips together"))
+    assert moodsatz_laden(_satz("neutral, the lips together and level"))
+    try:
+        moodsatz_laden(_satz("A calm, relaxed expression, eyes open."))
+        raise AssertionError("idle ohne Mund wurde durchgelassen")
+    except SystemExit:
+        pass
+
+    for pflicht in ("mouth closed", "lips together", "no smile"):
+        assert pflicht in moods["idle"].lower(), \
+            f"das idle-Standbild legt {pflicht!r} nicht fest"
 
     print("Selbsttest ok.")
 
